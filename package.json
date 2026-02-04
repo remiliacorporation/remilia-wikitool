@@ -1,0 +1,40 @@
+{
+  "name": "wikitool",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unified MediaWiki tooling for Remilia Wiki",
+  "type": "module",
+  "bin": {
+    "wikitool": "./packages/cli/dist/index.js"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "wikitool": "bun packages/cli/dist/index.js",
+    "build:core": "bun run --cwd packages/core build",
+    "build:cli": "bun run --cwd packages/cli build",
+    "build": "bun run lint && bun run build:core && bun run build:cli",
+    "test:repo": "bun test tests",
+    "test": "bun run test:repo",
+    "lint": "bun run lint:biome && bun run lint:style",
+    "lint:biome": "biome lint .",
+    "lint:biome:fix": "biome lint --write .",
+    "lint:style": "stylelint --allow-empty-input \"../templates/**/*.css\"",
+    "lint:style:fix": "stylelint --allow-empty-input --fix \"../templates/**/*.css\"",
+    "docs:reference": "bun scripts/generate-command-reference.ts",
+    "clean": "bun -e \"const fs=require('fs'); const path=require('path'); const base=path.join(process.cwd(),'packages'); if (!fs.existsSync(base)) process.exit(0); for (const entry of fs.readdirSync(base,{withFileTypes:true})) { if (!entry.isDirectory()) continue; fs.rmSync(path.join(base, entry.name, 'dist'), { recursive: true, force: true }); }\""
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^20.0.0",
+    "bun-types": "^1.1.0",
+    "lighthouse": "^13.0.1",
+    "stylelint": "^16.14.0",
+    "stylelint-config-standard": "^36.0.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

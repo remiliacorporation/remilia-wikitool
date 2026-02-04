@@ -1,0 +1,85 @@
+/**
+ * Index module exports
+ *
+ * Provides link graph rebuild, queries, and statistics.
+ */
+
+export { rebuildIndex, type RebuildResult, type RebuildOptions } from './rebuild.js';
+export { updatePageIndex, type PageIndexInput, type UpdatePageIndexResult } from './update.js';
+
+export {
+  getBacklinks,
+  getOrphanPages,
+  getPagesUsingTemplate,
+  getCategoryMembers,
+  getRedirectTarget,
+  resolveRedirect,
+  getRedirectsTo,
+  getOutgoingLinks,
+  getPageTemplates,
+  getPageCategories,
+  getPageSections,
+  getTemplateCallsForPage,
+  getInfoboxEntries,
+  getTemplateMetadata,
+  getTemplateUsageStats,
+  getTemplateSchema,
+  getTemplateContextBundle,
+  getModuleDependencies,
+  getCargoTable,
+  getAllCargoTables,
+  getCargoTableColumns,
+  getCargoTableDeclarations,
+  getCargoStoresForTable,
+  getCargoQueriesForTable,
+  getPagesStoringToTable,
+  getOrphanedCargoStores,
+  getDuplicateCargoTables,
+  getCargoSchemaMismatches,
+  getCargoTableContext,
+  getContextBundle,
+  getEmptyCategories,
+  pruneEmptyCategories,
+  // Validation queries
+  getBrokenLinks,
+  getDoubleRedirects,
+  getUncategorizedPages,
+  getMissingShortdesc,
+  // Note: BacklinkResult is exported from storage/links.js to avoid collision
+  type OrphanResult,
+  type TemplateUsageResult,
+  type CategoryMemberResult,
+  type SectionResult,
+  type TemplateCallResult,
+  type TemplateParamResult,
+  type InfoboxEntry,
+  type TemplateMetadataResult,
+  type ModuleDependencyResult,
+  type CargoTableDeclaration,
+  type CargoStoreEntry,
+  type CargoQueryEntry,
+  type CargoSchemaMismatch,
+  type CargoTableContext,
+  type TemplateUsageStats,
+  type TemplateParamUsage,
+  type TemplatePositionalUsage,
+  type TemplateSchema,
+  type TemplateSchemaParam,
+  type TemplateContextBundle,
+  type EmptyCategoryResult,
+  type ContextBundle,
+  type BrokenLinkResult,
+  type DoubleRedirectResult,
+} from './queries.js';
+
+export {
+  getIndexStats,
+  getTopTemplates,
+  getTopCategories,
+  getTopLinkedPages,
+  isIndexBuilt,
+  type IndexStats,
+  type TopTemplate,
+  type TopCategory,
+  type TopLinkedPage,
+} from './stats.js';

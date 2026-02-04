@@ -1,0 +1,13 @@
+name: mw
+base: lua51
+
+globals:
+  mw:
+    any: true
+  frame:
+    any: true
+  getArgs:
+    args:
+      - any: true
+  libraryUtil:
+    any: true

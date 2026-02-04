@@ -1,0 +1,21 @@
+{
+  "name": "@wikitool/core",
+  "version": "0.1.0",
+  "description": "Core library for wikitool - MediaWiki API, sync engine, storage",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test dist/**/*.test.js"
+  },
+  "files": [
+    "dist"
+  ]
+}

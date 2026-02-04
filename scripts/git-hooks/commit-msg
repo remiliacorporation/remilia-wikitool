@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+msg_file="${1:-}"
+if [ -z "${msg_file}" ] || [ ! -f "${msg_file}" ]; then
+  exit 0
+fi
+
+# Strip any co-author lines to prevent GitHub co-collaborator attribution.
+tmp="$(mktemp)"
+grep -vE '^Co-Authored-By:' "${msg_file}" > "${tmp}" || true
+mv "${tmp}" "${msg_file}"

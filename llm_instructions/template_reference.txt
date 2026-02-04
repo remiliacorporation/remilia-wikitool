@@ -1,0 +1,1034 @@
+TEMPLATE REFERENCE FOR REMILIA WIKI
+=====================================
+This file provides a quick reference to all available MediaWiki templates.
+Consult this when writing articles to know which templates are available.
+
+Last updated: December 25, 2025
+MediaWiki version: 1.44.0
+
+=====================================
+MODULE ARCHITECTURE (December 2025)
+=====================================
+
+The wiki's templates now use a module-based architecture with Lua (Scribunto)
+and TemplateStyles for consistent styling and dark mode support.
+
+TEMPLATE MODULES:
+- Module:Message - Message boxes, stubs, quality banners, inline tags
+- Module:Hatnote - Hatnotes, disambiguation, navigation links
+- Module:Quotation - Blockquotes, pull quotes, poetry
+- Module:Navbox - Navigation boxes, horizontal lists
+- Module:Sidebar - Sidebars, portals
+- Module:Format - Abbreviations, nowrap, language markup, etc.
+- Module:Repost - External article reposts (Mirror.xyz, Paragraph.com, etc.)
+- Module:Reference - Reference lists, bibliographies, footnotes
+- Module:Blockchain - Blockchain explorer links (Etherscan, OpenSea, etc.)
+- Module:Infobox - All infobox templates (existing)
+- Module:Citation - All citation templates (existing)
+- Module:D3Chart - Data visualization charts (existing)
+- Module:Age - Date calculations (existing)
+
+DARK MODE SUPPORT:
+All module-based templates use CSS classes instead of inline styles.
+This enables proper dark mode support via the wiki's [data-theme="dark"] toggle.
+Templates automatically adapt to both light and dark themes.
+
+TEMPLATESTYLES:
+Each module has an accompanying /styles.css page with scoped CSS.
+Templates automatically load their styles via <templatestyles src="..."/>.
+
+For template developers: See custom/templates/ in the repository for
+the Lua source files and CSS stylesheets.
+
+=====================================
+QUICK START FOR AI
+=====================================
+
+Every article must have:
+1. {{SHORTDESC:...}} (line 1) - uses the ShortDescription extension magic word
+2. {{Article quality|unverified}} (line 2) - MANDATORY
+3. Blank line (line 3)
+4. Article body starting with '''bold title''' (line 4)
+5. Infobox or lead image
+6. Inline citations using {{Cite web}}, {{Cite tweet}}, etc.
+7. {{Reflist}} in ==References== section
+8. 2-4 [[Category:...]] tags
+
+CRITICAL ARCHIVAL RULE:
+Leave ALL archive fields blank (archive-url, archive-is, archive-date, screenshot).
+Human editors will complete these manually later.
+
+CRITICAL AI RESTRICTIONS:
+Never use {{Citation needed}} or {{When}} - cite properly or search for sources.
+Never use {{Article quality|wip}} or {{Article quality|verified}} - only humans can change status.
+If you cannot find a source, do not make the claim.
+
+For full details, see sections below.
+
+=====================================
+MOS TEXT FORMATTING
+=====================================
+
+{{lang|language code|text}}
+Purpose: Identifies non-English words/phrases for accessibility and semantic markup (required by MoS)
+Key params: language code (ISO 639: fr, de, ja, etc.), text to mark
+Example: The term {{lang|fr|déjà vu}} appears frequently.
+Example: {{lang|ja|カワイイ}} (kawaii) culture influenced the aesthetic.
+Note: Required for ALL non-English text. Proper names typically don't need this.
+
+{{block indent|text}}
+Purpose: Indents text blocks without quotation formatting (MoS forbids colon indentation in articles)
+Key params: text to indent, em (optional width in em units, default: 2)
+Example: {{block indent|This paragraph will be indented without quotation styling.}}
+Note: Use for indented text that is NOT a quotation. For quotations, use {{Blockquote}}.
+
+{{'s}}
+Purpose: Formats possessive 's after italicized text
+Placement: Immediately after closing italics markup
+Example: ''Milady Maker''{{'s}} impact on digital culture...
+Example: ''The New York Times''{{'s}} coverage of the movement...
+Note: Prevents formatting issues with wikitext apostrophes after italics.
+
+{{`}}
+Purpose: Formats apostrophes after italicized text (non-possessive)
+Placement: Immediately after closing italics markup
+Example: The ''Iliad''{{'}}, written by Homer...
+Example: ''Remilia''{{'}}, work continues to evolve.
+Note: For possessive 's, use {{'s}} instead.
+
+{{IPA|pronunciation}}
+Purpose: Formats International Phonetic Alphabet pronunciations (required by MoS)
+Key params: IPA transcription (without slashes - template adds them)
+Example: Remilia {{IPA|rɪˈmɪliə}}
+Example: The term is pronounced {{IPA|ˈmiːmi}}.
+Note: Use broad transcriptions. See MoS pronunciation guidelines.
+
+{{Math|expression}}
+Purpose: Formats inline mathematical expressions with proper styling
+Module: Module:Format (math function)
+Key params: Mathematical expression (italicize variables with ''var'')
+Example: The equation {{Math|''E'' = ''mc''²}} shows mass-energy equivalence.
+Note: For block equations, use <math>...</math> tags instead. The wiki uses Native MathML rendering.
+
+{{Refbegin}}
+Purpose: Starts formatted reference list with hanging indents (for "Further reading" or "External links")
+Module: Module:Reference (refbegin function)
+Placement: Before first item, paired with {{Refend}}
+Key params: 1 (columns), colwidth, indent, liststyle
+Example: {{Refbegin}}
+* Author, A. (2020). ''Book Title''. Publisher.
+{{Refend}}
+Example: {{Refbegin|2}} for two columns
+
+{{Refend}}
+Purpose: Closes formatted reference list started with {{Refbegin}}
+Module: Module:Reference (refend function)
+Placement: After last item in reference list
+Note: Always pair with {{Refbegin}}
+
+{{Efn|note text}}
+Purpose: Explanatory footnote separate from citations (displays as [a], [b], [c])
+Module: Module:Reference (efn function)
+Placement: After statement needing explanation
+Key params: 1 (note text), name, group
+Requires: ==Notes== section with {{Reflist|group=note}} before ==References==
+Example: The project launched in March.{{Efn|Some sources cite February.}}
+
+=====================================
+CITATION TEMPLATES
+=====================================
+
+AUTHOR HANDLING:
+All citation templates automatically adjust their format based on whether an author is present:
+- With author: Author (date). "Title"...
+- Without author: Date. "Title"...
+This ensures clean, Wikipedia-style formatting in both cases.
+
+NAMED REFERENCES (Repeated Citations):
+When the same source is cited multiple times, use MediaWiki's named reference system to avoid duplication.
+
+Syntax:
+First use: <ref name="shortname">{{Cite template|...}}</ref>
+Subsequent uses: <ref name="shortname" />
+
+Example:
+<ref name="decrypt2022">{{Cite web|author=Tim Copeland|date=May 19, 2022|title=Milady NFT Prices Tank|url=https://decrypt.co/100820/milady-nft-prices-tank|work=Decrypt}}</ref>
+...later in article...
+<ref name="decrypt2022" />
+
+Best practices:
+- Use author+year naming convention (e.g., "fang2023", "vice2021")
+- For multiple works by same author/year, add letter suffix (e.g., "fang2023a")
+- Keep names lowercase, no spaces
+- The full citation appears only once in References section
+
+{{Cite web}}
+Purpose: General web sources with archive support
+Key params: url, title, last, first, date, website, access-date, archive-url, archive-date, archive-is, archive-is-date, screenshot
+Output format (with author): Last, First (date). "Title". Website. Retrieved date. Archived at Wayback Machine on date. Archived at archive.today on date.
+Output format (without author): Date. "Title". Website. Retrieved date. Archived at Wayback Machine on date. Archived at archive.today on date.
+Example: {{Cite web|url=https://example.com|title=Article Title|last=Smith|first=John|date=June 1, 2021|website=Example News|access-date=October 31, 2025}}
+Example (no author): {{Cite web|url=https://en.wikipedia.org/wiki/Bottle_Fairy|title=Bottle Fairy|website=Wikipedia|access-date=November 5, 2025}}
+
+{{Cite post}}
+Purpose: Substack, Mirror, Medium, and blog posts
+Key params: author (or last/first), date, title, blog, publisher, type, url, access-date, archive-url, archive-date, archive-is, archive-is-date, screenshot, repost-at
+Output format (with author): Author (date). "Title". Blog. Publisher [Type]. Retrieved date. Archived at Wayback Machine on date. Archived at archive.today on date. Reposted at [[Wiki page]].
+Output format (without author): Date. "Title". Blog. Publisher [Type]. Retrieved date. Archived at Wayback Machine on date. Archived at archive.today on date. Reposted at [[Wiki page]].
+Example: {{Cite post|author=Charlotte Fang|date=April 20, 2022|title=New Net Art Manifesto|blog=Golden Light|publisher=Mirror|type=Essay}}
+Example (no author): {{Cite post|date=September 2021|title=Milady Maker: Notes on the Design Process|blog=Remilia Corporation Blog|url=https://blog.remilia.org/milady-maker/}}
+Example (with repost): {{Cite post|author=Charlotte Fang|date=September 2, 2023|title=Dynasty Mindset|url=https://goldenlight.mirror.xyz/...|blog=Golden Light|publisher=Mirror|type=Essay|access-date=November 6, 2025|repost-at=Goldenlight:Dynasty Mindset}}
+Note: Use for authored long-form content on platforms. Use {{Cite web}} for general websites.
+
+REPOST-AT PARAMETER USAGE:
+The |repost-at= parameter links to a wiki page where the full content has been transcribed.
+
+APPROPRIATE for reposting:
+- goldenlight Mirror essays (Remilia-affiliated primary sources)
+- Substack posts by Remilia members/community
+- Personal blog posts by Remilia affiliates about Remilia topics
+- Self-published essays explicitly about Remilia
+- Community member writings with implied consent
+
+NOT appropriate for reposting:
+- Third-party commercial blog content
+- Paywalled Substack content by non-affiliated authors
+- Professional journalism (use {{Cite news}} instead)
+- Content where copyright/permission is unclear
+
+The wiki preserves primary source material by and about its subject (Remilia Corporation), not commercial third-party content. For goldenlight specifically: As Charlotte Fang's personal Mirror documenting Remilia's development, and given Remilia's post-authorship principles, there is a strong argument for implied consent to preserve these foundational texts on the Remilia wiki.
+
+{{Cite tweet}}
+Purpose: Twitter/X posts - ALWAYS include archive fields for manual completion
+Key params: user, author, date, tweet, url, access-date, archive-url, archive-date, archive-is, archive-is-date, screenshot, repost-at
+Output format: @user (Author) (date). "Tweet text". Tweet. Retrieved date. Archived at Wayback Machine on date. Archived at archive.today on date. Reposted at [[Wiki page]].
+Example: {{Cite tweet|user=angelicism01|date=June 6, 2021|tweet=The Great VIBE SHIFT|url=https://twitter.com/...}}
+Note: Triple archival (archive.org + archive.is + screenshot) recommended for ephemeral content.
+
+TWEET TEXT FORMATTING:
+Always include the complete tweet text exactly as it appears on Twitter/X, preserving the author's original formatting.
+
+Key principle: Copy exactly what you see on Twitter/X
+- Open the tweet on Twitter/X and copy the text
+- Preserve all original line breaks, paragraph structure, and spacing
+- Do NOT add formatting that wasn't in the original
+- Do NOT remove formatting that was in the original
+- Line breaks and paragraph structure are meaningful stylistic choices that convey emphasis, pacing, or logical separation
+
+Formatting examples:
+
+Single-paragraph tweets (no line breaks in original):
+- Keep as one continuous line
+- Example: |tweet=The Great VIBE SHIFT, 1-5 June 2021. Where were you?
+
+Multi-paragraph tweets (line breaks in original):
+- Preserve all original line breaks and blank lines exactly
+- Example: |tweet=Cute is the face of Cthulhu, it's not going away.
+
+The history of aesthetics' subsumption into industrial capitalism has been all driving towards a refined cuteness...
+
+Tweets with lists or special formatting:
+- Maintain the author's original structure (numbered lists, bullet points, etc.)
+- Preserve their spacing and layout choices
+
+Multi-tweet threads:
+- Each tweet in a thread gets its own separate citation
+- Include full text of each tweet with original formatting
+- Create separate {{Cite tweet}} for each tweet with its unique URL
+
+Best practice workflow:
+1. Open the tweet on Twitter/X
+2. Copy the text exactly as displayed
+3. Paste into |tweet= parameter
+4. Don't modify the formatting
+5. Fill in other parameters (user, date, url, etc.)
+
+Managing large reference sections:
+When including full tweet text makes your references section long, use multi-column layout:
+- {{Reflist|2}} for two-column layout
+- {{Reflist|30em}} for adaptive column width
+
+REPOST-AT PARAMETER USAGE:
+The |repost-at= parameter should be used SPARINGLY for tweets - only for significant multi-tweet threads by Remilia members that form cohesive essays.
+
+RARELY APPROPRIATE - use sparingly:
+- Significant multi-tweet threads by Remilia members that form cohesive essays
+- Foundational tweets that are frequently referenced and at high risk of deletion
+- Tweet threads that provide essential context/explanation not available elsewhere
+
+NOT appropriate for:
+- Single tweets (screenshot is sufficient)
+- Casual tweets without lasting significance
+- Tweets by non-affiliated accounts (screenshot only)
+- Any tweet where screenshot + archive links are sufficient
+
+For most tweets, the existing triple-archive system (archive.org + archive.is + screenshot) is sufficient.
+
+{{Cite interview}}
+Purpose: Interviews in any format (print, audio, video, web)
+Key params: last, first (or author), interviewer, title, date, work, publisher, medium, url, access-date, archive-url, archive-date, archive-is, archive-is-date, screenshot
+Output format: Last, First (interviewee) (date). Interview with Interviewer. "Title". Work. [Medium interview]. Link. Retrieved date.
+Example: {{Cite interview|last=Fang|first=Charlotte|interviewer=John Smith|title=Digital Art Future|work=Art Forum|date=March 15, 2022|url=https://example.com}}
+
+{{Cite message}}
+Purpose: Discord, Telegram, group chat citations - Screenshot REQUIRED for verification
+Key params: user, date, message, server (or group), channel, platform, url, screenshot
+Output format: User (date). "Message". Server, #channel [Platform]. Screenshot.
+Example: {{Cite message|user=Onno Whitemoor|date=circa 2023|message=[Discussion text]|server=Hot Pot|platform=Discord|screenshot=Anathleticism_discord.png}}
+Note: ALWAYS include screenshot parameter (even if blank). Message links break or require authentication. Screenshots provide permanent verification.
+
+{{Cite news}}
+Purpose: Newspaper and magazine articles with archive support
+Key params: last, first, date, title, url, newspaper, publisher, access-date, archive-url, archive-date, archive-is, archive-is-date, screenshot
+Output format (with author): Last, First (date). "Title". Newspaper. Publisher. Retrieved date. Archived at Wayback Machine on date. Archived at archive.today on date.
+Output format (without author): Date. "Title". Newspaper. Publisher. Retrieved date. Archived at Wayback Machine on date. Archived at archive.today on date.
+Example: {{Cite news|last=Davis|first=Allison P.|title=A Vibe Shift Is Coming|newspaper=The Cut|publisher=New York Magazine|date=February 16, 2022}}
+
+{{Cite book}}
+Purpose: Books (print or online)
+Key params: last, first, year, title, chapter, edition, location, publisher, pages, isbn, url, archive-url, archive-date
+Output format (with author): Last, First (year). Title (edition ed.). Location: Publisher. p. pages. ISBN isbn.
+Output format (without author): Year. Title (edition ed.). Location: Publisher. p. pages. ISBN isbn.
+Example: {{Cite book|last=Smith|first=John|year=2020|title=Digital Art|location=Cambridge|publisher=MIT Press|pages=123-145}}
+
+{{Cite journal}}
+Purpose: Academic journal articles
+Key params: last, first, year, title, journal, volume, issue, pages, doi, pmid, url
+Output format: Last, First (year). "Title". Journal volume (issue): pages. doi:doi.
+Example: {{Cite journal|last=Johnson|year=2021|title=Network Spirituality|journal=New Media & Society|volume=23|issue=4|pages=789-812|doi=10.1177/...}}
+
+{{Cite video}}
+Purpose: YouTube, podcasts, video content
+Key params: last, first, date, title, url, medium, publisher, time, access-date, archive-url, archive-date, screenshot
+Output format (with author): Last, First (date). Title [Medium]. Publisher at time. Retrieved date.
+Output format (without author): Date. Title [Medium]. Publisher at time. Retrieved date.
+Example: {{Cite video|last=Wet Brain|date=February 17, 2022|title=Vibe Shift Lowkey Fell Off|url=https://...|medium=Podcast|publisher=Apple Podcasts}}
+
+{{Efn|Explanatory note text}}
+Purpose: Explanatory footnotes separate from citations (not for sources)
+Display: Shows as [a], [b], [c] instead of [1], [2], [3]
+Requires: ==Notes== section with {{Reflist|group=note}} before ==References== section
+Example: The project launched in August{{Efn|Some sources cite late July, but the official announcement was August 1.}} to immediate success.
+Note: Use sparingly. Most explanatory content should be in article body or regular footnotes.
+
+=====================================
+INFOBOXES
+=====================================
+
+{{Infobox person}}
+Purpose: Biographical articles
+Key params: name, image, birth_name, birth_date, birth_place, nationality, other_names, occupation, years_active, known_for, website
+Note: For Remilia projects, omit individual creators and use article body to discuss contributors (honors post-authorship)
+Example: {{Infobox person|name=Charlotte Fang|nationality=American|occupation=Artist, writer|known_for=[[Remilia Corporation]], [[Milady Maker]]}}
+
+{{Infobox organization}}
+Purpose: Organizations, companies, collectives
+Key params: name, image, formation, founder, type, purpose, location, key_people, products, website
+Note: Prefer to omit `founder` and `key_people` parameters and discuss key individuals in the article body.
+Example: {{Infobox organization|name=Remilia Corporation|formation=2021|type=Art collective, DAO|products=[[Milady Maker]]}}
+
+{{Infobox artwork}}
+Purpose: Visual artworks (paintings, memes, digital art, etc.) - generalized for any visual work
+Key params: title, image, artist, year, medium, dimensions, collection, location, exhibition, website
+Note: For Remilia projects, omit artist field and discuss contributors in body
+Example: {{Infobox artwork|title=Killer7|image=Marabarl_killer7.jpg|year=2021|medium=Digital painting}}
+
+{{Infobox NFT collection}}
+Purpose: NFT collections specifically (not individual artworks)
+Key params: name, image, creator, parent_group, nft_type, supply, chain, standard, contract, mint_date, mintout_date, mint_price, traits, storage, metadata, license, derivative_of, website
+Note: For Remilia projects, use parent_group instead of creator to honor post-authorship
+Example: {{Infobox NFT collection|name=Milady Maker|parent_group=[[Remilia Corporation]]|nft_type=Generative PFP|supply=10,000|chain=Ethereum|standard=ERC-721}}
+
+{{Infobox exhibition}}
+Purpose: Art shows, exhibitions, events
+Key params: name, image, type, opening, closing, venue, location, curator, organizer, artists, works, website
+Note: For Remilia exhibitions, use organizer instead of curator for collaborative organizing
+Example: {{Infobox exhibition|name=Milady Rave|opening=March 2023|venue=Gallery X|organizer=Remilia Corporation}}
+
+{{Infobox website}}
+Purpose: Websites, online platforms
+Key params: name, url, image, type, launch_date, author, registration, current_status
+Example: {{Infobox website|name=Miladytruth.org|url=https://miladytruth.org|type=Community wiki|launch_date=2021|current_status=Active}}
+Example: {{Infobox website|name=Golden Light|url=https://goldenlight.substack.com|type=Substack newsletter|author=[[Charlotte Fang]]}}
+
+{{Infobox concept}}
+Purpose: Theoretical concepts, cultural phenomena, coined terms
+Key params: name, image, coined_by, date, context, field, key_text, related, controversy
+Note: Use sparingly. Only use when there's a clear originator/date or notable controversy.
+Use when:
+- There's a clear originator and specific coining date
+- There's notable controversy worth highlighting in the infobox
+- The concept has formal parameters (field, key texts, etc.) worth summarizing
+Skip for: Organic cultural phenomena, vague trends, concepts without clear attribution
+Example: {{Infobox concept|name=Vibe Shift|coined_by=[[Angelicism clone]]|date=June 6, 2021|context=Twitter|controversy=Later misattributed to Sean Monahan}}
+Example: {{Infobox concept|name=Anathleticism|coined_by=[[Onno Whitemoor]]|date={{Circa|2023}}|context=[[Hot Pot]] groupchat}}
+
+{{Infobox subject}}
+Purpose: Flexible infobox for subjects not fitting other specialized types (tools, methods, phenomena, misc. entities)
+Key params: name, image, type, date, location, status, related, label1-6, data1-6, website
+Note: Use only when no specialized infobox fits. Prefer specialized infoboxes when available.
+Good use cases: Discord servers, smart contract tools, technical mechanisms, informal groupings
+Example: {{Infobox subject|name=Bonkler Auction System|type=Smart contract mechanism|date=2023|label1=Blockchain|data1=Ethereum|label2=Standard|data2=ERC-721}}
+Example: {{Infobox subject|name=Kaliacc Server|type=Discord community|date=2016|status=Defunct (2020)|label1=Influence|data1=[[Remilia Corporation]]}}
+
+=====================================
+NAVIGATION TEMPLATES
+=====================================
+
+NOTE: Navigation templates now use Module:Hatnote (for section links) and
+Module:Navbox (for navigation boxes) with TemplateStyles and dark mode support.
+
+{{Main|Article name|Article 2|...}}
+Purpose: Links to main article when section summarizes it
+Module: Module:Hatnote (main function)
+Placement: Immediately under section heading
+Key params: 1-5 article names
+Example: ==History==
+{{Main|History of Remilia Corporation}}
+Output: "Main article: [[History of Remilia Corporation]]"
+
+{{See also|Article 1|Article 2|Article 3}}
+Purpose: Links to related (but not summarized) articles
+Module: Module:Hatnote (seealso function)
+Placement: At top of section
+Key params: 1-10 article names
+Example: {{See also|Post-Internet Art|Net.art}}
+Output: "See also: [[Post-Internet Art]] and [[Net.art]]"
+
+{{Further|Article 1|Article 2}}
+Purpose: Links to supplementary/background articles
+Module: Module:Hatnote (further function)
+Key params: 1-5 article names
+Example: {{Further|Charlotte Fang|Remilia Corporation}}
+Output: "Further information: [[Charlotte Fang]] and [[Remilia Corporation]]"
+
+{{Navbox}}
+Purpose: Navigation boxes for article clusters (5+ related articles)
+Module: Module:Navbox (navbox function)
+Key params: name, title, state, above, group1-20, list1-20, below, bodyclass, titleclass, listclass
+Placement: After References section, before categories
+Example: {{Navbox|name=Remilia Projects|title=[[Remilia Corporation]] Projects|group1=NFT Collections|list1=[[Milady Maker]] • [[Remilio Babies]] • [[Pixelady]]}}
+Note: Use for clusters of 5+ related articles. Stack multiple navboxes vertically. Supports dark mode.
+
+{{Navbar|Template Name|mini=yes}}
+Purpose: View-talk-edit links for templates
+Module: Module:Navbox (navbar function)
+Key params: 1/name=template name, mini=yes for abbreviated v·t·e
+Example: {{Navbar|Remilia Projects}}
+
+=====================================
+HATNOTES & DISAMBIGUATION
+=====================================
+
+NOTE: All hatnote templates now use Module:Hatnote with TemplateStyles.
+They support dark mode and use semantic CSS classes.
+
+{{About|topic|description|link|description2|link2}}
+Purpose: Structured disambiguation for article subjects with similar names
+Module: Module:Hatnote (about function)
+Placement: After {{SHORTDESC:...}}, before lead paragraph
+Key params: 1=this article's topic, 2/3=first alternative description/link, 4/5=second alternative, etc.
+Example: {{About|the art movement|the manifesto|New Net Art Manifesto}}
+Example: {{About|the person|the NFT collection|Milady Maker}}
+Note: More structured alternative to {{Hatnote}} for "about/for" patterns.
+
+{{Distinguish|Article 1|Article 2|Article 3}}
+Purpose: "Not to be confused with" hatnote for similarly-named articles
+Module: Module:Hatnote (distinguish function)
+Placement: After {{SHORTDESC:...}}, before lead paragraph
+Key params: 1-10 article names, or text=custom text
+Example: {{Distinguish|Milady Maker}}
+Example: {{Distinguish|Milady Maker|Remilio Babies|Pixelady}}
+Example: {{Distinguish|text=the NFT collection [[Milady Maker]] or the broader [[Milady (subculture)]]}}
+
+{{Hatnote|Note text}}
+Purpose: General disambiguation notes at article top
+Module: Module:Hatnote (hatnote function)
+Placement: After {{SHORTDESC:...}}, before lead
+Key params: 1/text=hatnote text, class=additional CSS class
+Example: {{Hatnote|This article is about the art movement. For the manifesto, see [[New Net Art Manifesto]].}}
+
+{{Redirect|Term|description|Article|description2|Article2|disambiguation}}
+Purpose: Explains redirects specifically
+Module: Module:Hatnote (redirect function)
+Key params: 1=redirect term, 2/3=first alternative desc/link, 4/5=second alternative, 6="disambiguation" for disambig link
+Example: {{Redirect|Milady|the NFT collection|Milady Maker}}
+Example: {{Redirect|Remilia|the collective|Remilia Corporation|the Touhou character|Remilia Scarlet}}
+
+=====================================
+QUOTATIONS
+=====================================
+
+NOTE: All quotation templates now use Module:Quotation with TemplateStyles.
+They support dark mode and use semantic CSS classes.
+
+{{Blockquote|text=Quote text|author=Author|source=Source}}
+Purpose: Standard block quotations in text flow (40+ words)
+Module: Module:Quotation (blockquote function)
+Key params: text/1=quote, author, source, title, character
+Example: {{Blockquote|text=Milady defined an alternative...|author=Charlotte Fang|source=Golden Light}}
+Note: Do not enclose block quotations in quotation marks.
+
+{{Quote box|quote=Quote text|author=Author|align=right|width=30%}}
+Purpose: Styled pull quotes that float beside text (for emphasis)
+Module: Module:Quotation (quotebox function)
+Key params: quote/1=text, author, source, align (right/left/center/none), width
+Example: {{Quote box|quote=True posting is egoless|author=Charlotte Fang|align=right}}
+Note: Use sparingly - 1 per section maximum.
+
+{{Cquote|text=Quote text|author=Author|source=Source}}
+Purpose: Centered quote with decorative quotation marks
+Module: Module:Quotation (cquote function)
+Key params: text/1=quote, author, source
+Example: {{Cquote|text=We are all beautiful angels.|author=Charlotte Fang}}
+Note: Use for epigraphs or particularly impactful single quotes.
+
+{{Poem quote|text=Poem text|author=Poet|source=Title}}
+Purpose: Poetry quotations with preserved line breaks
+Module: Module:Quotation (poem function)
+Key params: text/1=poem, author, source/title, align (left/center/right)
+Example: {{Poem quote|text=Roses are red
+Violets are blue|author=Traditional}}
+Note: Line breaks are preserved automatically. Do not use <br /> tags.
+
+=====================================
+TEXT FORMATTING
+=====================================
+
+{{SHORTDESC: Brief one-line description}}
+Purpose: Article metadata (search, mobile, previews) - uses ShortDescription extension magic word
+Placement: FIRST line of every article
+Example: {{SHORTDESC:Contemporary digital art movement}}
+Note: This is a parser function/magic word, not a template. It sets metadata for search results, mobile views, and page previews.
+
+{{Birth date and age|YYYY|MM|DD}}
+Purpose: Displays birth date and automatically calculates current age
+Key params: 1=year, 2=month (1-12), 3=day (1-31)
+Placement: In {{Infobox person}} birth_date parameter
+Output: January 25, 1997 (age 28) [age updates automatically]
+Example: {{Infobox person|birth_date={{Birth date and age|1997|1|25}}}}
+Note: ONLY use for non-pseudonymous individuals with publicly documented birth dates. Most Remilia figures operate pseudonymously - do NOT use this template for personas like "Charlotte Fang" (the persona). MAY use for legal identities like "Krishna Okhandiar" if birth date is publicly documented and relevant.
+When NOT to use:
+- Pseudonymous figures (like Charlotte Fang as a persona)
+- When birth date is not publicly available or verified
+- When privacy concerns exist
+- For approximate/unverified dates (just write "born circa 1997")
+Decision tree:
+1. Is this person operating under their legal name? → Consider using
+2. Is the birth date publicly documented in reliable sources? → May use
+3. Is the person a public figure where age is relevant? → May use
+4. Otherwise → Omit birth date entirely or use approximate language
+
+{{As of|2025|October}}
+Purpose: Marks temporal statements
+Example: {{As of|2025}}, the project has 10,000 participants.
+
+{{Circa|1997}}
+Purpose: Approximate dates
+Example: Charlotte Fang (born {{Circa|1997}})
+
+{{Abbr|NFT|Non-Fungible Token}}
+Purpose: Abbreviations with tooltips
+Example: The {{Abbr|DAO|Decentralized Autonomous Organization}} structure...
+
+{{Nowrap|text to keep together}}
+Purpose: Prevents line breaks
+Example: {{Nowrap|10,000 ETH}}
+
+{{Em|text}}
+Purpose: Emphasis (italics)
+Example: The project was {{Em|not}} about commercial success.
+
+{{Sic}}
+Purpose: Marks errors in quoted material
+Placement: Immediately after error in quote
+Example: "The phenonmenon{{Sic}} is widespread."
+
+{{Anchor|anchor_name}}
+Purpose: Creates invisible anchor for linking
+Example: ==History==
+{{Anchor|Background}}
+
+{{When|date=Month Year|reason=explanation}}
+Purpose: Marks vague temporal statements needing specific dates (maintenance tag)
+Placement: Immediately after vague time reference
+Example: The project launched recently{{When|date=November 2025}}.
+**AI MUST NEVER USE THIS** - Always find and use specific dates. If you cannot find a specific date, use {{Circa}} or omit the vague reference entirely. This template is for human editors marking existing vague content only.
+
+=====================================
+MEDIA & GALLERIES
+=====================================
+
+{{Gallery|content}}
+Purpose: Creates responsive image gallery with captions
+Module: Module:Format (gallery function)
+Key params: 1=list of files with captions, one per line (format: File:Name.ext|Caption)
+Placement: In article sections after main prose (e.g., ==Gallery==, ==Visual examples==)
+Example: {{Gallery|
+File:Milady_preppy.png|Preppy style
+File:Milady_gyaru.png|Gyaru style
+File:Milady_lolita.png|Lolita style
+}}
+Note: Do NOT include [[...]] brackets. Do NOT use thumb or sizing parameters. Files must be uploaded first.
+When to use:
+✓ Showcasing NFT trait variations
+✓ Displaying multiple related images
+✓ Exhibition or event photo galleries
+✓ Visual documentation of projects
+When NOT to use:
+✗ Single images (use [[File:...]] directly)
+✗ Lead/infobox images (use infobox parameters)
+✗ Images needing specific placement
+
+=====================================
+DATA VISUALIZATION (D3Charts)
+=====================================
+
+The wiki uses Module:D3Chart for publication-quality data visualizations styled after
+LaTeX/TikZ pgfplots aesthetics. Charts are rendered client-side using D3.js v7.
+
+{{#invoke:D3Chart|type|...parameters...}}
+Purpose: Generate interactive charts from Cargo queries or manual data
+Module: Module:D3Chart
+Placement: In article sections where data visualization enhances understanding
+
+CHART TYPES:
+- bar     : Vertical bar chart
+- hbar    : Horizontal bar chart
+- line    : Line chart (supports multiple series)
+- pie     : Pie chart
+- donut   : Donut chart (pie with center hole)
+- scatter : Scatter plot (requires x, y fields)
+- area    : Area chart
+
+BASIC PARAMETERS:
+| Parameter   | Description                                      |
+|-------------|--------------------------------------------------|
+| table       | Cargo table name for data query                  |
+| label       | Field for category labels (x-axis or slices)     |
+| value       | Field for values (y-axis or slice size)          |
+| data        | Manual data as "Label1:Value1,Label2:Value2"     |
+| title       | Chart title                                      |
+| xLabel      | X-axis label                                     |
+| yLabel      | Y-axis label                                     |
+| width       | Width in pixels (default: 600)                   |
+| height      | Height in pixels (default: 400)                  |
+| aggregate   | Aggregation: count, sum, avg (for Cargo queries) |
+
+STYLING PARAMETERS (TikZ/pgfplots aesthetic):
+| Parameter   | Description                                      |
+|-------------|--------------------------------------------------|
+| showFrame   | Draw box around plot area (default: false)       |
+| gridStyle   | Grid lines: dotted, dashed, solid, none          |
+| animate     | Enable animations (default: false)               |
+| smooth      | Smooth curves for line/area (default: false)     |
+| colorblind  | Use colorblind-friendly palette                  |
+| markerSize  | Data point marker radius (default: 3)            |
+| showLegend  | Show legend (default: true for pie/donut)        |
+| colors      | Custom colors: "#ff0000,#00ff00,#0000ff"         |
+
+EXAMPLE 1: Bar chart from Cargo data
+<syntaxhighlight lang="wikitext">
+{{#invoke:D3Chart|bar
+|table=NFT_Collections
+|label=Name
+|value=Supply
+|title=Remilia NFT Collection Sizes
+|yLabel=Total Supply
+|gridStyle=dotted
+|showFrame=true
+}}
+</syntaxhighlight>
+
+EXAMPLE 2: Pie chart with aggregation
+<syntaxhighlight lang="wikitext">
+{{#invoke:D3Chart|pie
+|table=Characters
+|label=Faction
+|value=_pageName
+|aggregate=count
+|title=Characters by Faction
+|showLegend=true
+}}
+</syntaxhighlight>
+
+EXAMPLE 3: Line chart with manual data
+<syntaxhighlight lang="wikitext">
+{{#invoke:D3Chart|line
+|data=Q1:100,Q2:150,Q3:200,Q4:180
+|title=Quarterly Growth
+|xLabel=Quarter
+|yLabel=Value
+|smooth=true
+|gridStyle=dashed
+}}
+</syntaxhighlight>
+
+EXAMPLE 4: Scatter plot
+<syntaxhighlight lang="wikitext">
+{{#invoke:D3Chart|scatter
+|table=DataPoints
+|x=XValue
+|y=YValue
+|title=Correlation Analysis
+|colorblind=true
+|markerSize=4
+}}
+</syntaxhighlight>
+
+When to use:
+✓ Visualizing Cargo-stored structured data
+✓ Showing trends, distributions, or comparisons
+✓ Making numeric data more accessible
+✓ Publication-quality figures for formal articles
+
+When NOT to use:
+✗ Simple lists or tables (use wikitables instead)
+✗ Data that changes frequently (charts are static renders)
+✗ When raw numbers are more informative
+
+=====================================
+EXTERNAL LINK HELPERS
+=====================================
+
+{{Etherscan|contract_address|link_text}}
+Purpose: Creates formatted link to Ethereum contract on Etherscan blockchain explorer
+Module: Module:Blockchain (etherscan function)
+Key params: 1=contract address (0x...) or shorthand, 2=optional custom link text (defaults to "Etherscan")
+Placement: In External links section or inline when discussing contracts
+Output: Clickable link to https://etherscan.io/address/{address}
+Example: {{Etherscan|0x5Af0D9827E0c53E4799BB226655A1de152A425a5}}
+Example: {{Etherscan|0x5Af0D9827E0c53E4799BB226655A1de152A425a5|Milady Maker Contract}}
+Example: {{Etherscan|milady}} (using shorthand)
+Known contract shorthands:
+- milady — Milady Maker (0x5Af0D9827E0c53E4799BB226655A1de152A425a5)
+- remilio — Remilio Babies (0xD3D9ddd0CF0A5F0BFB8f7fcEAe075DF687eAEBaB)
+- bonkler — Bonkler (0xABFaE8A54e6817F57F9De7796044E9a60e61ad67)
+When to use:
+✓ In External links section of NFT collection articles
+✓ When citing contract deployment or technical details
+✓ In infoboxes to provide contract verification
+✓ When discussing on-chain transactions
+When NOT to use:
+✗ In regular citation footnotes (use {{Cite web}} instead)
+✗ For wallet addresses (only for contracts)
+✗ For transaction hashes (link directly)
+CRITICAL: Always verify contract addresses are correct before publishing - wrong address = wrong contract
+
+{{OpenSea|collection_slug|link_text}}
+Purpose: Creates formatted link to NFT collection on OpenSea
+Module: Module:Blockchain (opensea function)
+Key params: 1=collection slug, 2=optional custom link text (defaults to "OpenSea")
+Example: {{OpenSea|milady|Milady Maker on OpenSea}}
+Note: The slug is the URL path after /collection/ on OpenSea
+
+{{Explorer|address|text=...|explorer=basescan}}
+Purpose: Creates link to contract on any supported blockchain explorer
+Module: Module:Blockchain (explorer function)
+Key params: address, text, explorer (etherscan/basescan/polygonscan/arbiscan/optimistic/bscscan)
+Example: {{Explorer|0x1234...|explorer=basescan|text=View on Base}}
+
+=====================================
+LISTS
+=====================================
+
+NOTE: List templates now use Module:Navbox (for hlist/flatlist) and
+Module:Format (for unbulleted) with TemplateStyles and dark mode support.
+
+{{Unbulleted list|Item 1|Item 2|Item 3}}
+Purpose: Vertical list without bullets (for infoboxes)
+Module: Module:Format (unbulleted function)
+Key params: 1-30 items
+Example: In infobox known_for field
+
+{{Flatlist|Item 1|Item 2|Item 3}}
+Purpose: Inline list with comma separators
+Module: Module:Navbox (flatlist function)
+Key params: 1-20 items, separator (default: ", ")
+Example: {{Flatlist|[[Milady Maker]]|[[Remilio Babies]]|[[Pixelady]]}}
+Output: Milady Maker, Remilio Babies, Pixelady
+
+{{Hlist|Item 1|Item 2|Item 3}}
+Purpose: Horizontal list with bullet separators
+Module: Module:Navbox (hlist function)
+Key params: 1-20 items, separator (default: " • ")
+Example: {{Hlist|[[Milady Maker]]|[[Remilio Babies]]|[[Pixelady]]}}
+Output: Milady Maker • Remilio Babies • Pixelady
+
+=====================================
+LAYOUT & STRUCTURE
+=====================================
+
+NOTE: Layout templates now use modules with TemplateStyles and dark mode support.
+
+{{Clear}}
+Purpose: Clears floats to fix layout issues
+Module: Module:Format (clear function)
+Key params: 1=side (left, right, or both - default)
+Placement: After images/infoboxes when layout breaks
+Example: {{Clear}}
+Example: {{Clear|left}}
+
+{{Sidebar|name=Title|content=Supplementary content}}
+Purpose: Flexible sidebar for additional context
+Module: Module:Sidebar (sidebar function)
+Key params: name/title, image, image_size, caption, above, content, heading1-20, content1-20, below, position (right/left), bodyclass
+Example: {{Sidebar|name=Key concepts|content=Definitions and related terms}}
+Note: Supports dark mode. Use position=left to float left.
+
+{{Sidebar with collapsible lists|title=Title|heading1=...|content1=...}}
+Purpose: Collapsible sidebar with expandable sections
+Module: Module:Sidebar (collapsible function)
+Key params: title/name, state (autocollapse/collapsed/expanded), heading1-20, content1-20, below, position
+Example: {{Sidebar with collapsible lists|title=Navigation|heading1=Topics|content1=[[Link1]]...}}
+
+{{Portal|Portal Name}}
+Purpose: Small box linking to a portal page
+Module: Module:Sidebar (portal function)
+Key params: 1/name=portal name, image, image_size
+Example: {{Portal|Art}}
+
+{{Reflist}}
+Purpose: Displays references section
+Module: Module:Reference (reflist function)
+Placement: In ==References== section
+Key params: columns, colwidth, group
+Options: {{Reflist|columns=2}} or {{Reflist|colwidth=30em}} for multi-column
+Example: ==References==
+{{Reflist}}
+Example: {{Reflist|group=note}} for explanatory notes
+
+=====================================
+ARTICLE QUALITY MARKERS
+=====================================
+
+NOTE: Article quality templates now use Module:Message with TemplateStyles.
+They support dark mode and display semantic banners.
+
+{{Article quality|unverified}}
+Purpose: Marks AI-generated content that may contain hallucinations or errors
+Module: Module:Message (quality function)
+Placement: Line 2 of every article, immediately after {{SHORTDESC:...}}
+Display: Orange warning banner with "Risk of hallucination" message
+Key params: 1/level=unverified (required)
+Example: {{SHORTDESC:...}}
+{{Article quality|unverified}}
+
+'''Article title''' begins here...
+**AI MUST ALWAYS USE THIS** - Every AI-generated article requires this template on line 2.
+Note: This template serves two purposes: (1) warns readers about potential inaccuracies, (2) helps editors identify articles needing fact-checking.
+
+{{Article quality|wip}}
+Purpose: Marks articles under manual revision that may still contain errors
+Module: Module:Message (quality function)
+Placement: Same as unverified (line 2)
+Display: Blue banner with "Work in progress" message
+Key params: 1/level=wip (required)
+**AI MUST NEVER USE THIS** - Only human editors can mark articles as work-in-progress during revision.
+Note: Used when an editor is actively fact-checking and revising an AI-generated article.
+
+{{Article quality|verified}}
+Purpose: Marks human-verified, fact-checked articles
+Module: Module:Message (quality function)
+Placement: Same as unverified (line 2)
+Display: INVISIBLE to readers (hidden marker detectable by LLMs via data-quality="verified" attribute)
+Key params: 1/level=verified (required)
+**AI MUST NEVER USE THIS** - Only human editors can mark articles as verified after thorough fact-checking.
+Note: The invisible marker allows LLMs to identify verified articles as the "golden set" for learning conventions, without cluttering the reader experience with unnecessary badges.
+
+=====================================
+EXTERNAL ARTICLE REPOST TEMPLATES
+=====================================
+
+NOTE: All repost templates now use Module:Repost with TemplateStyles.
+They support dark mode and handle Mirror.xyz, Paragraph.com, and other platforms.
+
+{{Goldenlight repost}}
+Purpose: Banner for articles reposted from goldenlight.mirror.xyz
+Module: Module:Repost (goldenlight function)
+Placement: Immediately after {{SHORTDESC:...}}, before article content
+Display: Notice box with gold accent linking to original Mirror article
+Key params: url (required), date (required), title (optional)
+Example: {{Goldenlight repost
+|url=https://goldenlight.mirror.xyz/qrXKqoUvzXEtcbM_hvezCxmJaJn4t6CjAh2kocDzxNA
+|date=April 20, 2022
+}}
+Note: Use for goldenlight Mirror essays. Date in "Month Day, Year" format.
+
+{{Repost}}
+Purpose: Generic notice for articles reposted from any external platform
+Module: Module:Repost (notice function)
+Placement: Immediately after {{SHORTDESC:...}}, before article content
+Key params: platform (goldenlight/mirror/paragraph), url (required), date, title, source, sourceUrl, category
+Example: {{Repost|platform=paragraph|url=...|date=January 2024}}
+Example: {{Repost|source=Substack|sourceUrl=https://substack.com|url=...}}
+Note: Use platform shorthand for known platforms (goldenlight, mirror, paragraph).
+
+{{Repost article}} / {{Repost article end}}
+Purpose: Wrapper for reposted article content with reading-focused styling
+Module: Module:Repost (article/articleEnd functions)
+Placement: Around main article content, after notice
+Display: Centered narrow column (700px), larger font (18px), comfortable line height
+Example: {{Repost article}}
+Article content here...
+{{Repost article end}}
+Note: Preserves the original reading experience. For backwards compatibility, {{Mirror article}} and {{Mirror article end}} also work.
+
+{{Repost image}}
+Purpose: Displays images with captions in repost article style
+Module: Module:Repost (image function)
+Placement: Throughout article body where images appeared in original
+Key params: file (required), caption (required), alt (optional), width (default 600), align (default center)
+Example: {{Repost image
+|file=Milady_aesthetic.jpg
+|caption=The Milady aesthetic combines kawaii culture with dark internet humor.
+}}
+Note: Can be used multiple times per article. {{Mirror image}} also works for backwards compatibility.
+
+
+=====================================
+MAINTENANCE TEMPLATES
+=====================================
+
+NOTE: Maintenance templates now use Module:Message with TemplateStyles.
+They support dark mode and use semantic CSS classes.
+
+{{Citation needed|date=Month Year}}
+Purpose: Flags unsourced statements requiring citations
+Module: Module:Message (cn function)
+Placement: Immediately after unsourced claim, before punctuation
+Key params: date (Month Year format), reason (optional explanation)
+Example: The project raised over $1 million.{{Citation needed|date=December 2025}}
+Example: {{cn|date=December 2025}} (shortcut version)
+**AI MUST NEVER USE THIS** - All AI-generated content must be properly cited. If you cannot find a source for a claim, do not make the claim. Use your web search tools to find reliable sources. This template is for human editors marking existing uncited content only.
+
+{{Clarify|date=Month Year|reason=explanation}}
+Purpose: Marks unclear text needing clarification
+Module: Module:Message (clarify function)
+Placement: Immediately after unclear statement
+Key params: date (Month Year), reason (optional explanation)
+Example: The thing happened somehow.{{Clarify|date=December 2025}}
+**AI MUST NEVER USE THIS** - Write clearly. This is for human editors.
+
+{{Stub|type}}
+Purpose: Marks short articles needing expansion
+Module: Module:Message (stub function)
+Placement: At end of article, before categories
+Key params: 1/type=stub category (e.g., "person", "NFT")
+Example: {{Stub}}
+Example: {{Stub|NFT}}
+Note: AI should avoid creating intentional stubs. Write complete articles. For human editors marking existing short articles.
+
+{{Update|date=Month Year|reason=explanation}}
+Purpose: Marks content containing outdated information
+Module: Module:Message (update function, inline tag)
+Placement: After specific outdated statement
+Key params: date (Month Year), reason (what needs updating)
+Example: As of 2022, the price was $100.{{Update|date=December 2025}}
+Note: Supports MoS guidance to avoid "current" and use specific dates.
+
+{{Ambox|type=notice|text=Message text}}
+Purpose: Article message box for various notices
+Module: Module:Message (ambox function)
+Placement: At top of article or section
+Key params: type (notice/warning/serious/content/style/delete/protection), text, image, imagesize, small
+Example: {{Ambox|type=warning|text=This article's accuracy is disputed.}}
+Note: For structured notices. Supports dark mode.
+
+=====================================
+ARCHIVAL REQUIREMENTS
+=====================================
+
+CRITICAL: Leave ALL archive fields blank in AI-generated articles.
+Human editors will complete these manually later.
+
+Archive parameters (AI must leave blank):
+- archive-url, archive-date (Wayback Machine / archive.org)
+- archive-is, archive-is-date (archive.today / archive.is)
+- screenshot (local file upload for images of web content)
+
+Available in these citation templates:
+- {{Cite web}}, {{Cite post}}, {{Cite tweet}}, {{Cite interview}}
+- {{Cite message}}, {{Cite news}}, {{Cite book}}, {{Cite video}}
+
+SPECIAL CASE - {{Cite message}}:
+Discord and Telegram citations REQUIRE the screenshot parameter because:
+- Message links break when servers/channels are deleted
+- Message links require authentication (not publicly accessible)
+- Screenshots provide permanent, verifiable records
+
+However, AI should still leave the screenshot parameter blank (or with placeholder text) for manual file upload by human editors.
+
+Example of correct AI output for Discord citation:
+{{Cite message|user=Username|date=October 2023|message=Message text here|server=Server Name|channel=channel-name|platform=Discord|screenshot=}}
+
+Archival best practices for human editors:
+- Twitter/X: Triple archival recommended (archive.org + archive.is + screenshot)
+- News articles: Dual archival recommended (archive.org + archive.is)
+- Discord/Telegram: Screenshot required, archive links optional
+- General web: At minimum one archive (archive.org or archive.is)
+
+=====================================
+USAGE NOTES
+=====================================
+
+NON-ENGLISH TEXT:
+- ALL non-English words/phrases must use {{lang|code|text}}
+- Use ISO 639 language codes (fr, de, es, ja, zh, etc.)
+- Applies even to common loanwords if they retain foreign spelling
+- Exception: Proper names in other languages typically don't need {{lang}}
+
+REMILIA-SPECIFIC GUIDANCE:
+- Use parent_group instead of creator/artist for Remilia projects (honors post-authorship)
+- Discuss individual contributors in article body, not infoboxes
+- Use organizer instead of curator for Remilia exhibitions
+- For NFT collections: Always include {{Etherscan}} link in External links section
+- For biographical articles: Only use {{Birth date and age}} for non-pseudonymous individuals
+
+CITATION TYPE SELECTION:
+- {{Cite web}} → General websites, news sites, institutional pages
+- {{Cite post}} → Substack, Mirror, Medium, personal blogs (supports |repost-at= for Remilia-affiliated primary sources)
+- {{Cite tweet}} → Twitter/X posts (archive fields for manual completion; |repost-at= for significant threads only)
+- {{Cite interview}} → Interviews in any format (print, audio, video, web)
+- {{Cite message}} → Discord, Telegram, group chats (screenshot required)
+- {{Cite news}} → Newspaper and magazine articles
+- {{Cite video}} → YouTube, podcasts, video content
+- {{Cite book}} → Books (print or online)
+- {{Cite journal}} → Academic journal articles
+
+MAINTENANCE TAGS (FOR HUMAN EDITORS ONLY):
+- AI MUST NEVER use {{Citation needed}} - all AI-generated content must be cited
+- AI MUST NEVER use {{When}} - always find and use specific dates instead
+- AI should not intentionally create {{Stub}} articles - write complete articles
+- {{Update}} may be used if explicitly expanding an outdated existing article
+- Always include date parameters for proper categorization
+
+CITATION WORKFLOW:
+1. Find reliable source via web search
+2. Use appropriate {{Cite...}} template
+3. Place <ref>{{Cite...}}</ref> immediately after fact
+4. Add {{Reflist}} in ==References== section
+5. Leave archive fields blank (archive-url, archive-date, archive-is, archive-is-date, screenshot) - for manual completion by human editors later
+
+EVERY ARTICLE MUST HAVE:
+1. Line 1: {{SHORTDESC:...}}
+2. Line 2: {{Article quality|unverified}} (MANDATORY for all AI-generated articles)
+3. Line 3: (blank line)
+4. Line 4: Article body begins with '''bold title'''
+5. Proper infobox or lead image (place after short description, can be before or after article quality banner)
+6. Well-structured prose (avoid excessive lists)
+7. Inline citations for key claims (typically 2-5 for short articles)
+8. ==References== section with {{Reflist}}
+9. 2-4 [[Category:...]] tags at end (prefer categories from category_reference.txt)
+
+NEVER USE:
+- Markdown syntax (use wikitext)
+- Curly quotes (use straight quotes)
+- Title Case for headings (use Sentence case)
+- Boldface for emphasis (use italics/{{Em}})
+- Meta-commentary ("Here's a draft...", "I hope this helps")
+- Colon indentation (`:`) in articles (use {{block indent}} instead)
+- {{Citation needed}} in AI-generated content (cite everything properly)
+- {{When}} in AI-generated content (find specific dates)
+- {{Article quality|wip}} or {{Article quality|verified}} in AI-generated content (only humans can change status)
+- Collapsible content in article prose (violates MoS)

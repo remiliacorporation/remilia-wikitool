@@ -1,0 +1,12 @@
+std = "mw"
+
+[lints]
+empty_if = "warn"
+global_usage = "warn"
+if_same_then_else = "warn"
+ifs_same_cond = "warn"
+multiple_statements = "allow"
+shadowing = "allow"
+type_check_inside_call = "warn"
+unbalanced_assignments = "warn"
+unused_variable = "warn"

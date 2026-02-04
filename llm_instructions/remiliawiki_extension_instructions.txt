@@ -1,0 +1,575 @@
+AI REFERENCE GUIDE: MEDIAWIKI EXTENSIONS AND AUTHORING
+
+Platform: MediaWiki 1.44.0
+Last updated: November 25, 2025
+
+Your primary goal is to generate encyclopedic articles that are verifiable, well-formatted, and use the specific features of this MediaWiki installation. This wiki runs a sophisticated stack with Redis caching, CirrusSearch (OpenSearch), Cargo structured data, and numerous content extensions.
+
+=====================================
+CORE TASK: SOURCING AND CITATIONS
+=====================================
+
+Key factual claims must be supported by reliable, third-party sources. Your installed extensions provide a powerful, two-part system for this.
+
+What requires citation:
+- Direct claims about the specific subject (names, dates, events, actions)
+- Direct quotations
+- Controversial or surprising claims
+- Specific statistics, numbers, or data points
+- Claims about reception, impact, or significance
+
+What does not require citation:
+- Common knowledge (e.g., "NFTs are digital tokens recorded on blockchains")
+- General background context (e.g., "online communities often develop distinctive aesthetics")
+- Uncontroversial technical explanations (e.g., "smart contracts execute automatically")
+- Established historical context used for background
+
+1. Your Role (Finding Sources):
+  * You must use your web search tools to find reliable sources (e.g., news articles, reputable websites, interviews, primary sources) to back up key claims about your subject.
+  * For a subcultural wiki, prefer primary sources (tweets, blog posts, interviews, news articles) over academic journals.
+
+2. The Wiki's Role (Formatting Citations):
+The wiki uses two extensions that work together: `Cite` and `Citoid`.
+
+* `Cite` (The Foundation): This extension provides the basic wikitext for all footnotes.
+    * Action: You must place all citations *inside* <ref>...</ref> tags.
+    * Display: The {{Reflist}} tag in the "References" section will automatically collect and display all text from inside the <ref> tags.
+    * Example: Milady Maker launched in August 2021.<ref>Source documenting the launch date.</ref>
+
+* `Citoid` (The Automation): This is the wiki's "auto-citation" tool. It works with `VisualEditor` and `TemplateData` to automatically generate formatted citations from a URL, DOI, ISBN, or PMID.
+    * Action for You: When you find a good source via web search, your goal is to provide the URL and key metadata. The wiki's human editors can then use `Citoid` to enhance the citation, or it may work automatically.
+    * Citoid uses Wikimedia's public Zotero service for metadata extraction.
+    * Your Best-Practice Output: Use a {{Cite...}} template with the information you have. Your optimal output for a web source would be:
+
+    This is a specific factual claim.<ref>{{Cite web |url=https://www.example-newspaper.com/article/123 |title=Article Title Here |last=Doe |first=John |date=October 29, 2025 |website=Example Newspaper}}</ref>
+
+Your Integrated Workflow:
+
+1. Write a fact: `Milady Maker launched in August 2021.`
+2. Determine if citation needed: Yes - this is a specific claim about the subject requiring verification.
+3. Find a source: Use web search to find a reliable source documenting the launch.
+4. Cite the source: Place the citation *immediately* after the fact, using <ref> tags and a {{Cite...}} template.
+
+    Milady Maker launched in August 2021.<ref>{{Cite tweet |user=miladymaker |date=August 1, 2021 |tweet=Milady Maker is now live |url=https://twitter.com/miladymaker/status/...}}</ref>
+
+5. Continue writing: General context like "NFT collections became popular in 2021" does not need a citation.
+6. List References: Ensure a ==References== section with {{Reflist}} exists at the end of the article.
+
+Important: Leave ALL archive fields blank (archive-url, archive-is, archive-date, screenshot). Human editors will complete these manually later.
+
+=====================================
+ARTICLE METADATA
+=====================================
+
+ShortDescription Extension
+--------------------------
+Purpose: Provides brief one-line description for search results, mobile views, and page previews.
+Syntax: {{SHORTDESC:Brief description here}}
+Note: This is a magic word/parser function, NOT a template. It must be on LINE 1 of every article.
+Configuration: Shows description under page title (tagline enabled) and in OpenSearch API.
+
+Example:
+{{SHORTDESC:Generative NFT collection by Remilia Corporation}}
+{{Article quality|unverified}}
+
+'''Milady Maker''' is a generative...
+
+WikiSEO Extension
+-----------------
+Purpose: Manages search engine optimization metadata (OpenGraph, Twitter Cards, Schema.org).
+Configuration: Auto-generates descriptions from TextExtracts when not manually set.
+Twitter: Uses summary_large_image cards with @remiliacorp333 site handle.
+Note: You do not need to interact with this directly. By writing a good {{SHORTDESC:...}} and having a clear article with an infobox image, WikiSEO handles the rest.
+
+PageImages Extension
+--------------------
+Purpose: Selects the best image for an article (usually the infobox image) for use in previews and social sharing.
+Action: Always include a high-quality, representative image in the infobox or as a lead image.
+
+Popups Extension
+----------------
+Purpose: Shows preview popups when hovering over internal links.
+Configuration: Enabled by default for all users.
+Action: Write good lead paragraphs - they appear in popups.
+
+=====================================
+CONTENT FORMATTING EXTENSIONS
+=====================================
+
+Math Extension
+--------------
+Purpose: Renders mathematical formulas using Native MathML.
+How to use: Wrap LaTeX formulas in <math>...</math> tags.
+Rendering: Uses Native MathML mode (modern browsers: Firefox, Safari, newer Chrome/Edge).
+Example: <math>E = mc^2</math>
+Example: <math>\sum_{i=1}^{n} i = \frac{n(n+1)}{2}</math>
+
+SyntaxHighlight (GeSHi)
+-----------------------
+Purpose: Provides color formatting for blocks of source code.
+How to use: Wrap code in <syntaxhighlight lang="language">...</syntaxhighlight> tags.
+Supported languages: python, javascript, php, css, html, sql, lua, solidity, and many more.
+Example:
+    <syntaxhighlight lang="python">
+    def hello_world():
+        print("Hello, world!")
+    </syntaxhighlight>
+
+Example (Solidity smart contract):
+    <syntaxhighlight lang="solidity">
+    contract Milady {
+        uint256 public totalSupply = 10000;
+    }
+    </syntaxhighlight>
+
+Poem Extension
+--------------
+Purpose: Formats poetry, song lyrics, and other text where line breaks matter.
+How to use: Wrap the text in <poem>...</poem> tags. Line breaks are preserved automatically.
+Example:
+    <poem>
+    This is the first line.
+    This is the second line.
+        Indented lines work too.
+    </poem>
+
+CategoryTree Extension
+----------------------
+Purpose: Dynamically displays the contents of a category as a tree structure.
+How to use: Primarily used on category pages or portals, not typically in article prose.
+Example: <categorytree>Example Category</categorytree>
+
+=====================================
+MEDIA EXTENSIONS
+=====================================
+
+TimedMediaHandler
+-----------------
+Purpose: Handles video and audio files (WebM, Ogg, MP4).
+Transcoding: Automatically transcodes to 480p and 720p in both WebM and MP4 formats.
+How to use: Standard [[File:Video.webm|thumb|Caption]] syntax.
+Example: [[File:Milady_launch.webm|thumb|right|300px|Milady Maker launch video]]
+
+EmbedVideo Extension
+--------------------
+Purpose: Embeds external video and audio from services like YouTube, Vimeo, Twitch, and more.
+Primary syntax: {{#ev:service|id|dimensions|alignment|description|container|urlargs|autoresize|valignment}}
+
+Common services: youtube, vimeo, twitch, soundcloud, spotify, dailymotion
+
+Basic examples:
+- YouTube: {{#ev:youtube|dQw4w9WgXcQ}}
+- YouTube with description: {{#ev:youtube|dQw4w9WgXcQ|description=Video caption here}}
+- YouTube with size: {{#ev:youtube|dQw4w9WgXcQ|640x360}}
+- Twitch: {{#ev:twitch|channelname}}
+- Vimeo: {{#ev:vimeo|12345678}}
+
+Configuration notes:
+- YouTube defaults to 640x360
+- Twitch requires parent domain (wiki.remilia.org configured)
+- Audio embeds enabled
+
+TabberNeue Extension
+--------------------
+Purpose: Creates tabbed content interfaces within articles.
+How to use: Wrap content in <tabber>...</tabber> tags with |-| separators.
+Syntax:
+    <tabber>
+    |-|Tab Title 1=
+    Content for tab 1 goes here.
+    Can include wikitext, images, etc.
+    |-|Tab Title 2=
+    Content for tab 2 goes here.
+    |-|Tab Title 3=
+    Content for tab 3 goes here.
+    </tabber>
+
+Use cases:
+- Showing different NFT trait categories
+- Comparing versions or variations
+- Organizing lengthy content into logical sections
+- Before/after comparisons
+
+Example for NFT traits:
+    <tabber>
+    |-|Background=
+    [[File:Milady_bg_blue.png|thumb|Blue background]]
+    Blue backgrounds appear on 15% of Miladys.
+    |-|Hair=
+    [[File:Milady_hair_variants.png|thumb|Hair variants]]
+    Over 50 unique hair styles exist in the collection.
+    |-|Eyes=
+    [[File:Milady_eyes.png|thumb|Eye variants]]
+    Eye traits include anime-style and realistic options.
+    </tabber>
+
+MultimediaViewer
+----------------
+Purpose: Provides lightbox-style image viewing when clicking images.
+Action: No special markup needed. Works automatically for uploaded images.
+
+=====================================
+EDITING EXTENSIONS
+=====================================
+
+VisualEditor
+------------
+Purpose: Rich text WYSIWYG editor for human users.
+Relevance: Your wikitext output serves as the source code that VisualEditor can work with.
+Configuration: Enabled by default, available in Main, User, Project, Help, and Template namespaces.
+
+WikiEditor
+----------
+Purpose: Enhanced wikitext source editor with toolbar.
+Configuration: Enabled by default for all users.
+
+CodeEditor
+----------
+Purpose: Syntax highlighting for editing JavaScript, CSS, JSON, and Lua pages.
+Relevance: Used for editing gadgets, user scripts, and Scribunto modules.
+
+CodeMirror
+----------
+Purpose: Enhanced syntax highlighting in the wikitext editor.
+Configuration: Enabled by default for all users.
+
+Linter
+------
+Purpose: Detects wikitext errors and deprecated markup.
+Location: Special:LintErrors shows all wikitext problems across the wiki.
+Action: Write clean wikitext to avoid linter errors.
+
+=====================================
+TEMPLATE & SCRIPTING EXTENSIONS
+=====================================
+
+Scribunto (Lua)
+---------------
+Purpose: Enables templates to use Lua scripting for complex logic.
+Engine: LuaSandbox with 50MB memory limit and 10-second CPU limit.
+Relevance: Powers advanced templates like infoboxes and citation templates.
+Action: Do not write Lua directly. Use templates by filling in their parameters correctly.
+
+ParserFunctions
+---------------
+Purpose: Provides logical functions (#if, #switch, #expr, #time, etc.) for templates.
+Relevance: Enables conditional logic in templates. Used behind the scenes.
+String functions: Enabled ($wgPFEnableStringFunctions = true)
+
+TemplateData
+------------
+Purpose: Provides machine-readable (JSON) descriptions of template parameters.
+Relevance: This is the "glue" that allows Citoid to know which data goes into which template parameter.
+Action: Your adherence to using templates correctly is crucial.
+
+TemplateStyles
+--------------
+Purpose: Allows templates to include scoped CSS stylesheets.
+Relevance: Enables sophisticated template styling without affecting the global site.
+
+=====================================
+DATA & STRUCTURED CONTENT EXTENSIONS
+=====================================
+
+Cargo Extension
+---------------
+Purpose: Stores and queries structured data from templates.
+Database: Uses a dedicated separate database (cargo_db) for performance isolation.
+Configuration: Max 5000 query results, 500 drilldown values.
+Relevance: Powers structured data queries across articles (e.g., listing all NFT collections).
+Action: When using templates with Cargo integration, fill in all relevant parameters accurately.
+
+PageForms Extension
+-------------------
+Purpose: Creates form-based editing interfaces for structured content.
+Features:
+- "Edit with form" tab for pages with default forms
+- "Create with form" on red links when forms are available
+Permissions: Only sysops can create new data classes or use bulk editing.
+Relevance: Human editors use forms for consistent data entry.
+
+DynamicPageList4 (DPL4)
+-----------------------
+Purpose: Generates dynamic lists of pages based on categories, namespaces, and other criteria.
+Configuration: Max 500 results, 1.5 second query timeout, all features unlocked.
+Caching: Results cached for 1 hour (integrates with Varnish).
+Syntax: <DPL>...</DPL> or {{#dpl:...}}
+
+Example (list recent articles in a category):
+    <DPL>
+    category = NFT Collections
+    count = 10
+    ordermethod = lastedit
+    order = descending
+    format = ,* [[%PAGE%]]\n,,
+    </DPL>
+
+Note: DPL is powerful but can be resource-intensive. Use sparingly in articles.
+
+=====================================
+SEARCH EXTENSIONS
+=====================================
+
+CirrusSearch + Elastica
+-----------------------
+Purpose: Advanced full-text search powered by OpenSearch 1.3.20.
+Features:
+- Completion suggester (autocomplete)
+- Highlighting in search results
+- Field weighting (title > redirect > category > heading > text)
+Configuration: 150-character snippet size, optimized for clean results.
+
+AdvancedSearch
+--------------
+Purpose: Enhanced search interface with filters and options.
+Location: Accessible via Special:Search with advanced options.
+
+=====================================
+NAVIGATION & ORGANIZATION
+=====================================
+
+Disambiguator
+-------------
+Purpose: Marks disambiguation pages.
+Magic word: __DISAMBIG__
+How to use: Add __DISAMBIG__ at the bottom of disambiguation pages.
+Tracking: Special:DisambiguationPages lists all disambiguation pages.
+CSS class: Links to disambiguation pages get 'mw-disambig' class.
+
+InputBox
+--------
+Purpose: Creates input forms for searching, creating pages, etc.
+Example (create article form):
+    <inputbox>
+    type=create
+    default=New Article Title
+    buttonlabel=Create Article
+    </inputbox>
+
+RelatedArticles
+---------------
+Purpose: Shows related articles in the sidebar/footer.
+Action: Uses PageImages and internal links to suggest related content automatically.
+
+=====================================
+COMMUNITY & MODERATION EXTENSIONS
+=====================================
+
+Echo (Notifications)
+--------------------
+Purpose: In-wiki notification system.
+Features: Web notifications for page reviews, mentions, talk page messages.
+Configuration: Web notifications enabled by default; email notifications disabled.
+
+DiscussionTools
+---------------
+Purpose: Enhanced talk page features including reply threading.
+Relevance: Improves discussion organization on talk pages.
+
+Moderation Extension
+--------------------
+Purpose: Editorial control - all edits from regular users go through approval queue.
+Workflow:
+1. Regular users submit edits (goes to moderation queue)
+2. Sysops/bureaucrats review at Special:Moderation
+3. Approve, reject, or request changes
+4. "Trusted" users bypass moderation
+
+User groups:
+- user: All edits moderated
+- autoconfirmed: Still moderated (no automatic bypass)
+- trusted: Bypasses moderation (manually granted)
+- sysop/bureaucrat: Can moderate and bypass
+
+Relevance for AI: All AI-generated content will go through moderation before publication.
+
+=====================================
+ANTI-SPAM & SECURITY EXTENSIONS
+=====================================
+
+AbuseFilter
+-----------
+Purpose: Automated filtering of problematic edits.
+Permissions: Sysops can view, modify, and revert abuse filter actions.
+
+SpamBlacklist / TitleBlacklist
+------------------------------
+Purpose: Blocks known spam URLs and problematic page titles.
+Action: Avoid using suspicious external links.
+
+ConfirmEdit (CAPTCHA)
+---------------------
+Purpose: Simple math CAPTCHA for anonymous users.
+Note: Registered users skip CAPTCHA.
+
+SecureLinkFixer
+---------------
+Purpose: Automatically upgrades HTTP links to HTTPS where possible.
+
+=====================================
+AUTHENTICATION
+=====================================
+
+PluggableAuth + OpenIDConnect
+-----------------------------
+Purpose: Keycloak SSO integration (RemiliaNET login).
+Workflow: Users click "Login with RemiliaNET" → Keycloak → Account created automatically.
+Username handling: Uses display username from Keycloak, sanitized for MediaWiki.
+Note: Local admin login available via hidden link on login page.
+
+=====================================
+ADMIN & MAINTENANCE EXTENSIONS
+=====================================
+
+CheckUser
+---------
+Purpose: Allows checking IP addresses and user agents for sockpuppet investigation.
+Permissions: Bureaucrats only.
+
+EditAccount
+-----------
+Purpose: Allows editing user accounts (reset passwords, etc.).
+Location: Special:EditAccount
+Permissions: Sysops and bureaucrats.
+
+UserMerge
+---------
+Purpose: Merges duplicate accounts.
+Permissions: Sysops and bureaucrats.
+
+ReplaceText
+-----------
+Purpose: Bulk find-and-replace across the wiki.
+Permissions: Sysops only.
+
+Nuke
+----
+Purpose: Mass deletion of pages.
+Permissions: Sysops only.
+
+SimpleBatchUpload
+-----------------
+Purpose: Upload multiple files at once.
+Location: Special:BatchUpload
+Limits by group:
+- Anonymous: 0 files
+- Regular users: 10 files (each goes through moderation)
+- Trusted: 50 files
+- Sysops/bureaucrats: 1000 files
+
+Interwiki
+---------
+Purpose: Manage interwiki link prefixes.
+Location: Special:Interwiki
+Permissions: Sysops only.
+
+=====================================
+PERFORMANCE & CACHING
+=====================================
+
+The wiki uses a sophisticated caching architecture:
+
+Redis Architecture
+------------------
+- Volatile cache (redis-cache:6379, DB 0): Page text, parser output, interface messages
+- Session cache (redis-jobs:6379, DB 1): User sessions, authentication tokens
+- Job queue (redis-jobs:6379, DB 2): Background job processing
+- Hit counter (redis-jobs:6379, DB 3): Page view statistics
+
+Varnish HTTP Accelerator
+------------------------
+- Caches anonymous page views (majority of traffic)
+- 5-hour cache lifetime for page content
+- Automatic cache purging when pages are edited
+- Mobile/desktop detection via X-Device header
+
+Thumbro (libvips)
+-----------------
+Purpose: High-performance thumbnail generation with WebP output.
+Configuration: Converts JPEG, PNG, GIF, and WebP uploads to optimized WebP thumbnails.
+Bucket sizes: 120, 220, 320, 440, 640, 800, 1024, 1280, 1600, 2048 pixels.
+
+HitCounters
+-----------
+Purpose: Page view statistics displayed in footer.
+Implementation: JavaScript-based to bypass Varnish cache.
+Namespaces tracked: Main, Project, Help, Goldenlight.
+
+=====================================
+CUSTOM NAMESPACES
+=====================================
+
+Goldenlight Namespace (NS 3000)
+-------------------------------
+Purpose: Archives of goldenlight.mirror.xyz essays.
+Features:
+- Content namespace (included in search, sitemap)
+- Talk pages enabled (NS 3001)
+- Hit counters enabled
+Usage: Goldenlight:Article Title
+
+=====================================
+MOBILE SUPPORT
+=====================================
+
+MobileFrontend + MinervaNeue Skin
+---------------------------------
+Configuration:
+- Mobile detection via Varnish X-Device header
+- Minerva skin for mobile devices
+- Vector (legacy) for desktop
+- Auto-detection enabled
+
+Best practices:
+- Keep wikitext clean and standard
+- Avoid fixed-width tables
+- Use infoboxes and standard image syntax
+- Test articles on mobile view
+
+=====================================
+WIKITEXT BEST PRACTICES
+=====================================
+
+1. Always start articles with:
+   Line 1: {{SHORTDESC:Brief description}}
+   Line 2: {{Article quality|unverified}}
+   Line 3: (blank)
+   Line 4: '''Article title''' begins the lead...
+
+2. Use appropriate templates for all content types.
+
+3. Cite sources using <ref>{{Cite...}}</ref> syntax.
+
+4. Leave archive fields blank for manual completion.
+
+5. Use sentence case for headings (not Title Case).
+
+6. Avoid markdown syntax - use wikitext.
+
+7. For math: <math>E=mc^2</math>
+
+8. For code: <syntaxhighlight lang="python">code</syntaxhighlight>
+
+9. For poetry: <poem>verses here</poem>
+
+10. For video embeds: {{#ev:youtube|VIDEO_ID|description=Caption}}
+
+11. For tabbed content: <tabber>|-|Tab=Content</tabber>
+
+12. Always include {{Reflist}} in ==References== section.
+
+13. Add 2-4 categories from category_reference.txt.
+
+=====================================
+QUICK REFERENCE: EXTENSION TAGS
+=====================================
+
+<math>LaTeX formula</math>                    - Math rendering
+<syntaxhighlight lang="x">code</syntaxhighlight> - Code highlighting
+<poem>poetry</poem>                           - Poetry formatting
+<tabber>|-|Tab=Content</tabber>               - Tabbed content
+<categorytree>Category</categorytree>         - Category tree display
+<DPL>parameters</DPL>                         - Dynamic page lists
+{{#ev:service|id|description=text}}           - Video embeds
+{{SHORTDESC:description}}                     - Short description
+__DISAMBIG__                                  - Mark disambiguation page

@@ -1,0 +1,488 @@
+WIKIPEDIA MANUAL OF STYLE (AI REFERENCE GUIDE)
+
+This Manual of Style (MoS) is the style guide for all articles.
+
+Core Principles:
+* Clarity: Write articles using straightforward, succinct, and easily understood language.
+* Consistency: Structure articles with consistent, reader-friendly layouts and formatting.
+* Stability: Where more than one style or format is acceptable, one should be used consistently within an article and should not be changed without good reason. Edit warring over stylistic choices is unacceptable.
+
+RETAINING EXISTING STYLES
+* When the MoS provides more than one acceptable style, it is generally inappropriate to change from one style to another unless there is some substantial reason for the change.
+* Edit warring over style is disruptive and unacceptable.
+* Unjustified changes from one acceptable, consistently applied style to another may be reverted.
+* If you believe an alternative style would be more appropriate, seek consensus on the article's talk page.
+* If discussion fails to reach a consensus, default to the style that was used in the first post-stub version of the article in which one of the applicable styles appeared.
+
+ARTICLE TITLES, SECTIONS, AND HEADINGS
+
+Article titles
+* A title should be a recognizable name or description, balancing being natural, precise, concise, and consistent.
+* Capitalization: Use sentence case (Example: "Funding of UNESCO projects"), not title case (Incorrect: "Funding of UNESCO Projects"). Capitalize the initial letter except in rare cases (Example: "eBay").
+* Italics: Use the {{italic title}} template. For mixed italics, use {{DISPLAYTITLE}}. Use of italics should conform to MoS rules.
+* Initial articles: Do not use 'a', 'an', or 'the' as the first word (Example: "Economy of the Second Empire", not "The economy of the Second Empire"), unless it is an inseparable part of a name (Example: "The Hague") or work (Example: "A Clockwork Orange").
+* Format: Normally use nouns or noun phrases (Example: "Early life", not "In early life").
+* Punctuation: The final character should not be punctuation unless it is part of the name (Example: "Saint-Louis-du-Ha! Ha!"), an abbreviation (Example: "Inverness City F.C."), or a required bracket/quote mark.
+
+Section organization
+* Content begins with a lead section (a concise summary) which is never divided into sections.
+* Infoboxes, images, and other related content in the lead must be right-aligned.
+* Standardized elements at the *top* of the article (before the lead) must be in this order:
+    1.  Short description ({{Short description}})
+    2.  Disambiguation hatnotes ({{Hatnote}})
+    3.  Date format and English variety templates (Example: {{Use dmy dates}})
+    4.  Article-wide maintenance templates
+    5.  An infobox (optional, but includes first image)
+    6.  An introductory image (if no infobox)
+* Table of Contents: Appears automatically after the lead if there are at least four headings (in older skins).
+* Main/Further links: If a section is a summary of another article, insert {{main|Article name}} or {{further|Article name}} immediately under the section heading.
+* Standard appendices and footers (after the main body) must be in this order:
+    1.  Works by the subject (heading "Works", "Publications", "Discography", etc. Avoid "Bibliography").
+    2.  "See also" section (internal links).
+    3.  "Notes" and/or "References" section.
+    4.  "Further reading" section (relevant publications not used as sources; be selective).
+    5.  "External links" section (may be a subsection of "Further reading"). Sister project links go here.
+    6.  Final items (no section headings): Navigational boxes, Authority control, Categories, Stub templates (last).
+
+Section headings
+* Headings follow article title guidance: use sentence case (Example: "Funding of UNESCO projects"), not title case.
+* Place one blank line just *before* the heading.
+* Technical Restrictions (Not subject to local consensus):
+    * Must be unique within a page.
+    * Must not contain links.
+    * Must not contain images or icons.
+    * Must not contain <math> markup.
+    * Must not contain citations or footnotes.
+    * Must not misuse description list markup (`;`) as pseudo-headings.
+    * Must not contain template transclusions (use {{subst:Anchor}} instead of {{Anchor}}).
+* Style Guidelines:
+    * Do not redundantly refer to the article subject (Example: "Early life", not "Smith's early life").
+    * Do not refer to a higher-level heading (unless shorter/clearer).
+    * Do not number or letter as an outline.
+    * Do not phrase as a question (Example: "Languages", not "What languages are spoken in Mexico?").
+    * Do not use color or unusual fonts.
+* Hidden comments: Place on the line *below* the heading, or *inside* the `== ... ==` markup.
+    * Correct: `== Implications ==\n`
+    * Correct: `== Implications==`
+    * Incorrect: `== Implications == `
+* Section anchors: When changing a heading, consider adding an anchor for the old title to avoid breaking links. Example: `== <span class="anchor" id="Consequences"></span> Implications ==` (which can be generated with `{{subst:Anchor|Consequences}}`).
+
+NATIONAL VARIETIES OF ENGLISH
+* All national varieties of Standard English are equally acceptable.
+* Consistency: The conventions of a particular variety (e.g., American English, British English) should be followed consistently within an article.
+* Exceptions to consistency:
+    * Quotations and titles of works are given as they appear in sources.
+    * Proper names use the subject's own spelling (Example: "United States Department of Defense" and "Australian Defence Force").
+    * Chemistry articles: Use international standard spellings "aluminium", "sulfur", "caesium".
+* Commonality: Prefer vocabulary common to all varieties (Example: "glasses" is preferred over "spectacles" or "eyeglasses"; "ten million" over "one crore").
+* Glossing: Terms that differ may be glossed (Example: "the trunk (American English) or boot (British English) of a car").
+* Strong national ties: An article on a topic with strong ties to a specific English-speaking nation should use that nation's variety (Example: "American Civil War" uses American English; "Great Fire of London" uses British English).
+* Retaining existing variety: Maintain the article's established consistent usage in the absence of consensus to the contrary. Do not change simply to switch varieties. If no variety is established, default to the one used in the first post-stub revision.
+
+CAPITAL LETTERS
+* Wikipedia does not capitalize something unless it is consistently capitalized in a substantial majority of independent, reliable sources.
+* Capitalization of 'The': Generally, do not capitalize 'the' in mid-sentence (Example: "throughout the United Kingdom"). Exceptions include some proper names (Example: "he visited The Hague") and most titles of creative works (Example: "Tolkien wrote 'The Lord of the Rings'").
+* Titles of works: Use title case for English-language titles (e.g., books, songs, films). Capitalize the first and last words; do not capitalize minor words (and, or, for, a, the) unless they are first or last. (Example: "An Eye for an Eye", "Worth the Fighting For"). For non-English titles, follow usage in current English reliable sources or the original's style.
+* Titles of people:
+    * Generic use: lower case (Example: "De Gaulle was a French president").
+    * Before a name: capital letter (Example: "President Obama").
+    * Names of an office: treat as proper names (Example: "David Cameron was Prime Minister of the United Kingdom").
+    * Royal styles: take capitals (Example: "Her Majesty").
+* Religions, deities, philosophies:
+    * Religions and followers: start with a capital letter (Example: "Unitarians").
+    * Religious texts: capitalized, not italicized (Example: "the Bible", "the Quran"). 'the' is not capitalized.
+    * Honorifics for deities: start with a capital letter (Example: "God", "Allah", "the Lord"). 'the' is not capitalized.
+    * Pronouns for deities: not capitalized (Example: "God and his will").
+    * Mythical beings (broad categories): lower case (Example: "elf", "fairy", "angel").
+    * Mythical beings (specific): capitalize (Example: "the Minotaur", "the Furies").
+    * Spiritual events: capitalized only for specific incidents (Example: "the Great Flood"; but "annual flooding").
+    * Philosophies/doctrines: lower case unless derived from a proper name (Example: "capitalism versus Marxism") or is a proper name (Example: "Republican", a party).
+    * Eponyms: capitalized (Example: "Edwardian", "Platonic idealism") except in idiomatic uses (Example: "a platonic relationship").
+* Calendar items:
+    * Months, days, holidays: start with a capital (Example: "June", "Monday", "the Fourth of July").
+    * Seasons: lower case (Example: "her last summer"), except in proper names (Example: "Old Man Winter").
+* Animals, plants, and other organisms:
+    * Scientific names (Taxonomic): Capitalize and italicize the genus (Example: *Berberis*). Italicize but do not capitalize species and below (Example: *Berberis darwinii*). Higher taxa (family, order) are capitalized in Latin but not italicized (Example: "Felidae") or in English (Example: "felids").
+    * Cultivar names: Not italicized, capitalized, in single quotes (Example: *Malus domestica* 'Red Delicious').
+    * English vernacular (common) names: lower case (Example: "plains zebra", "mountain maple"), *unless* they contain a proper name (Example: "Przewalski's horse", "California condor").
+    * Standardized breeds: Retain capitalization used in breed standards (Example: "German Shepherd").
+* Celestial bodies:
+    * 'sun', 'earth', 'moon': do not capitalize in general use. Capitalize when used as a proper name in a scientific/astronomical context (Example: "The Moon orbits the Earth"; but "Io is a moon of Jupiter").
+    * Planets, moons, stars, constellations, galaxies: are proper names and capitalized (Example: "Mars", "Alpha Centauri", "Milky Way").
+* Compass points:
+    * Directions: lower case (Example: "We took the northern road").
+    * Proper names of regions: capitalize (Example: "Southern California", "the Western Desert").
+    * Descriptive names of regions: lower case (Example: "southern Poland").
+* Proper names vs. generic terms:
+    * Capitalize names of particular institutions (Example: "the University of Delhi") but not generic words (Example: "the university").
+    * Do not capitalize 'the' at the start of an institution's name.
+    * Example: "Online Safety Act 2023" would be capitalized, but subsequent references to "the act" would not.
+
+LIGATURES
+* Use in languages where they are standard (Example: {{lang|fr|clin d'œil}}).
+* Do not use in English (Example: "encyclopedia", not "encyclopædia"), except in proper names (Example: "Æthelstan").
+
+ABBREVIATIONS
+* Write first occurrences in full: Write the full expression, then the abbreviation in parentheses (Example: "local area network (LAN)").
+* Do not use capitals in the full version just because they are in the abbreviation.
+* Common abbreviations (PhD, DNA, USSR) need not be expanded on first use.
+* Plural forms: Add -s or -es (Example: "CD-ROMs", "BIOSes"). Do not use an apostrophe (Incorrect: "CD-ROM's").
+* Punctuation and spacing: Wikipedia generally uses no periods inside acronyms (Example: "GDP", not "G.D.P.").
+* US and U.S.: Use "US" by default. Retain "U.S." in American/Canadian English articles where it is established. Never use periods in longer abbreviations (Example: "USN", "USAF"). Avoid "USA" or "U.S.A." except in quotes or proper names (Example: "Team USA").
+* Circa: Use the template {{circa}}, which shows as "c." (Example: "c. 1955").
+* Avoid unwarranted use: Avoid abbreviations that confuse or interrupt flow (Example: write "approximately", not "approx." in prose).
+* Do not invent abbreviations.
+* HTML/Templates: {{abbr|WHO|World Health Organization}} can be used to create a tooltip.
+* Ampersand (&): Use "and" instead of "&" in normal text. Retain "&" when it is part of a proper name (Example: "AT&T"), title, or trademark. May be used in tables/infoboxes where space is limited.
+
+ITALICS
+* Emphasis: Use italics for emphasis, rather than bold or capitals. Overuse diminishes its effect. Use markup `''emphasis''` or `{{em|emphasis}}`.
+* Titles: Use italics for titles of major works (books, films, TV series, albums, artworks). Titles of shorter works (articles, chapters, songs, episodes) take double quotation marks.
+* Exception: Major religious works (Bible, Quran) are not italicized.
+* Words as words: Use italics when mentioning a word or phrase (Example: "the term *panning* is derived from *panorama*").
+* Non-English words: Use italics for isolated non-English words/phrases not common in English. Use the `{{lang|...}}` template (Example: `{{lang|fr|déjà vu}}`). Proper names in other languages are not usually italicized. Do not italicize text in non-Latin scripts (e.g., Greek, Cyrillic, Chinese).
+* Scientific names: Use italics for genus and species (Example: *Panthera leo*).
+* Quotations in italics: Do not put quotations in italics. Use quotation marks.
+* Italics within quotations: Use italics to reproduce emphasis from the source. You may add an editorial note (Example: "[emphasis in original]" or "[emphasis added]").
+* Effect on nearby punctuation: Italicize only the affected elements, not surrounding punctuation.
+    * Incorrect: "What are we to make of *that?*"
+    * Correct: "What are we to make of *that*?"
+
+QUOTATIONS
+* Use brief quotations sparingly. Most content should be in the editor's own words.
+* Do not put quotations in italics.
+* All direct quotations MUST be accompanied by an inline citation.
+* Original wording: Wording must be faithfully reproduced (principle of minimal change).
+    * Use square brackets for changes (Example: "Ocyrhoe told [her father] his fate").
+    * If there is a significant error in the original, follow it with `{{sic}}` (Example: "Dolly Llama {{sic}}").
+    * Insignificant spelling/typographic errors should be silently corrected.
+    * Use ellipses (...) to indicate omissions. Do not omit text where it would alter the meaning.
+    * Vulgarities: Show exactly as in the source. Do not bowdlerize. If the source bowdlerizes, copy it verbatim and use `{{sic}}`.
+    * Retain dialectal and archaic spellings.
+* Point of view: Use quotations for emotive opinions (Example: `Siskel and Ebert called the film "unforgettable."`). Do not use for cultural norms (Incorrect: `The site is considered "sacred"`).
+* Typographic conformity: Adapt formatting to Wikipedia's conventions.
+    * Normalize dashes and hyphens.
+    * Change curly quotes (' ' “ ”) to straight quotes (' ").
+    * Preserve bold and italics, but normalize other styling (underline, spacing, color, ALL CAPS) to plain text. If it indicates emphasis, use `{{em|emphasis}}`.
+    * Do NOT change national varieties of English (e.g., retain British spelling from a British source).
+* Linking: Be conservative when linking within quotations. Link only to targets clearly intended by the author.
+* Block quotations:
+    * Format long quotations (more than ~40 words or more than one paragraph) as a block quotation using the `{{blockquote}}` template.
+    * Do not enclose block quotations in quotation marks.
+    * Use `{{poem quote}}` for poetry/lyrics.
+* Pull quotes (decorative, attention-grabbing quotes) do not belong in Wikipedia articles.
+* Non-English quotations: Should appear with an English translation. If you provide the translation, you must also include the original-language text.
+
+PUNCTUATION
+
+Apostrophes
+* Use straight apostrophes ('), not curly (’) or backticks (`).
+* Use `{{'}}` or `{{'s}}` to properly format an apostrophe after italic text (Example: `''Iliad''{{'s}} themes`).
+* Represent special characters like the ʻokina ({{okina}}) with their proper templates or Unicode characters, not an apostrophe.
+* Possessives (Singular): Add 's, even for words ending in 's' (Example: "Cortez's men", "the boss's office", "Descartes's philosophy").
+* Possessives (Plural): For plurals ending in 's', add only an apostrophe (Example: "my sons' wives"). For plurals *not* ending in 's', add 's (Example: "women's careers", "people's habits").
+* Official names: Do not alter (Example: "St Thomas' Hospital").
+
+Quotation marks
+* Characters: Use straight quotes (" and '), not curly (“ ” ‘ ’).
+* Double or single: Most quotations take double quotation marks.
+    * Exception: Plant cultivars take single quotes (Example: *Malus domestica* 'Golden Delicious').
+    * Exception: Glosses for unfamiliar terms take single quotes (Example: "Cossack" originates from Cuman *qazaq* 'freebooter').
+* Quotation within a quotation: Use single quotes (Example: `Darwin wrote, "the maxim 'de minimis lex non curat' does not apply."`). For deeper nesting, alternate (Example: `"...'Confucius said "Everything has beauty..."'..."`).
+* Article openings (bolded lead):
+    * Quotes *part* of the title are bold (Example: `'''''"A" Is for Alibi''''' is...`).
+    * Quotes *not* part of the title are not bold (Example: `"'''Jabberwocky'''" is...`).
+* Punctuation before quotations: A comma is optional if the quote is embedded (Example: `The report stated "There was a 45% reduction"`). Use a colon to introduce a quotation that is a complete sentence.
+* Names and titles: Use quotation marks for short works (articles, chapters, short stories, songs, poems, TV/radio episodes). Use italics for long works (books, periodicals, films, albums, TV/radio series, epic poems).
+* Punctuation inside or outside (Logical Quotation):
+    * Use the "logical quotation" style. Terminal punctuation (period, comma, question mark) goes *inside* the quotation marks *only if it was part of the original quoted material*.
+    * Example: `Did Darla say, "Here I am"?` (Question mark applies to the whole sentence, so it's outside).
+    * Example: `Darla said, "Where am I?"` (Question mark is part of the quote, so it's inside).
+    * Example: `Miller wanted, he said, "to create something timeless".` (Period applies to the whole sentence, so it's outside).
+    * Example: `Miller said: "I wanted to create something timeless."` (Period is part of the quoted sentence, so it's inside).
+
+Brackets and parentheses
+* If a sentence contains a bracketed phrase, sentence punctuation goes *outside* the brackets (as shown here).
+* If a whole sentence is inside brackets, its punctuation goes *inside* the brackets. (This sentence is an example.)
+* No space next to the inner side of a bracket.
+* Avoid adjacent sets of brackets.
+    * Avoid: `(c. 1885 – 1919) (also known as...)`
+    * Better: `(c. 1885 – 1919; also known as...)`
+* Square brackets `[...]` are used for editorial insertions/replacements in quotations.
+    * To clarify: "She attended [secondary] school"
+    * To reduce: "X contains Y [and sometimes Z]"
+    * To make grammar work: `She "hate[s] to do laundry"`
+
+Ellipses
+* Use an ellipsis (...) to indicate omitted material in a quotation.
+* Format: three unspaced dots (`...`), not the precomposed character (`…`).
+* Spacing: Use a non-breaking space *before* and a regular space *after* (Example: `Alpha, Bravo,&nbsp;... Zulu`).
+    * Exception: If followed by punctuation `.? ! : ; , ) ] }`, use a non-breaking space before and *no space* after (Example: `suffered so frightfully&nbsp;...".`).
+* Use `\dots` (<math>\dots</math>) in LaTeX formulas, not `...`.
+* Square brackets around an ellipsis `[...]` distinguish an editorial omission from an ellipsis that was part of the original quote.
+
+Commas
+* Use a pair of commas to bracket parenthetical phrases (Example: "John Smith, Janet's son, is a playwright.").
+* Geographical references: A comma separates each element and follows the last (Example: "Chattanooga, Tennessee, for the night.").
+* Dates: Month-day-year format requires a comma after the day and year (Example: "October 1, 2011, as the deadline").
+* Serial commas (Oxford comma): A comma before the conjunction (and, or) in a list of three or more items (Example: "ham, chips, and eggs").
+* Editors may use *either* convention (with or without the serial comma) so long as each article is internally consistent.
+* In cases of ambiguity, recast the sentence rather than relying on the comma.
+
+Colons
+* A colon (:) introduces something that demonstrates or explains what came before, or a list.
+* In most cases, a colon should follow a complete grammatical sentence.
+* If what follows the colon is a complete sentence, start it with a capital letter. Otherwise, use lower case (unless it's a proper name).
+* No space before a colon; one space after.
+
+Semicolons
+* A semicolon (;) marks a division more decisive than a comma, often separating two related independent clauses (Example: "Oranges are an acidic fruit; bananas are classified as alkaline.").
+* Do not use a comma where a semicolon is needed (a "comma splice"). Incorrect: "Oranges are an acidic fruit, bananas are classified as alkaline."
+* Use semicolons to separate items in a complex list where the items themselves contain commas (Example: "Boston, Massachusetts; San Francisco, California; and Millbank, London, England.").
+* Semicolon before "however": When "however" means "nevertheless", it should be preceded by a semicolon and followed by a comma (Example: "they could not convert these people; however, they tried.").
+
+Hyphens
+* A hyphen (-) indicates conjunction.
+* Uses:
+    1.  In hyphenated personal names (Example: "John Lennard-Jones").
+    2.  To link prefixes (Example: "quasi-scientific", "re-dress" vs. "redress").
+    3.  In compound modifiers (Example: "ease-of-reading aid", "gas-phase reaction dynamics", "a 34-year-old woman").
+* Hyphenate attributively ("a light-blue handbag") but not predicatively ("the handbag was light blue").
+* Do not hyphenate after a standard -ly adverb (Example: "a newly available home").
+* Suspended hyphen: "two- and three-digit numbers".
+* Values and units: Hyphenate when unit is spelled out (Example: "9-millimetre gap"). Do *not* hyphenate with unit symbol; use a non-breaking space (Example: "9&nbsp;mm gap").
+* Spacing: Never preceded or followed by a space (except for suspended hyphens).
+* Non-breaking hyphen: `{{nbhyph}}` prevents a line wrap.
+* Soft hyphen: `{{shy|...}}` or `&shy;` marks an optional break point in a long word.
+
+Dashes
+* En dash (–) and Em dash (—). Do not use a double hyphen (`--`).
+* To mark divisions within a sentence (parentheticals):
+    * Either unspaced em dashes: "planet—but it was"
+    * Or spaced en dashes: "planet&nbsp;– but it was"
+    * Be consistent within the article. Use dashes sparingly.
+* En dashes (unspaced) are used for ranges (where "to" or "through" could be used):
+    * Example: "pp. 7–19"; "reigned 1509–1547"
+    * Do not mix with "between" or "from".
+        * Correct: "between 450 and 500 people"
+        * Incorrect: "between 450–500 people"
+    * Use a *spaced* en dash if either element contains a space (Example: "July 23, 1790&nbsp;– December 1, 1791").
+* En dashes (unspaced) are used in compounds where elements are separate or oppositional:
+    * Example: "boyfriend–girlfriend problems"; "the Paris–Montpellier route"; "a 51–30 win"; "the Uganda–Tanzania War"; "the Seifert–van Kampen theorem".
+    * Use a hyphen for a single entity (Example: "Guinea-Bissau") or a blended color (Example: "blue-green algae").
+    * Use an en dash for dual nationalities (Example: "an Italian–Swiss border crossing") but a hyphen for combining forms (Example: "Franco-British rivalry").
+* En dashes are used when applying a prefix to a compound that has a space (Example: "pre–World War II aircraft"; "New York–based company").
+* Minus sign: For negative numbers or subtraction, use the minus sign (−, `&minus;`), not a hyphen.
+
+Slashes (strokes)
+* Generally, avoid joining words with a slash (/). Replace with clearer wording.
+    * Instead of "The parent/instructor", use "the parent and the instructor" or "the parent or the instructor".
+* An en dash is often preferable (Example: "the digital–analog distinction").
+* Unspaced slash is used for:
+    * Phonemic pronunciations (Example: "/ˈrɪvət/")
+    * Fractions (Example: "7/8")
+    * Yearly periods (Example: "the 2009/2010 fiscal year")
+    * Ratios (Example: "P/E ratio")
+* Spaced slash is used for:
+    * Separating lines of quoted poetry (Example: "To be or not to be:&nbsp;/ Whether 'tis nobler...")
+* And/or: Avoid. Instead of "trauma and/or smoke inhalation", write "trauma or smoke inhalation" or "trauma or smoke inhalation or both".
+
+Number (pound, hash) sign
+* Avoid using '#' for numbers or rankings.
+* Instead, write "number" or "No." (Example: "Her album reached number one" or "No. 1").
+* Exception: Issue numbers of comic books (Example: "#1").
+
+Terminal punctuation
+* Exclamation marks and question marks have almost no application in encyclopedic writing.
+* Captions and list items that are sentence fragments should not end with a period.
+* Spacing: Never put a space *before* a comma, semicolon, colon, period, etc.
+* Consecutive punctuation: Where a word/phrase ending in punctuation (like "Sammy Davis Jr.") ends a sentence, do not add a second period.
+
+Punctuation and footnotes
+* Reference tags (`<ref>...<ref>`) must *immediately* follow the text they support, with no space.
+* References are placed *after* adjacent punctuation (commas, periods).
+    * Correct: `...than flying birds of similar size.<ref>11</ref><ref>12</ref>`
+    * Incorrect: `...than flying birds of similar size<ref>11</ref><ref>12</ref>.`
+* Exceptions:
+    * Refs are placed *before* dashes.
+    * If a ref applies *only* to material in parentheses, it goes *inside* the closing parenthesis (Example: `(Hanja: ...<ref>10</ref>)`).
+
+DATES AND TIME
+
+Time of day
+* 12-hour clock: "11:15&nbsp;a.m." and "2:30&nbsp;p.m." (or "am"/"pm").
+* Use "noon" and "midnight", not "12 p.m." or "12 a.m."
+* 24-hour clock: "08:15" and "22:55". "00:00" starts the day, "24:00" ends it.
+
+Dates
+* Formats: "10 June 1921" or "June 10, 1921".
+* Be consistent within an article.
+* In lists/tables, "YYYY-MM-DD" format may be used.
+* National ties: Use the common format for that country (US: month-first; most others: day-first).
+* Do not change an article's established format without good reason.
+
+Months
+* Month and year: "June 1921" (no comma).
+* Abbreviations (e.g., "Feb") only where space is limited.
+
+Seasons
+* Avoid ambiguous references (hemispheres differ).
+* Use when logical (Example: "the autumn harvest"), otherwise be specific (Example: "in November 1992", not "in the fall of 1992").
+
+Years and longer periods
+* Write "1995", not "the year 1995".
+* Decades: "the 1980s" (no apostrophe).
+* Eras: Use "AD and BC" or "CE and BCE". Be consistent. Use a non-breaking space (Example: "5&nbsp;BC"). Omit "AD" or "CE" unless ambiguous.
+
+Current
+* Avoid terms like "current", "now", "recent".
+* Be specific (Example: "As of March 2011, he is the ambassador..."). Use the `{{As of}}` template.
+
+NUMBERS
+* Integers from zero to nine are spelled out in words.
+* Numbers greater than nine: Use numerals or words if expressible in one or two words (e.g., "twelve" or "12", "fifty-five" or "55", "200" or "two hundred").
+* Digit grouping: Use commas for numbers with five or more digits (Example: "12,345"). Four-digit numbers are at your discretion (Example: "1,000" or "1000").
+* Decimals are generally preferred over fractions.
+* Scientific notation (Example: `{{val|5.8|e=7|u=kg}}`) is preferred in scientific contexts.
+* Percentages: "3%", "three percent". Do not space (Incorrect: "3 %"). In ranges, use one sign (Example: "3–14%").
+
+CURRENCIES
+* Use full abbreviation on first use if ambiguous (Example: "US$", "A$").
+* Ranges: Use one symbol (Example: "$250–300").
+* General articles: Use US dollars, euros, or pounds sterling.
+* Country-specific articles: Use the local currency. Consider a conversion on first use.
+* Symbols: Place before the number, unspaced (Example: "$123").
+
+UNITS OF MEASUREMENT
+* Main unit should generally be SI.
+* Exceptions:
+    * US-related non-scientific articles: US customary units are main (Example: "22 pounds (10 kg)").
+    * UK-related non-scientific articles: Metric is usually main, but imperial is used in some contexts (Example: "7 miles (11 km)").
+* Conversions: Provide conversions in parentheses. Use the `{{convert}}` template (Example: `{{convert|2320|mi|km|0}}`).
+* Quotations: Retain original units; add conversion in square brackets.
+* Symbols vs. names: Use symbols in tables/infoboxes. In prose, spell out names unless used repeatedly.
+* Spacing: Values and unit symbols are separated by a non-breaking space (Example: "5&nbsp;min").
+* Exception: Percent sign (%) and units of degrees/minutes/seconds (angles) are unspaced.
+
+COMMON MATHEMATICAL SYMBOLS
+* Minus sign: Use `−` (`&minus;`), not a hyphen `-`.
+* Multiplication: Use `×` (`&times;`) or `·` (`&sdot;`). Do not use the letter 'x'.
+* Spacing: Binary operators (+, −, ×, ÷, =, <, >) are spaced on both sides (Example: "5 − 3").
+* Unary operators (+, −) are closed-up to their operand (Example: "−3").
+* Variables are italicized; digits and punctuation are not (Example: "2(5*x* + *y*)²").
+* Use `{{math|...}}` to style formulas.
+
+GRAMMAR AND USAGE
+
+Possessives
+* Singular nouns: Add 's (Example: "boss's", "Descartes's").
+* Plural nouns (ending in s): Add ' (Example: "sons' wives").
+* Plural nouns (not ending in s): Add 's (Example: "women's careers").
+* A possessive must be immediately followed by what is possessed (Example: "Richard Nixon's dog Checkers", not "Richard Nixon's (1913–1994) dog Checkers").
+
+Pronouns
+* First-person (I, my, we, us, our): AVOID. Do not refer to editors or readers.
+* Second-person (you, your): AVOID. Do not address the reader.
+    * Incorrect: "When you move past 'Go', you collect $200."
+    * Correct: "A player passing 'Go' collects $200."
+* Third-person (gender): Refer to a person with pronouns that reflect their latest self-identification in recent reliable sources. Singular 'they' is appropriate for those who use it or for generic persons of unknown gender.
+* Ships: May be referred to as "it" or "she". Be consistent within an article. Do not change from one to the other without good reason.
+
+Plurals
+* Collective nouns (team, company, government) are almost always treated as singular in North American English. British English may treat them as plural depending on context. Be consistent.
+* Town/country names: Usually take singular verbs (Example: "the United States is...").
+
+Verb tense
+* Write articles in the present tense by default. This includes articles on works of fiction and discontinued products.
+* Use past tense *only* for past events and subjects that are dead or defunct.
+    * Example: "The PDP-10 *is* a mainframe computer family..." (even though discontinued).
+    * Example: "The Beatles *were* an English rock band..." (defunct).
+    * Example: "Barack Obama *is* a former president..." (not "was").
+
+Vocabulary
+* Contractions: Avoid (Example: "do not", not "don't").
+* Gender-neutral language: Use GNL (Example: "human spaceflight", "uncrewed mission", not "manned" or "unmanned"). This does not apply to direct quotes or proper names.
+* Instructional language: Avoid phrases that address the reader (Example: "remember that", "note that", "of course", "obviously", "clearly").
+    * Incorrect: "It is important to note that..."
+    * Correct: "The colloquial dialect of..."
+* Identity: When sources conflict, use the term most commonly used by recent reliable sources. If unclear, use the term the person or group uses.
+* Gender identity: Use gendered words that reflect the person's latest self-identification. Follow rules on "deadnaming" (see WP:MOSBIO#GENDERID for specifics).
+* Non-English terms:
+    * Use sparingly. Italicize words not common in English (use `{{lang}}`).
+    * Loanwords common in English (Gestapo, samurai, vice versa) do not require italics.
+* Romanization: Non-Latin scripts (Greek, Cyrillic) must be romanized. Use the most common English spelling (Example: "Tchaikovsky"). Use diacritics (accents) if they appear in reliable English sources.
+* Technical language (Jargon): Minimize. Explain it when used. Write articles to be as accessible as possible.
+
+MEDIA FILES (Images, Video, Audio)
+* Placement: Place in the section to which it relates.
+* Do not sandwich text between two images.
+* Images of people: Preferably placed to "face" the text. Do not reverse the image.
+* Do not refer to images by location (e.g., "to the right", "below"), as placement varies. Use captions to identify images.
+* Alt text: Must be provided for those who cannot see the image.
+* Text as images: Avoid. Text should be text, not an image, for accessibility and searchability.
+* Captions:
+    * Should be present unless unambiguous (like a book cover).
+    * Normally start with a capital letter.
+    * Most captions are sentence fragments and should *not* end with a period.
+    * If *any* complete sentence exists in the caption, *all* sentences and fragments in that caption must end with a period.
+    * Captions should be succinct.
+
+BULLETED AND NUMBERED LISTS
+* Do not use lists if a passage reads easily as plain paragraphs.
+* Do not leave blank lines between items (this breaks the list).
+* Use numbers (not bullets) only if:
+    * The sequence is critical.
+    * Referring to items by number is necessary.
+    * Numbering has independent meaning (e.g., track listing).
+* Use the same grammatical form for all items. Do not mix sentences and fragments.
+    * If using complete sentences, each starts with a capital and ends with a period.
+
+LINKS
+
+Wikilinks (Internal Links)
+* Make links only where they are relevant and helpful.
+* Do not link excessively (e.g., common words like "Earth").
+* Section links: Use a hash sign (Example: `[[Apostrophe#Use in non-English names]]`).
+* Ensure the link destination is correct (avoid disambiguation pages).
+
+External links
+* Should not normally be used in the *body* of an article.
+* Place in an "== External links ==" section at the end.
+* Format: `* [https://example.com Link description]`
+
+MISCELLANEOUS
+
+Keep markup simple
+* Use wikitext (e.g., `''italics''`) over HTML (e.g., `<i>italics</i>`) where possible.
+* Use HTML/CSS sparingly.
+* Font size: Specify relatively (e.g., `font-size: 85%`), not absolutely (e.g., `font-size: 8pt`). Size should not drop below 85%.
+
+Color coding
+* Do not use color *alone* to convey information (accessibility issue).
+* Use it as a supplementary cue, and ensure high contrast.
+
+Indentation
+* Do not use quotation templates (like `{{blockquote}}`) to indent non-quotations.
+* Do not use colon indentation (`:`) in articles. It is for talk pages only. Use templates like `{{block indent}}`.
+
+Controlling line breaks
+* Non-breaking space: `&nbsp;` or `{{nbsp}}`. Prevents a line break.
+* Use to keep text segments together that would be confusing if split.
+    * Examples: "17&nbsp;kg"; "AD&nbsp;565"; "2:50&nbsp;p.m."; "May&nbsp;2014"; "World War&nbsp;II".
+* Nowrap template: `{{nowrap|5° 24′ N}}`.
+
+Scrolling lists and collapsible content
+* AVOID. Do not use scrolling lists or collapsible boxes to hide article content.
+* Content in an article should *not* be collapsed by default.
+* If information seems trivial enough to collapse, consider whether it should be included at all.
+* Navboxes are an exception.
+
+Invisible comments
+* Use `` to leave notes for other editors.
+* Use sparingly. Do not use to "own" an article.
+* Ensure comments do not introduce unwanted spaces.
+
+Pronunciation
+* Use the International Phonetic Alphabet (IPA).
+* Use broad transcriptions for English.
+* Use templates like `{{IPA|...}}`.

@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Database
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Environment
+.env
+.env.local
+
+# Exports
+exports/
+wikitool_exports/
+
+# Test coverage
+coverage/
+
+# Build
+packages/*/dist/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
