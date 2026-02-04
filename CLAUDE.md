@@ -39,13 +39,13 @@ bun run wikitool pull --full --all
 ```
 project/
 +-- wikitool/              # This repo
-¦   +-- packages/core/     # API, sync, storage, parser
-¦   +-- packages/cli/      # CLI commands
-¦   +-- llm_instructions/  # Writing guides
-¦   +-- config/            # Parser configuration
+    +-- packages/core/     # API, sync, storage, parser
+    +-- packages/cli/      # CLI commands
+    +-- llm_instructions/  # Writing guides
+    +-- config/            # Parser configuration
 +-- wiki_content/          # Article files (sibling)
-¦   +-- Main/              # Main namespace articles
-¦   +-- Category/          # Category pages
+    +-- Main/              # Main namespace articles
+    +-- Category/          # Category pages
 +-- templates/             # Template files (sibling)
     +-- cite/              # Citation templates
     +-- infobox/           # Infobox templates

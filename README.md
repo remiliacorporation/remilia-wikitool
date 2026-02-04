@@ -1,4 +1,4 @@
-# Wikitool
+# Remilia Wikitool
 
 Unified MediaWiki tooling for Remilia Wiki. TypeScript monorepo providing CLI and core library.
 
@@ -215,4 +215,4 @@ bun run lint
 
 ## License
 
-This project is licensed under the MIT License. An additional license text is provided in `LICENSE-VPL`.
+This project is licensed under the Viral Public License + Source Seppuku License.
