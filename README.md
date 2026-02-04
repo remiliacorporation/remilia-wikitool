@@ -216,3 +216,6 @@ bun run lint
 ## License
 
 MIT
+## License
+
+This project is licensed under the MIT License. A secondary license text is provided in `LICENSE-VPL`.
