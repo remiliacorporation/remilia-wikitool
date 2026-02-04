@@ -129,7 +129,7 @@ wikitool/
 │   │   ├── api/        # MediaWiki API client
 │   │   ├── sync/       # Sync operations
 │   │   ├── storage/    # SQLite database with migrations
-│   │   ├── fs/         # File system operations
+│   │   ├── storage/    # SQLite database, filesystem I/O
 │   │   ├── docs/       # Documentation fetcher
 │   │   ├── external/   # External wiki client (rate-limited)
 │   │   ├── config/     # Namespace configuration loader
@@ -215,7 +215,4 @@ bun run lint
 
 ## License
 
-MIT
-## License
-
-This project is licensed under the MIT License. A secondary license text is provided in `LICENSE-VPL`.
+This project is licensed under the MIT License. An additional license text is provided in `LICENSE-VPL`.

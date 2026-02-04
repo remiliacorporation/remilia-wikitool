@@ -5,7 +5,7 @@ This tutorial gets a fresh clone ready for wikitool. Read-only workflows do not 
 ## 1) Clone the repo
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/remiliacorporation/remilia-wikitool.git
 cd wikitool
 ```
 

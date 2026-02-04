@@ -6,8 +6,8 @@ $source = Join-Path -Path $root -ChildPath "scripts\\git-hooks\\commit-msg"
 $dest = Join-Path -Path $hooksDir -ChildPath "commit-msg"
 
 if (-not (Test-Path $hooksDir)) {
-  Write-Error "No .git\\hooks directory found. Are you running this inside the repo?"
-  exit 1
+  Write-Warning "No .git\\hooks directory found. Git hooks not installed (OK for zip downloads)."
+  exit 0
 }
 
 Copy-Item $source $dest -Force
