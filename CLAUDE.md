@@ -58,10 +58,18 @@ See `llm_instructions/` for article conventions:
 
 | File | Purpose |
 |------|---------|
-| `ai_agent_instructions.txt` | Main writing guide |
-| `template_reference.txt` | All available templates |
-| `category_reference.txt` | Category system |
-| `article_template.txt` | Article structure |
+| `writing_guide.md` | Core writing guide — workflow, sourcing, citations |
+| `style_rules.md` | Natural writing antipatterns — read before every article |
+| `article_structure.md` | Required article skeleton and section patterns |
+| `extensions.md` | Content extension tags (math, code, video, tabs) |
+
+Template parameters and categories are looked up live:
+
+```bash
+bun run wikitool context --template "Infobox person"   # Template params from DB
+bun run wikitool search "Category:"                     # Valid categories from DB
+bun run wikitool docs search "extension name"           # Imported extension docs
+```
 
 ## Available Skills
 
