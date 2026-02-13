@@ -25,14 +25,25 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 4. **Write the article** following the structure in `article_structure.md`.
 5. **Self-check** against the quick checklist at the end of `style_rules.md`.
 6. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
+7. **Validate** — run `bun run wikitool validate "Article Title"` to catch structural issues.
 
 ### Editing an existing article
 
 1. Pull latest: `bun run wikitool pull`
 2. Read the existing article.
 3. Make changes following all the same rules.
-4. Review: `bun run wikitool diff`
-5. Push: `bun run wikitool push --dry-run -s "Summary"` then `bun run wikitool push -s "Summary"`
+4. Validate: `bun run wikitool validate "Article Title"`
+5. Review: `bun run wikitool diff`
+6. Push: `bun run wikitool push --dry-run -s "Summary"` then `bun run wikitool push -s "Summary"`
+
+### Article length
+
+Let content dictate length — don't pad thin topics or compress rich ones.
+
+- **Stub** (1-2 paragraphs): acceptable for minor topics with limited sources
+- **Short** (3-5 paragraphs + infobox): most articles
+- **Medium** (8-15 paragraphs): major topics like Milady Maker, Remilia Corporation
+- **Long** (15+ paragraphs): rare, reserved for flagship articles with deep sourcing
 
 ---
 
@@ -59,6 +70,15 @@ This is the most important sourcing principle. Excessive academic citations are 
 - IQ.wiki — unreliable, user-generated
 - Know Your Meme — tertiary source, quality issues
 - NFT Price Floor — inaccurate details
+- Urban Dictionary — unmoderated, unverifiable
+
+### Tone calibration
+
+This is a subcultural wiki, not an academic journal. The tone should be encyclopedic but not dry or clinical. Match the register of good Wikipedia articles about internet culture — factual, clear, and willing to engage with cultural context without editorializing. Humor and irreverence are fine when sourced; promotional enthusiasm and clinical detachment are both wrong.
+
+### Never fabricate
+
+Never fabricate facts, dates, quotes, or source URLs. If a specific detail cannot be found, omit it rather than guessing. Mark uncertain claims with attribution: "According to [source]..." rather than asserting directly. Every URL and date in a citation must be real and verifiable.
 
 ### Verified wiki articles
 
@@ -130,6 +150,14 @@ Never duplicate full citations. Never declare named refs inside `{{Reflist}}`.
 - **Attribution:** For Remilia projects, use `parent_group = Remilia` in infoboxes instead of `creator` or `artist` fields. Discuss individual contributors in the article body. This honors post-authorship principles.
 - **Charlotte Fang:** Relevant but don't relate everything back to her. Use "Remilia" or "Remilia Corporation" as the subject unless specifically quoting her or discussing actions directly attributed to her.
 - **Terminology:** Use terms as established in verified wiki articles (e.g., "network spirituality", not "digital spirituality").
+
+### Internal linking
+
+- Link to existing wiki articles on first mention in the body: `[[Remilia Corporation]]`, `[[Milady Maker]]`
+- Link each article once — first occurrence only, don't re-link in later paragraphs
+- Check if target exists: `bun run wikitool search "Article Name"`
+- Never place red links in See also sections
+- Use piped links when display text differs: `[[Remilia Corporation|Remilia]]`
 
 ### Quality marking
 

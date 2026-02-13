@@ -132,12 +132,47 @@ Do not attach "-ing" phrases that assign significance to facts.
 **Bad:** "The project launched on Ethereum, showcasing the possibilities of on-chain art."
 **Good:** "The exhibition opened in March." (Let the reader draw conclusions.)
 
+### Notability name-dropping
+
+Do not invoke famous names or projects to inflate a subject's significance by association.
+
+**Bad:** "reminiscent of Beeple's Everydays", "akin to what Banksy achieved", "in the tradition of CryptoPunks"
+**Good:** Describe the subject's own qualities. Comparisons require sourcing — if a reliable source drew the comparison, cite it. Otherwise omit.
+
+### Inline-header lists
+
+Do not use `**Header:** description` pseudo-list patterns. This is a strong AI signal — it tries to impose structure without using actual sections.
+
+**Bad:**
+```
+**Artistic style:** The collection features anime-inspired aesthetics.
+**Community:** Holders participate in group chats.
+**Market performance:** The floor price rose in 2023.
+```
+
+**Good:** Write these as flowing prose paragraphs, or use proper `===` subsections if they genuinely warrant their own headings.
+
+### Excessive hedging
+
+Do not over-qualify every statement. State the fact or omit it.
+
+**Never use:**
+- "arguably", "potentially", "to some extent"
+- "in many ways", "in some respects", "it could be said that"
+- "one might argue", "it remains to be seen"
+
+These weaken the prose and signal uncertainty about your own output. Encyclopedic writing states what is known and attributes contested claims to sources.
+
 ---
 
 ## II. Prose style
 
+### Vary sentence rhythm
+- Mix short sentences with longer ones. Monotonous medium-length sentences are an AI signal.
+- A two-word sentence after a long one creates emphasis. Three long sentences in a row feel mechanical.
+- Read your output aloud (mentally) — if it sounds like a metronome, rewrite.
+
 ### Write plainly
-- Use short sentences mixed with medium ones. Avoid uniformly long sentences.
 - Prefer active voice. "Remilia launched the collection" not "The collection was launched by Remilia."
 - Use concrete verbs: "sold", "created", "published", "wrote" — not "leveraged", "facilitated", "showcased".
 
@@ -268,7 +303,8 @@ Do not attach "-ing" phrases that assign significance to facts.
 **Never cite these — they appear in search results but are unreliable:**
 - IQ.wiki (iq.wiki) — inaccurate, user-generated
 - Know Your Meme (knowyourmeme.com) — tertiary source, quality issues
-- NFT Price Floor — inaccurate details
+- NFT Price Floor (nftpricefloor.com) — inaccurate details
+- Urban Dictionary (urbandictionary.com) — unmoderated, unverifiable
 
 If these are the only sources available, note the lack of reliable sourcing rather than citing them.
 
@@ -286,3 +322,6 @@ Before finishing any article, verify:
 6. **Clean citations** — any utm_source, placeholder dates, or fabricated URLs?
 7. **No meta-commentary** — does output contain only article wikitext?
 8. **Prose, not lists** — did you convert anything to bullets that should be prose?
+9. **Sentence rhythm** — are your sentences monotonously similar in length? Mix short and long.
+10. **No name-dropping** — did you invoke famous names just for association?
+11. **No hedging** — any "arguably", "potentially", "to some extent"?
