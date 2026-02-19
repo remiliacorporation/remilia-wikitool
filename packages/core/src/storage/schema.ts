@@ -199,7 +199,7 @@ ALTER TABLE fetch_cache ADD COLUMN tags TEXT;
 CREATE INDEX IF NOT EXISTS idx_fetch_cache_category ON fetch_cache(category);
 
 -- NOTE: FTS rebuild may be needed after this migration if content structure changes
--- Run: wikitool index rebuild (Phase 4) after completing Phase 0
+-- Run: wikitool index rebuild after initial contracts/bootstrap setup
 `;
 
 /** Schema migration 003: Link graph and template usage */

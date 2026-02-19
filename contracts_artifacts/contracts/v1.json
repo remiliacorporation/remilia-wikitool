@@ -108,7 +108,7 @@
         "continuation handling is deterministic",
         "read and write retries use separate policies"
       ],
-      "phase0_note": "network telemetry schema is frozen in baseline harness artifacts"
+      "contracts_note": "network telemetry schema is frozen in baseline harness artifacts"
     },
     "opsec": {
       "scan_boundaries": [

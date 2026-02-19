@@ -58,12 +58,8 @@ if [[ "${#missing[@]}" -gt 0 ]]; then
   fi
 fi
 
-if ! command -v bun >/dev/null 2>&1; then
-  curl -fsSL https://bun.sh/install | bash
-fi
-
-if ! command -v bun >/dev/null 2>&1; then
-  echo "Bun not found in PATH. Restart your terminal and re-run this script."
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "cargo not found in PATH. Install Rust (https://rustup.rs/) and re-run."
   exit 1
 fi
 
@@ -77,8 +73,14 @@ fi
 "${ROOT}/scripts/setup-tools.sh" "${setup_args[@]}"
 
 cd "${WIKITOOL}"
-bun run build
-bun run wikitool init
+cargo build --package wikitool --release --locked
+WIKITOOL_BIN="${WIKITOOL}/target/release/wikitool"
+if [[ ! -x "${WIKITOOL_BIN}" ]]; then
+  echo "Release binary not found at ${WIKITOOL_BIN}"
+  exit 1
+fi
+
+"${WIKITOOL_BIN}" init --project-root "${PROJECT_ROOT}" --templates
 "${ROOT}/scripts/generate-wikitool-reference.sh"
 
 "${ROOT}/scripts/install-git-hooks.sh"
@@ -86,11 +88,11 @@ bun run wikitool init
 if [[ "$PULL" -eq 1 ]]; then
   echo ""
   echo "Pulling wiki content..."
-  bun run wikitool pull --full --all
+  "${WIKITOOL_BIN}" pull --project-root "${PROJECT_ROOT}" --full --all
   echo "Content pulled successfully."
 else
   echo ""
   echo "Bootstrap complete. Content pull skipped."
-  echo "Next step: cd ${WIKITOOL_LABEL} && bun run wikitool pull"
+  echo "Next step: ${WIKITOOL_BIN} --project-root ${PROJECT_ROOT} pull"
   echo "Re-run without --no-pull (or with --pull) to auto-download content."
 fi

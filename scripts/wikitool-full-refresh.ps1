@@ -8,9 +8,7 @@ if (Test-Path (Join-Path $root "custom\\wikitool")) {
   $wikitool = $root
   $projectRoot = Resolve-Path (Join-Path $root "..")
 }
-$dbPath = Join-Path -Path $wikitool -ChildPath "data\\wikitool.db"
-$reportDir = Join-Path -Path $projectRoot -ChildPath "wikitool_exports"
-$reportPath = Join-Path -Path $reportDir -ChildPath "validation-report.md"
+$dbPath = Join-Path -Path $projectRoot -ChildPath ".wikitool\\data\\wikitool.db"
 
 Write-Host "This will reset the local wikitool DB and re-download all content/templates."
 $confirm = Read-Host "Continue? (y/N)"
@@ -24,14 +22,15 @@ if (Test-Path $dbPath) {
 }
 
 Set-Location $wikitool
-bun run build
-bun run wikitool init
-& (Join-Path -Path $root -ChildPath "scripts\\generate-wikitool-reference.ps1")
-bun run wikitool pull --full --all
-if (!(Test-Path $reportDir)) {
-  New-Item -ItemType Directory -Path $reportDir | Out-Null
+cargo build --package wikitool --release --locked
+$wikitoolBin = Join-Path -Path $wikitool -ChildPath "target\\release\\wikitool.exe"
+if (-not (Test-Path $wikitoolBin)) {
+  throw "Release binary not found at $wikitoolBin"
 }
-bun run wikitool validate --report $reportPath --format md --include-remote --remote-limit 200
-bun run wikitool status
-bun test tests
 
+& $wikitoolBin init --project-root $projectRoot --templates
+& (Join-Path -Path $root -ChildPath "scripts\\generate-wikitool-reference.ps1")
+& $wikitoolBin pull --project-root $projectRoot --full --all
+& $wikitoolBin validate --project-root $projectRoot
+& $wikitoolBin status --project-root $projectRoot
+cargo test --workspace

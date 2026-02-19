@@ -9,9 +9,7 @@ else
   WIKITOOL="${ROOT}"
   PROJECT_ROOT="$(cd "${ROOT}/.." && pwd)"
 fi
-DB_PATH="${WIKITOOL}/data/wikitool.db"
-REPORT_DIR="${PROJECT_ROOT}/wikitool_exports"
-REPORT_PATH="${REPORT_DIR}/validation-report.md"
+DB_PATH="${PROJECT_ROOT}/.wikitool/data/wikitool.db"
 
 echo "This will reset the local wikitool DB and re-download all content/templates."
 read -r -p "Continue? (y/N) " confirm
@@ -25,12 +23,16 @@ if [ -f "${DB_PATH}" ]; then
 fi
 
 cd "${WIKITOOL}"
-bun run build
-bun run wikitool init
-"${ROOT}/scripts/generate-wikitool-reference.sh"
-bun run wikitool pull --full --all
-mkdir -p "${REPORT_DIR}"
-bun run wikitool validate --report "${REPORT_PATH}" --format md --include-remote --remote-limit 200
-bun run wikitool status
-bun test tests
+cargo build --package wikitool --release --locked
+WIKITOOL_BIN="${WIKITOOL}/target/release/wikitool"
+if [[ ! -x "${WIKITOOL_BIN}" ]]; then
+  echo "Release binary not found at ${WIKITOOL_BIN}"
+  exit 1
+fi
 
+"${WIKITOOL_BIN}" init --project-root "${PROJECT_ROOT}" --templates
+"${ROOT}/scripts/generate-wikitool-reference.sh"
+"${WIKITOOL_BIN}" pull --project-root "${PROJECT_ROOT}" --full --all
+"${WIKITOOL_BIN}" validate --project-root "${PROJECT_ROOT}"
+"${WIKITOOL_BIN}" status --project-root "${PROJECT_ROOT}"
+cargo test --workspace

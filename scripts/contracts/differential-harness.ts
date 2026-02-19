@@ -38,7 +38,7 @@ interface BaselineFile {
 
 const repoRoot = resolve(import.meta.dir, '..', '..');
 const defaultFixture = resolve(repoRoot, 'tests/fixtures/full-refresh');
-const defaultBaselinePath = resolve(repoRoot, 'phase0/baselines/offline-fixture-baseline.json');
+const defaultBaselinePath = resolve(repoRoot, 'contracts_artifacts/baselines/offline-fixture-baseline.json');
 
 const projectRoot = resolve(getArg('--project-root', defaultFixture));
 const contentDir = getArg('--content-dir', 'wiki_content');
@@ -77,28 +77,28 @@ const report: DifferentialReport = {
 
 if (writeBaseline) {
   writeBaselineFile(baselinePath, { schema_version: 1, report });
-  console.log(`[phase0] baseline updated at ${normalize(baselinePath)}`);
+  console.log(`[contracts] baseline updated at ${normalize(baselinePath)}`);
   printSummary(report);
   process.exit(report.parity_ok ? 0 : 1);
 }
 
 const baseline = readBaselineFile(baselinePath);
 if (baseline.report.bun_snapshot_hash !== report.bun_snapshot_hash) {
-  console.error('[phase0] Bun snapshot hash diverged from baseline.');
+  console.error('[contracts] Bun snapshot hash diverged from baseline.');
   console.error(`  baseline: ${baseline.report.bun_snapshot_hash}`);
   console.error(`  current : ${report.bun_snapshot_hash}`);
   process.exit(1);
 }
 
 if (baseline.report.rust_snapshot_hash !== report.rust_snapshot_hash) {
-  console.error('[phase0] Rust snapshot hash diverged from baseline.');
+  console.error('[contracts] Rust snapshot hash diverged from baseline.');
   console.error(`  baseline: ${baseline.report.rust_snapshot_hash}`);
   console.error(`  current : ${report.rust_snapshot_hash}`);
   process.exit(1);
 }
 
 if (!report.parity_ok) {
-  console.error('[phase0] Bun/Rust snapshot parity failed.');
+  console.error('[contracts] Bun/Rust snapshot parity failed.');
   for (const mismatch of report.mismatches) {
     console.error(`  - ${mismatch}`);
   }
@@ -246,7 +246,7 @@ function offlineTelemetry(note: string): RequestTelemetry {
 }
 
 function printSummary(report: DifferentialReport): void {
-  console.log('[phase0] differential harness summary');
+  console.log('[contracts] differential harness summary');
   console.log(`  fixture root: ${report.fixture_root}`);
   console.log(`  parity: ${report.parity_ok ? 'ok' : 'failed'} (${report.mismatch_count} mismatches)`);
   console.log(`  bun hash : ${report.bun_snapshot_hash}`);

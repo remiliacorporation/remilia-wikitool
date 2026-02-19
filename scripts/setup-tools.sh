@@ -22,23 +22,11 @@ if [[ "${WIKITOOL_SKIP_SELENE:-}" == "1" ]]; then
   SKIP_SELENE=1
 fi
 
-if ! command -v bun >/dev/null 2>&1; then
-  echo "Bun is required. Run scripts/bootstrap-macos.sh or scripts/bootstrap-linux.sh to install it, then re-run this script."
-  exit 1
-fi
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -d "${ROOT}/custom/wikitool" ]]; then
   WIKITOOL="${ROOT}/custom/wikitool"
 else
   WIKITOOL="${ROOT}"
-fi
-
-cd "$WIKITOOL"
-if [[ "$REBUILD" -eq 1 ]]; then
-  bun install --force
-else
-  bun install
 fi
 
 if [[ "$SKIP_SELENE" -eq 0 ]]; then
@@ -49,13 +37,18 @@ if [[ "$SKIP_SELENE" -eq 0 ]]; then
   fi
 fi
 
-bin="${WIKITOOL}/node_modules/.bin/lighthouse"
-if [[ ! -e "$bin" ]]; then
-  echo "Lighthouse binary not found. Run bun install in the wikitool directory."
-  exit 1
+found_lighthouse=""
+if command -v lighthouse >/dev/null 2>&1; then
+  found_lighthouse="$(command -v lighthouse)"
+elif [[ -x "${WIKITOOL}/node_modules/.bin/lighthouse" ]]; then
+  found_lighthouse="${WIKITOOL}/node_modules/.bin/lighthouse"
 fi
 
-echo "Lighthouse available at $bin"
+if [[ -z "$found_lighthouse" ]]; then
+  echo "Warning: Lighthouse not found on PATH or node_modules/.bin. perf lighthouse will remain unavailable until installed."
+else
+  echo "Lighthouse available at $found_lighthouse"
+fi
 
 if [[ "$SKIP_SELENE" -eq 0 ]]; then
   # Validate selene installation

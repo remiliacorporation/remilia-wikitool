@@ -14,27 +14,11 @@ if (-not $SkipSelene -and $env:WIKITOOL_SKIP_SELENE -eq "1") {
   $SkipSelene = $true
 }
 
-if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
-  Write-Error "Bun is required. Run scripts/bootstrap-windows.ps1 to install it, then re-run this script."
-  exit 1
-}
-
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 if (Test-Path (Join-Path $root "custom\\wikitool")) {
   $wikitool = Join-Path -Path $root -ChildPath "custom\\wikitool"
 } else {
   $wikitool = $root
-}
-
-Push-Location $wikitool
-try {
-  if ($Rebuild) {
-    bun install --force
-  } else {
-    bun install
-  }
-} finally {
-  Pop-Location
 }
 
 $seleneArgs = @()
@@ -45,8 +29,16 @@ if (-not $SkipSelene) {
   & (Join-Path -Path $root -ChildPath "scripts\\setup-selene.ps1") @seleneArgs
 }
 
+$candidates = @()
+try {
+  $resolved = Get-Command lighthouse -ErrorAction Stop
+  if ($resolved.Source) {
+    $candidates += $resolved.Source
+  }
+} catch {}
+
 $binDir = Join-Path -Path $wikitool -ChildPath "node_modules\.bin"
-$candidates = @(
+$candidates += @(
   (Join-Path $binDir "lighthouse.cmd"),
   (Join-Path $binDir "lighthouse.exe"),
   (Join-Path $binDir "lighthouse")
@@ -61,11 +53,10 @@ foreach ($candidate in $candidates) {
 }
 
 if (-not $found) {
-  Write-Error "Lighthouse binary not found. Run bun install in the wikitool directory."
-  exit 1
+  Write-Warning "Lighthouse not found on PATH or node_modules/.bin. perf lighthouse will remain unavailable until installed."
+} else {
+  Write-Host "Lighthouse available at $found"
 }
-
-Write-Host "Lighthouse available at $found"
 
 if (-not $SkipSelene) {
   $selenePath = Join-Path -Path $wikitool -ChildPath "tools\selene.exe"

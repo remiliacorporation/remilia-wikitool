@@ -25,13 +25,8 @@ $pullContent = -not $NoPull
 if ($Pull) {
   $pullContent = $true
 }
-if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
-  Write-Host "Installing Bun..."
-  iex "& { $(irm https://bun.sh/install.ps1) }"
-}
-
-if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
-  Write-Warning "Bun not found in PATH. Restart your terminal and re-run this script."
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+  Write-Warning "cargo not found in PATH. Install Rust (https://rustup.rs/) and re-run this script."
   exit 1
 }
 
@@ -51,9 +46,16 @@ $setupArgs = @{
   SkipSelene = $SkipSelene
 }
 & (Join-Path -Path $root -ChildPath "scripts\\setup-tools.ps1") @setupArgs
+
 Set-Location $wikitool
-bun run build
-bun run wikitool init
+cargo build --package wikitool --release --locked
+$wikitoolBin = Join-Path -Path $wikitool -ChildPath "target\\release\\wikitool.exe"
+if (-not (Test-Path $wikitoolBin)) {
+  Write-Error "Release binary not found at $wikitoolBin"
+  exit 1
+}
+
+& $wikitoolBin init --project-root $projectRoot --templates
 & (Join-Path -Path $root -ChildPath "scripts\\generate-wikitool-reference.ps1")
 
 & (Join-Path -Path $root -ChildPath "scripts\\install-git-hooks.ps1")
@@ -61,11 +63,11 @@ bun run wikitool init
 if ($pullContent) {
   Write-Host ""
   Write-Host "Pulling wiki content..." -ForegroundColor Cyan
-  bun run wikitool pull --full --all
+  & $wikitoolBin pull --project-root $projectRoot --full --all
   Write-Host "Content pulled successfully." -ForegroundColor Green
 } else {
   Write-Host ""
   Write-Host "Bootstrap complete. Content pull skipped." -ForegroundColor Yellow
-  Write-Host "Next step: cd $wikitoolLabel && bun run wikitool pull" -ForegroundColor Yellow
+  Write-Host "Next step: $wikitoolBin --project-root $projectRoot pull" -ForegroundColor Yellow
   Write-Host "Re-run without -NoPull (or with -Pull) to auto-download content." -ForegroundColor Yellow
 }
