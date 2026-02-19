@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -52,6 +52,37 @@ pub struct StoredIndexStats {
     pub indexed_rows: usize,
     pub redirects: usize,
     pub by_namespace: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalSearchHit {
+    pub title: String,
+    pub namespace: String,
+    pub is_redirect: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalContextHeading {
+    pub level: u8,
+    pub heading: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalContextBundle {
+    pub title: String,
+    pub namespace: String,
+    pub is_redirect: bool,
+    pub redirect_target: Option<String>,
+    pub relative_path: String,
+    pub bytes: u64,
+    pub word_count: usize,
+    pub content_preview: String,
+    pub sections: Vec<LocalContextHeading>,
+    pub outgoing_links: Vec<String>,
+    pub backlinks: Vec<String>,
+    pub categories: Vec<String>,
+    pub templates: Vec<String>,
+    pub modules: Vec<String>,
 }
 
 pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<RebuildReport> {
@@ -172,6 +203,117 @@ pub fn load_stored_index_stats(paths: &ResolvedPaths) -> Result<Option<StoredInd
     }))
 }
 
+pub fn query_search_local(
+    paths: &ResolvedPaths,
+    query: &str,
+    limit: usize,
+) -> Result<Option<Vec<LocalSearchHit>>> {
+    let connection = match open_indexed_connection(paths)? {
+        Some(connection) => connection,
+        None => return Ok(None),
+    };
+    let normalized = normalize_spaces(&query.replace('_', " "));
+    if normalized.is_empty() {
+        return Ok(Some(Vec::new()));
+    }
+
+    let wildcard = format!("%{normalized}%");
+    let prefix = format!("{normalized}%");
+    let limit_i64 = i64::try_from(limit).context("search limit does not fit into i64")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT title, namespace, is_redirect
+             FROM indexed_pages
+             WHERE lower(title) LIKE lower(?1)
+             ORDER BY
+               CASE
+                 WHEN lower(title) = lower(?2) THEN 0
+                 WHEN lower(title) LIKE lower(?3) THEN 1
+                 ELSE 2
+               END,
+               title ASC
+             LIMIT ?4",
+        )
+        .context("failed to prepare local search query")?;
+    let rows = statement
+        .query_map(params![wildcard, normalized, prefix, limit_i64], |row| {
+            let title: String = row.get(0)?;
+            let namespace: String = row.get(1)?;
+            let is_redirect: i64 = row.get(2)?;
+            Ok(LocalSearchHit {
+                title,
+                namespace,
+                is_redirect: is_redirect == 1,
+            })
+        })
+        .context("failed to run local search query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode local search row")?);
+    }
+    Ok(Some(out))
+}
+
+pub fn build_local_context(
+    paths: &ResolvedPaths,
+    title: &str,
+) -> Result<Option<LocalContextBundle>> {
+    let connection = match open_indexed_connection(paths)? {
+        Some(connection) => connection,
+        None => return Ok(None),
+    };
+    let normalized = normalize_query_title(title);
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+
+    let page = match load_page_record(&connection, &normalized)? {
+        Some(page) => page,
+        None => return Ok(None),
+    };
+    let absolute = absolute_path_from_relative(paths, &page.relative_path);
+    let content = fs::read_to_string(&absolute)
+        .with_context(|| format!("failed to read indexed source file {}", absolute.display()))?;
+
+    let link_rows = load_outgoing_link_rows(&connection, &page.relative_path)?;
+    let backlinks = query_backlinks_for_connection(&connection, &page.title)?;
+
+    let mut outgoing_set = BTreeSet::new();
+    let mut category_set = BTreeSet::new();
+    let mut template_set = BTreeSet::new();
+    let mut module_set = BTreeSet::new();
+    for link in &link_rows {
+        outgoing_set.insert(link.target_title.clone());
+        if link.is_category_membership {
+            category_set.insert(link.target_title.clone());
+        }
+        if link.target_namespace == Namespace::Template.as_str() {
+            template_set.insert(link.target_title.clone());
+        }
+        if link.target_namespace == Namespace::Module.as_str() {
+            module_set.insert(link.target_title.clone());
+        }
+    }
+
+    Ok(Some(LocalContextBundle {
+        title: page.title,
+        namespace: page.namespace,
+        is_redirect: page.is_redirect,
+        redirect_target: page.redirect_target,
+        relative_path: page.relative_path,
+        bytes: page.bytes,
+        word_count: count_words(&content),
+        content_preview: make_content_preview(&content, 280),
+        sections: parse_section_headings(&content, 24),
+        outgoing_links: outgoing_set.into_iter().collect(),
+        backlinks,
+        categories: category_set.into_iter().collect(),
+        templates: template_set.into_iter().collect(),
+        modules: module_set.into_iter().collect(),
+    }))
+}
+
 pub fn query_backlinks(paths: &ResolvedPaths, title: &str) -> Result<Option<Vec<String>>> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
@@ -181,24 +323,10 @@ pub fn query_backlinks(paths: &ResolvedPaths, title: &str) -> Result<Option<Vec<
     if normalized.is_empty() {
         return Ok(Some(Vec::new()));
     }
-
-    let mut statement = connection
-        .prepare(
-            "SELECT DISTINCT source_title
-             FROM indexed_links
-             WHERE target_title = ?1
-             ORDER BY source_title ASC",
-        )
-        .context("failed to prepare backlinks query")?;
-    let rows = statement
-        .query_map([normalized], |row| row.get::<_, String>(0))
-        .context("failed to run backlinks query")?;
-
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(row.context("failed to decode backlinks row")?);
-    }
-    Ok(Some(out))
+    Ok(Some(query_backlinks_for_connection(
+        &connection,
+        &normalized,
+    )?))
 }
 
 pub fn query_orphans(paths: &ResolvedPaths) -> Result<Option<Vec<String>>> {
@@ -269,6 +397,23 @@ pub fn query_empty_categories(paths: &ResolvedPaths) -> Result<Option<Vec<String
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedLink {
+    target_title: String,
+    target_namespace: String,
+    is_category_membership: bool,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedPageRecord {
+    title: String,
+    namespace: String,
+    is_redirect: bool,
+    redirect_target: Option<String>,
+    relative_path: String,
+    bytes: u64,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedLinkRow {
     target_title: String,
     target_namespace: String,
     is_category_membership: bool,
@@ -421,6 +566,150 @@ fn normalize_spaces(value: &str) -> String {
     }
 
     output.trim().to_string()
+}
+
+fn load_page_record(connection: &Connection, title: &str) -> Result<Option<IndexedPageRecord>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                title,
+                namespace,
+                is_redirect,
+                redirect_target,
+                relative_path,
+                bytes
+             FROM indexed_pages
+             WHERE lower(title) = lower(?1)
+             LIMIT 1",
+        )
+        .context("failed to prepare page record lookup")?;
+
+    let mut rows = statement
+        .query([title])
+        .context("failed to run page record lookup")?;
+    let row = match rows.next().context("failed to read page record row")? {
+        Some(row) => row,
+        None => return Ok(None),
+    };
+
+    let bytes_i64: i64 = row.get(5).context("failed to decode page bytes")?;
+    let bytes = u64::try_from(bytes_i64).context("page bytes are negative")?;
+    Ok(Some(IndexedPageRecord {
+        title: row.get(0).context("failed to decode page title")?,
+        namespace: row.get(1).context("failed to decode page namespace")?,
+        is_redirect: row
+            .get::<_, i64>(2)
+            .context("failed to decode redirect flag")?
+            == 1,
+        redirect_target: row.get(3).context("failed to decode redirect target")?,
+        relative_path: row.get(4).context("failed to decode relative path")?,
+        bytes,
+    }))
+}
+
+fn load_outgoing_link_rows(
+    connection: &Connection,
+    source_relative_path: &str,
+) -> Result<Vec<IndexedLinkRow>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT target_title, target_namespace, is_category_membership
+             FROM indexed_links
+             WHERE source_relative_path = ?1
+             ORDER BY target_title ASC",
+        )
+        .context("failed to prepare outgoing links query")?;
+    let rows = statement
+        .query_map([source_relative_path], |row| {
+            let target_title: String = row.get(0)?;
+            let target_namespace: String = row.get(1)?;
+            let is_category_membership: i64 = row.get(2)?;
+            Ok(IndexedLinkRow {
+                target_title,
+                target_namespace,
+                is_category_membership: is_category_membership == 1,
+            })
+        })
+        .context("failed to run outgoing links query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode outgoing link row")?);
+    }
+    Ok(out)
+}
+
+fn query_backlinks_for_connection(connection: &Connection, title: &str) -> Result<Vec<String>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT DISTINCT source_title
+             FROM indexed_links
+             WHERE target_title = ?1
+             ORDER BY source_title ASC",
+        )
+        .context("failed to prepare backlinks query")?;
+    let rows = statement
+        .query_map([title], |row| row.get::<_, String>(0))
+        .context("failed to run backlinks query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode backlinks row")?);
+    }
+    Ok(out)
+}
+
+fn count_words(content: &str) -> usize {
+    content
+        .split_whitespace()
+        .filter(|token| !token.is_empty())
+        .count()
+}
+
+fn make_content_preview(content: &str, max_chars: usize) -> String {
+    let normalized = normalize_spaces(content);
+    if normalized.len() <= max_chars {
+        return normalized;
+    }
+    let output = normalized.chars().take(max_chars).collect::<String>();
+    format!("{output}...")
+}
+
+fn parse_section_headings(content: &str, max_sections: usize) -> Vec<LocalContextHeading> {
+    let mut out = Vec::new();
+    if max_sections == 0 {
+        return out;
+    }
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.len() < 4 || !trimmed.starts_with('=') || !trimmed.ends_with('=') {
+            continue;
+        }
+
+        let leading = trimmed.chars().take_while(|ch| *ch == '=').count();
+        let trailing = trimmed.chars().rev().take_while(|ch| *ch == '=').count();
+        if leading != trailing || !(2..=6).contains(&leading) {
+            continue;
+        }
+        if leading * 2 >= trimmed.len() {
+            continue;
+        }
+
+        let heading = trimmed[leading..trimmed.len() - trailing].trim();
+        if heading.is_empty() {
+            continue;
+        }
+        out.push(LocalContextHeading {
+            level: u8::try_from(leading).unwrap_or(6),
+            heading: heading.to_string(),
+        });
+        if out.len() >= max_sections {
+            break;
+        }
+    }
+
+    out
 }
 
 fn summarize_files(files: &[ScannedFile]) -> ScanStats {
@@ -584,8 +873,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        extract_wikilinks, load_stored_index_stats, query_backlinks, query_empty_categories,
-        query_orphans, rebuild_index,
+        build_local_context, extract_wikilinks, load_stored_index_stats, query_backlinks,
+        query_empty_categories, query_orphans, query_search_local, rebuild_index,
     };
     use crate::phase1::{ResolvedPaths, ValueSource};
     use crate::phase2::{Namespace, ScanOptions};
@@ -720,6 +1009,62 @@ mod tests {
             .expect("empty category query")
             .expect("empty categories should exist");
         assert_eq!(empty_categories, vec!["Category:Empty".to_string()]);
+    }
+
+    #[test]
+    fn query_search_and_context_bundle() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "Lead paragraph\n== History ==\n[[Beta]] [[Template:Infobox person]] [[Module:Navbar]] [[Category:People]]",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+            "No links here",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+            "[[Beta]]",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Category").join("People.wiki"),
+            "People category",
+        );
+
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let search = query_search_local(&paths, "be", 20)
+            .expect("search query")
+            .expect("search should be available");
+        assert_eq!(search.len(), 1);
+        assert_eq!(search[0].title, "Beta");
+
+        let context = build_local_context(&paths, "Alpha")
+            .expect("context query")
+            .expect("alpha context exists");
+        assert_eq!(context.title, "Alpha");
+        assert_eq!(context.namespace, "Main");
+        assert_eq!(context.sections.len(), 1);
+        assert_eq!(context.sections[0].heading, "History");
+        assert_eq!(context.categories, vec!["Category:People".to_string()]);
+        assert_eq!(
+            context.templates,
+            vec!["Template:Infobox person".to_string()]
+        );
+        assert_eq!(context.modules, vec!["Module:Navbar".to_string()]);
+        assert_eq!(context.backlinks.len(), 0);
+
+        let beta_context = build_local_context(&paths, "Beta")
+            .expect("beta context query")
+            .expect("beta context exists");
+        assert_eq!(
+            beta_context.backlinks,
+            vec!["Alpha".to_string(), "Gamma".to_string()]
+        );
     }
 
     #[test]

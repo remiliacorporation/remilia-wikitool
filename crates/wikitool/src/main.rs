@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use wikitool_core::phase0::{command_surface, generate_fixture_snapshot};
 use wikitool_core::phase1::{
@@ -8,17 +8,18 @@ use wikitool_core::phase1::{
     embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
     lsp_settings_json, materialize_parser_config, resolve_paths,
 };
-use wikitool_core::phase2::{ScanOptions, ScanStats, scan_stats};
+use wikitool_core::phase2::{ScanOptions, ScanStats, scan_files, scan_stats};
 use wikitool_core::phase3::{
-    StoredIndexStats, load_stored_index_stats, query_backlinks, query_empty_categories,
-    query_orphans, rebuild_index,
+    LocalContextBundle, LocalSearchHit, StoredIndexStats, build_local_context,
+    load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
+    query_search_local, rebuild_index,
 };
 
 #[derive(Debug, Parser)]
 #[command(
     name = "wikitool",
     version,
-    about = "Rust rewrite CLI for remilia-wikitool (Phase 4 index query slice)"
+    about = "Rust rewrite CLI for remilia-wikitool (Phase 5 offline retrieval slice)"
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -301,12 +302,8 @@ fn main() -> Result<()> {
         Some(Commands::Push) => run_stub(&runtime, "push"),
         Some(Commands::Diff) => run_stub(&runtime, "diff"),
         Some(Commands::Status(args)) => run_status(&runtime, args),
-        Some(Commands::Context(ContextArgs { title })) => {
-            run_stub(&runtime, &format!("context {title}"))
-        }
-        Some(Commands::Search(SearchArgs { query })) => {
-            run_stub(&runtime, &format!("search {query}"))
-        }
+        Some(Commands::Context(ContextArgs { title })) => run_context(&runtime, &title),
+        Some(Commands::Search(SearchArgs { query })) => run_search(&runtime, &query),
         Some(Commands::SearchExternal(SearchExternalArgs { query })) => {
             run_stub(&runtime, &format!("search-external {query}"))
         }
@@ -496,6 +493,89 @@ fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
     Ok(())
 }
 
+fn run_search(runtime: &RuntimeOptions, query: &str) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let query = normalize_title_query(query);
+    if query.is_empty() {
+        bail!("search requires a non-empty query");
+    }
+
+    println!("search");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("query: {query}");
+    match query_search_local(&paths, &query, 20)? {
+        Some(results) => {
+            println!("search.backend: indexed");
+            print_search_hits("search", &results);
+        }
+        None => {
+            println!("search.backend: fallback-filesystem");
+            println!("index.storage: <not built> (run `wikitool index rebuild` for faster search)");
+            let mut results = scan_files(&paths, &ScanOptions::default())?
+                .into_iter()
+                .filter(|file| {
+                    file.title
+                        .to_ascii_lowercase()
+                        .contains(&query.to_ascii_lowercase())
+                })
+                .map(|file| LocalSearchHit {
+                    title: file.title,
+                    namespace: file.namespace,
+                    is_redirect: file.is_redirect,
+                })
+                .collect::<Vec<_>>();
+            results.sort_by(|left, right| left.title.cmp(&right.title));
+            results.truncate(20);
+            print_search_hits("search", &results);
+        }
+    }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    Ok(())
+}
+
+fn run_context(runtime: &RuntimeOptions, title: &str) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let title = normalize_title_query(title);
+    if title.is_empty() {
+        bail!("context requires a non-empty title");
+    }
+
+    println!("context");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("title: {title}");
+    if let Some(bundle) = build_local_context(&paths, &title)? {
+        println!("context.backend: indexed");
+        print_context_bundle("context", &bundle);
+    } else {
+        let has_index = load_stored_index_stats(&paths)?.is_some();
+        if let Some(bundle) = build_context_from_scan(&paths, &title)? {
+            println!("context.backend: fallback-filesystem");
+            if !has_index {
+                println!(
+                    "index.storage: <not built> (run `wikitool index rebuild` for richer context)"
+                );
+            }
+            print_context_bundle("context", &bundle);
+        } else if has_index {
+            bail!("page not found in local index: {title}");
+        } else {
+            bail!(
+                "local index is not built and page was not found by filesystem scan: {title}\nRun `wikitool index rebuild` after `wikitool pull`."
+            );
+        }
+    }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    Ok(())
+}
+
 fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let status = inspect_runtime(&paths)?;
@@ -516,6 +596,58 @@ fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn build_context_from_scan(
+    paths: &wikitool_core::phase1::ResolvedPaths,
+    title: &str,
+) -> Result<Option<LocalContextBundle>> {
+    let normalized = normalize_title_query(title);
+    let files = scan_files(paths, &ScanOptions::default())?;
+    let file = match files
+        .into_iter()
+        .find(|item| item.title.eq_ignore_ascii_case(&normalized))
+    {
+        Some(file) => file,
+        None => return Ok(None),
+    };
+
+    let mut absolute = paths.project_root.clone();
+    for segment in file.relative_path.split('/') {
+        if !segment.is_empty() {
+            absolute.push(segment);
+        }
+    }
+    let content = std::fs::read_to_string(&absolute)
+        .with_context(|| format!("failed to read {}", normalize_path(&absolute)))?;
+    let content_preview = collapse_whitespace(&content)
+        .chars()
+        .take(280)
+        .collect::<String>();
+
+    Ok(Some(LocalContextBundle {
+        title: file.title,
+        namespace: file.namespace,
+        is_redirect: file.is_redirect,
+        redirect_target: file.redirect_target,
+        relative_path: file.relative_path,
+        bytes: file.bytes,
+        word_count: content
+            .split_whitespace()
+            .filter(|token| !token.is_empty())
+            .count(),
+        content_preview: if content_preview.is_empty() {
+            String::new()
+        } else {
+            format!("{content_preview}...")
+        },
+        sections: Vec::new(),
+        outgoing_links: Vec::new(),
+        backlinks: Vec::new(),
+        categories: Vec::new(),
+        templates: Vec::new(),
+        modules: Vec::new(),
+    }))
 }
 
 fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
@@ -686,6 +818,69 @@ fn print_stored_index_stats(prefix: &str, stats: &StoredIndexStats) {
     }
 }
 
+fn print_search_hits(prefix: &str, hits: &[LocalSearchHit]) {
+    println!("{prefix}.count: {}", hits.len());
+    if hits.is_empty() {
+        println!("{prefix}.hits: <none>");
+        return;
+    }
+    for hit in hits {
+        println!(
+            "{prefix}.hit: {} (namespace={}, redirect={})",
+            hit.title,
+            hit.namespace,
+            if hit.is_redirect { "yes" } else { "no" }
+        );
+    }
+}
+
+fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
+    println!("{prefix}.title: {}", bundle.title);
+    println!("{prefix}.namespace: {}", bundle.namespace);
+    println!("{prefix}.relative_path: {}", bundle.relative_path);
+    println!("{prefix}.bytes: {}", bundle.bytes);
+    println!("{prefix}.word_count: {}", bundle.word_count);
+    println!(
+        "{prefix}.is_redirect: {}",
+        if bundle.is_redirect { "yes" } else { "no" }
+    );
+    println!(
+        "{prefix}.redirect_target: {}",
+        bundle.redirect_target.as_deref().unwrap_or("<none>")
+    );
+    println!(
+        "{prefix}.content_preview: {}",
+        if bundle.content_preview.is_empty() {
+            "<empty>"
+        } else {
+            &bundle.content_preview
+        }
+    );
+    println!("{prefix}.sections.count: {}", bundle.sections.len());
+    for section in &bundle.sections {
+        println!(
+            "{prefix}.section: level={} heading={}",
+            section.level, section.heading
+        );
+    }
+    print_string_list(&format!("{prefix}.outgoing_links"), &bundle.outgoing_links);
+    print_string_list(&format!("{prefix}.backlinks"), &bundle.backlinks);
+    print_string_list(&format!("{prefix}.categories"), &bundle.categories);
+    print_string_list(&format!("{prefix}.templates"), &bundle.templates);
+    print_string_list(&format!("{prefix}.modules"), &bundle.modules);
+}
+
+fn print_string_list(prefix: &str, values: &[String]) {
+    println!("{prefix}.count: {}", values.len());
+    if values.is_empty() {
+        println!("{prefix}: <none>");
+        return;
+    }
+    for value in values {
+        println!("{prefix}.item: {value}");
+    }
+}
+
 fn run_lsp_generate_config(runtime: &RuntimeOptions, args: LspGenerateConfigArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let wrote = materialize_parser_config(&paths, args.force)?;
@@ -799,6 +994,27 @@ fn resolve_runtime_paths(runtime: &RuntimeOptions) -> Result<wikitool_core::phas
     }
 
     resolve_paths(&context, &overrides)
+}
+
+fn normalize_title_query(value: &str) -> String {
+    value.replace('_', " ").trim().to_string()
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut previous_was_space = false;
+    for ch in value.chars() {
+        if ch.is_whitespace() {
+            if !previous_was_space {
+                output.push(' ');
+                previous_was_space = true;
+            }
+        } else {
+            output.push(ch);
+            previous_was_space = false;
+        }
+    }
+    output.trim().to_string()
 }
 
 fn normalize_path(path: &Path) -> String {
