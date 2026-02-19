@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { generateBunSnapshot, type RuntimeSnapshot } from './snapshot-bun.ts';
 
@@ -57,7 +57,7 @@ const rustDuration = roundDuration(performance.now() - rustStart);
 const mismatches = diffSnapshots(bunSnapshot, rustSnapshot);
 const report: DifferentialReport = {
   generated_at: new Date().toISOString(),
-  fixture_root: normalize(projectRoot),
+  fixture_root: toPortableFixturePath(projectRoot),
   parity_ok: mismatches.length === 0,
   mismatch_count: mismatches.length,
   mismatches,
@@ -138,8 +138,12 @@ function generateRustSnapshot(projectRoot: string, contentDir: string, templates
 }
 
 function snapshotHash(snapshot: RuntimeSnapshot): string {
+  const normalizedSnapshot: RuntimeSnapshot = {
+    ...snapshot,
+    fixture_root: '<fixture-root>',
+  };
   const digest = createHash('sha256');
-  digest.update(stableStringify(snapshot));
+  digest.update(stableStringify(normalizedSnapshot));
   return digest.digest('hex');
 }
 
@@ -270,4 +274,12 @@ function roundDuration(value: number): number {
 
 function normalize(path: string): string {
   return path.replace(/\\/g, '/');
+}
+
+function toPortableFixturePath(absolutePath: string): string {
+  const relativePath = relative(repoRoot, absolutePath);
+  if (relativePath.startsWith('..')) {
+    return normalize(absolutePath);
+  }
+  return normalize(relativePath || '.');
 }
