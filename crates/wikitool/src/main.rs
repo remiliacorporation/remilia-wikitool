@@ -9,6 +9,7 @@ use wikitool_core::phase1::{
     lsp_settings_json, materialize_parser_config, resolve_paths,
 };
 use wikitool_core::phase2::{ScanOptions, ScanStats, scan_stats};
+use wikitool_core::phase3::{StoredIndexStats, load_stored_index_stats, rebuild_index};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -357,7 +358,7 @@ fn main() -> Result<()> {
             ImportSubcommand::Cargo { path } => run_stub(&runtime, &format!("import cargo {path}")),
         },
         Some(Commands::Index(IndexArgs { command })) => match command {
-            IndexSubcommand::Rebuild => run_stub(&runtime, "index rebuild"),
+            IndexSubcommand::Rebuild => run_index_rebuild(&runtime),
             IndexSubcommand::Stats => run_index_stats(&runtime),
             IndexSubcommand::Backlinks { title } => {
                 run_stub(&runtime, &format!("index backlinks {title}"))
@@ -494,9 +495,31 @@ fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
     Ok(())
 }
 
+fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let status = inspect_runtime(&paths)?;
+    ensure_runtime_ready_for_sync(&paths, &status)?;
+
+    let report = rebuild_index(&paths, &ScanOptions::default())?;
+
+    println!("index rebuild");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("db_path: {}", normalize_path(&paths.db_path));
+    println!("inserted_rows: {}", report.inserted_rows);
+    print_scan_stats("scan", &report.scan);
+    println!("migrations: disabled");
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    Ok(())
+}
+
 fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let scan = scan_stats(&paths, &ScanOptions::default())?;
+    let stored = load_stored_index_stats(&paths)?;
 
     println!("index stats");
     println!("project_root: {}", normalize_path(&paths.project_root));
@@ -506,6 +529,10 @@ fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
     );
     println!("templates_dir: {}", normalize_path(&paths.templates_dir));
     print_scan_stats("scan", &scan);
+    match stored {
+        Some(stored) => print_stored_index_stats("index", &stored),
+        None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
+    }
     println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -517,6 +544,7 @@ fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
 fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let status = inspect_runtime(&paths)?;
+    let stored = load_stored_index_stats(&paths)?;
 
     println!("db stats");
     println!("db_path: {}", normalize_path(&paths.db_path));
@@ -529,6 +557,10 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
             .map(|size| size.to_string())
             .unwrap_or_else(|| "n/a".to_string())
     );
+    match stored {
+        Some(stored) => print_stored_index_stats("index", &stored),
+        None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
+    }
     println!("migrations: disabled");
     println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
@@ -542,6 +574,18 @@ fn print_scan_stats(prefix: &str, stats: &ScanStats) {
     println!("{prefix}.total_files: {}", stats.total_files);
     println!("{prefix}.content_files: {}", stats.content_files);
     println!("{prefix}.template_files: {}", stats.template_files);
+    println!("{prefix}.redirects: {}", stats.redirects);
+    if stats.by_namespace.is_empty() {
+        println!("{prefix}.by_namespace: <empty>");
+    } else {
+        for (namespace, count) in &stats.by_namespace {
+            println!("{prefix}.namespace.{namespace}: {count}");
+        }
+    }
+}
+
+fn print_stored_index_stats(prefix: &str, stats: &StoredIndexStats) {
+    println!("{prefix}.indexed_rows: {}", stats.indexed_rows);
     println!("{prefix}.redirects: {}", stats.redirects);
     if stats.by_namespace.is_empty() {
         println!("{prefix}.by_namespace: <empty>");
