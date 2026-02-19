@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "phase": "0",
+  "frozen_on": "2026-02-19",
+  "contracts": {
+    "cli": {
+      "policy": "preserve command and flag semantics; text formatting is explicitly non-goal",
+      "commands": [
+        "init",
+        "pull",
+        "push",
+        "diff",
+        "status",
+        "context",
+        "search",
+        "search-external",
+        "db stats",
+        "db sync",
+        "db migrate",
+        "docs import",
+        "docs import-technical",
+        "docs list",
+        "docs update",
+        "docs remove",
+        "docs search",
+        "lsp:generate-config",
+        "lsp:status",
+        "lsp:info",
+        "validate",
+        "lint",
+        "seo inspect",
+        "net inspect",
+        "perf lighthouse",
+        "import cargo",
+        "delete",
+        "index rebuild",
+        "index stats",
+        "index backlinks",
+        "index orphans",
+        "index prune-categories"
+      ]
+    },
+    "filesystem": {
+      "root_resolution_precedence": [
+        "--project-root",
+        "WIKITOOL_PROJECT_ROOT",
+        "auto-detection"
+      ],
+      "data_resolution_precedence": [
+        "--data-dir",
+        "WIKITOOL_DATA_DIR",
+        "<project-root>/.wikitool/data"
+      ],
+      "config_resolution_precedence": [
+        "--config",
+        "WIKITOOL_CONFIG",
+        "<project-root>/.wikitool/config.toml",
+        "embedded defaults"
+      ],
+      "layout": {
+        "required": [
+          "wiki_content/",
+          ".wikitool/"
+        ],
+        "optional": [
+          "templates/"
+        ],
+        "reject_legacy_runtime_layouts": [
+          "custom/wikitool",
+          "custom/templates"
+        ]
+      }
+    },
+    "json_output": {
+      "fixture_snapshot_contract": {
+        "required_fields": [
+          "runtime",
+          "fixture_root",
+          "content_file_count",
+          "template_file_count",
+          "files"
+        ],
+        "file_fields": [
+          "relative_path",
+          "title",
+          "namespace",
+          "is_redirect",
+          "redirect_target",
+          "content_hash"
+        ]
+      }
+    },
+    "safety": {
+      "required_invariants": [
+        "push --dry-run performs no writes",
+        "delete creates recoverable backup before destructive operations",
+        "sync conflict state is surfaced, not silently overwritten"
+      ]
+    },
+    "http": {
+      "required_invariants": [
+        "format and formatversion are explicit in MediaWiki requests",
+        "continuation handling is deterministic",
+        "read and write retries use separate policies"
+      ],
+      "phase0_note": "network telemetry schema is frozen in baseline harness artifacts"
+    },
+    "opsec": {
+      "scan_boundaries": [
+        "wiki_content/",
+        "templates/",
+        ".wikitool/"
+      ],
+      "auth_boundary": ".wikitool/auth/",
+      "redaction": [
+        "cookies",
+        "session tokens",
+        "credential env vars"
+      ]
+    }
+  }
+}

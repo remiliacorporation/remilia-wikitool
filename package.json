@@ -33,6 +33,9 @@
     "lint:style": "stylelint --allow-empty-input \"../templates/**/*.css\"",
     "lint:style:fix": "stylelint --allow-empty-input --fix \"../templates/**/*.css\"",
     "docs:reference": "bun scripts/generate-command-reference.ts",
+    "phase0:snapshot:bun": "bun scripts/phase0/snapshot-bun.ts --project-root tests/fixtures/full-refresh --content-dir wiki_content --templates-dir custom/templates",
+    "phase0:diff": "bun scripts/phase0/differential-harness.ts --project-root tests/fixtures/full-refresh --content-dir wiki_content --templates-dir custom/templates",
+    "phase0:baseline": "bun scripts/phase0/differential-harness.ts --project-root tests/fixtures/full-refresh --content-dir wiki_content --templates-dir custom/templates --write-baseline",
     "clean": "bun -e \"const fs=require('fs'); const path=require('path'); const base=path.join(process.cwd(),'packages'); if (!fs.existsSync(base)) process.exit(0); for (const entry of fs.readdirSync(base,{withFileTypes:true})) { if (!entry.isDirectory()) continue; fs.rmSync(path.join(base, entry.name, 'dist'), { recursive: true, force: true }); }\""
   },
   "devDependencies": {

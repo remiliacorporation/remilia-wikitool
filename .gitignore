@@ -21,6 +21,7 @@ coverage/
 # Build
 packages/*/dist/
 *.tsbuildinfo
+target/
 
 # OS
 .DS_Store

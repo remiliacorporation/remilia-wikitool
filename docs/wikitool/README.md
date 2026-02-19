@@ -8,6 +8,6 @@ This folder follows the Diataxis model so editors and agents can find the right 
 - `how-to.md` - task-focused recipes (sync, validation, imports, perf checks)
 - `reference.md` - comprehensive command/flag reference (canonical, keep in sync with CLI)
 - `explanation.md` - architecture and design rationale
+- `../phase0/README.md` - Rust rewrite Phase 0 contracts and differential harness artifacts
 
 If you need a single source of truth for commands and flags, use `docs/wikitool/reference.md`.
-

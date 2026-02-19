@@ -28,3 +28,70 @@ jobs:
         run: bun run build
       - name: Test
         run: bun run test
+
+  rust-build-smoke:
+    if: ${{ hashFiles('Cargo.toml') != '' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --package wikitool --release --locked
+      - name: Verify binary (Unix)
+        if: runner.os != 'Windows'
+        run: test -f target/release/wikitool
+      - name: Verify binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (!(Test-Path target/release/wikitool.exe)) {
+            throw "target/release/wikitool.exe missing"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wikitool-${{ runner.os }}
+          path: |
+            target/release/wikitool
+            target/release/wikitool.exe
+          if-no-files-found: ignore
+
+  rust-nightly-lint:
+    if: ${{ hashFiles('Cargo.toml') != '' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Rustfmt (nightly)
+        run: cargo +nightly fmt --all -- --check
+      - name: Clippy (nightly)
+        run: cargo +nightly clippy --workspace --all-targets --all-features -- -D warnings
+
+  phase0-differential-harness:
+    if: ${{ hashFiles('Cargo.toml') != '' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: "1.1.0"
+      - name: Install dependencies
+        run: bun install
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check workspace
+        run: cargo check --workspace --locked
+      - name: Differential harness
+        run: bun run phase0:diff
