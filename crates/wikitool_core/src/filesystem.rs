@@ -7,7 +7,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
-use crate::phase1::ResolvedPaths;
+use crate::runtime::ResolvedPaths;
 
 const TEMPLATE_CATEGORY_MAPPINGS: [(&str, &str); 49] = [
     ("Template:Cite", "cite"),
@@ -717,7 +717,7 @@ mod tests {
         Namespace, ScanOptions, content_path_to_title, relative_path_to_title, scan_stats,
         template_path_to_title, title_to_relative_path, validate_scoped_path,
     };
-    use crate::phase1::{ResolvedPaths, ValueSource};
+    use crate::runtime::{ResolvedPaths, ValueSource};
 
     fn paths(root: &str) -> ResolvedPaths {
         let project_root = PathBuf::from(root);

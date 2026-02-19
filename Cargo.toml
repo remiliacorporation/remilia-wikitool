@@ -14,7 +14,7 @@ version = "0.1.0"
 anyhow = "1.0.101"
 clap = { version = "4.5.59", features = ["derive"] }
 dotenvy = "0.15.7"
-reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "query", "rustls"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "cookies", "form", "json", "query", "rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 rusqlite = { version = "0.38.0", features = ["bundled"] }

@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::phase1::ResolvedPaths;
-use crate::phase2::{ScanOptions, scan_files, title_to_relative_path, validate_scoped_path};
-use crate::phase3::{RebuildReport, rebuild_index};
+use crate::filesystem::{ScanOptions, scan_files, title_to_relative_path, validate_scoped_path};
+use crate::index::{RebuildReport, rebuild_index};
+use crate::runtime::ResolvedPaths;
 
 const SYNC_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS sync_ledger_pages (
@@ -72,6 +72,45 @@ pub struct PullReport {
     pub pages: Vec<PullPageResult>,
     pub request_count: usize,
     pub reindex: Option<RebuildReport>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PushOptions {
+    pub summary: String,
+    pub dry_run: bool,
+    pub force: bool,
+    pub delete: bool,
+    pub include_templates: bool,
+    pub categories_only: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PushPageResult {
+    pub title: String,
+    pub action: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PushReport {
+    pub success: bool,
+    pub dry_run: bool,
+    pub pushed: usize,
+    pub created: usize,
+    pub updated: usize,
+    pub deleted: usize,
+    pub unchanged: usize,
+    pub conflicts: Vec<String>,
+    pub errors: Vec<String>,
+    pub pages: Vec<PushPageResult>,
+    pub request_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PageTimestampInfo {
+    pub title: String,
+    pub timestamp: String,
+    pub revision_id: i64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -148,13 +187,22 @@ pub trait WikiReadApi {
     fn request_count(&self) -> usize;
 }
 
+pub trait WikiWriteApi: WikiReadApi {
+    fn login(&mut self, username: &str, password: &str) -> Result<()>;
+    fn get_page_timestamps(&mut self, titles: &[String]) -> Result<Vec<PageTimestampInfo>>;
+    fn edit_page(&mut self, title: &str, content: &str, summary: &str) -> Result<RemotePage>;
+    fn delete_page(&mut self, title: &str, reason: &str) -> Result<()>;
+}
+
 #[derive(Debug, Clone)]
 pub struct MediaWikiClientConfig {
     pub api_url: String,
     pub user_agent: String,
     pub timeout_ms: u64,
     pub rate_limit_read_ms: u64,
+    pub rate_limit_write_ms: u64,
     pub max_retries: usize,
+    pub max_write_retries: usize,
     pub retry_delay_ms: u64,
 }
 
@@ -168,7 +216,9 @@ impl MediaWikiClientConfig {
             ),
             timeout_ms: env_value_u64("WIKI_HTTP_TIMEOUT_MS", 30_000),
             rate_limit_read_ms: env_value_u64("WIKI_RATE_LIMIT_READ", 300),
+            rate_limit_write_ms: env_value_u64("WIKI_RATE_LIMIT_WRITE", 1_000),
             max_retries: env_value_usize("WIKI_HTTP_RETRIES", 2),
+            max_write_retries: env_value_usize("WIKI_HTTP_WRITE_RETRIES", 1),
             retry_delay_ms: env_value_u64("WIKI_HTTP_RETRY_DELAY_MS", 500),
         }
     }
@@ -179,6 +229,7 @@ pub struct MediaWikiClient {
     config: MediaWikiClientConfig,
     last_request_at: Option<Instant>,
     request_count: usize,
+    csrf_token: Option<String>,
 }
 
 impl MediaWikiClient {
@@ -189,6 +240,7 @@ impl MediaWikiClient {
     pub fn new(config: MediaWikiClientConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_millis(config.timeout_ms))
+            .cookie_store(true)
             .build()
             .context("failed to build MediaWiki HTTP client")?;
 
@@ -197,10 +249,11 @@ impl MediaWikiClient {
             config,
             last_request_at: None,
             request_count: 0,
+            csrf_token: None,
         })
     }
 
-    fn request_json(&mut self, params: &[(&str, String)]) -> Result<Value> {
+    fn request_json_get(&mut self, params: &[(&str, String)]) -> Result<Value> {
         let base_url = Url::parse(&self.config.api_url)
             .with_context(|| format!("invalid WIKI_API_URL: {}", self.config.api_url))?;
 
@@ -214,7 +267,7 @@ impl MediaWikiClient {
         }
 
         for attempt in 0..=self.config.max_retries {
-            self.apply_rate_limit();
+            self.apply_rate_limit(false);
             let response = self
                 .client
                 .get(base_url.clone())
@@ -227,7 +280,7 @@ impl MediaWikiClient {
                     let status = response.status();
                     if !status.is_success() {
                         if attempt < self.config.max_retries && is_retryable_status(status) {
-                            self.wait_before_retry(attempt);
+                            self.wait_before_retry(attempt, false);
                             continue;
                         }
                         bail!("MediaWiki API request failed with HTTP {status}");
@@ -251,7 +304,7 @@ impl MediaWikiClient {
                 }
                 Err(error) => {
                     if attempt < self.config.max_retries && is_retryable_error(&error) {
-                        self.wait_before_retry(attempt);
+                        self.wait_before_retry(attempt, false);
                         continue;
                     }
                     return Err(error).context("failed to call MediaWiki API");
@@ -262,8 +315,76 @@ impl MediaWikiClient {
         bail!("MediaWiki API request exhausted retry budget")
     }
 
-    fn apply_rate_limit(&mut self) {
-        let delay = Duration::from_millis(self.config.rate_limit_read_ms);
+    fn request_json_post(&mut self, params: &[(&str, String)], is_write: bool) -> Result<Value> {
+        let max_retries = if is_write {
+            self.config.max_write_retries
+        } else {
+            self.config.max_retries
+        };
+        let mut pairs = Vec::with_capacity(params.len() + 2);
+        pairs.push(("format".to_string(), "json".to_string()));
+        pairs.push(("formatversion".to_string(), "2".to_string()));
+        for (key, value) in params {
+            if !value.is_empty() {
+                pairs.push(((*key).to_string(), value.clone()));
+            }
+        }
+
+        for attempt in 0..=max_retries {
+            self.apply_rate_limit(is_write);
+            let response = self
+                .client
+                .post(&self.config.api_url)
+                .header("User-Agent", self.config.user_agent.clone())
+                .form(&pairs)
+                .send();
+
+            match response {
+                Ok(response) => {
+                    let status = response.status();
+                    if !status.is_success() {
+                        if attempt < max_retries && is_retryable_status(status) {
+                            self.wait_before_retry(attempt, is_write);
+                            continue;
+                        }
+                        bail!("MediaWiki API request failed with HTTP {status}");
+                    }
+
+                    let payload: Value = response
+                        .json()
+                        .context("failed to decode MediaWiki API JSON response")?;
+                    if let Some(error) = payload.get("error") {
+                        let code = error
+                            .get("code")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unknown_error");
+                        let info = error
+                            .get("info")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unknown info");
+                        bail!("MediaWiki API error [{code}]: {info}");
+                    }
+                    return Ok(payload);
+                }
+                Err(error) => {
+                    if attempt < max_retries && is_retryable_error(&error) {
+                        self.wait_before_retry(attempt, is_write);
+                        continue;
+                    }
+                    return Err(error).context("failed to call MediaWiki API");
+                }
+            }
+        }
+
+        bail!("MediaWiki API request exhausted retry budget")
+    }
+
+    fn apply_rate_limit(&mut self, is_write: bool) {
+        let delay = if is_write {
+            Duration::from_millis(self.config.rate_limit_write_ms)
+        } else {
+            Duration::from_millis(self.config.rate_limit_read_ms)
+        };
         if let Some(last) = self.last_request_at {
             let elapsed = last.elapsed();
             if elapsed < delay {
@@ -274,7 +395,7 @@ impl MediaWikiClient {
         self.request_count += 1;
     }
 
-    fn wait_before_retry(&self, attempt: usize) {
+    fn wait_before_retry(&self, attempt: usize, is_write: bool) {
         let exponent = u32::try_from(attempt).unwrap_or(16);
         let base = self
             .config
@@ -284,7 +405,31 @@ impl MediaWikiClient {
             .duration_since(UNIX_EPOCH)
             .map(|duration| u64::from(duration.subsec_millis() % 100))
             .unwrap_or(0);
-        sleep(Duration::from_millis(base.saturating_add(jitter)));
+        let multiplier = if is_write { 2u64 } else { 1u64 };
+        sleep(Duration::from_millis(
+            base.saturating_mul(multiplier).saturating_add(jitter),
+        ));
+    }
+
+    fn ensure_csrf_token(&mut self) -> Result<String> {
+        if let Some(token) = &self.csrf_token {
+            return Ok(token.clone());
+        }
+        let response = self.request_json_get(&[
+            ("action", "query".to_string()),
+            ("meta", "tokens".to_string()),
+        ])?;
+        let parsed: TokenQueryResponse =
+            serde_json::from_value(response).context("failed to decode csrf token response")?;
+        let token = parsed
+            .query
+            .tokens
+            .as_ref()
+            .and_then(|tokens| tokens.csrftoken.as_ref())
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("failed to get MediaWiki csrf token"))?;
+        self.csrf_token = Some(token.clone());
+        Ok(token)
     }
 }
 
@@ -304,7 +449,7 @@ impl WikiReadApi for MediaWikiClient {
                 params.push(("apcontinue", token.clone()));
             }
 
-            let response = self.request_json(&params)?;
+            let response = self.request_json_get(&params)?;
             let parsed: QueryResponse = serde_json::from_value(response)
                 .context("failed to decode allpages API response")?;
 
@@ -342,7 +487,7 @@ impl WikiReadApi for MediaWikiClient {
                 params.push(("cmcontinue", token.clone()));
             }
 
-            let response = self.request_json(&params)?;
+            let response = self.request_json_get(&params)?;
             let parsed: QueryResponse = serde_json::from_value(response)
                 .context("failed to decode categorymembers API response")?;
             for item in parsed.query.categorymembers {
@@ -382,7 +527,7 @@ impl WikiReadApi for MediaWikiClient {
                 params.push(("rccontinue", token.clone()));
             }
 
-            let response = self.request_json(&params)?;
+            let response = self.request_json_get(&params)?;
             let parsed: QueryResponse = serde_json::from_value(response)
                 .context("failed to decode recentchanges API response")?;
             for item in parsed.query.recentchanges {
@@ -408,7 +553,7 @@ impl WikiReadApi for MediaWikiClient {
                 ("rvslots", "main".to_string()),
             ];
 
-            let response = self.request_json(&params)?;
+            let response = self.request_json_get(&params)?;
             let parsed: QueryResponse = serde_json::from_value(response)
                 .context("failed to decode page content API response")?;
 
@@ -465,7 +610,7 @@ impl WikiReadApi for MediaWikiClient {
             ("srlimit", limit.to_string()),
         ];
 
-        let response = self.request_json(&params)?;
+        let response = self.request_json_get(&params)?;
         let parsed: QueryResponse =
             serde_json::from_value(response).context("failed to decode search API response")?;
 
@@ -485,6 +630,136 @@ impl WikiReadApi for MediaWikiClient {
 
     fn request_count(&self) -> usize {
         self.request_count
+    }
+}
+
+impl WikiWriteApi for MediaWikiClient {
+    fn login(&mut self, username: &str, password: &str) -> Result<()> {
+        let token_response = self.request_json_get(&[
+            ("action", "query".to_string()),
+            ("meta", "tokens".to_string()),
+            ("type", "login".to_string()),
+        ])?;
+        let token_payload: TokenQueryResponse = serde_json::from_value(token_response)
+            .context("failed to decode login token response")?;
+        let login_token = token_payload
+            .query
+            .tokens
+            .as_ref()
+            .and_then(|tokens| tokens.logintoken.as_ref())
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("failed to get MediaWiki login token"))?;
+
+        let login_response = self.request_json_post(
+            &[
+                ("action", "login".to_string()),
+                ("lgname", username.to_string()),
+                ("lgpassword", password.to_string()),
+                ("lgtoken", login_token),
+            ],
+            true,
+        )?;
+        let login_payload: LoginResponse =
+            serde_json::from_value(login_response).context("failed to decode login response")?;
+        match login_payload.login.result.as_deref() {
+            Some("Success") => {
+                self.csrf_token = None;
+                Ok(())
+            }
+            other => bail!(
+                "MediaWiki login failed: {}",
+                login_payload
+                    .login
+                    .reason
+                    .or_else(|| other.map(ToString::to_string))
+                    .unwrap_or_else(|| "unknown error".to_string())
+            ),
+        }
+    }
+
+    fn get_page_timestamps(&mut self, titles: &[String]) -> Result<Vec<PageTimestampInfo>> {
+        let mut output = Vec::new();
+        for batch in titles.chunks(50) {
+            let response = self.request_json_get(&[
+                ("action", "query".to_string()),
+                ("titles", batch.join("|")),
+                ("prop", "revisions".to_string()),
+                ("rvprop", "timestamp|ids".to_string()),
+            ])?;
+            let parsed: QueryResponse = serde_json::from_value(response)
+                .context("failed to decode page timestamp response")?;
+            for page in parsed.query.pages {
+                if page.missing.unwrap_or(false) {
+                    continue;
+                }
+                let revision = match page.revisions.first() {
+                    Some(revision) => revision,
+                    None => continue,
+                };
+                output.push(PageTimestampInfo {
+                    title: page.title,
+                    timestamp: revision.timestamp.clone(),
+                    revision_id: revision.revid,
+                });
+            }
+        }
+        Ok(output)
+    }
+
+    fn edit_page(&mut self, title: &str, content: &str, summary: &str) -> Result<RemotePage> {
+        let token = self.ensure_csrf_token()?;
+        let response = self.request_json_post(
+            &[
+                ("action", "edit".to_string()),
+                ("title", title.to_string()),
+                ("text", content.to_string()),
+                ("summary", summary.to_string()),
+                ("bot", "1".to_string()),
+                ("token", token),
+            ],
+            true,
+        )?;
+        let edit_payload: EditResponse =
+            serde_json::from_value(response).context("failed to decode edit response")?;
+        let edit = edit_payload
+            .edit
+            .ok_or_else(|| anyhow::anyhow!("missing edit payload in API response"))?;
+        if edit.result.as_deref() != Some("Success") {
+            bail!(
+                "MediaWiki edit failed for {}: {}",
+                title,
+                edit.result.unwrap_or_else(|| "unknown".to_string())
+            );
+        }
+
+        let page = self.get_page_contents(&[title.to_string()])?;
+        page.into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("edited page not returned by API: {title}"))
+    }
+
+    fn delete_page(&mut self, title: &str, reason: &str) -> Result<()> {
+        let token = self.ensure_csrf_token()?;
+        let response = self.request_json_post(
+            &[
+                ("action", "delete".to_string()),
+                ("title", title.to_string()),
+                ("reason", reason.to_string()),
+                ("token", token),
+            ],
+            true,
+        );
+
+        match response {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                let message = error.to_string();
+                if message.contains("missingtitle") {
+                    return Ok(());
+                }
+                Err(error)
+            }
+        }
     }
 }
 
@@ -591,6 +866,259 @@ pub fn diff_local_against_sync(
         deleted_local,
         changes,
     }))
+}
+
+pub fn push_to_remote(paths: &ResolvedPaths, options: &PushOptions) -> Result<PushReport> {
+    let username = env::var("WIKI_BOT_USER")
+        .map_err(|_| anyhow::anyhow!("WIKI_BOT_USER is required for push"))?;
+    let password = env::var("WIKI_BOT_PASS")
+        .map_err(|_| anyhow::anyhow!("WIKI_BOT_PASS is required for push"))?;
+    let mut client = MediaWikiClient::from_env()?;
+    push_to_remote_with_api(paths, options, &mut client, Some((&username, &password)))
+}
+
+fn push_to_remote_with_api<A: WikiWriteApi>(
+    paths: &ResolvedPaths,
+    options: &PushOptions,
+    api: &mut A,
+    credentials: Option<(&str, &str)>,
+) -> Result<PushReport> {
+    if options.summary.trim().is_empty() {
+        bail!("push requires a non-empty summary");
+    }
+
+    let connection = open_sync_connection(paths)?;
+    initialize_sync_schema(&connection)?;
+
+    let mut report = PushReport {
+        success: true,
+        dry_run: options.dry_run,
+        pushed: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        unchanged: 0,
+        conflicts: Vec::new(),
+        errors: Vec::new(),
+        pages: Vec::new(),
+        request_count: 0,
+    };
+
+    let local_files = scan_files(
+        paths,
+        &ScanOptions {
+            include_content: true,
+            include_templates: options.include_templates,
+        },
+    )?;
+    let mut local_map = BTreeMap::new();
+    for file in local_files {
+        if options.categories_only && namespace_name_to_id(&file.namespace) != Some(NS_CATEGORY) {
+            continue;
+        }
+        local_map.insert(normalized_title_key(&file.title), file);
+    }
+
+    let ledger = load_sync_ledger_map(&connection, options.include_templates)?;
+    let mut candidates: Vec<(String, DiffChangeType)> = Vec::new();
+    for file in local_map.values() {
+        let key = normalized_title_key(&file.title);
+        match ledger.get(&key) {
+            None => candidates.push((file.title.clone(), DiffChangeType::NewLocal)),
+            Some(entry) if entry.content_hash != file.content_hash => {
+                candidates.push((file.title.clone(), DiffChangeType::ModifiedLocal));
+            }
+            Some(_) => {}
+        }
+    }
+    if options.delete {
+        for entry in ledger.values() {
+            if options.categories_only && entry.namespace != NS_CATEGORY {
+                continue;
+            }
+            let key = normalized_title_key(&entry.title);
+            if !local_map.contains_key(&key) {
+                candidates.push((entry.title.clone(), DiffChangeType::DeletedLocal));
+            }
+        }
+    }
+
+    candidates.sort_by(|left, right| {
+        change_order(&left.1)
+            .cmp(&change_order(&right.1))
+            .then(left.0.cmp(&right.0))
+    });
+    candidates.dedup_by(|left, right| {
+        normalized_title_key(&left.0) == normalized_title_key(&right.0) && left.1 == right.1
+    });
+
+    if candidates.is_empty() {
+        report.request_count = api.request_count();
+        return Ok(report);
+    }
+
+    if options.dry_run {
+        for (title, change_type) in candidates {
+            let action = match change_type {
+                DiffChangeType::NewLocal => "would_create",
+                DiffChangeType::ModifiedLocal => "would_update",
+                DiffChangeType::DeletedLocal => "would_delete",
+            };
+            report.pages.push(PushPageResult {
+                title,
+                action: action.to_string(),
+                detail: None,
+            });
+        }
+        report.request_count = api.request_count();
+        return Ok(report);
+    }
+
+    let (username, password) = credentials
+        .ok_or_else(|| anyhow::anyhow!("push credentials are required for write mode"))?;
+    api.login(username, password)?;
+
+    let titles = candidates
+        .iter()
+        .map(|(title, _)| title.clone())
+        .collect::<Vec<_>>();
+    let remote_timestamps = api
+        .get_page_timestamps(&titles)?
+        .into_iter()
+        .map(|item| (normalized_title_key(&item.title), item))
+        .collect::<BTreeMap<_, _>>();
+
+    for (title, change_type) in candidates {
+        let key = normalized_title_key(&title);
+        if !options.force && push_has_conflict(&title, &change_type, &ledger, &remote_timestamps) {
+            report.conflicts.push(title.clone());
+            report.pages.push(PushPageResult {
+                title,
+                action: "conflict".to_string(),
+                detail: Some("remote page changed since last sync".to_string()),
+            });
+            continue;
+        }
+
+        match change_type {
+            DiffChangeType::NewLocal | DiffChangeType::ModifiedLocal => {
+                let file = match local_map.get(&key) {
+                    Some(file) => file,
+                    None => {
+                        report.errors.push(format!("{title}: local file missing"));
+                        report.pages.push(PushPageResult {
+                            title,
+                            action: "error".to_string(),
+                            detail: Some("local file missing".to_string()),
+                        });
+                        continue;
+                    }
+                };
+                let absolute = absolute_path_from_relative(paths, &file.relative_path);
+                let content = match fs::read_to_string(&absolute) {
+                    Ok(content) => content,
+                    Err(error) => {
+                        report.errors.push(format!("{title}: {error}"));
+                        report.pages.push(PushPageResult {
+                            title,
+                            action: "error".to_string(),
+                            detail: Some("failed to read local content".to_string()),
+                        });
+                        continue;
+                    }
+                };
+
+                match api.edit_page(&file.title, &content, &options.summary) {
+                    Ok(remote_page) => {
+                        let (is_redirect, redirect_target) = parse_redirect(&remote_page.content);
+                        let content_hash = compute_hash(&remote_page.content);
+                        let relative_path = file.relative_path.clone();
+                        if let Err(error) = upsert_sync_ledger(
+                            &connection,
+                            &remote_page,
+                            &relative_path,
+                            &content_hash,
+                            is_redirect,
+                            redirect_target.as_deref(),
+                        ) {
+                            report.errors.push(format!("{}: {}", file.title, error));
+                            report.pages.push(PushPageResult {
+                                title: file.title.clone(),
+                                action: "error".to_string(),
+                                detail: Some("failed to update sync ledger".to_string()),
+                            });
+                            continue;
+                        }
+                        report.pushed += 1;
+                        match change_type {
+                            DiffChangeType::NewLocal => {
+                                report.created += 1;
+                                report.pages.push(PushPageResult {
+                                    title: file.title.clone(),
+                                    action: "created".to_string(),
+                                    detail: None,
+                                });
+                            }
+                            DiffChangeType::ModifiedLocal => {
+                                report.updated += 1;
+                                report.pages.push(PushPageResult {
+                                    title: file.title.clone(),
+                                    action: "updated".to_string(),
+                                    detail: None,
+                                });
+                            }
+                            DiffChangeType::DeletedLocal => {}
+                        }
+                    }
+                    Err(error) => {
+                        report.errors.push(format!("{}: {}", file.title, error));
+                        report.pages.push(PushPageResult {
+                            title: file.title.clone(),
+                            action: "error".to_string(),
+                            detail: Some("edit failed".to_string()),
+                        });
+                    }
+                }
+            }
+            DiffChangeType::DeletedLocal => {
+                match api.delete_page(
+                    &title,
+                    &format!("wikitool push delete: {}", options.summary),
+                ) {
+                    Ok(()) => {
+                        if let Err(error) = remove_sync_ledger_entry(&connection, &title) {
+                            report.errors.push(format!("{title}: {error}"));
+                            report.pages.push(PushPageResult {
+                                title: title.clone(),
+                                action: "error".to_string(),
+                                detail: Some("failed to update sync ledger".to_string()),
+                            });
+                            continue;
+                        }
+                        report.pushed += 1;
+                        report.deleted += 1;
+                        report.pages.push(PushPageResult {
+                            title,
+                            action: "deleted".to_string(),
+                            detail: None,
+                        });
+                    }
+                    Err(error) => {
+                        report.errors.push(format!("{title}: {error}"));
+                        report.pages.push(PushPageResult {
+                            title,
+                            action: "error".to_string(),
+                            detail: Some("delete failed".to_string()),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    report.request_count = api.request_count();
+    report.success = report.errors.is_empty() && report.conflicts.is_empty();
+    Ok(report)
 }
 
 fn pull_from_remote_with_api<A: WikiReadApi>(
@@ -883,6 +1411,126 @@ fn pull_config_key(options: &PullOptions) -> Option<String> {
             .collect::<Vec<_>>()
             .join("_")
     ))
+}
+
+fn push_has_conflict(
+    title: &str,
+    change_type: &DiffChangeType,
+    ledger: &BTreeMap<String, SyncLedgerEntry>,
+    remote_timestamps: &BTreeMap<String, PageTimestampInfo>,
+) -> bool {
+    let key = normalized_title_key(title);
+    let remote = remote_timestamps.get(&key);
+    match change_type {
+        DiffChangeType::NewLocal => remote.is_some(),
+        DiffChangeType::ModifiedLocal | DiffChangeType::DeletedLocal => {
+            let Some(remote) = remote else {
+                return false;
+            };
+            let Some(stored) = ledger
+                .get(&key)
+                .and_then(|entry| entry.wiki_modified_at.as_deref())
+            else {
+                return false;
+            };
+            !timestamps_match_with_tolerance(stored, &remote.timestamp, 30)
+        }
+    }
+}
+
+fn remove_sync_ledger_entry(connection: &Connection, title: &str) -> Result<()> {
+    initialize_sync_schema(connection)?;
+    connection
+        .execute(
+            "DELETE FROM sync_ledger_pages WHERE lower(title) = lower(?1)",
+            [title],
+        )
+        .with_context(|| format!("failed to delete sync ledger row for {title}"))?;
+    Ok(())
+}
+
+fn namespace_name_to_id(namespace: &str) -> Option<i32> {
+    match namespace {
+        "Main" => Some(NS_MAIN),
+        "Category" => Some(NS_CATEGORY),
+        "Template" => Some(NS_TEMPLATE),
+        "Module" => Some(NS_MODULE),
+        "MediaWiki" => Some(NS_MEDIAWIKI),
+        _ => None,
+    }
+}
+
+fn timestamps_match_with_tolerance(stored: &str, remote: &str, tolerance_seconds: i64) -> bool {
+    if !stored.ends_with('Z') || !remote.ends_with('Z') {
+        return true;
+    }
+    let parsed_stored = chrono_like_parse_timestamp(stored);
+    let parsed_remote = chrono_like_parse_timestamp(remote);
+    match (parsed_stored, parsed_remote) {
+        (Some(stored), Some(remote)) => (stored - remote).abs() <= tolerance_seconds,
+        _ => true,
+    }
+}
+
+fn chrono_like_parse_timestamp(value: &str) -> Option<i64> {
+    // Matches MediaWiki UTC format: YYYY-MM-DDTHH:MM:SSZ
+    if value.len() != 20 {
+        return None;
+    }
+    let year = value.get(0..4)?.parse::<i32>().ok()?;
+    let month = value.get(5..7)?.parse::<u32>().ok()?;
+    let day = value.get(8..10)?.parse::<u32>().ok()?;
+    let hour = value.get(11..13)?.parse::<u32>().ok()?;
+    let minute = value.get(14..16)?.parse::<u32>().ok()?;
+    let second = value.get(17..19)?.parse::<u32>().ok()?;
+
+    if value.as_bytes().get(4) != Some(&b'-')
+        || value.as_bytes().get(7) != Some(&b'-')
+        || value.as_bytes().get(10) != Some(&b'T')
+        || value.as_bytes().get(13) != Some(&b':')
+        || value.as_bytes().get(16) != Some(&b':')
+        || value.as_bytes().get(19) != Some(&b'Z')
+    {
+        return None;
+    }
+
+    let days_before_year = days_before_year(year)?;
+    let days_before_month = days_before_month(year, month)?;
+    let day_index = i64::from(day.checked_sub(1)?);
+
+    Some(
+        (days_before_year + days_before_month + day_index) * 86_400
+            + i64::from(hour) * 3_600
+            + i64::from(minute) * 60
+            + i64::from(second),
+    )
+}
+
+fn days_before_year(year: i32) -> Option<i64> {
+    let y = i64::from(year);
+    let y1 = y.checked_sub(1)?;
+    let leap_days = y1 / 4 - y1 / 100 + y1 / 400;
+    y1.checked_mul(365)?.checked_add(leap_days)
+}
+
+fn days_before_month(year: i32, month: u32) -> Option<i64> {
+    let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if !(1..=12).contains(&month) {
+        return None;
+    }
+    let mut days = 0i64;
+    for current in 1..month {
+        let mut value = i64::from(*month_days.get(usize::try_from(current - 1).ok()?)?);
+        if current == 2 && is_leap_year(year) {
+            value += 1;
+        }
+        days += value;
+    }
+    Some(days)
+}
+
+fn is_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
 fn change_order(change_type: &DiffChangeType) -> u8 {
@@ -1224,6 +1872,45 @@ struct SearchQueryItem {
     timestamp: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct TokenQueryResponse {
+    #[serde(default)]
+    query: TokenQueryPayload,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct TokenQueryPayload {
+    tokens: Option<TokenPayload>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct TokenPayload {
+    logintoken: Option<String>,
+    csrftoken: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct LoginResponse {
+    #[serde(default)]
+    login: LoginPayload,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct LoginPayload {
+    result: Option<String>,
+    reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct EditResponse {
+    edit: Option<EditPayload>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct EditPayload {
+    result: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -1233,10 +1920,11 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        DiffChangeType, DiffOptions, ExternalSearchHit, NS_MAIN, PullOptions, RemotePage,
-        WikiReadApi, diff_local_against_sync, pull_from_remote_with_api,
+        DiffChangeType, DiffOptions, ExternalSearchHit, NS_MAIN, PageTimestampInfo, PullOptions,
+        PushOptions, RemotePage, WikiReadApi, WikiWriteApi, diff_local_against_sync,
+        pull_from_remote_with_api, push_to_remote_with_api,
     };
-    use crate::phase1::{ResolvedPaths, ValueSource};
+    use crate::runtime::{ResolvedPaths, ValueSource};
 
     #[derive(Default)]
     struct MockApi {
@@ -1244,7 +1932,12 @@ mod tests {
         recent_changes: Vec<String>,
         category_members: Vec<String>,
         page_contents: BTreeMap<String, RemotePage>,
+        page_timestamps: BTreeMap<String, PageTimestampInfo>,
         search_hits: Vec<ExternalSearchHit>,
+        edited_pages: Vec<String>,
+        deleted_pages: Vec<String>,
+        login_required: bool,
+        logged_in: bool,
         request_count: usize,
     }
 
@@ -1295,6 +1988,70 @@ mod tests {
 
         fn request_count(&self) -> usize {
             self.request_count
+        }
+    }
+
+    impl WikiWriteApi for MockApi {
+        fn login(&mut self, _username: &str, _password: &str) -> anyhow::Result<()> {
+            self.request_count += 1;
+            self.logged_in = true;
+            Ok(())
+        }
+
+        fn get_page_timestamps(
+            &mut self,
+            titles: &[String],
+        ) -> anyhow::Result<Vec<PageTimestampInfo>> {
+            self.request_count += 1;
+            let mut output = Vec::new();
+            for title in titles {
+                if let Some(item) = self.page_timestamps.get(title) {
+                    output.push(item.clone());
+                }
+            }
+            Ok(output)
+        }
+
+        fn edit_page(
+            &mut self,
+            title: &str,
+            content: &str,
+            _summary: &str,
+        ) -> anyhow::Result<RemotePage> {
+            self.request_count += 1;
+            if self.login_required && !self.logged_in {
+                anyhow::bail!("not logged in");
+            }
+            self.edited_pages.push(title.to_string());
+            let page = RemotePage {
+                title: title.to_string(),
+                namespace: NS_MAIN,
+                page_id: 9000,
+                revision_id: 9001,
+                timestamp: "2026-02-20T00:00:00Z".to_string(),
+                content: content.to_string(),
+            };
+            self.page_contents.insert(title.to_string(), page.clone());
+            self.page_timestamps.insert(
+                title.to_string(),
+                PageTimestampInfo {
+                    title: title.to_string(),
+                    timestamp: page.timestamp.clone(),
+                    revision_id: page.revision_id,
+                },
+            );
+            Ok(page)
+        }
+
+        fn delete_page(&mut self, title: &str, _reason: &str) -> anyhow::Result<()> {
+            self.request_count += 1;
+            if self.login_required && !self.logged_in {
+                anyhow::bail!("not logged in");
+            }
+            self.deleted_pages.push(title.to_string());
+            self.page_timestamps.remove(title);
+            self.page_contents.remove(title);
+            Ok(())
         }
     }
 
@@ -1493,5 +2250,137 @@ mod tests {
                 |item| item.title == "Beta" && item.change_type == DiffChangeType::DeletedLocal
             )
         );
+    }
+
+    #[test]
+    fn push_dry_run_reports_local_changes_without_writes() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+        fs::create_dir_all(&paths.state_dir).expect("create state");
+
+        let mut api = MockApi::default();
+        api.all_pages_by_namespace
+            .insert(NS_MAIN, vec!["Alpha".to_string()]);
+        api.page_contents
+            .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+
+        pull_from_remote_with_api(
+            &paths,
+            &PullOptions {
+                namespaces: vec![NS_MAIN],
+                category: None,
+                full: true,
+                overwrite_local: false,
+            },
+            &mut api,
+        )
+        .expect("seed pull");
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "alpha local edit",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+            "gamma local",
+        );
+
+        let report = push_to_remote_with_api(
+            &paths,
+            &PushOptions {
+                summary: "test dry run".to_string(),
+                dry_run: true,
+                force: false,
+                delete: false,
+                include_templates: false,
+                categories_only: false,
+            },
+            &mut api,
+            None,
+        )
+        .expect("push dry run");
+
+        assert!(report.dry_run);
+        assert_eq!(report.created, 0);
+        assert_eq!(report.updated, 0);
+        assert_eq!(api.edited_pages.len(), 0);
+        assert!(
+            report
+                .pages
+                .iter()
+                .any(|item| item.title == "Alpha" && item.action == "would_update")
+        );
+        assert!(
+            report
+                .pages
+                .iter()
+                .any(|item| item.title == "Gamma" && item.action == "would_create")
+        );
+    }
+
+    #[test]
+    fn push_detects_remote_conflict_without_force() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+        fs::create_dir_all(&paths.state_dir).expect("create state");
+
+        let mut api = MockApi {
+            login_required: true,
+            ..Default::default()
+        };
+        api.all_pages_by_namespace
+            .insert(NS_MAIN, vec!["Alpha".to_string()]);
+        api.page_contents
+            .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+
+        pull_from_remote_with_api(
+            &paths,
+            &PullOptions {
+                namespaces: vec![NS_MAIN],
+                category: None,
+                full: true,
+                overwrite_local: false,
+            },
+            &mut api,
+        )
+        .expect("seed pull");
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "alpha local edit",
+        );
+        api.page_timestamps.insert(
+            "Alpha".to_string(),
+            PageTimestampInfo {
+                title: "Alpha".to_string(),
+                timestamp: "2026-02-22T00:00:00Z".to_string(),
+                revision_id: 9999,
+            },
+        );
+
+        let report = push_to_remote_with_api(
+            &paths,
+            &PushOptions {
+                summary: "test conflict".to_string(),
+                dry_run: false,
+                force: false,
+                delete: false,
+                include_templates: false,
+                categories_only: false,
+            },
+            &mut api,
+            Some(("bot", "pass")),
+        )
+        .expect("push");
+
+        assert_eq!(report.conflicts.len(), 1);
+        assert_eq!(report.conflicts[0], "Alpha");
+        assert!(api.edited_pages.is_empty());
     }
 }

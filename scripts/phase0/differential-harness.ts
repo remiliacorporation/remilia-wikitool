@@ -114,7 +114,7 @@ function generateRustSnapshot(projectRoot: string, contentDir: string, templates
     '--package',
     'wikitool',
     '--',
-    'phase0',
+    'contracts',
     'snapshot',
     '--project-root',
     projectRoot,

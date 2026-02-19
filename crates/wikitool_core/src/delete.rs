@@ -7,8 +7,8 @@ use anyhow::{Context, Result, bail};
 use rusqlite::Connection;
 use serde::Serialize;
 
-use crate::phase1::ResolvedPaths;
-use crate::phase2::{ScanOptions, scan_files, validate_scoped_path};
+use crate::filesystem::{ScanOptions, scan_files, validate_scoped_path};
+use crate::runtime::ResolvedPaths;
 
 #[derive(Debug, Clone)]
 pub struct DeleteOptions {
@@ -228,9 +228,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{DeleteOptions, delete_local_page};
-    use crate::phase1::{ResolvedPaths, ValueSource};
-    use crate::phase2::ScanOptions;
-    use crate::phase3::{load_stored_index_stats, rebuild_index};
+    use crate::filesystem::ScanOptions;
+    use crate::index::{load_stored_index_stats, rebuild_index};
+    use crate::runtime::{ResolvedPaths, ValueSource};
 
     fn write_file(path: &Path, content: &str) {
         if let Some(parent) = path.parent() {

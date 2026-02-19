@@ -2,29 +2,30 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use wikitool_core::contracts::{command_surface, generate_fixture_snapshot};
 use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
-use wikitool_core::phase0::{command_surface, generate_fixture_snapshot};
-use wikitool_core::phase1::{
-    InitOptions, NO_MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext,
-    embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
-    lsp_settings_json, materialize_parser_config, resolve_paths,
-};
-use wikitool_core::phase2::{ScanOptions, ScanStats, scan_files, scan_stats};
-use wikitool_core::phase3::{
+use wikitool_core::filesystem::{ScanOptions, ScanStats, scan_files, scan_stats};
+use wikitool_core::index::{
     LocalContextBundle, LocalSearchHit, StoredIndexStats, build_local_context,
     load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
     query_search_local, rebuild_index, run_validation_checks,
 };
+use wikitool_core::runtime::{
+    InitOptions, NO_MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext,
+    embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
+    lsp_settings_json, materialize_parser_config, resolve_paths,
+};
 use wikitool_core::sync::{
     DiffChangeType, DiffOptions, ExternalSearchHit, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
-    NS_TEMPLATE, PullOptions, diff_local_against_sync, pull_from_remote, search_external_wiki,
+    NS_TEMPLATE, PullOptions, PushOptions, diff_local_against_sync, pull_from_remote,
+    push_to_remote, search_external_wiki,
 };
 
 #[derive(Debug, Parser)]
 #[command(
     name = "wikitool",
     version,
-    about = "Rust rewrite CLI for remilia-wikitool (Phase 6 sync read slice)"
+    about = "Rust rewrite CLI for remilia-wikitool"
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -62,7 +63,7 @@ impl RuntimeOptions {
 enum Commands {
     Init(InitArgs),
     Pull(PullArgs),
-    Push,
+    Push(PushArgs),
     Diff(DiffArgs),
     Status(StatusArgs),
     Context(ContextArgs),
@@ -87,8 +88,11 @@ enum Commands {
     LspStatus,
     #[command(name = "lsp:info")]
     LspInfo,
-    #[command(about = "Phase 0 bootstrap and differential harness helpers")]
-    Phase0(Phase0Args),
+    #[command(
+        name = "contracts",
+        about = "Contract bootstrap and differential harness helpers"
+    )]
+    Contracts(ContractsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -117,6 +121,22 @@ struct PullArgs {
     categories: bool,
     #[arg(long, help = "Pull everything (articles, categories, and templates)")]
     all: bool,
+}
+
+#[derive(Debug, Args)]
+struct PushArgs {
+    #[arg(long, value_name = "TEXT", help = "Edit summary for pushed changes")]
+    summary: Option<String>,
+    #[arg(long, help = "Preview push actions without writing to the wiki")]
+    dry_run: bool,
+    #[arg(long, help = "Force push even when remote timestamps diverge")]
+    force: bool,
+    #[arg(long, help = "Propagate local deletions to remote wiki pages")]
+    delete: bool,
+    #[arg(long, help = "Include template/module/mediawiki namespaces")]
+    templates: bool,
+    #[arg(long, help = "Limit push to Category namespace pages")]
+    categories: bool,
 }
 
 #[derive(Debug, Args)]
@@ -287,13 +307,13 @@ struct LspGenerateConfigArgs {
 }
 
 #[derive(Debug, Args)]
-struct Phase0Args {
+struct ContractsArgs {
     #[command(subcommand)]
-    command: Phase0Command,
+    command: ContractsCommand,
 }
 
 #[derive(Debug, Subcommand)]
-enum Phase0Command {
+enum ContractsCommand {
     #[command(about = "Generate an offline fixture snapshot used by the differential harness")]
     Snapshot(SnapshotArgs),
     #[command(about = "Print frozen command-surface contract as JSON")]
@@ -322,9 +342,9 @@ fn main() -> Result<()> {
         Some(Commands::Db(DbArgs {
             command: DbSubcommand::Migrate,
         })) => run_db_migrate_policy_error(&runtime),
-        Some(Commands::Phase0(phase0)) => run_phase0(phase0),
+        Some(Commands::Contracts(contracts)) => run_contracts(contracts),
         Some(Commands::Pull(args)) => run_pull(&runtime, args),
-        Some(Commands::Push) => run_stub(&runtime, "push"),
+        Some(Commands::Push(args)) => run_push(&runtime, args),
         Some(Commands::Diff(args)) => run_diff(&runtime, args),
         Some(Commands::Status(args)) => run_status(&runtime, args),
         Some(Commands::Context(ContextArgs { title })) => run_context(&runtime, &title),
@@ -506,6 +526,82 @@ fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
         Ok(())
     } else {
         bail!("pull completed with {} error(s)", report.errors.len())
+    }
+}
+
+fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let status = inspect_runtime(&paths)?;
+    ensure_runtime_ready_for_sync(&paths, &status)?;
+
+    let summary = args
+        .summary
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "wikitool rust push".to_string());
+
+    let report = push_to_remote(
+        &paths,
+        &PushOptions {
+            summary: summary.clone(),
+            dry_run: args.dry_run,
+            force: args.force,
+            delete: args.delete,
+            include_templates: args.templates,
+            categories_only: args.categories,
+        },
+    )?;
+
+    println!("push");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("summary: {summary}");
+    println!("dry_run: {}", args.dry_run);
+    println!("force: {}", args.force);
+    println!("delete: {}", args.delete);
+    println!("templates: {}", args.templates);
+    println!("categories: {}", args.categories);
+    println!("push.request_count: {}", report.request_count);
+    println!("push.pushed: {}", report.pushed);
+    println!("push.created: {}", report.created);
+    println!("push.updated: {}", report.updated);
+    println!("push.deleted: {}", report.deleted);
+    println!("push.unchanged: {}", report.unchanged);
+    println!("push.conflicts.count: {}", report.conflicts.len());
+    println!("push.errors.count: {}", report.errors.len());
+    if report.pages.is_empty() {
+        println!("push.pages: <none>");
+    } else {
+        for page in &report.pages {
+            println!(
+                "push.page: title={} action={} detail={}",
+                page.title,
+                page.action,
+                page.detail.as_deref().unwrap_or("<none>")
+            );
+        }
+    }
+    for title in &report.conflicts {
+        println!("push.conflict: {title}");
+    }
+    for error in &report.errors {
+        println!("push.error: {error}");
+    }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    if report.success {
+        Ok(())
+    } else if !report.conflicts.is_empty() && !args.force {
+        bail!(
+            "push blocked by {} conflict(s); rerun with --force after review",
+            report.conflicts.len()
+        )
+    } else {
+        bail!("push completed with {} error(s)", report.errors.len())
     }
 }
 
@@ -842,7 +938,7 @@ fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
 }
 
 fn build_context_from_scan(
-    paths: &wikitool_core::phase1::ResolvedPaths,
+    paths: &wikitool_core::runtime::ResolvedPaths,
     title: &str,
 ) -> Result<Option<LocalContextBundle>> {
     let normalized = normalize_title_query(title);
@@ -1167,7 +1263,7 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     print_string_list(&format!("{prefix}.modules"), &bundle.modules);
 }
 
-fn print_validation_issues(report: &wikitool_core::phase3::ValidationReport) {
+fn print_validation_issues(report: &wikitool_core::index::ValidationReport) {
     println!("validate.broken_links.count: {}", report.broken_links.len());
     if report.broken_links.is_empty() {
         println!("validate.broken_links: <none>");
@@ -1308,9 +1404,9 @@ fn run_stub(runtime: &RuntimeOptions, command_name: &str) -> Result<()> {
     );
 }
 
-fn run_phase0(args: Phase0Args) -> Result<()> {
+fn run_contracts(args: ContractsArgs) -> Result<()> {
     match args.command {
-        Phase0Command::Snapshot(snapshot) => {
+        ContractsCommand::Snapshot(snapshot) => {
             let report = generate_fixture_snapshot(
                 &snapshot.project_root,
                 &snapshot.content_dir,
@@ -1318,14 +1414,16 @@ fn run_phase0(args: Phase0Args) -> Result<()> {
             )?;
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
-        Phase0Command::CommandSurface => {
+        ContractsCommand::CommandSurface => {
             println!("{}", serde_json::to_string_pretty(&command_surface())?);
         }
     }
     Ok(())
 }
 
-fn resolve_runtime_paths(runtime: &RuntimeOptions) -> Result<wikitool_core::phase1::ResolvedPaths> {
+fn resolve_runtime_paths(
+    runtime: &RuntimeOptions,
+) -> Result<wikitool_core::runtime::ResolvedPaths> {
     dotenvy::dotenv().ok();
 
     let context = ResolutionContext::from_process()?;

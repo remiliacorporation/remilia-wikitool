@@ -8,8 +8,8 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 use serde::Serialize;
 
-use crate::phase1::ResolvedPaths;
-use crate::phase2::{Namespace, ScanOptions, ScanStats, ScannedFile, scan_files};
+use crate::filesystem::{Namespace, ScanOptions, ScanStats, ScannedFile, scan_files};
+use crate::runtime::ResolvedPaths;
 
 const INDEX_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS indexed_pages (
@@ -1004,8 +1004,8 @@ mod tests {
         query_backlinks, query_empty_categories, query_orphans, query_search_local, rebuild_index,
         run_validation_checks,
     };
-    use crate::phase1::{ResolvedPaths, ValueSource};
-    use crate::phase2::{Namespace, ScanOptions};
+    use crate::filesystem::{Namespace, ScanOptions};
+    use crate::runtime::{ResolvedPaths, ValueSource};
 
     fn write_file(path: &Path, content: &str) {
         let parent = path.parent().expect("parent");
