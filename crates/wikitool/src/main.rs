@@ -12,7 +12,7 @@ use wikitool_core::phase2::{ScanOptions, ScanStats, scan_files, scan_stats};
 use wikitool_core::phase3::{
     LocalContextBundle, LocalSearchHit, StoredIndexStats, build_local_context,
     load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
-    query_search_local, rebuild_index,
+    query_search_local, rebuild_index, run_validation_checks,
 };
 
 #[derive(Debug, Parser)]
@@ -307,7 +307,7 @@ fn main() -> Result<()> {
         Some(Commands::SearchExternal(SearchExternalArgs { query })) => {
             run_stub(&runtime, &format!("search-external {query}"))
         }
-        Some(Commands::Validate) => run_stub(&runtime, "validate"),
+        Some(Commands::Validate) => run_validate(&runtime),
         Some(Commands::Lint(LintArgs { title })) => run_stub(
             &runtime,
             &match title {
@@ -574,6 +574,42 @@ fn run_context(runtime: &RuntimeOptions, title: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+
+    println!("validate");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    let report = match run_validation_checks(&paths)? {
+        Some(report) => report,
+        None => {
+            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+            println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+            if runtime.diagnostics {
+                println!("\n[diagnostics]\n{}", paths.diagnostics());
+            }
+            bail!("validate requires a built local index");
+        }
+    };
+
+    print_validation_issues(&report);
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    let issue_count = report.broken_links.len()
+        + report.double_redirects.len()
+        + report.uncategorized_pages.len()
+        + report.orphan_pages.len();
+    if issue_count == 0 {
+        println!("validate.status: clean");
+        Ok(())
+    } else {
+        println!("validate.status: failed");
+        bail!("validation detected {issue_count} issue(s)")
+    }
 }
 
 fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
@@ -868,6 +904,38 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     print_string_list(&format!("{prefix}.categories"), &bundle.categories);
     print_string_list(&format!("{prefix}.templates"), &bundle.templates);
     print_string_list(&format!("{prefix}.modules"), &bundle.modules);
+}
+
+fn print_validation_issues(report: &wikitool_core::phase3::ValidationReport) {
+    println!("validate.broken_links.count: {}", report.broken_links.len());
+    if report.broken_links.is_empty() {
+        println!("validate.broken_links: <none>");
+    } else {
+        for issue in &report.broken_links {
+            println!(
+                "validate.broken_links.issue: source={} target={}",
+                issue.source_title, issue.target_title
+            );
+        }
+    }
+
+    println!(
+        "validate.double_redirects.count: {}",
+        report.double_redirects.len()
+    );
+    if report.double_redirects.is_empty() {
+        println!("validate.double_redirects: <none>");
+    } else {
+        for issue in &report.double_redirects {
+            println!(
+                "validate.double_redirects.issue: title={} first_target={} final_target={}",
+                issue.title, issue.first_target, issue.final_target
+            );
+        }
+    }
+
+    print_string_list("validate.uncategorized_pages", &report.uncategorized_pages);
+    print_string_list("validate.orphan_pages", &report.orphan_pages);
 }
 
 fn print_string_list(prefix: &str, values: &[String]) {

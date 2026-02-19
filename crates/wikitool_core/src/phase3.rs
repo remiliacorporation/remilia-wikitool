@@ -85,6 +85,27 @@ pub struct LocalContextBundle {
     pub modules: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BrokenLinkIssue {
+    pub source_title: String,
+    pub target_title: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DoubleRedirectIssue {
+    pub title: String,
+    pub first_target: String,
+    pub final_target: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidationReport {
+    pub broken_links: Vec<BrokenLinkIssue>,
+    pub double_redirects: Vec<DoubleRedirectIssue>,
+    pub uncategorized_pages: Vec<String>,
+    pub orphan_pages: Vec<String>,
+}
+
 pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<RebuildReport> {
     let files = scan_files(paths, options)?;
     let scan = summarize_files(&files);
@@ -314,6 +335,20 @@ pub fn build_local_context(
     }))
 }
 
+pub fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
+    let connection = match open_indexed_connection(paths)? {
+        Some(connection) => connection,
+        None => return Ok(None),
+    };
+
+    Ok(Some(ValidationReport {
+        broken_links: query_broken_links_for_connection(&connection)?,
+        double_redirects: query_double_redirects_for_connection(&connection)?,
+        uncategorized_pages: query_uncategorized_pages_for_connection(&connection)?,
+        orphan_pages: query_orphans_for_connection(&connection)?,
+    }))
+}
+
 pub fn query_backlinks(paths: &ResolvedPaths, title: &str) -> Result<Option<Vec<String>>> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
@@ -334,34 +369,7 @@ pub fn query_orphans(paths: &ResolvedPaths) -> Result<Option<Vec<String>>> {
         Some(connection) => connection,
         None => return Ok(None),
     };
-
-    let mut statement = connection
-        .prepare(
-            "SELECT p.title
-             FROM indexed_pages p
-             WHERE p.namespace = 'Main'
-               AND p.is_redirect = 0
-               AND NOT EXISTS (
-                   SELECT 1
-                   FROM indexed_links l
-                   JOIN indexed_pages src ON src.relative_path = l.source_relative_path
-                   WHERE l.target_title = p.title
-                     AND src.namespace = 'Main'
-                     AND src.is_redirect = 0
-                     AND src.title <> p.title
-               )
-             ORDER BY p.title ASC",
-        )
-        .context("failed to prepare orphan query")?;
-    let rows = statement
-        .query_map([], |row| row.get::<_, String>(0))
-        .context("failed to run orphan query")?;
-
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(row.context("failed to decode orphan row")?);
-    }
-    Ok(Some(out))
+    Ok(Some(query_orphans_for_connection(&connection)?))
 }
 
 pub fn query_empty_categories(paths: &ResolvedPaths) -> Result<Option<Vec<String>>> {
@@ -659,6 +667,125 @@ fn query_backlinks_for_connection(connection: &Connection, title: &str) -> Resul
     Ok(out)
 }
 
+fn query_orphans_for_connection(connection: &Connection) -> Result<Vec<String>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT p.title
+             FROM indexed_pages p
+             WHERE p.namespace = 'Main'
+               AND p.is_redirect = 0
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM indexed_links l
+                   JOIN indexed_pages src ON src.relative_path = l.source_relative_path
+                   WHERE l.target_title = p.title
+                     AND src.namespace = 'Main'
+                     AND src.is_redirect = 0
+                     AND src.title <> p.title
+               )
+             ORDER BY p.title ASC",
+        )
+        .context("failed to prepare orphan query")?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .context("failed to run orphan query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode orphan row")?);
+    }
+    Ok(out)
+}
+
+fn query_broken_links_for_connection(connection: &Connection) -> Result<Vec<BrokenLinkIssue>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT DISTINCT l.source_title, l.target_title
+             FROM indexed_links l
+             LEFT JOIN indexed_pages p ON p.title = l.target_title
+             WHERE l.target_namespace = 'Main'
+               AND p.title IS NULL
+             ORDER BY l.source_title ASC, l.target_title ASC",
+        )
+        .context("failed to prepare broken-links query")?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(BrokenLinkIssue {
+                source_title: row.get(0)?,
+                target_title: row.get(1)?,
+            })
+        })
+        .context("failed to run broken-links query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode broken-link row")?);
+    }
+    Ok(out)
+}
+
+fn query_double_redirects_for_connection(
+    connection: &Connection,
+) -> Result<Vec<DoubleRedirectIssue>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                p.title,
+                p.redirect_target,
+                p2.redirect_target
+             FROM indexed_pages p
+             JOIN indexed_pages p2 ON p.redirect_target = p2.title
+             WHERE p.is_redirect = 1
+               AND p2.is_redirect = 1
+             ORDER BY p.title ASC",
+        )
+        .context("failed to prepare double-redirect query")?;
+    let rows = statement
+        .query_map([], |row| {
+            let first_target: String = row.get(1)?;
+            let final_target: String = row.get(2)?;
+            Ok(DoubleRedirectIssue {
+                title: row.get(0)?,
+                first_target,
+                final_target,
+            })
+        })
+        .context("failed to run double-redirect query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode double-redirect row")?);
+    }
+    Ok(out)
+}
+
+fn query_uncategorized_pages_for_connection(connection: &Connection) -> Result<Vec<String>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT p.title
+             FROM indexed_pages p
+             WHERE p.namespace = 'Main'
+               AND p.is_redirect = 0
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM indexed_links l
+                   WHERE l.source_relative_path = p.relative_path
+                     AND l.is_category_membership = 1
+               )
+             ORDER BY p.title ASC",
+        )
+        .context("failed to prepare uncategorized query")?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .context("failed to run uncategorized query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode uncategorized row")?);
+    }
+    Ok(out)
+}
+
 fn count_words(content: &str) -> usize {
     content
         .split_whitespace()
@@ -873,8 +1000,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        build_local_context, extract_wikilinks, load_stored_index_stats, query_backlinks,
-        query_empty_categories, query_orphans, query_search_local, rebuild_index,
+        BrokenLinkIssue, build_local_context, extract_wikilinks, load_stored_index_stats,
+        query_backlinks, query_empty_categories, query_orphans, query_search_local, rebuild_index,
+        run_validation_checks,
     };
     use crate::phase1::{ResolvedPaths, ValueSource};
     use crate::phase2::{Namespace, ScanOptions};
@@ -1065,6 +1193,58 @@ mod tests {
             beta_context.backlinks,
             vec!["Alpha".to_string(), "Gamma".to_string()]
         );
+    }
+
+    #[test]
+    fn validation_checks_report_expected_issues() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "[[Beta]] [[MissingTarget]] [[Category:People]]",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+            "#REDIRECT [[Gamma]]",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+            "#REDIRECT [[Delta]]",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("NoCategory.wiki"),
+            "Standalone page",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Category").join("People.wiki"),
+            "People category",
+        );
+
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+        let report = run_validation_checks(&paths)
+            .expect("validate query")
+            .expect("validation should be available");
+
+        assert_eq!(report.broken_links.len(), 2);
+        assert!(report.broken_links.contains(&BrokenLinkIssue {
+            source_title: "Alpha".to_string(),
+            target_title: "MissingTarget".to_string(),
+        }));
+        assert!(report.broken_links.contains(&BrokenLinkIssue {
+            source_title: "Gamma".to_string(),
+            target_title: "Delta".to_string(),
+        }));
+        assert_eq!(report.double_redirects.len(), 1);
+        assert_eq!(report.double_redirects[0].title, "Beta");
+        assert!(
+            report
+                .uncategorized_pages
+                .contains(&"NoCategory".to_string())
+        );
+        assert!(report.orphan_pages.contains(&"Alpha".to_string()));
     }
 
     #[test]
