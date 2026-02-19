@@ -333,7 +333,7 @@ fn main() -> Result<()> {
         Some(Commands::Delete(args)) => run_delete(&runtime, args),
         Some(Commands::Db(DbArgs { command })) => match command {
             DbSubcommand::Stats => run_db_stats(&runtime),
-            DbSubcommand::Sync => run_stub(&runtime, "db sync"),
+            DbSubcommand::Sync => run_db_sync(&runtime),
             DbSubcommand::Migrate => unreachable!(),
         },
         Some(Commands::Docs(DocsArgs { command })) => match command {
@@ -865,6 +865,28 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
         Some(stored) => print_stored_index_stats("index", &stored),
         None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
     }
+    println!("migrations: disabled");
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    Ok(())
+}
+
+fn run_db_sync(runtime: &RuntimeOptions) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let status = inspect_runtime(&paths)?;
+    ensure_runtime_ready_for_sync(&paths, &status)?;
+
+    let report = rebuild_index(&paths, &ScanOptions::default())?;
+
+    println!("db sync");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("db_path: {}", normalize_path(&paths.db_path));
+    println!("synced_rows: {}", report.inserted_rows);
+    println!("synced_links: {}", report.inserted_links);
+    print_scan_stats("scan", &report.scan);
     println!("migrations: disabled");
     println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
