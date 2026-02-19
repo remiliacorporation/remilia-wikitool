@@ -1,26 +1,31 @@
-# Wikitool Explanation
+﻿# Wikitool Explanation
 
-This section explains what wikitool is, why it exists, and how it fits into the repo.
+This section explains what wikitool is and how it fits into the repo.
 
 ## What it is
 
-Wikitool is a Bun-powered TypeScript CLI that synchronizes MediaWiki content with local files and provides tooling for search, validation, imports, and inspections.
+Wikitool is a Rust CLI that synchronizes MediaWiki content with local files and provides local indexing/search, validation, docs ingestion, and inspection utilities.
 
 ## Why it exists
 
-- **Consistency:** Local edits track exact wiki state and reduce manual mistakes.
-- **Speed:** Local full-text search and structured context are faster than remote queries.
-- **Safety:** Diff, dry-run, and validation steps help prevent accidental pushes.
-- **Automation:** Imports and validation reduce repetitive editing work.
+- Consistency: local edits are tied to explicit sync state
+- Speed: local context/search avoids repeated network lookups
+- Safety: diff, dry-run, and validation reduce risky pushes
+- Automation: docs import, cargo import, lint/inspect workflows reduce repetitive work
 
-## How it works (high level)
+## How it works
 
-- Uses the MediaWiki API to pull/push content.
-- Stores sync state, links, and search indexes in a local SQLite database.
-- Generates derived data (sections, template usage, infobox metadata) for context.
+- Pull/push use MediaWiki API read/write flows
+- Local sync/index/docs state is stored in SQLite under `.wikitool/data/wikitool.db`
+- Runtime state/config is kept under `.wikitool/`
+- Delete and push flows include explicit write safeguards and diagnostics
 
-## Where to learn more
+## Cutover policy
 
-- `<wikitool-dir>/README.md` - architecture, database schema, and dev workflows
-- `docs/wikitool/reference.md` - canonical command/flag reference
-- `SETUP.md` - setup guide for editors and agents
+Rust CLI is the primary runtime. No migration path is provided during current cutover; operators are expected to delete local DB state and repull when needed.
+
+## Related docs
+
+- `README.md` overview and operator entrypoint
+- `SETUP.md` installation and day-one workflow
+- `docs/wikitool/reference.md` canonical command/flag reference

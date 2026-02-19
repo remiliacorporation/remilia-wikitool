@@ -1,209 +1,99 @@
-# Wikitool Setup Guide
+﻿# Wikitool Setup Guide
 
-This tutorial gets a fresh clone ready for wikitool. Read-only workflows do not require any MediaWiki secrets. Add bot credentials only if you need to push changes.
+This guide gets a fresh clone ready for `wikitool`.
 
-## 1) Clone the repo
+Read-only workflows do not require credentials. Push/delete writes require bot credentials.
 
-```bash
-git clone https://github.com/remiliacorporation/remilia-wikitool.git
-cd wikitool
-```
+## 1) Get the binary
 
-If you already downloaded a zip, unzip it and `cd` into the folder instead.
-
-## Directory layouts (auto-detected)
-
-**Standalone mode**:
-- `<project>/wikitool/` - this tool
-- `<project>/wiki_content/` - articles
-- `<project>/templates/` - templates/modules
-- `<project>/.env` - bot credentials
-
-**Embedded mode**:
-- `<wiki>/custom/wikitool/` - this tool
-- `<wiki>/wiki_content/` - articles
-- `<wiki>/custom/templates/` - templates/modules
-- `<wiki>/.env` - bot credentials
-
-Wikitool auto-detects the layout. For unusual layouts, set:
-- `WIKITOOL_PROJECT_ROOT` to the project root
-- `WIKITOOL_ROOT` to the wikitool repo root (optional override)
-
-## 2) Run the bootstrap script (installs Bun + tools)
-
-**Quick start (recommended)** - bootstrap and pull content in one step (default):
+Option A: build from source:
 
 ```bash
-# Windows (PowerShell as Admin)
-scripts/bootstrap-windows.ps1
-
-# macOS
-scripts/bootstrap-macos.sh
-
-# Linux
-scripts/bootstrap-linux.sh
+cargo build --package wikitool --release
 ```
 
-**Without content pull** - just install tools (you'll pull content manually):
+Option B: download a release artifact for your OS.
+
+## 2) Initialize runtime
+
+From the project root (or pass `--project-root`):
 
 ```bash
-# Windows
-scripts/bootstrap-windows.ps1 -NoPull
-
-# macOS / Linux
-scripts/bootstrap-macos.sh --no-pull
-scripts/bootstrap-linux.sh --no-pull
+wikitool init --templates
 ```
 
-If you need a clean reinstall, pass the rebuild flag:
+This materializes `.wikitool/` runtime state.
+
+## 3) Pull content
 
 ```bash
-# Windows
-scripts/bootstrap-windows.ps1 -Rebuild
-
-# macOS / Linux
-scripts/bootstrap-macos.sh --rebuild
-scripts/bootstrap-linux.sh --rebuild
+wikitool pull --full --all
 ```
 
-If you don't need Lua linting (Selene), you can skip it:
+Incremental pull examples:
 
 ```bash
-# Windows
-scripts/bootstrap-windows.ps1 -SkipSelene
-
-# macOS / Linux
-scripts/bootstrap-macos.sh --skip-selene
-scripts/bootstrap-linux.sh --skip-selene
+wikitool pull
+wikitool pull --templates
+wikitool pull --categories
 ```
 
-## 3) Verify the install
+## 4) Verify install
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool status
+wikitool status
+wikitool index stats
 ```
 
-You should see page counts unless you used `-NoPull` / `--no-pull`. In that case, the database is empty until you run `wikitool pull`.
+## 5) Optional: configure write credentials
 
-## 4) Pull content (if skipped in step 2)
+Create `.env` in project root and set:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool pull           # Articles only
-bun run wikitool pull --all     # Articles + templates
-```
-
-For a full reset and validation run:
-
-```bash
-# From repo root
-scripts/wikitool-full-refresh.ps1   # Windows
-scripts/wikitool-full-refresh.sh    # macOS / Linux
-```
-
-## 5) Optional: enable push (requires bot credentials)
-
-Copy the template env file to the **project root** (parent of `<wikitool-dir>`) and fill in bot credentials:
-
-```bash
-cp .env.template ../.env
-```
-
-Then edit `.env` and set:
-
-```
 WIKI_BOT_USER=Username@BotName
 WIKI_BOT_PASS=your-bot-password
 ```
 
-Without these, read-only commands (pull, diff, search, validate, etc.) still work.
+Bot password setup:
 
-### Bot password setup (admins only)
+1. Open `https://wiki.remilia.org/Special:BotPasswords`
+2. Create a bot password with edit grants
+3. Copy generated username/password into `.env`
 
-1. Go to `https://wiki.remilia.org/Special:BotPasswords`
-2. Create a bot password with grants:
-   - Basic rights
-   - High-volume access
-   - Edit pages
-3. Copy the generated `Username@BotName` and password into `.env`
+## 6) Common workflow
 
-Note: keep `.env` in the project root (parent of `<wikitool-dir>`).
-
-## 6) Command reference
-
-The canonical reference is `docs/wikitool/reference.md` (generated from CLI help).
-
-Quick flag lookup (no file read needed):
 ```bash
-bun run wikitool help <command>
+wikitool diff
+wikitool validate
+wikitool push --dry-run --summary "Summary"
+wikitool push --summary "Summary"
 ```
 
-Regenerate the reference from the wikitool repo root (or from the parent when embedded):
+## 7) Docs and AI pack
+
+Canonical command docs:
+
+- `docs/wikitool/reference.md`
+- regenerate with:
+
 ```bash
 scripts/generate-wikitool-reference.ps1   # Windows
-scripts/generate-wikitool-reference.sh    # macOS / Linux
+scripts/generate-wikitool-reference.sh    # macOS/Linux
 ```
 
-## 7) If Bun is not installed
-
-Run the bootstrap script for your OS. It installs Bun automatically. If Bun is installed but not in PATH, restart your terminal and re-run the script.
-
-## 8) Agent setup
-
-### Claude Code / Codex CLI
-
-These tools auto-load repo instructions from `CLAUDE.md` and `.claude/rules/`. Just:
-
-1. Run the bootstrap script
-2. Start working - Claude Code reads the context automatically
-
-### Claude Desktop (Projects)
-
-Claude Desktop does **not** auto-load repo files. You must manually attach files to your project.
-
-**Minimum files (for wikitool operations):**
-
-| File | Purpose |
-|------|---------|
-| `CLAUDE.md` | Project overview, structure, rules |
-| `SETUP.md` | This setup guide |
-| `docs/wikitool/reference.md` | Command reference |
-
-**Full setup (for article writing):**
-
-| File | Purpose |
-|------|---------|
-| `CLAUDE.md` | Project overview |
-| `SETUP.md` | Setup guide |
-| `docs/wikitool/reference.md` | Command reference |
-| `llm_instructions/README.md` | Index of AI writing instruction files |
-| `llm_instructions/writing_guide.md` | Main writing workflow + sourcing rules |
-| `llm_instructions/style_rules.md` | Writing antipatterns + citation hygiene |
-| `llm_instructions/article_structure.md` | Article structure template |
-| `llm_instructions/extensions.md` | Extension tag usage reference |
-
-**How to attach in Claude Desktop:**
-
-1. Create a new Project at claude.ai/projects
-2. Click "Add to project knowledge"
-3. Upload the files listed above
-4. Optionally set `llm_instructions/writing_guide.md` as the project-level instruction anchor
-
-**What you lose vs Claude Code:**
-
-- No `/skill` commands (these are Claude Code specific)
-- No automatic rule loading from `.claude/rules/`
-- Must manually copy `bun run wikitool` commands from reference.md
-
-## 9) Maintenance / updates
+Release AI pack includes setup/docs/instructions outside the binary. If `ai/docs-bundle-v1.json` is present, import it with:
 
 ```bash
-# Reinstall dependencies + tools
-scripts/setup-tools.ps1   # Windows
-scripts/setup-tools.sh    # macOS / Linux
-
-# Refresh Selene only
-scripts/setup-selene.ps1  # Windows
-scripts/setup-selene.sh   # macOS / Linux
+wikitool docs import --bundle ./ai/docs-bundle-v1.json
 ```
+
+## 8) Troubleshooting
+
+`db migrate` is intentionally unsupported during cutover.
+
+If runtime/schema changes break local state:
+
+1. Delete `.wikitool/data/wikitool.db`
+2. Run `wikitool pull --full --all`
+
+If push fails with auth errors, verify `WIKI_BOT_USER` and `WIKI_BOT_PASS` in project root `.env`.

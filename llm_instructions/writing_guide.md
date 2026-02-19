@@ -1,4 +1,4 @@
-# Remilia Wiki — Writing Guide
+﻿# Remilia Wiki â€” Writing Guide
 
 You create encyclopedic articles for a MediaWiki wiki about Remilia Corporation, Milady Maker, and the network spirituality ecosystem.
 
@@ -11,7 +11,7 @@ This guide is the primary reference. Read `style_rules.md` before every article.
 
 ## 1. Output format
 
-All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Never output Markdown. Never wrap output in code blocks. Never include commentary or meta-text — only article wikitext.
+All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Never output Markdown. Never wrap output in code blocks. Never include commentary or meta-text â€” only article wikitext.
 
 ---
 
@@ -19,26 +19,26 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 
 ### Writing a new article
 
-1. **Research the topic** — search the web for reliable sources. Check the live wiki for existing content and related articles to link.
-2. **Read `style_rules.md`** — internalize the antipatterns before writing.
-3. **Look up templates** — use `bun run wikitool context --template "Template Name"` to see parameters for any template. See section 6 for common infobox mappings.
+1. **Research the topic** â€” search the web for reliable sources. Check the live wiki for existing content and related articles to link.
+2. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
+3. **Look up templates** â€” use `wikitool context "Template:Template Name"` to see parameters for any template. See section 6 for common infobox mappings.
 4. **Write the article** following the structure in `article_structure.md`.
 5. **Self-check** against the quick checklist at the end of `style_rules.md`.
 6. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
-7. **Validate** — run `bun run wikitool validate "Article Title"` to catch structural issues.
+7. **Validate** â€” run `wikitool validate` to catch structural issues.
 
 ### Editing an existing article
 
-1. Pull latest: `bun run wikitool pull`
+1. Pull latest: `wikitool pull`
 2. Read the existing article.
 3. Make changes following all the same rules.
-4. Validate: `bun run wikitool validate "Article Title"`
-5. Review: `bun run wikitool diff`
-6. Push: `bun run wikitool push --dry-run -s "Summary"` then `bun run wikitool push -s "Summary"`
+4. Validate: `wikitool validate`
+5. Review: `wikitool diff`
+6. Push: `wikitool push --dry-run --summary "Summary"` then `wikitool push --summary "Summary"`
 
 ### Article length
 
-Let content dictate length — don't pad thin topics or compress rich ones.
+Let content dictate length â€” don't pad thin topics or compress rich ones.
 
 - **Stub** (1-2 paragraphs): acceptable for minor topics with limited sources
 - **Short** (3-5 paragraphs + infobox): most articles
@@ -67,14 +67,14 @@ This is the most important sourcing principle. Excessive academic citations are 
 - Paywalled content you can't verify
 
 **Never cite:**
-- IQ.wiki — unreliable, user-generated
-- Know Your Meme — tertiary source, quality issues
-- NFT Price Floor — inaccurate details
-- Urban Dictionary — unmoderated, unverifiable
+- IQ.wiki â€” unreliable, user-generated
+- Know Your Meme â€” tertiary source, quality issues
+- NFT Price Floor â€” inaccurate details
+- Urban Dictionary â€” unmoderated, unverifiable
 
 ### Tone calibration
 
-This is a subcultural wiki, not an academic journal. The tone should be encyclopedic but not dry or clinical. Match the register of good Wikipedia articles about internet culture — factual, clear, and willing to engage with cultural context without editorializing. Humor and irreverence are fine when sourced; promotional enthusiasm and clinical detachment are both wrong.
+This is a subcultural wiki, not an academic journal. The tone should be encyclopedic but not dry or clinical. Match the register of good Wikipedia articles about internet culture â€” factual, clear, and willing to engage with cultural context without editorializing. Humor and irreverence are fine when sourced; promotional enthusiasm and clinical detachment are both wrong.
 
 ### Never fabricate
 
@@ -125,7 +125,7 @@ Focus citations on the claims that matter most. Let general context breathe with
 ```
 
 - Fill in all available fields. Leave unknown fields empty (omit them).
-- **Always leave archive fields blank** (`archive-url`, `archive-is`, `archive-date`, `screenshot`) — human editors complete these.
+- **Always leave archive fields blank** (`archive-url`, `archive-is`, `archive-date`, `screenshot`) â€” human editors complete these.
 - Use `access-date` of today's date.
 
 ### Named references
@@ -154,8 +154,8 @@ Never duplicate full citations. Never declare named refs inside `{{Reflist}}`.
 ### Internal linking
 
 - Link to existing wiki articles on first mention in the body: `[[Remilia Corporation]]`, `[[Milady Maker]]`
-- Link each article once — first occurrence only, don't re-link in later paragraphs
-- Check if target exists: `bun run wikitool search "Article Name"`
+- Link each article once â€” first occurrence only, don't re-link in later paragraphs
+- Check if target exists: `wikitool search "Article Name"`
 - Never place red links in See also sections
 - Use piped links when display text differs: `[[Remilia Corporation|Remilia]]`
 
@@ -168,15 +168,15 @@ Every AI-generated article must include `{{Article quality|unverified}}` on line
 Categories are managed via the wiki database. To find valid categories:
 
 ```bash
-bun run wikitool search --categories          # List all categories
-bun run wikitool search -c "Category:Name"    # Search specific category
+wikitool search "Category:"            # List/browse categories
+wikitool search "Category:Name"    # Search specific category
 ```
 
 General rules:
 - Use 2-4 categories per article
 - `[[Category:Remilia]]` goes on all Remilia-related content
 - Choose the most specific applicable category
-- Never invent categories — use only those that exist on the wiki
+- Never invent categories â€” use only those that exist on the wiki
 
 ---
 
@@ -196,36 +196,36 @@ General rules:
 To see all parameters for any template:
 
 ```bash
-bun run wikitool context --template "Infobox person"
-bun run wikitool context --template "Cite web"
+wikitool context "Template:Infobox person"
+wikitool context "Template:Cite web"
 ```
 
-This queries the live database, so it always reflects current template capabilities.
+This reads local indexed context (or filesystem fallback) from your current pull.
 
 ---
 
 ## 7. Looking up templates and extensions
 
-### Template parameters
+### Template context
 
-Use wikitool to query template parameters from the database:
+Use wikitool to inspect template context from your local pull:
 
 ```bash
-bun run wikitool context --template "Template Name"   # Show params + usage stats
-bun run wikitool search "infobox"                      # Find templates by name
+wikitool context "Template:Template Name"   # Show params + usage stats
+wikitool search "infobox"                      # Find templates by name
 ```
 
-This is always authoritative — it reflects what's actually deployed on the wiki.
+This is always authoritative â€” it reflects what's actually deployed on the wiki.
 
 ### Extension documentation
 
 Extension docs are imported from mediawiki.org and searched locally:
 
 ```bash
-bun run wikitool docs search "embed video"             # Search imported docs
-bun run wikitool docs list                              # List all imported docs
-bun run wikitool docs import ExtensionName              # Import new extension docs
-bun run wikitool docs update                            # Refresh all imported docs
+wikitool docs search "embed video"             # Search imported docs
+wikitool docs list                              # List all imported docs
+wikitool docs import ExtensionName              # Import new extension docs
+wikitool docs update                            # Refresh all imported docs
 ```
 
 See `extensions.md` for a quick reference of the most-used content tags.
@@ -233,7 +233,7 @@ See `extensions.md` for a quick reference of the most-used content tags.
 ### Categories
 
 ```bash
-bun run wikitool search "Category:"                    # Browse categories
+wikitool search "Category:"                    # Browse categories
 ```
 
 ---
@@ -247,3 +247,5 @@ bun run wikitool search "Category:"                    # Browse categories
 | `extensions.md` | Quick reference for content extension tags | When using math, code, video, tabs |
 
 For template parameters and categories, always use wikitool live lookups rather than static files.
+
+

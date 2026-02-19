@@ -7,28 +7,6 @@ on:
   pull_request:
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: "1.1.0"
-      - name: Install dependencies
-        run: bun install
-      - name: Build
-        run: bun run build
-      - name: Test
-        run: bun run test
-
   rust-build-smoke:
     if: ${{ hashFiles('Cargo.toml') != '' }}
     runs-on: ${{ matrix.os }}
@@ -44,34 +22,81 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
       - name: Build release binary
         run: cargo build --package wikitool --release --locked
+
       - name: Verify binary (Unix)
         if: runner.os != 'Windows'
         run: test -f target/release/wikitool
+
       - name: Verify binary (Windows)
         if: runner.os == 'Windows'
         run: |
           if (!(Test-Path target/release/wikitool.exe)) {
             throw "target/release/wikitool.exe missing"
           }
-      - name: Build AI pack (Unix)
+
+      - name: Package release (Unix)
         if: runner.os != 'Windows'
-        run: bash scripts/build-ai-pack.sh
-      - name: Build AI pack (Windows)
+        run: bash scripts/package-release.sh
+
+      - name: Package release (Windows)
         if: runner.os == 'Windows'
-        run: scripts/build-ai-pack.ps1
+        run: scripts/package-release.ps1
+
+      - name: Verify packaged release (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          test -f dist/release/wikitool
+          test -f dist/release/AGENTS.md
+          test -d dist/release/llm_instructions
+          test -f dist/release/manifest.json
+
+      - name: Verify packaged release (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (!(Test-Path dist/release/wikitool.exe)) { throw "dist/release/wikitool.exe missing" }
+          if (!(Test-Path dist/release/AGENTS.md)) { throw "dist/release/AGENTS.md missing" }
+          if (!(Test-Path dist/release/llm_instructions)) { throw "dist/release/llm_instructions missing" }
+          if (!(Test-Path dist/release/manifest.json)) { throw "dist/release/manifest.json missing" }
+
+      - name: Generate checksums (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist/release-checksums
+          shasum -a 256 dist/release/wikitool > dist/release-checksums/wikitool.sha256
+          (
+            cd dist/release
+            find . -type f | sort | xargs shasum -a 256
+          ) > dist/release-checksums/wikitool-release.sha256
+
+      - name: Generate checksums (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Path dist/release-checksums -Force | Out-Null
+          $binaryHash = (Get-FileHash -Path dist/release/wikitool.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$binaryHash  dist/release/wikitool.exe" | Set-Content -Encoding utf8 dist/release-checksums/wikitool.sha256
+
+          $base = (Resolve-Path dist/release).Path
+          $lines = @()
+          Get-ChildItem -Path dist/release -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $rel = $_.FullName.Substring($base.Length + 1).Replace('\', '/')
+            $lines += "$hash  ./$rel"
+          }
+          $lines | Set-Content -Encoding utf8 dist/release-checksums/wikitool-release.sha256
+
       - uses: actions/upload-artifact@v4
         with:
-          name: wikitool-${{ runner.os }}
-          path: |
-            target/release/wikitool
-            target/release/wikitool.exe
-          if-no-files-found: ignore
+          name: wikitool-release-${{ runner.os }}
+          path: dist/release/**
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@v4
         with:
-          name: wikitool-ai-pack-${{ runner.os }}
-          path: dist/ai-pack/**
+          name: wikitool-checksums-${{ runner.os }}
+          path: dist/release-checksums/**
           if-no-files-found: error
 
   rust-nightly-lint:
@@ -88,21 +113,3 @@ jobs:
         run: cargo +nightly fmt --all -- --check
       - name: Clippy (nightly)
         run: cargo +nightly clippy --workspace --all-targets --all-features -- -D warnings
-
-  phase0-differential-harness:
-    if: ${{ hashFiles('Cargo.toml') != '' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: "1.1.0"
-      - name: Install dependencies
-        run: bun install
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Check workspace
-        run: cargo check --workspace --locked
-      - name: Differential harness
-        run: bun run phase0:diff

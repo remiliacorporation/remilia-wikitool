@@ -1,13 +1,13 @@
-# Wikitool Documentation (Diataxis)
+﻿# Wikitool Documentation (Diataxis)
 
-This folder follows the Diataxis model so editors and agents can find the right type of guidance quickly.
+This folder follows the Diataxis model so editors and agents can find the right guidance quickly.
 
 ## Contents
 
-- `SETUP.md` - step-by-step setup for new editors
-- `how-to.md` - task-focused recipes (sync, validation, imports, perf checks)
-- `reference.md` - comprehensive command/flag reference (canonical, keep in sync with CLI)
-- `explanation.md` - architecture and design rationale
-- `../phase0/README.md` - Rust rewrite Phase 0 contracts and differential harness artifacts
+- `SETUP.md` setup walkthrough
+- `how-to.md` task recipes
+- `reference.md` canonical command/flag reference generated from Rust CLI help
+- `explanation.md` architecture and design rationale
+- `../phase0/README.md` parity-harness history and contracts
 
-If you need a single source of truth for commands and flags, use `docs/wikitool/reference.md`.
+For authoritative command flags, use `docs/wikitool/reference.md` or `wikitool --help`.

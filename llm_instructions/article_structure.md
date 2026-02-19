@@ -1,6 +1,6 @@
-# Article Structure Template
+﻿# Article Structure Template
 
-Every article follows this structure. Adapt sections to fit the subject — not every article needs every section.
+Every article follows this structure. Adapt sections to fit the subject â€” not every article needs every section.
 
 ---
 
@@ -55,7 +55,7 @@ For Remilia projects: use `parent_group = Remilia` instead of `creator` or `arti
 
 - 1-4 paragraphs summarizing the article.
 - First sentence: `'''Subject'''` is/was [definition with context].
-- No section heading — the lead comes before any `==` heading.
+- No section heading â€” the lead comes before any `==` heading.
 - Citations in the lead are optional if the same facts are cited in the body.
 
 ## Body sections
@@ -112,7 +112,7 @@ Adapt to your subject. Common patterns:
 ### Categories
 - 2-4 categories from the wiki's existing category set.
 - Place at the very end of the article, after all sections.
-- Look up valid categories: `bun run wikitool search --categories`
+- Look up valid categories: `wikitool search "Category:"`
 
 ## Content extension tags
 
@@ -130,3 +130,4 @@ Use these when the article calls for special content:
 ```
 
 See `extensions.md` for full details on each.
+
