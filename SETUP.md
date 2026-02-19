@@ -1,4 +1,4 @@
-﻿# Wikitool Setup Guide
+# Wikitool Setup Guide
 
 This guide gets a fresh clone ready for `wikitool`.
 
@@ -86,6 +86,10 @@ Release AI pack includes setup/docs/instructions outside the binary. If `ai/docs
 ```bash
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
 ```
+
+When packaging from an embedded host project (for example `wiki/custom/wikitool`), the release folder can also include host `.claude/rules`, host `.claude/skills`, and host `CLAUDE.md` so agent tooling has project-level context out of the box.
+
+Codex skill templates are also included under `codex_skills/` and can be copied into `$CODEX_HOME/skills`.
 
 ## 8) Troubleshooting
 

@@ -1,4 +1,4 @@
-﻿# Remilia Wikitool
+# Remilia Wikitool
 
 Unified MediaWiki tooling for Remilia Wiki.
 
@@ -60,7 +60,9 @@ Release folder contents:
 1. `AGENTS.md`, `CLAUDE.md`, `SETUP.md`, `README.md`
 2. `llm_instructions/*.md`
 3. `docs/wikitool/*.md`
-4. optional `ai/docs-bundle-v1.json`
+4. optional host project context: `.claude/rules`, `.claude/skills`, and host `CLAUDE.md` (when detected)
+5. `codex_skills/*` installable Codex skill bundle
+6. optional `ai/docs-bundle-v1.json`
 
 This content is intentionally shipped outside the binary.
 
@@ -69,6 +71,8 @@ Use bundle import to preload docs offline:
 ```bash
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
 ```
+
+If a host project context is included, the wikitool-local Claude guidance is preserved as `WIKITOOL_CLAUDE.md`.
 
 ## Documentation
 

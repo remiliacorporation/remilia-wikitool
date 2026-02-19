@@ -21,7 +21,6 @@ mkdir -p "${output_dir}"
 
 required_files=(
   "AGENTS.md"
-  "CLAUDE.md"
   "SETUP.md"
   "README.md"
 )
@@ -34,6 +33,34 @@ for file in "${required_files[@]}"; do
   fi
   cp "${src}" "${output_dir}/"
 done
+
+# Default CLAUDE context is the wikitool-local guidance.
+cp "${repo_root}/CLAUDE.md" "${output_dir}/CLAUDE.md"
+
+# Optionally include parent project Claude context (.claude/rules + .claude/skills).
+host_context_included=false
+host_root="${WIKITOOL_HOST_PROJECT_ROOT:-}"
+if [[ -z "${host_root}" ]]; then
+  for candidate in "${repo_root}/../.." "${repo_root}/.." "${repo_root}/../../.."; do
+    if [[ -f "${candidate}/CLAUDE.md" && -d "${candidate}/.claude/rules" && -d "${candidate}/.claude/skills" ]]; then
+      host_root="$(cd "${candidate}" && pwd)"
+      break
+    fi
+  done
+fi
+
+repo_root_abs="$(cd "${repo_root}" && pwd)"
+if [[ -n "${host_root}" ]]; then
+  host_root_abs="$(cd "${host_root}" && pwd)"
+  if [[ "${host_root_abs}" != "${repo_root_abs}" && -f "${host_root_abs}/CLAUDE.md" ]]; then
+    cp "${repo_root}/CLAUDE.md" "${output_dir}/WIKITOOL_CLAUDE.md"
+    cp "${host_root_abs}/CLAUDE.md" "${output_dir}/CLAUDE.md"
+    mkdir -p "${output_dir}/.claude"
+    cp -R "${host_root_abs}/.claude/rules" "${output_dir}/.claude/rules"
+    cp -R "${host_root_abs}/.claude/skills" "${output_dir}/.claude/skills"
+    host_context_included=true
+  fi
+fi
 
 mkdir -p "${output_dir}/llm_instructions"
 llm_files=("${repo_root}"/llm_instructions/*.md)
@@ -48,6 +75,13 @@ if [[ -d "${repo_root}/docs/wikitool" ]]; then
   find "${repo_root}/docs/wikitool" -maxdepth 1 -type f -name "*.md" -exec cp {} "${output_dir}/docs/wikitool/" \;
 fi
 
+codex_skills_included=false
+if [[ -d "${repo_root}/codex_skills" ]]; then
+  mkdir -p "${output_dir}/codex_skills"
+  cp -R "${repo_root}/codex_skills/." "${output_dir}/codex_skills/"
+  codex_skills_included=true
+fi
+
 docs_bundle_included=false
 if [[ -f "${repo_root}/ai/docs-bundle-v1.json" ]]; then
   mkdir -p "${output_dir}/ai"
@@ -60,6 +94,8 @@ cat > "${output_dir}/manifest.json" <<EOF
 {
   "schema_version": 1,
   "generated_at_utc": "${generated_at}",
+  "host_context_included": ${host_context_included},
+  "codex_skills_included": ${codex_skills_included},
   "docs_bundle_included": ${docs_bundle_included},
   "notes": "AI companion pack for wikitool; content is intentionally shipped outside the binary."
 }

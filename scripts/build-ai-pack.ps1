@@ -15,7 +15,6 @@ New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
 $requiredFiles = @(
   "AGENTS.md",
-  "CLAUDE.md",
   "SETUP.md",
   "README.md"
 )
@@ -26,6 +25,50 @@ foreach ($file in $requiredFiles) {
     throw "Missing required AI pack file: $file"
   }
   Copy-Item -Path $src -Destination (Join-Path $OutputDir $file)
+}
+
+# Default CLAUDE context is the wikitool-local guidance.
+Copy-Item -Path (Join-Path $RepoRoot "CLAUDE.md") -Destination (Join-Path $OutputDir "CLAUDE.md")
+
+# Optionally include parent project Claude context (.claude/rules + .claude/skills).
+$hostContextIncluded = $false
+$hostRoot = $env:WIKITOOL_HOST_PROJECT_ROOT
+if ([string]::IsNullOrWhiteSpace($hostRoot)) {
+  $candidates = @(
+    (Join-Path $RepoRoot "../.."),
+    (Join-Path $RepoRoot ".."),
+    (Join-Path $RepoRoot "../../..")
+  )
+  foreach ($candidate in $candidates) {
+    $resolved = $null
+    try { $resolved = (Resolve-Path $candidate -ErrorAction Stop).Path } catch {}
+    if ([string]::IsNullOrWhiteSpace($resolved)) { continue }
+    $claude = Join-Path $resolved "CLAUDE.md"
+    $rules = Join-Path $resolved ".claude/rules"
+    $skills = Join-Path $resolved ".claude/skills"
+    if ((Test-Path $claude) -and (Test-Path $rules) -and (Test-Path $skills)) {
+      $hostRoot = $resolved
+      break
+    }
+  }
+}
+
+if (![string]::IsNullOrWhiteSpace($hostRoot)) {
+  $hostResolved = (Resolve-Path $hostRoot).Path
+  if ($hostResolved -ne $RepoRoot) {
+    $hostClaude = Join-Path $hostResolved "CLAUDE.md"
+    $hostRules = Join-Path $hostResolved ".claude/rules"
+    $hostSkills = Join-Path $hostResolved ".claude/skills"
+    if ((Test-Path $hostClaude) -and (Test-Path $hostRules) -and (Test-Path $hostSkills)) {
+      Copy-Item -Path (Join-Path $RepoRoot "CLAUDE.md") -Destination (Join-Path $OutputDir "WIKITOOL_CLAUDE.md") -Force
+      Copy-Item -Path $hostClaude -Destination (Join-Path $OutputDir "CLAUDE.md") -Force
+      $claudeDest = Join-Path $OutputDir ".claude"
+      New-Item -ItemType Directory -Path $claudeDest -Force | Out-Null
+      Copy-Item -Path $hostRules -Destination (Join-Path $claudeDest "rules") -Recurse -Force
+      Copy-Item -Path $hostSkills -Destination (Join-Path $claudeDest "skills") -Recurse -Force
+      $hostContextIncluded = $true
+    }
+  }
 }
 
 $llmSource = Join-Path $RepoRoot "llm_instructions"
@@ -46,6 +89,15 @@ if (Test-Path $docsSource) {
   }
 }
 
+$codexSkillsIncluded = $false
+$codexSkillsSource = Join-Path $RepoRoot "codex_skills"
+if (Test-Path $codexSkillsSource) {
+  $codexSkillsDest = Join-Path $OutputDir "codex_skills"
+  New-Item -ItemType Directory -Path $codexSkillsDest -Force | Out-Null
+  Copy-Item -Path (Join-Path $codexSkillsSource "*") -Destination $codexSkillsDest -Recurse -Force
+  $codexSkillsIncluded = $true
+}
+
 $docsBundleIncluded = $false
 $docsBundleSrc = Join-Path $RepoRoot "ai/docs-bundle-v1.json"
 if (Test-Path $docsBundleSrc) {
@@ -58,6 +110,8 @@ if (Test-Path $docsBundleSrc) {
 $manifest = [ordered]@{
   schema_version = 1
   generated_at_utc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+  host_context_included = $hostContextIncluded
+  codex_skills_included = $codexSkillsIncluded
   docs_bundle_included = $docsBundleIncluded
   notes = "AI companion pack for wikitool; content is intentionally shipped outside the binary."
 }
