@@ -9,13 +9,16 @@ use wikitool_core::phase1::{
     lsp_settings_json, materialize_parser_config, resolve_paths,
 };
 use wikitool_core::phase2::{ScanOptions, ScanStats, scan_stats};
-use wikitool_core::phase3::{StoredIndexStats, load_stored_index_stats, rebuild_index};
+use wikitool_core::phase3::{
+    StoredIndexStats, load_stored_index_stats, query_backlinks, query_empty_categories,
+    query_orphans, rebuild_index,
+};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "wikitool",
     version,
-    about = "Rust rewrite CLI for remilia-wikitool (Phase 2 filesystem mapping)"
+    about = "Rust rewrite CLI for remilia-wikitool (Phase 4 index query slice)"
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -360,11 +363,9 @@ fn main() -> Result<()> {
         Some(Commands::Index(IndexArgs { command })) => match command {
             IndexSubcommand::Rebuild => run_index_rebuild(&runtime),
             IndexSubcommand::Stats => run_index_stats(&runtime),
-            IndexSubcommand::Backlinks { title } => {
-                run_stub(&runtime, &format!("index backlinks {title}"))
-            }
-            IndexSubcommand::Orphans => run_stub(&runtime, "index orphans"),
-            IndexSubcommand::PruneCategories => run_stub(&runtime, "index prune-categories"),
+            IndexSubcommand::Backlinks { title } => run_index_backlinks(&runtime, &title),
+            IndexSubcommand::Orphans => run_index_orphans(&runtime),
+            IndexSubcommand::PruneCategories => run_index_prune_categories(&runtime),
         },
         None => {
             let mut command = Cli::command();
@@ -506,6 +507,7 @@ fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("db_path: {}", normalize_path(&paths.db_path));
     println!("inserted_rows: {}", report.inserted_rows);
+    println!("inserted_links: {}", report.inserted_links);
     print_scan_stats("scan", &report.scan);
     println!("migrations: disabled");
     println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
@@ -513,6 +515,94 @@ fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
 
+    Ok(())
+}
+
+fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let normalized_title = title.trim();
+
+    println!("index backlinks");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("target: {normalized_title}");
+    if normalized_title.is_empty() {
+        bail!("index backlinks requires a non-empty title");
+    }
+
+    match query_backlinks(&paths, normalized_title)? {
+        Some(backlinks) => {
+            println!("backlinks.count: {}", backlinks.len());
+            if backlinks.is_empty() {
+                println!("backlinks: <none>");
+            } else {
+                for source in backlinks {
+                    println!("backlinks.source: {source}");
+                }
+            }
+        }
+        None => {
+            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+        }
+    }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
+fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+
+    println!("index orphans");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    match query_orphans(&paths)? {
+        Some(orphans) => {
+            println!("orphans.count: {}", orphans.len());
+            if orphans.is_empty() {
+                println!("orphans: <none>");
+            } else {
+                for title in orphans {
+                    println!("orphans.title: {title}");
+                }
+            }
+        }
+        None => {
+            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+        }
+    }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
+fn run_index_prune_categories(runtime: &RuntimeOptions) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+
+    println!("index prune-categories");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("mode: report-only");
+    match query_empty_categories(&paths)? {
+        Some(categories) => {
+            println!("empty_categories.count: {}", categories.len());
+            if categories.is_empty() {
+                println!("empty_categories: <none>");
+            } else {
+                for title in categories {
+                    println!("empty_categories.title: {title}");
+                }
+            }
+        }
+        None => {
+            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+        }
+    }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
     Ok(())
 }
 
