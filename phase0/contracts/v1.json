@@ -97,6 +97,11 @@
         "sync conflict state is surfaced, not silently overwritten"
       ]
     },
+    "database": {
+      "migration_policy": "disabled_during_cutover",
+      "operator_action_on_binary_schema_change": "delete_db_and_repull",
+      "operator_command_hint": "rm .wikitool/data/wikitool.db && wikitool pull --full --all"
+    },
     "http": {
       "required_invariants": [
         "format and formatversion are explicit in MediaWiki requests",

@@ -2,6 +2,11 @@
 
 This directory tracks the frozen contracts and baseline artifacts for the Rust rewrite bootstrap.
 
+Current cutover policy:
+
+- Database migrations are disabled during early Rust cutover.
+- Operators should delete local DB state and repull content when schema/runtime changes.
+
 ## Contents
 
 - `contracts/v1.json`: frozen behavioral contracts for Phase 0.
