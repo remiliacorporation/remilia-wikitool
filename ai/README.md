@@ -12,5 +12,5 @@ Contract:
 
 Current status:
 
-1. No default `docs-bundle-v1.json` is committed yet.
-2. Release AI packs still include `AGENTS.md`, `CLAUDE.md`, `SETUP.md`, `README.md`, `llm_instructions/*.md`, and `docs/wikitool/*.md`.
+1. `docs-bundle-v1.json` is committed and built from current `llm_instructions/*.md`.
+2. Release AI packs include `AGENTS.md`, `CLAUDE.md`, `SETUP.md`, `README.md`, `llm_instructions/*.md`, `docs/wikitool/*.md`, and `ai/docs-bundle-v1.json`.
