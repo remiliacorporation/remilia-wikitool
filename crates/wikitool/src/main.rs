@@ -15,12 +15,16 @@ use wikitool_core::phase3::{
     query_search_local, rebuild_index, run_validation_checks,
 };
 use wikitool_core::phase6::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
+use wikitool_core::phase6_sync::{
+    DiffChangeType, DiffOptions, ExternalSearchHit, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
+    NS_TEMPLATE, PullOptions, diff_local_against_sync, pull_from_remote, search_external_wiki,
+};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "wikitool",
     version,
-    about = "Rust rewrite CLI for remilia-wikitool (Phase 6 delete safety slice)"
+    about = "Rust rewrite CLI for remilia-wikitool (Phase 6 sync read slice)"
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -59,7 +63,7 @@ enum Commands {
     Init(InitArgs),
     Pull(PullArgs),
     Push,
-    Diff,
+    Diff(DiffArgs),
     Status(StatusArgs),
     Context(ContextArgs),
     Search(SearchArgs),
@@ -113,6 +117,14 @@ struct PullArgs {
     categories: bool,
     #[arg(long, help = "Pull everything (articles, categories, and templates)")]
     all: bool,
+}
+
+#[derive(Debug, Args)]
+struct DiffArgs {
+    #[arg(long, help = "Include template/module/mediawiki namespaces")]
+    templates: bool,
+    #[arg(long, help = "Show hash-level details for modified entries")]
+    verbose: bool,
 }
 
 #[derive(Debug, Args)]
@@ -311,14 +323,14 @@ fn main() -> Result<()> {
             command: DbSubcommand::Migrate,
         })) => run_db_migrate_policy_error(&runtime),
         Some(Commands::Phase0(phase0)) => run_phase0(phase0),
-        Some(Commands::Pull(args)) => run_pull_preflight(&runtime, args),
+        Some(Commands::Pull(args)) => run_pull(&runtime, args),
         Some(Commands::Push) => run_stub(&runtime, "push"),
-        Some(Commands::Diff) => run_stub(&runtime, "diff"),
+        Some(Commands::Diff(args)) => run_diff(&runtime, args),
         Some(Commands::Status(args)) => run_status(&runtime, args),
         Some(Commands::Context(ContextArgs { title })) => run_context(&runtime, &title),
         Some(Commands::Search(SearchArgs { query })) => run_search(&runtime, &query),
         Some(Commands::SearchExternal(SearchExternalArgs { query })) => {
-            run_stub(&runtime, &format!("search-external {query}"))
+            run_search_external(&runtime, &query)
         }
         Some(Commands::Validate) => run_validate(&runtime),
         Some(Commands::Lint(LintArgs { title })) => run_stub(
@@ -419,12 +431,23 @@ fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     Ok(())
 }
 
-fn run_pull_preflight(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
+fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
 
-    println!("pull preflight");
+    let namespaces = pull_namespaces_from_args(&args);
+    let report = pull_from_remote(
+        &paths,
+        &PullOptions {
+            namespaces: namespaces.clone(),
+            category: args.category.clone(),
+            full: args.full,
+            overwrite_local: args.overwrite_local,
+        },
+    )?;
+
+    println!("pull");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("full: {}", args.full);
     println!("overwrite_local: {}", args.overwrite_local);
@@ -432,6 +455,41 @@ fn run_pull_preflight(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
     println!("templates: {}", args.templates);
     println!("categories: {}", args.categories);
     println!("all: {}", args.all);
+    println!(
+        "namespaces: {}",
+        namespaces
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    println!("pull.request_count: {}", report.request_count);
+    println!("pull.requested_pages: {}", report.requested_pages);
+    println!("pull.pulled: {}", report.pulled);
+    println!("pull.created: {}", report.created);
+    println!("pull.updated: {}", report.updated);
+    println!("pull.skipped: {}", report.skipped);
+    println!("pull.errors.count: {}", report.errors.len());
+    for page in &report.pages {
+        println!(
+            "pull.page: title={} action={} detail={}",
+            page.title,
+            page.action,
+            page.detail.as_deref().unwrap_or("<none>")
+        );
+    }
+    if !report.errors.is_empty() {
+        for error in &report.errors {
+            println!("pull.error: {error}");
+        }
+    }
+    if let Some(reindex) = &report.reindex {
+        println!("pull.reindex.inserted_rows: {}", reindex.inserted_rows);
+        println!("pull.reindex.inserted_links: {}", reindex.inserted_links);
+        print_scan_stats("pull.reindex.scan", &reindex.scan);
+    } else {
+        println!("pull.reindex: skipped (no local writes)");
+    }
 
     if !status.warnings.is_empty() {
         println!("warnings:");
@@ -439,14 +497,117 @@ fn run_pull_preflight(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
             println!("  - {warning}");
         }
     }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
 
-    bail!(
-        "`pull` network sync is not implemented yet in the Rust rewrite.\nPolicy: {}",
-        NO_MIGRATIONS_POLICY_MESSAGE
-    );
+    if report.success {
+        Ok(())
+    } else {
+        bail!("pull completed with {} error(s)", report.errors.len())
+    }
+}
+
+fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let status = inspect_runtime(&paths)?;
+    ensure_runtime_ready_for_sync(&paths, &status)?;
+
+    println!("diff");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("templates: {}", args.templates);
+    println!("verbose: {}", args.verbose);
+
+    let report = match diff_local_against_sync(
+        &paths,
+        &DiffOptions {
+            include_templates: args.templates,
+        },
+    )? {
+        Some(report) => report,
+        None => {
+            println!(
+                "diff.sync_ledger: <not built> (run `wikitool pull --full{}`)",
+                if args.templates { " --templates" } else { "" }
+            );
+            println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+            if runtime.diagnostics {
+                println!("\n[diagnostics]\n{}", paths.diagnostics());
+            }
+            return Ok(());
+        }
+    };
+
+    println!("diff.new_local: {}", report.new_local);
+    println!("diff.modified_local: {}", report.modified_local);
+    println!("diff.deleted_local: {}", report.deleted_local);
+    println!("diff.total: {}", report.changes.len());
+
+    if report.changes.is_empty() {
+        println!("diff.changes: <none>");
+    } else {
+        for change in &report.changes {
+            println!(
+                "diff.change: type={} title={} path={}",
+                format_diff_change_type(&change.change_type),
+                change.title,
+                change.relative_path
+            );
+            if args.verbose {
+                println!(
+                    "diff.change.hashes: local={} synced={}",
+                    change.local_hash.as_deref().unwrap_or("<none>"),
+                    change.synced_hash.as_deref().unwrap_or("<none>")
+                );
+                println!(
+                    "diff.change.synced_wiki_timestamp: {}",
+                    change.synced_wiki_timestamp.as_deref().unwrap_or("<none>")
+                );
+            }
+        }
+    }
+
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
+fn run_search_external(runtime: &RuntimeOptions, query: &str) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let query = normalize_title_query(query);
+    if query.is_empty() {
+        bail!("search-external requires a non-empty query");
+    }
+
+    let namespaces = [NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
+    let hits = search_external_wiki(&query, &namespaces, 20)?;
+
+    println!("search-external");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("query: {query}");
+    print_external_search_hits("search_external", &hits);
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    Ok(())
+}
+
+fn pull_namespaces_from_args(args: &PullArgs) -> Vec<i32> {
+    if args.templates {
+        return vec![NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
+    }
+    if args.categories {
+        return vec![NS_CATEGORY];
+    }
+    if args.all {
+        return vec![NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
+    }
+    vec![NS_MAIN]
 }
 
 fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
@@ -938,6 +1099,38 @@ fn print_search_hits(prefix: &str, hits: &[LocalSearchHit]) {
     }
 }
 
+fn print_external_search_hits(prefix: &str, hits: &[ExternalSearchHit]) {
+    println!("{prefix}.count: {}", hits.len());
+    if hits.is_empty() {
+        println!("{prefix}.hits: <none>");
+        return;
+    }
+    for hit in hits {
+        println!(
+            "{prefix}.hit: {} (namespace={}, page_id={})",
+            hit.title, hit.namespace, hit.page_id
+        );
+        println!(
+            "{prefix}.hit.word_count: {}",
+            hit.word_count
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "<none>".to_string())
+        );
+        println!(
+            "{prefix}.hit.timestamp: {}",
+            hit.timestamp.as_deref().unwrap_or("<none>")
+        );
+        println!(
+            "{prefix}.hit.snippet: {}",
+            if hit.snippet.trim().is_empty() {
+                "<none>"
+            } else {
+                &hit.snippet
+            }
+        );
+    }
+}
+
 fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     println!("{prefix}.title: {}", bundle.title);
     println!("{prefix}.namespace: {}", bundle.namespace);
@@ -1178,4 +1371,12 @@ fn normalize_path(path: &Path) -> String {
 
 fn format_flag(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
+}
+
+fn format_diff_change_type(value: &DiffChangeType) -> &'static str {
+    match value {
+        DiffChangeType::NewLocal => "new_local",
+        DiffChangeType::ModifiedLocal => "modified_local",
+        DiffChangeType::DeletedLocal => "deleted_local",
+    }
 }
