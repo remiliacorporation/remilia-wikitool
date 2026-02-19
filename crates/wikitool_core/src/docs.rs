@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -57,6 +58,7 @@ const DEFAULT_USER_AGENT: &str = "wikitool-rust/0.1 (+https://wiki.remilia.org)"
 const DOCS_NAMESPACE_MAIN: i32 = 0;
 const DOCS_CACHE_TTL_SECONDS: u64 = 7 * 24 * 60 * 60;
 const DOCS_SUBPAGE_LIMIT_DEFAULT: usize = 100;
+const DOCS_BUNDLE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -259,6 +261,50 @@ pub struct DocsSearchHit {
     pub tier: String,
     pub title: String,
     pub snippet: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocsBundle {
+    pub schema_version: u32,
+    pub generated_at_unix: Option<u64>,
+    pub source: Option<String>,
+    #[serde(default)]
+    pub extensions: Vec<DocsBundleExtension>,
+    #[serde(default)]
+    pub technical: Vec<DocsBundleTechnical>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocsBundleExtension {
+    pub extension_name: String,
+    pub source_wiki: Option<String>,
+    pub version: Option<String>,
+    #[serde(default)]
+    pub pages: Vec<DocsBundlePage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocsBundleTechnical {
+    pub doc_type: String,
+    #[serde(default)]
+    pub pages: Vec<DocsBundlePage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocsBundlePage {
+    pub page_title: String,
+    pub content: String,
+    pub local_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocsBundleImportReport {
+    pub schema_version: u32,
+    pub source: String,
+    pub imported_extensions: usize,
+    pub imported_technical_types: usize,
+    pub imported_pages: usize,
+    pub failures: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -553,6 +599,133 @@ pub fn discover_installed_extensions_from_wiki() -> Result<Vec<String>> {
     }
 
     bail!("installed-extensions request exhausted retry budget")
+}
+
+pub fn import_docs_bundle(
+    paths: &ResolvedPaths,
+    bundle_path: &Path,
+) -> Result<DocsBundleImportReport> {
+    let bundle_data = fs::read_to_string(bundle_path)
+        .with_context(|| format!("failed to read docs bundle {}", bundle_path.display()))?;
+    let bundle: DocsBundle =
+        serde_json::from_str(&bundle_data).context("failed to parse docs bundle JSON")?;
+    if bundle.schema_version != DOCS_BUNDLE_SCHEMA_VERSION {
+        bail!(
+            "unsupported docs bundle schema version {} (expected {})",
+            bundle.schema_version,
+            DOCS_BUNDLE_SCHEMA_VERSION
+        );
+    }
+
+    let now_unix = unix_timestamp()?;
+    let expires_at_unix = now_unix.saturating_add(DOCS_CACHE_TTL_SECONDS);
+    let source = bundle
+        .source
+        .clone()
+        .unwrap_or_else(|| "precomposed_bundle".to_string());
+
+    let mut imported_extensions = 0usize;
+    let mut imported_technical_types = 0usize;
+    let mut imported_pages = 0usize;
+    let mut failures = Vec::new();
+
+    for extension in &bundle.extensions {
+        let extension_name = normalize_extension_name(&extension.extension_name);
+        if extension_name.is_empty() {
+            failures.push("bundle extension entry with empty extension_name".to_string());
+            continue;
+        }
+
+        let mut fetched_pages = Vec::new();
+        for page in &extension.pages {
+            let page_title = normalize_title(&page.page_title);
+            if page_title.is_empty() {
+                continue;
+            }
+            let content = page.content.clone();
+            if content.trim().is_empty() {
+                continue;
+            }
+            let local_path = page
+                .local_path
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| extension_local_path(&extension_name, &page_title));
+            fetched_pages.push(FetchedDocsPage {
+                page_title,
+                local_path,
+                content,
+            });
+        }
+
+        if fetched_pages.is_empty() {
+            failures.push(format!(
+                "{extension_name}: bundle entry has no usable pages"
+            ));
+            continue;
+        }
+
+        persist_extension_docs(
+            paths,
+            &extension_name,
+            extension.source_wiki.as_deref().unwrap_or(&source),
+            extension.version.as_deref(),
+            &fetched_pages,
+            now_unix,
+            expires_at_unix,
+        )?;
+        imported_extensions += 1;
+        imported_pages += fetched_pages.len();
+    }
+
+    let mut technical_pages_by_type = BTreeMap::<TechnicalDocType, Vec<FetchedDocsPage>>::new();
+    for technical in &bundle.technical {
+        let Some(doc_type) = TechnicalDocType::parse(&technical.doc_type) else {
+            failures.push(format!(
+                "bundle technical entry has unsupported doc_type `{}`",
+                technical.doc_type
+            ));
+            continue;
+        };
+
+        for page in &technical.pages {
+            let page_title = normalize_title(&page.page_title);
+            if page_title.is_empty() || page.content.trim().is_empty() {
+                continue;
+            }
+            let local_path = page
+                .local_path
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| technical_local_path(doc_type, &page_title));
+            technical_pages_by_type
+                .entry(doc_type)
+                .or_default()
+                .push(FetchedDocsPage {
+                    page_title,
+                    local_path,
+                    content: page.content.clone(),
+                });
+        }
+    }
+
+    for (doc_type, pages) in technical_pages_by_type {
+        if pages.is_empty() {
+            continue;
+        }
+        persist_technical_docs(paths, doc_type, &pages, now_unix, expires_at_unix, true)?;
+        imported_technical_types += 1;
+        imported_pages += pages.len();
+    }
+
+    Ok(DocsBundleImportReport {
+        schema_version: bundle.schema_version,
+        source,
+        imported_extensions,
+        imported_technical_types,
+        imported_pages,
+        failures,
+    })
 }
 
 pub fn import_extension_docs(
@@ -1750,8 +1923,9 @@ mod tests {
     };
 
     use super::{
-        DocsApi, DocsImportOptions, DocsImportTechnicalOptions, DocsListOptions, RemoteDocsPage,
-        TechnicalDocType, TechnicalImportTask, import_extension_docs_with_api,
+        DocsApi, DocsBundle, DocsBundleExtension, DocsBundlePage, DocsBundleTechnical,
+        DocsImportOptions, DocsImportTechnicalOptions, DocsListOptions, RemoteDocsPage,
+        TechnicalDocType, TechnicalImportTask, import_docs_bundle, import_extension_docs_with_api,
         import_technical_docs_with_api, open_docs_connection, remove_docs, search_docs,
         update_outdated_docs_with_api,
     };
@@ -2002,5 +2176,50 @@ mod tests {
             super::DocsRemoveKind::TechnicalType
         ));
         assert!(removed_type.removed_rows >= 1);
+    }
+
+    #[test]
+    fn import_docs_bundle_populates_extension_and_technical_rows() {
+        let runtime = TestRuntime::new().expect("runtime");
+        let bundle_path = runtime.paths.state_dir.join("bundle.json");
+        let bundle = DocsBundle {
+            schema_version: 1,
+            generated_at_unix: Some(1_739_000_000),
+            source: Some("ai_pack".to_string()),
+            extensions: vec![DocsBundleExtension {
+                extension_name: "ParserFunctions".to_string(),
+                source_wiki: Some("mediawiki.org".to_string()),
+                version: Some("stable".to_string()),
+                pages: vec![DocsBundlePage {
+                    page_title: "Extension:ParserFunctions".to_string(),
+                    content: "ParserFunctions content".to_string(),
+                    local_path: None,
+                }],
+            }],
+            technical: vec![DocsBundleTechnical {
+                doc_type: "manual".to_string(),
+                pages: vec![DocsBundlePage {
+                    page_title: "Manual:Remilia AI/Writing Guide".to_string(),
+                    content: "Precomposed writing guidance".to_string(),
+                    local_path: None,
+                }],
+            }],
+        };
+        fs::write(
+            &bundle_path,
+            serde_json::to_string_pretty(&bundle).expect("bundle json"),
+        )
+        .expect("write bundle");
+
+        let report = import_docs_bundle(&runtime.paths, &bundle_path).expect("import bundle");
+        assert_eq!(report.imported_extensions, 1);
+        assert_eq!(report.imported_technical_types, 1);
+        assert_eq!(report.imported_pages, 2);
+        assert!(report.failures.is_empty());
+
+        let listing =
+            super::list_docs(&runtime.paths, &DocsListOptions::default()).expect("list docs");
+        assert_eq!(listing.stats.extension_count, 1);
+        assert_eq!(listing.stats.technical_count, 1);
     }
 }

@@ -7,8 +7,8 @@ use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, d
 use wikitool_core::docs::{
     DocsImportOptions, DocsImportTechnicalOptions, DocsListOptions, DocsRemoveKind,
     TechnicalDocType, TechnicalImportTask, discover_installed_extensions_from_wiki,
-    format_expiration, import_extension_docs, import_technical_docs, list_docs, remove_docs,
-    search_docs, update_outdated_docs,
+    format_expiration, import_docs_bundle, import_extension_docs, import_technical_docs, list_docs,
+    remove_docs, search_docs, update_outdated_docs,
 };
 use wikitool_core::filesystem::{ScanOptions, ScanStats, scan_files, scan_stats};
 use wikitool_core::index::{
@@ -252,6 +252,12 @@ enum DocsSubcommand {
 struct DocsImportArgs {
     #[arg(value_name = "EXTENSION")]
     extensions: Vec<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Import docs from precomposed bundle JSON"
+    )]
+    bundle: Option<PathBuf>,
     #[arg(
         long = "installed",
         help = "Discover installed extensions from live wiki API"
@@ -1207,6 +1213,40 @@ fn run_db_sync(runtime: &RuntimeOptions) -> Result<()> {
 
 fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
+
+    if let Some(bundle_path) = args.bundle.as_deref() {
+        if args.installed || !args.extensions.is_empty() || args.no_subpages {
+            bail!(
+                "`docs import --bundle` cannot be combined with extensions, --installed, or --no-subpages"
+            );
+        }
+        let report = import_docs_bundle(&paths, bundle_path)?;
+
+        println!("docs import");
+        println!("project_root: {}", normalize_path(&paths.project_root));
+        println!("source: {}", report.source);
+        println!("bundle_path: {}", normalize_path(bundle_path));
+        println!("bundle.schema_version: {}", report.schema_version);
+        println!("imported_extensions: {}", report.imported_extensions);
+        println!(
+            "imported_technical_types: {}",
+            report.imported_technical_types
+        );
+        println!("imported_pages: {}", report.imported_pages);
+        println!("failures.count: {}", report.failures.len());
+        for failure in &report.failures {
+            println!("failure: {failure}");
+        }
+        println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+        if runtime.diagnostics {
+            println!("\n[diagnostics]\n{}", paths.diagnostics());
+        }
+
+        if report.imported_pages == 0 {
+            bail!("docs import bundle completed with no imported pages")
+        }
+        return Ok(());
+    }
 
     let mut extensions = args.extensions;
     if args.installed {

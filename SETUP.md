@@ -177,18 +177,18 @@ Claude Desktop does **not** auto-load repo files. You must manually attach files
 | `CLAUDE.md` | Project overview |
 | `SETUP.md` | Setup guide |
 | `docs/wikitool/reference.md` | Command reference |
-| `llm_instructions/ai_agent_instructions.txt` | Main writing guidelines |
-| `llm_instructions/template_reference.txt` | All templates (large) |
-| `llm_instructions/category_reference.txt` | Category system |
-| `llm_instructions/ai_writing_pitfalls.txt` | Common mistakes |
-| `llm_instructions/article_template.txt` | Article structure |
+| `llm_instructions/README.md` | Index of AI writing instruction files |
+| `llm_instructions/writing_guide.md` | Main writing workflow + sourcing rules |
+| `llm_instructions/style_rules.md` | Writing antipatterns + citation hygiene |
+| `llm_instructions/article_structure.md` | Article structure template |
+| `llm_instructions/extensions.md` | Extension tag usage reference |
 
 **How to attach in Claude Desktop:**
 
 1. Create a new Project at claude.ai/projects
 2. Click "Add to project knowledge"
 3. Upload the files listed above
-4. Optionally set `llm_instructions/claude_project_instructions.txt` as project instructions
+4. Optionally set `llm_instructions/writing_guide.md` as the project-level instruction anchor
 
 **What you lose vs Claude Code:**
 

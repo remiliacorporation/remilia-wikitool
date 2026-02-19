@@ -55,6 +55,12 @@ jobs:
           if (!(Test-Path target/release/wikitool.exe)) {
             throw "target/release/wikitool.exe missing"
           }
+      - name: Build AI pack (Unix)
+        if: runner.os != 'Windows'
+        run: bash scripts/build-ai-pack.sh
+      - name: Build AI pack (Windows)
+        if: runner.os == 'Windows'
+        run: scripts/build-ai-pack.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: wikitool-${{ runner.os }}
@@ -62,6 +68,11 @@ jobs:
             target/release/wikitool
             target/release/wikitool.exe
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wikitool-ai-pack-${{ runner.os }}
+          path: dist/ai-pack/**
+          if-no-files-found: error
 
   rust-nightly-lint:
     if: ${{ hashFiles('Cargo.toml') != '' }}

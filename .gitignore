@@ -19,6 +19,7 @@ wikitool_exports/
 coverage/
 
 # Build
+dist/
 packages/*/dist/
 *.tsbuildinfo
 target/

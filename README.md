@@ -92,6 +92,19 @@ This resets the local wikitool DB, pulls all articles + templates, validates con
 - `docs/wikitool/reference.md` - canonical command/flag reference
 - `docs/wikitool/explanation.md` - architecture and rationale
 
+## AI Companion Pack
+
+CI now publishes a companion artifact (`wikitool-ai-pack-<OS>`) alongside binaries.
+
+It includes:
+
+1. `AGENTS.md`, `CLAUDE.md`, `SETUP.md`, `README.md`
+2. `llm_instructions/*.md`
+3. `docs/wikitool/*.md`
+4. optional `ai/docs-bundle-v1.json` when present
+
+This content is intentionally shipped outside the binary.
+
 ## Commands
 
 For the canonical command/flag reference, see `docs/wikitool/reference.md`.
