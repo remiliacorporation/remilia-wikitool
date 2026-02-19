@@ -8,12 +8,13 @@ use wikitool_core::phase1::{
     embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
     lsp_settings_json, materialize_parser_config, resolve_paths,
 };
+use wikitool_core::phase2::{ScanOptions, ScanStats, scan_stats};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "wikitool",
     version,
-    about = "Rust rewrite CLI for remilia-wikitool (Phase 1 bootstrap)"
+    about = "Rust rewrite CLI for remilia-wikitool (Phase 2 filesystem mapping)"
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -357,7 +358,7 @@ fn main() -> Result<()> {
         },
         Some(Commands::Index(IndexArgs { command })) => match command {
             IndexSubcommand::Rebuild => run_stub(&runtime, "index rebuild"),
-            IndexSubcommand::Stats => run_stub(&runtime, "index stats"),
+            IndexSubcommand::Stats => run_index_stats(&runtime),
             IndexSubcommand::Backlinks { title } => {
                 run_stub(&runtime, &format!("index backlinks {title}"))
             }
@@ -441,6 +442,13 @@ fn run_pull_preflight(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
 fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let status = inspect_runtime(&paths)?;
+    let scan = scan_stats(
+        &paths,
+        &ScanOptions {
+            include_content: true,
+            include_templates: args.templates,
+        },
+    )?;
 
     println!("runtime status");
     println!("project_root: {}", normalize_path(&paths.project_root));
@@ -471,12 +479,33 @@ fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
     println!("filters.modified: {}", args.modified);
     println!("filters.conflicts: {}", args.conflicts);
     println!("filters.templates: {}", args.templates);
+    print_scan_stats("scan", &scan);
     if !status.warnings.is_empty() {
         println!("warnings:");
         for warning in &status.warnings {
             println!("  - {warning}");
         }
     }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    Ok(())
+}
+
+fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let scan = scan_stats(&paths, &ScanOptions::default())?;
+
+    println!("index stats");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!(
+        "wiki_content_dir: {}",
+        normalize_path(&paths.wiki_content_dir)
+    );
+    println!("templates_dir: {}", normalize_path(&paths.templates_dir));
+    print_scan_stats("scan", &scan);
     println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -507,6 +536,20 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn print_scan_stats(prefix: &str, stats: &ScanStats) {
+    println!("{prefix}.total_files: {}", stats.total_files);
+    println!("{prefix}.content_files: {}", stats.content_files);
+    println!("{prefix}.template_files: {}", stats.template_files);
+    println!("{prefix}.redirects: {}", stats.redirects);
+    if stats.by_namespace.is_empty() {
+        println!("{prefix}.by_namespace: <empty>");
+    } else {
+        for (namespace, count) in &stats.by_namespace {
+            println!("{prefix}.namespace.{namespace}: {count}");
+        }
+    }
 }
 
 fn run_lsp_generate_config(runtime: &RuntimeOptions, args: LspGenerateConfigArgs) -> Result<()> {
