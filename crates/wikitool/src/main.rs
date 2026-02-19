@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
 use wikitool_core::phase0::{command_surface, generate_fixture_snapshot};
 use wikitool_core::phase1::{
     InitOptions, NO_MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext,
@@ -14,8 +15,7 @@ use wikitool_core::phase3::{
     load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
     query_search_local, rebuild_index, run_validation_checks,
 };
-use wikitool_core::phase6::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
-use wikitool_core::phase6_sync::{
+use wikitool_core::sync::{
     DiffChangeType, DiffOptions, ExternalSearchHit, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
     NS_TEMPLATE, PullOptions, diff_local_against_sync, pull_from_remote, search_external_wiki,
 };
