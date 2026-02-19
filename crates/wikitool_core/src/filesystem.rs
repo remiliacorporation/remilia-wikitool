@@ -711,6 +711,7 @@ fn normalize_pathbuf(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::fs;
     use std::path::PathBuf;
 
     use super::{
@@ -718,6 +719,7 @@ mod tests {
         template_path_to_title, title_to_relative_path, validate_scoped_path,
     };
     use crate::runtime::{ResolvedPaths, ValueSource};
+    use tempfile::tempdir;
 
     fn paths(root: &str) -> ResolvedPaths {
         let project_root = PathBuf::from(root);
@@ -806,12 +808,92 @@ mod tests {
 
     #[test]
     fn scan_stats_on_fixture_corpus() {
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("tests")
-            .join("fixtures")
-            .join("full-refresh");
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().to_path_buf();
+
+        fs::create_dir_all(project_root.join("wiki_content").join("Main"))
+            .expect("content main dir");
+        fs::create_dir_all(project_root.join("wiki_content").join("Category"))
+            .expect("content category dir");
+        fs::create_dir_all(
+            project_root
+                .join("custom")
+                .join("templates")
+                .join("infobox"),
+        )
+        .expect("template infobox dir");
+        fs::create_dir_all(
+            project_root
+                .join("custom")
+                .join("templates")
+                .join("infobox")
+                .join("_redirects"),
+        )
+        .expect("template redirects dir");
+        fs::create_dir_all(
+            project_root
+                .join("custom")
+                .join("templates")
+                .join("navbox")
+                .join("Module_Navbar"),
+        )
+        .expect("module navbox dir");
+
+        fs::write(
+            project_root
+                .join("wiki_content")
+                .join("Main")
+                .join("Alpha.wiki"),
+            "'''Alpha''' content",
+        )
+        .expect("write alpha");
+        fs::write(
+            project_root
+                .join("wiki_content")
+                .join("Category")
+                .join("Category_Test.wiki"),
+            "[[Category:Root]]",
+        )
+        .expect("write category");
+        fs::write(
+            project_root
+                .join("custom")
+                .join("templates")
+                .join("infobox")
+                .join("Template_Infobox_test.wiki"),
+            "{{Infobox test}}",
+        )
+        .expect("write template");
+        fs::write(
+            project_root
+                .join("custom")
+                .join("templates")
+                .join("infobox")
+                .join("_redirects")
+                .join("Template_Infobox_legacy.wiki"),
+            "#REDIRECT [[Template:Infobox test]]",
+        )
+        .expect("write template redirect");
+        fs::write(
+            project_root
+                .join("custom")
+                .join("templates")
+                .join("navbox")
+                .join("Module_Navbar.lua"),
+            "return {}",
+        )
+        .expect("write module");
+        fs::write(
+            project_root
+                .join("custom")
+                .join("templates")
+                .join("navbox")
+                .join("Module_Navbar")
+                .join("configuration.lua"),
+            "return {}",
+        )
+        .expect("write module subpage");
+
         let paths = ResolvedPaths {
             wiki_content_dir: project_root.join("wiki_content"),
             templates_dir: project_root.join("custom").join("templates"),

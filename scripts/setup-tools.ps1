@@ -37,13 +37,6 @@ try {
   }
 } catch {}
 
-$binDir = Join-Path -Path $wikitool -ChildPath "node_modules\.bin"
-$candidates += @(
-  (Join-Path $binDir "lighthouse.cmd"),
-  (Join-Path $binDir "lighthouse.exe"),
-  (Join-Path $binDir "lighthouse")
-)
-
 $found = $null
 foreach ($candidate in $candidates) {
   if (Test-Path $candidate) {
@@ -53,7 +46,7 @@ foreach ($candidate in $candidates) {
 }
 
 if (-not $found) {
-  Write-Warning "Lighthouse not found on PATH or node_modules/.bin. perf lighthouse will remain unavailable until installed."
+  Write-Warning "Lighthouse not found on PATH. perf lighthouse will remain unavailable until installed."
 } else {
   Write-Host "Lighthouse available at $found"
 }

@@ -1,6 +1,3 @@
-# Dependencies
-node_modules/
-
 # Database
 data/
 *.db
@@ -20,8 +17,6 @@ coverage/
 
 # Build
 dist/
-packages/*/dist/
-*.tsbuildinfo
 target/
 
 # OS
@@ -35,4 +30,3 @@ Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*

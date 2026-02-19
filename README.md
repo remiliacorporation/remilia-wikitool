@@ -2,7 +2,7 @@
 
 Unified MediaWiki tooling for Remilia Wiki.
 
-Primary runtime is now a Rust CLI binary (`wikitool`) on stable Rust (edition 2024). Bun/TypeScript sources remain only for legacy parity tooling and are not the default operator path.
+Primary runtime is a Rust CLI binary (`wikitool`) on stable Rust (edition 2024).
 
 ## Quick Start
 
@@ -52,6 +52,8 @@ By default pull/push operate on Main namespace. Use flags for others:
 - `--all` (pull) for all supported namespaces
 
 ## AI Companion Pack
+
+Source files for release AI companion packaging live under `ai-pack/`.
 
 CI publishes unzip-ready release artifacts (`wikitool-release-<OS>`) where the binary and AI companion files are in one folder.
 

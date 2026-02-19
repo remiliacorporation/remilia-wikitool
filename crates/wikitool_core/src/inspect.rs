@@ -212,7 +212,7 @@ pub fn net_inspect(
     })
 }
 
-pub fn find_lighthouse_binary(project_root: &Path) -> Option<PathBuf> {
+pub fn find_lighthouse_binary(_project_root: &Path) -> Option<PathBuf> {
     if let Some(path) = env::var("LIGHTHOUSE_PATH")
         .ok()
         .map(|value| PathBuf::from(value.trim()))
@@ -226,14 +226,6 @@ pub fn find_lighthouse_binary(project_root: &Path) -> Option<PathBuf> {
     } else {
         vec!["lighthouse"]
     };
-
-    let local_bin = project_root.join("node_modules").join(".bin");
-    for name in &names {
-        let candidate = local_bin.join(name);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
 
     let path_var = env::var("PATH").ok()?;
     let separator = if cfg!(windows) { ';' } else { ':' };

@@ -40,12 +40,10 @@ fi
 found_lighthouse=""
 if command -v lighthouse >/dev/null 2>&1; then
   found_lighthouse="$(command -v lighthouse)"
-elif [[ -x "${WIKITOOL}/node_modules/.bin/lighthouse" ]]; then
-  found_lighthouse="${WIKITOOL}/node_modules/.bin/lighthouse"
 fi
 
 if [[ -z "$found_lighthouse" ]]; then
-  echo "Warning: Lighthouse not found on PATH or node_modules/.bin. perf lighthouse will remain unavailable until installed."
+  echo "Warning: Lighthouse not found on PATH. perf lighthouse will remain unavailable until installed."
 else
   echo "Lighthouse available at $found_lighthouse"
 fi

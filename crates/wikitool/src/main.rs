@@ -1946,9 +1946,7 @@ fn run_perf_lighthouse(
 ) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let Some(lighthouse_path) = find_lighthouse_binary(&paths.project_root) else {
-        bail!(
-            "lighthouse not found on PATH or node_modules/.bin. Install with: npm install -g lighthouse"
-        );
+        bail!("lighthouse not found on PATH. Install with: npm install -g lighthouse");
     };
 
     if show_version {

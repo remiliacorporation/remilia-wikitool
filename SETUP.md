@@ -81,6 +81,8 @@ scripts/generate-wikitool-reference.ps1   # Windows
 scripts/generate-wikitool-reference.sh    # macOS/Linux
 ```
 
+AI companion source assets are maintained under `ai-pack/` in this repository.
+
 Release AI pack includes setup/docs/instructions outside the binary. If `ai/docs-bundle-v1.json` is present, import it with:
 
 ```bash

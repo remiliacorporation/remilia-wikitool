@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
+ai_pack_root="${repo_root}/ai-pack"
 output_dir="${1:-${repo_root}/dist/ai-pack}"
 
 if [[ -d "${output_dir}" ]]; then
@@ -19,13 +20,17 @@ if [[ -d "${output_dir}" ]]; then
 fi
 mkdir -p "${output_dir}"
 
-required_files=(
-  "AGENTS.md"
+required_repo_files=(
   "SETUP.md"
   "README.md"
 )
 
-for file in "${required_files[@]}"; do
+required_ai_files=(
+  "AGENTS.md"
+  "CLAUDE.md"
+)
+
+for file in "${required_repo_files[@]}"; do
   src="${repo_root}/${file}"
   if [[ ! -f "${src}" ]]; then
     echo "Missing required AI pack file: ${file}" >&2
@@ -34,8 +39,17 @@ for file in "${required_files[@]}"; do
   cp "${src}" "${output_dir}/"
 done
 
-# Default CLAUDE context is the wikitool-local guidance.
-cp "${repo_root}/CLAUDE.md" "${output_dir}/CLAUDE.md"
+for file in "${required_ai_files[@]}"; do
+  src="${ai_pack_root}/${file}"
+  if [[ ! -f "${src}" ]]; then
+    echo "Missing required AI pack source file: ai-pack/${file}" >&2
+    exit 1
+  fi
+done
+
+# Default CLAUDE context is the wikitool-local guidance from ai-pack source.
+cp "${ai_pack_root}/AGENTS.md" "${output_dir}/AGENTS.md"
+cp "${ai_pack_root}/CLAUDE.md" "${output_dir}/CLAUDE.md"
 
 # Optionally include parent project Claude context (.claude/rules + .claude/skills).
 host_context_included=false
@@ -53,7 +67,7 @@ repo_root_abs="$(cd "${repo_root}" && pwd)"
 if [[ -n "${host_root}" ]]; then
   host_root_abs="$(cd "${host_root}" && pwd)"
   if [[ "${host_root_abs}" != "${repo_root_abs}" && -f "${host_root_abs}/CLAUDE.md" ]]; then
-    cp "${repo_root}/CLAUDE.md" "${output_dir}/WIKITOOL_CLAUDE.md"
+    cp "${ai_pack_root}/CLAUDE.md" "${output_dir}/WIKITOOL_CLAUDE.md"
     cp "${host_root_abs}/CLAUDE.md" "${output_dir}/CLAUDE.md"
     mkdir -p "${output_dir}/.claude"
     cp -R "${host_root_abs}/.claude/rules" "${output_dir}/.claude/rules"
@@ -63,12 +77,12 @@ if [[ -n "${host_root}" ]]; then
 fi
 
 mkdir -p "${output_dir}/llm_instructions"
-llm_files=("${repo_root}"/llm_instructions/*.md)
+llm_files=("${ai_pack_root}"/llm_instructions/*.md)
 if [[ ${#llm_files[@]} -eq 0 || ! -f "${llm_files[0]}" ]]; then
-  echo "No llm_instructions/*.md files found" >&2
+  echo "No ai-pack/llm_instructions/*.md files found" >&2
   exit 1
 fi
-cp "${repo_root}"/llm_instructions/*.md "${output_dir}/llm_instructions/"
+cp "${ai_pack_root}"/llm_instructions/*.md "${output_dir}/llm_instructions/"
 
 if [[ -d "${repo_root}/docs/wikitool" ]]; then
   mkdir -p "${output_dir}/docs/wikitool"
@@ -76,16 +90,16 @@ if [[ -d "${repo_root}/docs/wikitool" ]]; then
 fi
 
 codex_skills_included=false
-if [[ -d "${repo_root}/codex_skills" ]]; then
+if [[ -d "${ai_pack_root}/codex_skills" ]]; then
   mkdir -p "${output_dir}/codex_skills"
-  cp -R "${repo_root}/codex_skills/." "${output_dir}/codex_skills/"
+  cp -R "${ai_pack_root}/codex_skills/." "${output_dir}/codex_skills/"
   codex_skills_included=true
 fi
 
 docs_bundle_included=false
-if [[ -f "${repo_root}/ai/docs-bundle-v1.json" ]]; then
+if [[ -f "${ai_pack_root}/docs-bundle-v1.json" ]]; then
   mkdir -p "${output_dir}/ai"
-  cp "${repo_root}/ai/docs-bundle-v1.json" "${output_dir}/ai/docs-bundle-v1.json"
+  cp "${ai_pack_root}/docs-bundle-v1.json" "${output_dir}/ai/docs-bundle-v1.json"
   docs_bundle_included=true
 fi
 

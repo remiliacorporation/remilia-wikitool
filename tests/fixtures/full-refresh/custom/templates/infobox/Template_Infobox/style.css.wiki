@@ -1,1 +1,0 @@
-﻿.infobox-test {\n  color: #333;\n}\n

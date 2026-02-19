@@ -1,1 +1,0 @@
-﻿<includeonly>{{{name|}}}</includeonly><noinclude>Test infobox template.</noinclude>\n

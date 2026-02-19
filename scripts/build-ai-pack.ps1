@@ -4,6 +4,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$AiPackRoot = Join-Path $RepoRoot "ai-pack"
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
   $OutputDir = Join-Path $RepoRoot "dist/ai-pack"
 }
@@ -14,7 +15,6 @@ if (Test-Path $OutputDir) {
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
 $requiredFiles = @(
-  "AGENTS.md",
   "SETUP.md",
   "README.md"
 )
@@ -27,8 +27,21 @@ foreach ($file in $requiredFiles) {
   Copy-Item -Path $src -Destination (Join-Path $OutputDir $file)
 }
 
-# Default CLAUDE context is the wikitool-local guidance.
-Copy-Item -Path (Join-Path $RepoRoot "CLAUDE.md") -Destination (Join-Path $OutputDir "CLAUDE.md")
+$requiredAiFiles = @(
+  "AGENTS.md",
+  "CLAUDE.md"
+)
+
+foreach ($file in $requiredAiFiles) {
+  $src = Join-Path $AiPackRoot $file
+  if (!(Test-Path $src)) {
+    throw "Missing required AI pack source file: ai-pack/$file"
+  }
+}
+
+# Default CLAUDE context is the wikitool-local guidance from ai-pack source.
+Copy-Item -Path (Join-Path $AiPackRoot "AGENTS.md") -Destination (Join-Path $OutputDir "AGENTS.md")
+Copy-Item -Path (Join-Path $AiPackRoot "CLAUDE.md") -Destination (Join-Path $OutputDir "CLAUDE.md")
 
 # Optionally include parent project Claude context (.claude/rules + .claude/skills).
 $hostContextIncluded = $false
@@ -60,7 +73,7 @@ if (![string]::IsNullOrWhiteSpace($hostRoot)) {
     $hostRules = Join-Path $hostResolved ".claude/rules"
     $hostSkills = Join-Path $hostResolved ".claude/skills"
     if ((Test-Path $hostClaude) -and (Test-Path $hostRules) -and (Test-Path $hostSkills)) {
-      Copy-Item -Path (Join-Path $RepoRoot "CLAUDE.md") -Destination (Join-Path $OutputDir "WIKITOOL_CLAUDE.md") -Force
+      Copy-Item -Path (Join-Path $AiPackRoot "CLAUDE.md") -Destination (Join-Path $OutputDir "WIKITOOL_CLAUDE.md") -Force
       Copy-Item -Path $hostClaude -Destination (Join-Path $OutputDir "CLAUDE.md") -Force
       $claudeDest = Join-Path $OutputDir ".claude"
       New-Item -ItemType Directory -Path $claudeDest -Force | Out-Null
@@ -71,12 +84,12 @@ if (![string]::IsNullOrWhiteSpace($hostRoot)) {
   }
 }
 
-$llmSource = Join-Path $RepoRoot "llm_instructions"
+$llmSource = Join-Path $AiPackRoot "llm_instructions"
 $llmDest = Join-Path $OutputDir "llm_instructions"
 New-Item -ItemType Directory -Path $llmDest -Force | Out-Null
 $llmFiles = Get-ChildItem -Path $llmSource -Filter *.md -File -ErrorAction SilentlyContinue
 if ($llmFiles.Count -eq 0) {
-  throw "No llm_instructions/*.md files found"
+  throw "No ai-pack/llm_instructions/*.md files found"
 }
 Copy-Item -Path (Join-Path $llmSource "*.md") -Destination $llmDest
 
@@ -90,7 +103,7 @@ if (Test-Path $docsSource) {
 }
 
 $codexSkillsIncluded = $false
-$codexSkillsSource = Join-Path $RepoRoot "codex_skills"
+$codexSkillsSource = Join-Path $AiPackRoot "codex_skills"
 if (Test-Path $codexSkillsSource) {
   $codexSkillsDest = Join-Path $OutputDir "codex_skills"
   New-Item -ItemType Directory -Path $codexSkillsDest -Force | Out-Null
@@ -99,7 +112,7 @@ if (Test-Path $codexSkillsSource) {
 }
 
 $docsBundleIncluded = $false
-$docsBundleSrc = Join-Path $RepoRoot "ai/docs-bundle-v1.json"
+$docsBundleSrc = Join-Path $AiPackRoot "docs-bundle-v1.json"
 if (Test-Path $docsBundleSrc) {
   $aiDest = Join-Path $OutputDir "ai"
   New-Item -ItemType Directory -Path $aiDest -Force | Out-Null
