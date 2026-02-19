@@ -1,6 +1,7 @@
 pub mod contracts;
 pub mod delete;
 pub mod docs;
+pub mod external;
 pub mod filesystem;
 pub mod import_cargo;
 pub mod index;

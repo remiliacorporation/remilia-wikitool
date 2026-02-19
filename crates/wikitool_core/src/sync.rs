@@ -106,6 +106,22 @@ pub struct PushReport {
     pub request_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteDeleteStatus {
+    Deleted,
+    AlreadyMissing,
+    SkippedMissingCredentials,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RemoteDeleteReport {
+    pub status: RemoteDeleteStatus,
+    pub title: String,
+    pub detail: Option<String>,
+    pub request_count: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct PageTimestampInfo {
     pub title: String,
@@ -875,6 +891,58 @@ pub fn push_to_remote(paths: &ResolvedPaths, options: &PushOptions) -> Result<Pu
         .map_err(|_| anyhow::anyhow!("WIKI_BOT_PASS is required for push"))?;
     let mut client = MediaWikiClient::from_env()?;
     push_to_remote_with_api(paths, options, &mut client, Some((&username, &password)))
+}
+
+pub fn delete_remote_page(title: &str, reason: &str) -> Result<RemoteDeleteReport> {
+    let username = match env::var("WIKI_BOT_USER") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(RemoteDeleteReport {
+                status: RemoteDeleteStatus::SkippedMissingCredentials,
+                title: title.to_string(),
+                detail: Some("WIKI_BOT_USER is not set".to_string()),
+                request_count: 0,
+            });
+        }
+    };
+    let password = match env::var("WIKI_BOT_PASS") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(RemoteDeleteReport {
+                status: RemoteDeleteStatus::SkippedMissingCredentials,
+                title: title.to_string(),
+                detail: Some("WIKI_BOT_PASS is not set".to_string()),
+                request_count: 0,
+            });
+        }
+    };
+
+    let mut client = MediaWikiClient::from_env()?;
+    client
+        .login(username.trim(), password.trim())
+        .context("remote delete login failed")?;
+
+    match client.delete_page(title, reason) {
+        Ok(()) => Ok(RemoteDeleteReport {
+            status: RemoteDeleteStatus::Deleted,
+            title: title.to_string(),
+            detail: None,
+            request_count: client.request_count(),
+        }),
+        Err(error) => {
+            let message = error.to_string();
+            if message.contains("missingtitle") {
+                Ok(RemoteDeleteReport {
+                    status: RemoteDeleteStatus::AlreadyMissing,
+                    title: title.to_string(),
+                    detail: Some(message),
+                    request_count: client.request_count(),
+                })
+            } else {
+                Err(error).context(format!("remote delete failed for {title}"))
+            }
+        }
+    }
 }
 
 fn push_to_remote_with_api<A: WikiWriteApi>(
