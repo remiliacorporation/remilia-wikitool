@@ -14,12 +14,13 @@ use wikitool_core::phase3::{
     load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
     query_search_local, rebuild_index, run_validation_checks,
 };
+use wikitool_core::phase6::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "wikitool",
     version,
-    about = "Rust rewrite CLI for remilia-wikitool (Phase 5 offline retrieval slice)"
+    about = "Rust rewrite CLI for remilia-wikitool (Phase 6 delete safety slice)"
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -157,6 +158,18 @@ struct ExportArgs {
 #[derive(Debug, Args)]
 struct DeleteArgs {
     title: String,
+    #[arg(long, value_name = "TEXT", help = "Reason for deletion (required)")]
+    reason: String,
+    #[arg(long, help = "Skip backup (not recommended)")]
+    no_backup: bool,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Custom backup directory under .wikitool/"
+    )]
+    backup_dir: Option<PathBuf>,
+    #[arg(long, help = "Preview deletion without making changes")]
+    dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -317,9 +330,7 @@ fn main() -> Result<()> {
         ),
         Some(Commands::Fetch(FetchArgs { url })) => run_stub(&runtime, &format!("fetch {url}")),
         Some(Commands::Export(ExportArgs { url })) => run_stub(&runtime, &format!("export {url}")),
-        Some(Commands::Delete(DeleteArgs { title })) => {
-            run_stub(&runtime, &format!("delete {title}"))
-        }
+        Some(Commands::Delete(args)) => run_delete(&runtime, args),
         Some(Commands::Db(DbArgs { command })) => match command {
             DbSubcommand::Stats => run_db_stats(&runtime),
             DbSubcommand::Sync => run_stub(&runtime, "db sync"),
@@ -610,6 +621,41 @@ fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
         println!("validate.status: failed");
         bail!("validation detected {issue_count} issue(s)")
     }
+}
+
+fn run_delete(runtime: &RuntimeOptions, args: DeleteArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let status = inspect_runtime(&paths)?;
+    ensure_runtime_ready_for_sync(&paths, &status)?;
+
+    println!("delete");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("title: {}", args.title);
+    println!("reason: {}", args.reason);
+    println!("dry_run: {}", args.dry_run);
+    println!("backup_enabled: {}", !args.no_backup);
+    if let Some(backup_dir) = &args.backup_dir {
+        println!("backup_dir: {}", normalize_path(backup_dir));
+    }
+
+    let report = delete_local_page(
+        &paths,
+        &args.title,
+        &LocalDeleteOptions {
+            reason: args.reason,
+            no_backup: args.no_backup,
+            backup_dir: args.backup_dir,
+            dry_run: args.dry_run,
+        },
+    )?;
+    print_delete_report(&report);
+
+    println!("remote_delete: pending_not_implemented");
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
 }
 
 fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
@@ -936,6 +982,25 @@ fn print_validation_issues(report: &wikitool_core::phase3::ValidationReport) {
 
     print_string_list("validate.uncategorized_pages", &report.uncategorized_pages);
     print_string_list("validate.orphan_pages", &report.orphan_pages);
+}
+
+fn print_delete_report(report: &DeleteReport) {
+    println!("delete.result.title: {}", report.title);
+    println!("delete.result.reason: {}", report.reason);
+    println!("delete.result.relative_path: {}", report.relative_path);
+    println!("delete.result.dry_run: {}", report.dry_run);
+    println!(
+        "delete.result.deleted_local_file: {}",
+        report.deleted_local_file
+    );
+    println!(
+        "delete.result.deleted_index_rows: {}",
+        report.deleted_index_rows
+    );
+    println!(
+        "delete.result.backup_path: {}",
+        report.backup_path.as_deref().unwrap_or("<none>")
+    );
 }
 
 fn print_string_list(prefix: &str, values: &[String]) {
