@@ -5,8 +5,8 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use wikitool_core::phase0::{command_surface, generate_fixture_snapshot};
 use wikitool_core::phase1::{
     InitOptions, NO_MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext,
-    embedded_parser_config, init_layout, lsp_settings_json, materialize_parser_config,
-    resolve_paths,
+    embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
+    lsp_settings_json, materialize_parser_config, resolve_paths,
 };
 
 #[derive(Debug, Parser)]
@@ -50,10 +50,10 @@ impl RuntimeOptions {
 #[derive(Debug, Subcommand)]
 enum Commands {
     Init(InitArgs),
-    Pull,
+    Pull(PullArgs),
     Push,
     Diff,
-    Status,
+    Status(StatusArgs),
     Context(ContextArgs),
     Search(SearchArgs),
     #[command(name = "search-external")]
@@ -90,6 +90,32 @@ struct InitArgs {
     no_config: bool,
     #[arg(long, help = "Skip writing .wikitool/remilia-parser.json")]
     no_parser_config: bool,
+}
+
+#[derive(Debug, Args)]
+struct PullArgs {
+    #[arg(long, help = "Full refresh (ignore last pull timestamp)")]
+    full: bool,
+    #[arg(long, help = "Overwrite locally modified files during pull")]
+    overwrite_local: bool,
+    #[arg(short = 'c', long, value_name = "NAME", help = "Filter by category")]
+    category: Option<String>,
+    #[arg(long, help = "Pull templates instead of articles")]
+    templates: bool,
+    #[arg(long, help = "Pull Category: namespace pages")]
+    categories: bool,
+    #[arg(long, help = "Pull everything (articles, categories, and templates)")]
+    all: bool,
+}
+
+#[derive(Debug, Args)]
+struct StatusArgs {
+    #[arg(long, help = "Only show modified")]
+    modified: bool,
+    #[arg(long, help = "Only show conflicts")]
+    conflicts: bool,
+    #[arg(long, help = "Include templates")]
+    templates: bool,
 }
 
 #[derive(Debug, Args)]
@@ -266,10 +292,10 @@ fn main() -> Result<()> {
             command: DbSubcommand::Migrate,
         })) => run_db_migrate_policy_error(&runtime),
         Some(Commands::Phase0(phase0)) => run_phase0(phase0),
-        Some(Commands::Pull) => run_stub(&runtime, "pull"),
+        Some(Commands::Pull(args)) => run_pull_preflight(&runtime, args),
         Some(Commands::Push) => run_stub(&runtime, "push"),
         Some(Commands::Diff) => run_stub(&runtime, "diff"),
-        Some(Commands::Status) => run_stub(&runtime, "status"),
+        Some(Commands::Status(args)) => run_status(&runtime, args),
         Some(Commands::Context(ContextArgs { title })) => {
             run_stub(&runtime, &format!("context {title}"))
         }
@@ -293,7 +319,7 @@ fn main() -> Result<()> {
             run_stub(&runtime, &format!("delete {title}"))
         }
         Some(Commands::Db(DbArgs { command })) => match command {
-            DbSubcommand::Stats => run_stub(&runtime, "db stats"),
+            DbSubcommand::Stats => run_db_stats(&runtime),
             DbSubcommand::Sync => run_stub(&runtime, "db sync"),
             DbSubcommand::Migrate => unreachable!(),
         },
@@ -374,6 +400,107 @@ fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     println!("created_dirs: {}", report.created_dirs.len());
     println!("wrote_config: {}", report.wrote_config);
     println!("wrote_parser_config: {}", report.wrote_parser_config);
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    Ok(())
+}
+
+fn run_pull_preflight(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let status = inspect_runtime(&paths)?;
+    ensure_runtime_ready_for_sync(&paths, &status)?;
+
+    println!("pull preflight");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("full: {}", args.full);
+    println!("overwrite_local: {}", args.overwrite_local);
+    println!("category: {}", args.category.as_deref().unwrap_or("<none>"));
+    println!("templates: {}", args.templates);
+    println!("categories: {}", args.categories);
+    println!("all: {}", args.all);
+
+    if !status.warnings.is_empty() {
+        println!("warnings:");
+        for warning in &status.warnings {
+            println!("  - {warning}");
+        }
+    }
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    bail!(
+        "`pull` network sync is not implemented yet in the Rust rewrite.\nPolicy: {}",
+        NO_MIGRATIONS_POLICY_MESSAGE
+    );
+}
+
+fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let status = inspect_runtime(&paths)?;
+
+    println!("runtime status");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!(
+        "project_root_exists: {}",
+        format_flag(status.project_root_exists)
+    );
+    println!(
+        "wiki_content_exists: {}",
+        format_flag(status.wiki_content_exists)
+    );
+    println!("templates_exists: {}", format_flag(status.templates_exists));
+    println!("state_dir_exists: {}", format_flag(status.state_dir_exists));
+    println!("data_dir_exists: {}", format_flag(status.data_dir_exists));
+    println!("db_exists: {}", format_flag(status.db_exists));
+    println!(
+        "db_size_bytes: {}",
+        status
+            .db_size_bytes
+            .map(|size| size.to_string())
+            .unwrap_or_else(|| "n/a".to_string())
+    );
+    println!("config_exists: {}", format_flag(status.config_exists));
+    println!(
+        "parser_config_exists: {}",
+        format_flag(status.parser_config_exists)
+    );
+    println!("filters.modified: {}", args.modified);
+    println!("filters.conflicts: {}", args.conflicts);
+    println!("filters.templates: {}", args.templates);
+    if !status.warnings.is_empty() {
+        println!("warnings:");
+        for warning in &status.warnings {
+            println!("  - {warning}");
+        }
+    }
+    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    Ok(())
+}
+
+fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let status = inspect_runtime(&paths)?;
+
+    println!("db stats");
+    println!("db_path: {}", normalize_path(&paths.db_path));
+    println!("data_dir: {}", normalize_path(&paths.data_dir));
+    println!("db_exists: {}", format_flag(status.db_exists));
+    println!(
+        "db_size_bytes: {}",
+        status
+            .db_size_bytes
+            .map(|size| size.to_string())
+            .unwrap_or_else(|| "n/a".to_string())
+    );
+    println!("migrations: disabled");
     println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -499,4 +626,8 @@ fn resolve_runtime_paths(runtime: &RuntimeOptions) -> Result<wikitool_core::phas
 
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+fn format_flag(value: bool) -> &'static str {
+    if value { "yes" } else { "no" }
 }

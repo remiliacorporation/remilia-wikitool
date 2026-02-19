@@ -69,6 +69,20 @@ pub struct ResolvedPaths {
     pub config_source: ValueSource,
 }
 
+#[derive(Debug, Clone)]
+pub struct RuntimeStatus {
+    pub project_root_exists: bool,
+    pub wiki_content_exists: bool,
+    pub templates_exists: bool,
+    pub state_dir_exists: bool,
+    pub data_dir_exists: bool,
+    pub db_exists: bool,
+    pub db_size_bytes: Option<u64>,
+    pub config_exists: bool,
+    pub parser_config_exists: bool,
+    pub warnings: Vec<String>,
+}
+
 impl ResolvedPaths {
     pub fn diagnostics(&self) -> String {
         format!(
@@ -86,6 +100,72 @@ impl ResolvedPaths {
             NO_MIGRATIONS_POLICY_MESSAGE
         )
     }
+}
+
+pub fn inspect_runtime(paths: &ResolvedPaths) -> Result<RuntimeStatus> {
+    let project_root_exists = paths.project_root.exists();
+    let wiki_content_exists = paths.wiki_content_dir.exists();
+    let templates_exists = paths.templates_dir.exists();
+    let state_dir_exists = paths.state_dir.exists();
+    let data_dir_exists = paths.data_dir.exists();
+    let config_exists = paths.config_path.exists();
+    let parser_config_exists = paths.parser_config_path.exists();
+    let db_exists = paths.db_path.exists();
+    let db_size_bytes = if db_exists {
+        let metadata = fs::metadata(&paths.db_path)
+            .with_context(|| format!("failed to inspect {}", paths.db_path.display()))?;
+        Some(metadata.len())
+    } else {
+        None
+    };
+
+    let mut warnings = Vec::new();
+    if !templates_exists {
+        warnings.push(
+            "templates/ is missing; template-aware commands will run in degraded mode".to_string(),
+        );
+    }
+    if !wiki_content_exists {
+        warnings
+            .push("wiki_content/ is missing; run `wikitool init` before sync commands".to_string());
+    }
+    if !state_dir_exists {
+        warnings
+            .push(".wikitool/ is missing; run `wikitool init` before sync commands".to_string());
+    }
+
+    Ok(RuntimeStatus {
+        project_root_exists,
+        wiki_content_exists,
+        templates_exists,
+        state_dir_exists,
+        data_dir_exists,
+        db_exists,
+        db_size_bytes,
+        config_exists,
+        parser_config_exists,
+        warnings,
+    })
+}
+
+pub fn ensure_runtime_ready_for_sync(paths: &ResolvedPaths, status: &RuntimeStatus) -> Result<()> {
+    if !status.wiki_content_exists || !status.state_dir_exists {
+        bail!(
+            "Runtime layout is not initialized for sync.\nMissing required paths:\n  - {}\n  - {}\nRun: wikitool init --project-root {} --templates",
+            if status.wiki_content_exists {
+                "wiki_content/ (ok)"
+            } else {
+                "wiki_content/ (missing)"
+            },
+            if status.state_dir_exists {
+                ".wikitool/ (ok)"
+            } else {
+                ".wikitool/ (missing)"
+            },
+            normalize_for_display(&paths.project_root)
+        );
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -383,8 +463,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        InitOptions, PathOverrides, ResolutionContext, ValueSource, init_layout,
-        resolve_paths_with_lookup,
+        InitOptions, PathOverrides, ResolutionContext, ValueSource, ensure_runtime_ready_for_sync,
+        init_layout, inspect_runtime, resolve_paths_with_lookup,
     };
 
     #[test]
@@ -466,5 +546,55 @@ mod tests {
         assert!(paths.data_dir.exists());
         assert!(paths.config_path.exists());
         assert!(paths.parser_config_path.exists());
+    }
+
+    #[test]
+    fn inspect_runtime_reports_missing_templates_warning() {
+        let temp = tempdir().expect("tempdir");
+        let root = temp.path().join("project");
+        fs::create_dir_all(&root).expect("create root");
+        let context = ResolutionContext {
+            cwd: root.clone(),
+            executable_dir: None,
+        };
+        let overrides = PathOverrides {
+            project_root: Some(root.clone()),
+            ..PathOverrides::default()
+        };
+        let paths = resolve_paths_with_lookup(&context, &overrides, |_| None).expect("resolve");
+        init_layout(
+            &paths,
+            &InitOptions {
+                include_templates: false,
+                ..InitOptions::default()
+            },
+        )
+        .expect("init");
+
+        let status = inspect_runtime(&paths).expect("inspect");
+        assert!(!status.templates_exists);
+        assert!(!status.warnings.is_empty());
+    }
+
+    #[test]
+    fn sync_readiness_fails_without_init() {
+        let temp = tempdir().expect("tempdir");
+        let root = temp.path().join("project");
+        fs::create_dir_all(&root).expect("create root");
+        let context = ResolutionContext {
+            cwd: root.clone(),
+            executable_dir: None,
+        };
+        let overrides = PathOverrides {
+            project_root: Some(root.clone()),
+            ..PathOverrides::default()
+        };
+        let paths = resolve_paths_with_lookup(&context, &overrides, |_| None).expect("resolve");
+        let status = inspect_runtime(&paths).expect("inspect");
+        let err = ensure_runtime_ready_for_sync(&paths, &status).expect_err("must fail");
+        assert!(
+            err.to_string()
+                .contains("Runtime layout is not initialized for sync")
+        );
     }
 }
