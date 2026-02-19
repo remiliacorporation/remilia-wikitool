@@ -209,12 +209,16 @@ async function exportWithSubpages(
   const subpageTitles = await listSubpages(mainTitle, domain);
   spinner.text = `Found ${subpageTitles.length} subpages. Fetching main page...`;
 
-  // Fetch main page first
+  // Fetch main page (may not exist for virtual parent pages like "DB")
   const mainResult = await fetchPageByUrl(url.replace(/\/$/, ''), { format: 'wikitext' });
 
-  if (!mainResult) {
-    spinner.fail('Main page not found');
+  if (!mainResult && subpageTitles.length === 0) {
+    spinner.fail('Main page not found and no subpages exist');
     process.exit(1);
+  }
+
+  if (!mainResult) {
+    spinner.text = `Main page not found, exporting ${subpageTitles.length} subpages only...`;
   }
 
   // Fetch all subpages
@@ -224,8 +228,9 @@ async function exportWithSubpages(
   spinner.text = 'Converting content...';
 
   const timestamp = new Date().toISOString();
-  const allResults = [mainResult, ...subpageResults];
+  const allResults = mainResult ? [mainResult, ...subpageResults] : subpageResults;
   const totalOriginalLength = allResults.reduce((sum, r) => sum + r.content.length, 0);
+  const mainCount = mainResult ? 1 : 0;
 
   // Determine output path - use default exports dir if not specified
   const effectiveOutput = options.output || getDefaultOutputPath(mainTitle, true, outputFormat);
@@ -248,9 +253,10 @@ async function exportWithSubpages(
     if (options.noFrontmatter) {
       output = combinedContent;
     } else {
+      const sourceUrl = mainResult?.url || `https://${domain}/${mainTitle.replace(/ /g, '_')}`;
       const frontmatter = generateFrontmatter(
         mainTitle,
-        mainResult.url,
+        sourceUrl,
         domain,
         timestamp,
         { subpages: subpageResults.length }
@@ -258,7 +264,7 @@ async function exportWithSubpages(
       output = frontmatter + '\n' + combinedContent;
     }
 
-    spinner.succeed(`Exported ${allResults.length} pages (1 main + ${subpageResults.length} subpages)`);
+    spinner.succeed(`Exported ${allResults.length} pages (${mainCount} main + ${subpageResults.length} subpages)`);
     // For combined output, use single file path (not directory)
     const combinedOutputPath = options.output || getDefaultOutputPath(mainTitle, false, outputFormat);
     outputResult(output, combinedOutputPath, mainTitle, totalOriginalLength, outputFormat);
@@ -299,10 +305,11 @@ async function exportWithSubpages(
   }
 
   // Create index file
+  const sourceUrl = mainResult?.url || `https://${domain}/${mainTitle.replace(/ /g, '_')}`;
   const indexLines = [
     '---',
     `title: "${mainTitle} - Index"`,
-    `source: ${mainResult.url}`,
+    `source: ${sourceUrl}`,
     `wiki: ${domain}`,
     `fetched: ${timestamp}`,
     `pages: ${allResults.length}`,
