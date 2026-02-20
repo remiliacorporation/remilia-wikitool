@@ -50,6 +50,10 @@ use wikitool_core::sync::{
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
+const LICENSE_AGPL: &str = include_str!("../../../LICENSE");
+const LICENSE_SSL: &str = include_str!("../../../LICENSE-SSL");
+const LICENSE_VPL: &str = include_str!("../../../LICENSE-VPL");
+
 #[derive(Debug, Parser)]
 #[command(
     name = "wikitool",
@@ -65,6 +69,8 @@ struct Cli {
     config: Option<PathBuf>,
     #[arg(long, global = true, help = "Print resolved runtime diagnostics")]
     diagnostics: bool,
+    #[arg(long, help = "Print license information and exit")]
+    license: bool,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -886,6 +892,18 @@ struct SnapshotArgs {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if cli.license {
+        print!("{LICENSE_AGPL}");
+        println!("\n{}", "=".repeat(72));
+        println!("SUPPLEMENTARY TERMS\n");
+        println!("This software is additionally subject to the following terms:\n");
+        print!("{LICENSE_SSL}");
+        println!();
+        print!("{LICENSE_VPL}");
+        return Ok(());
+    }
+
     let runtime = RuntimeOptions::from_cli(&cli);
 
     match cli.command {
@@ -3683,7 +3701,7 @@ fn build_ai_pack(
     let ai_pack_root = repo_root.join("ai-pack");
     reset_directory(output_dir)?;
 
-    for file in ["SETUP.md", "README.md"] {
+    for file in ["SETUP.md", "README.md", "LICENSE", "LICENSE-SSL", "LICENSE-VPL"] {
         let src = repo_root.join(file);
         if !src.is_file() {
             bail!("missing required AI pack file: {}", normalize_path(&src));
