@@ -644,6 +644,7 @@ Usage: wikitool index [OPTIONS] <COMMAND>
 Commands:
   rebuild           
   stats             
+  chunks            
   backlinks         
   orphans           
   prune-categories  
@@ -681,6 +682,25 @@ Options:
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
+```
+
+## index chunks
+
+```text
+Usage: wikitool index chunks [OPTIONS] <TITLE>
+
+Arguments:
+  <TITLE>  
+
+Options:
+      --project-root <PATH>    
+      --query <QUERY>          Optional relevance query applied to cached chunks for the page
+      --data-dir <PATH>        
+      --limit <N>              Maximum number of chunks to return [default: 8]
+      --config <PATH>          
+      --token-budget <TOKENS>  Token budget across returned chunks [default: 720]
+      --diagnostics            Print resolved runtime diagnostics
+  -h, --help                   Print help
 ```
 
 ## index backlinks
