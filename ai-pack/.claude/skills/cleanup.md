@@ -17,6 +17,7 @@ wikitool diff
 ```bash
 wikitool search "Category:"
 wikitool index backlinks "Article Title"
+wikitool index chunks --across-pages --query "topic" --format json --diversify
 ```
 
 ## Push gate

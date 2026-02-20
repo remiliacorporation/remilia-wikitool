@@ -120,8 +120,11 @@ Codex skills must remain thin overlays that defer to runbooks and CLI help.
 
 ```bash
 wikitool pull --full --all
+wikitool workflow authoring-pack "Topic" --format json
 wikitool context "Template:Infobox person"
 wikitool search "Category:"
+wikitool index chunks "Title" --query "aspect" --limit 6 --token-budget 480
+wikitool index chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify
 wikitool docs search "extension name"
 wikitool fetch "https://www.mediawiki.org/wiki/Manual:Hooks"
 wikitool export "https://www.mediawiki.org/wiki/Manual:Hooks" --subpages --combined

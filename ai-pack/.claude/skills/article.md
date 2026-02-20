@@ -12,9 +12,11 @@ Create or edit wiki articles with current Remilia Wiki rules.
 
 ```bash
 wikitool pull
+wikitool workflow authoring-pack "Topic" --format json
 wikitool search "topic"
 wikitool context "Template:Infobox person"
 wikitool search "Category:"
+wikitool index chunks "Title" --query "aspect" --limit 6 --token-budget 480
 ```
 
 ## Write and gate

@@ -11,6 +11,14 @@ wikitool docs search "extension feature"
 wikitool search-external "topic"
 ```
 
+## Local index retrieval
+
+```bash
+wikitool workflow authoring-pack "Topic" --format json
+wikitool index chunks "Title" --query "aspect" --limit 6 --token-budget 480
+wikitool index chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify
+```
+
 ## Live wiki verification
 
 ```bash

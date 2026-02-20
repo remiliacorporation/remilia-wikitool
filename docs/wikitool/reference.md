@@ -642,9 +642,9 @@ Options:
 Usage: wikitool index [OPTIONS] <COMMAND>
 
 Commands:
-  rebuild           
-  stats             
-  chunks            
+  rebuild           Rebuild the local search index from wiki_content and templates
+  stats             Show index statistics
+  chunks            Retrieve token-budgeted content chunks from indexed pages
   backlinks         
   orphans           
   prune-categories  
@@ -661,6 +661,8 @@ Options:
 ## index rebuild
 
 ```text
+Rebuild the local search index from wiki_content and templates
+
 Usage: wikitool index rebuild [OPTIONS]
 
 Options:
@@ -674,6 +676,8 @@ Options:
 ## index stats
 
 ```text
+Show index statistics
+
 Usage: wikitool index stats [OPTIONS]
 
 Options:
@@ -687,6 +691,8 @@ Options:
 ## index chunks
 
 ```text
+Retrieve token-budgeted content chunks from indexed pages
+
 Usage: wikitool index chunks [OPTIONS] [TITLE]
 
 Arguments:
@@ -798,7 +804,7 @@ Usage: wikitool workflow [OPTIONS] <COMMAND>
 Commands:
   bootstrap       
   full-refresh    
-  authoring-pack  
+  authoring-pack  Generate a token-budgeted knowledge pack for article authoring
   help            Print this message or the help of the given subcommand(s)
 
 Options:
@@ -848,6 +854,8 @@ Options:
 ## workflow authoring-pack
 
 ```text
+Generate a token-budgeted knowledge pack for article authoring
+
 Usage: wikitool workflow authoring-pack [OPTIONS] [TOPIC]
 
 Arguments:

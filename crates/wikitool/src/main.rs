@@ -523,8 +523,11 @@ struct IndexArgs {
 
 #[derive(Debug, Subcommand)]
 enum IndexSubcommand {
+    /// Rebuild the local search index from wiki_content and templates
     Rebuild,
+    /// Show index statistics
     Stats,
+    /// Retrieve token-budgeted content chunks from indexed pages
     Chunks {
         title: Option<String>,
         #[arg(
@@ -596,6 +599,7 @@ enum WorkflowSubcommand {
     Bootstrap(WorkflowBootstrapArgs),
     #[command(name = "full-refresh")]
     FullRefresh(WorkflowFullRefreshArgs),
+    /// Generate a token-budgeted knowledge pack for article authoring
     #[command(name = "authoring-pack")]
     AuthoringPack(WorkflowAuthoringPackArgs),
 }
