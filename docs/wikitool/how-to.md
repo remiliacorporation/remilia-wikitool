@@ -83,10 +83,28 @@ wikitool import cargo ./data.csv --table Items --mode upsert --write
 ```bash
 wikitool index rebuild
 wikitool index stats
+wikitool index chunks "Main Page" --query "infobox" --limit 6 --token-budget 480
+wikitool index chunks --across-pages --query "network spirituality remilia" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
 wikitool index backlinks "Main Page"
 wikitool index orphans
 wikitool index prune-categories
 ```
+
+## AI authoring knowledge pack
+
+Generate a token-budgeted local context pack for writing new articles or upgrading stubs:
+
+```bash
+wikitool workflow authoring-pack "Remilia Corporation" --format json
+wikitool workflow authoring-pack "Milady Maker" --stub-path wiki_content/Main/Milady_Draft.wiki --format json
+```
+
+The pack includes:
+- related local pages
+- suggested internal links/categories
+- template usage summaries (topic-scoped + global baseline)
+- chunked cross-page context under a strict token budget
+- stub diagnostics (existing links, missing links, templates already used)
 
 ## Inspection workflows
 
@@ -148,9 +166,8 @@ wikitool release build-matrix --targets x86_64-unknown-linux-gnu --artifact-vers
 wikitool status
 wikitool db stats
 wikitool db sync
+wikitool db migrate
 ```
-
-`db migrate` is intentionally disabled under no-migration cutover policy.
 
 ## Troubleshooting
 

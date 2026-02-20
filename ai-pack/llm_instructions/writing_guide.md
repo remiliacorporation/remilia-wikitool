@@ -21,11 +21,12 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 
 1. **Research the topic** â€” search the web for reliable sources. Check the live wiki for existing content and related articles to link.
 2. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
-3. **Look up templates** â€” use `wikitool context "Template:Template Name"` to see parameters for any template. See section 6 for common infobox mappings.
-4. **Write the article** following the structure in `article_structure.md`.
-5. **Self-check** against the quick checklist at the end of `style_rules.md`.
-6. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
-7. **Validate** â€” run `wikitool validate` to catch structural issues.
+3. **Build local authoring context** â€” run `wikitool workflow authoring-pack "<Topic>" --format json` to get related pages, template usage patterns, link/category suggestions, and token-budgeted context chunks from local index data.
+4. **Look up templates** â€” use `wikitool context "Template:Template Name"` to confirm parameters for templates you plan to invoke. See section 6 for common infobox mappings.
+5. **Write the article** following the structure in `article_structure.md`.
+6. **Self-check** against the quick checklist at the end of `style_rules.md`.
+7. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
+8. **Validate** â€” run `wikitool validate` to catch structural issues.
 
 ### Editing an existing article
 
@@ -211,6 +212,8 @@ This reads local indexed context (or filesystem fallback) from your current pull
 Use wikitool to inspect template context from your local pull:
 
 ```bash
+wikitool workflow authoring-pack "Topic Title" --format json
+wikitool workflow authoring-pack --stub-path wiki_content/Main/Topic_Draft.wiki --format json
 wikitool context "Template:Template Name"   # Show params + usage stats
 wikitool search "infobox"                      # Find templates by name
 ```
@@ -247,5 +250,4 @@ wikitool search "Category:"                    # Browse categories
 | `extensions.md` | Quick reference for content extension tags | When using math, code, video, tabs |
 
 For template parameters and categories, always use wikitool live lookups rather than static files.
-
 

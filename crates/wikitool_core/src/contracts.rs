@@ -43,6 +43,9 @@ pub const COMMAND_SURFACE: &[&str] = &[
     "index backlinks",
     "index orphans",
     "index prune-categories",
+    "workflow bootstrap",
+    "workflow full-refresh",
+    "workflow authoring-pack",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

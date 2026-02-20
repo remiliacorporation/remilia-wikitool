@@ -355,6 +355,20 @@ else
     fail "context returns data for known title (got: $OUTPUT)"
 fi
 
+# --- workflow authoring-pack ---
+section "workflow authoring-pack"
+STUB_PATH="$PROJ/wiki_content/Main/Alpha_Stub.wiki"
+cat > "$STUB_PATH" << 'WIKIEOF'
+{{Infobox person|name=Alpha Draft}}
+'''Alpha Draft''' references [[Alpha]] and [[Missing Page]].
+WIKIEOF
+OUTPUT=$(wt "$PROJ" workflow authoring-pack "Alpha" --stub-path "$STUB_PATH" --related-limit 6 --chunk-limit 4 --token-budget 220 --max-pages 2 --template-limit 6 --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"Found"' && echo "$OUTPUT" | grep -q '"suggested_templates"' && echo "$OUTPUT" | grep -q '"template_baseline"' && echo "$OUTPUT" | grep -q '"stub_missing_links"'; then
+    pass "workflow authoring-pack emits authoring knowledge pack"
+else
+    fail "workflow authoring-pack emits authoring knowledge pack (got: $OUTPUT)"
+fi
+
 # --- search ---
 section "search"
 OUTPUT=$(wt "$PROJ" search "Alpha" 2>&1)

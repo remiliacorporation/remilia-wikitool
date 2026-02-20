@@ -796,9 +796,10 @@ Options:
 Usage: wikitool workflow [OPTIONS] <COMMAND>
 
 Commands:
-  bootstrap     
-  full-refresh  
-  help          Print this message or the help of the given subcommand(s)
+  bootstrap       
+  full-refresh    
+  authoring-pack  
+  help            Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>  
@@ -842,6 +843,33 @@ Options:
       --diagnostics          Print resolved runtime diagnostics
       --skip-reference       Skip docs reference generation
   -h, --help                 Print help
+```
+
+## workflow authoring-pack
+
+```text
+Usage: wikitool workflow authoring-pack [OPTIONS] [TOPIC]
+
+Arguments:
+  [TOPIC]  Primary article topic/title for retrieval
+
+Options:
+      --project-root <PATH>    
+      --stub-path <PATH>       Optional stub wikitext file used for link/template hint extraction
+      --data-dir <PATH>        
+      --related-limit <N>      Maximum related pages in the pack [default: 18]
+      --chunk-limit <N>        Maximum retrieved context chunks [default: 10]
+      --config <PATH>          
+      --diagnostics            Print resolved runtime diagnostics
+      --token-budget <TOKENS>  Token budget across retrieved chunks [default: 1200]
+      --max-pages <N>          Maximum distinct source pages in chunk retrieval [default: 8]
+      --link-limit <N>         Maximum internal link suggestions [default: 18]
+      --category-limit <N>     Maximum category suggestions [default: 8]
+      --template-limit <N>     Maximum template summaries [default: 16]
+      --format <FORMAT>        Output format: text|json [default: json]
+      --diversify              Enable lexical chunk de-duplication and diversification
+      --no-diversify           Disable lexical chunk de-duplication and diversification
+  -h, --help                   Print help
 ```
 
 ## release

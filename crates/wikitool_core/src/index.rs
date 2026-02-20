@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, params, params_from_iter};
 use serde::Serialize;
 
 use crate::filesystem::{Namespace, ScanOptions, ScanStats, ScannedFile, scan_files};
@@ -72,6 +72,7 @@ const NO_PARAMETER_KEYS_SENTINEL: &str = "__none__";
 const CHUNK_CANDIDATE_MULTIPLIER_SINGLE: usize = 6;
 const CHUNK_CANDIDATE_MULTIPLIER_ACROSS: usize = 10;
 const CHUNK_LEXICAL_SIMILARITY_THRESHOLD: f32 = 0.86;
+const AUTHORING_TEMPLATE_KEY_LIMIT: usize = 12;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RebuildReport {
@@ -178,6 +179,83 @@ pub enum LocalChunkAcrossRetrieval {
     IndexMissing,
     QueryMissing,
     Found(LocalChunkAcrossPagesResult),
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringInventory {
+    pub indexed_pages_total: usize,
+    pub main_pages: usize,
+    pub template_pages: usize,
+    pub indexed_links_total: usize,
+    pub template_invocation_rows: usize,
+    pub distinct_templates_invoked: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringPageCandidate {
+    pub title: String,
+    pub namespace: String,
+    pub is_redirect: bool,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TemplateUsageSummary {
+    pub template_title: String,
+    pub usage_count: usize,
+    pub parameter_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringKnowledgePackResult {
+    pub topic: String,
+    pub query: String,
+    pub inventory: AuthoringInventory,
+    pub related_pages: Vec<AuthoringPageCandidate>,
+    pub suggested_links: Vec<String>,
+    pub suggested_categories: Vec<String>,
+    pub suggested_templates: Vec<TemplateUsageSummary>,
+    pub template_baseline: Vec<TemplateUsageSummary>,
+    pub stub_existing_links: Vec<String>,
+    pub stub_missing_links: Vec<String>,
+    pub stub_detected_templates: Vec<String>,
+    pub retrieval_mode: String,
+    pub chunks: Vec<RetrievedChunk>,
+    pub token_estimate_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub enum AuthoringKnowledgePack {
+    IndexMissing,
+    QueryMissing,
+    Found(AuthoringKnowledgePackResult),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthoringKnowledgePackOptions {
+    pub related_page_limit: usize,
+    pub chunk_limit: usize,
+    pub token_budget: usize,
+    pub max_pages: usize,
+    pub link_limit: usize,
+    pub category_limit: usize,
+    pub template_limit: usize,
+    pub diversify: bool,
+}
+
+impl Default for AuthoringKnowledgePackOptions {
+    fn default() -> Self {
+        Self {
+            related_page_limit: 18,
+            chunk_limit: 10,
+            token_budget: 1200,
+            max_pages: 8,
+            link_limit: 18,
+            category_limit: 8,
+            template_limit: 16,
+            diversify: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -751,6 +829,166 @@ pub fn retrieve_local_context_chunks_across_pages(
     ))
 }
 
+pub fn build_authoring_knowledge_pack(
+    paths: &ResolvedPaths,
+    topic: Option<&str>,
+    stub_content: Option<&str>,
+    options: &AuthoringKnowledgePackOptions,
+) -> Result<AuthoringKnowledgePack> {
+    let connection = match open_indexed_connection(paths)? {
+        Some(connection) => connection,
+        None => return Ok(AuthoringKnowledgePack::IndexMissing),
+    };
+
+    let normalized_topic = topic
+        .map(|value| normalize_spaces(&value.replace('_', " ")))
+        .unwrap_or_default();
+    let (stub_link_titles, stub_template_titles) = analyze_stub_hints(stub_content);
+
+    let query = if !normalized_topic.is_empty() {
+        normalized_topic.clone()
+    } else if let Some(first_link) = stub_link_titles.first() {
+        first_link.clone()
+    } else {
+        String::new()
+    };
+    if query.is_empty() {
+        return Ok(AuthoringKnowledgePack::QueryMissing);
+    }
+    let topic = if normalized_topic.is_empty() {
+        query.clone()
+    } else {
+        normalized_topic
+    };
+
+    let related_limit = options.related_page_limit.max(1);
+    let chunk_limit = options.chunk_limit.max(1);
+    let token_budget = options.token_budget.max(1);
+    let max_pages = options.max_pages.max(1);
+    let link_limit = options.link_limit.max(1);
+    let category_limit = options.category_limit.max(1);
+    let template_limit = options.template_limit.max(1);
+
+    let search_limit = candidate_limit(related_limit, 2);
+    let search_hits = query_local_search_for_connection(&connection, &query, search_limit)?;
+    let related_pages = collect_related_pages_for_authoring(
+        &connection,
+        &stub_link_titles,
+        search_hits,
+        related_limit,
+    )?;
+    let source_titles = related_pages
+        .iter()
+        .map(|page| page.title.clone())
+        .collect::<Vec<_>>();
+
+    let mut stub_existing_links = Vec::new();
+    let mut stub_missing_links = Vec::new();
+    for link in stub_link_titles {
+        if let Some(page) = load_page_record(&connection, &normalize_query_title(&link))? {
+            stub_existing_links.push(page.title);
+        } else {
+            stub_missing_links.push(link);
+        }
+    }
+    stub_existing_links.sort();
+    stub_existing_links.dedup();
+    stub_missing_links.sort();
+    stub_missing_links.dedup();
+
+    let stub_detected_templates = stub_template_titles;
+
+    let chunk_retrieval = retrieve_local_context_chunks_across_pages(
+        paths,
+        &query,
+        chunk_limit,
+        token_budget,
+        max_pages,
+        options.diversify,
+    )?;
+    let (retrieval_mode, chunks, token_estimate_total) = match chunk_retrieval {
+        LocalChunkAcrossRetrieval::Found(report) => (
+            report.retrieval_mode,
+            report.chunks,
+            report.token_estimate_total,
+        ),
+        LocalChunkAcrossRetrieval::IndexMissing => return Ok(AuthoringKnowledgePack::IndexMissing),
+        LocalChunkAcrossRetrieval::QueryMissing => return Ok(AuthoringKnowledgePack::QueryMissing),
+    };
+
+    let graph_links =
+        query_suggested_main_links_for_sources(&connection, &source_titles, link_limit)?;
+    let mut suggested_links = Vec::new();
+    let mut seen_suggested_links = BTreeSet::new();
+    for page in &related_pages {
+        if suggested_links.len() >= link_limit {
+            break;
+        }
+        if page.namespace == Namespace::Main.as_str()
+            && !page.is_redirect
+            && seen_suggested_links.insert(page.title.to_ascii_lowercase())
+        {
+            suggested_links.push(page.title.clone());
+            if suggested_links.len() >= link_limit {
+                break;
+            }
+        }
+    }
+    for link in graph_links {
+        if suggested_links.len() >= link_limit {
+            break;
+        }
+        if seen_suggested_links.insert(link.to_ascii_lowercase()) {
+            suggested_links.push(link);
+            if suggested_links.len() >= link_limit {
+                break;
+            }
+        }
+    }
+    for chunk in &chunks {
+        if suggested_links.len() >= link_limit {
+            break;
+        }
+        if chunk.source_namespace != Namespace::Main.as_str() {
+            continue;
+        }
+        if seen_suggested_links.insert(chunk.source_title.to_ascii_lowercase()) {
+            suggested_links.push(chunk.source_title.clone());
+            if suggested_links.len() >= link_limit {
+                break;
+            }
+        }
+    }
+
+    let suggested_categories =
+        query_suggested_categories_for_sources(&connection, &source_titles, category_limit)?;
+    let suggested_templates =
+        summarize_template_usage_for_sources(&connection, Some(&source_titles), template_limit)?;
+    let template_baseline =
+        summarize_template_usage_for_sources(&connection, None, template_limit)?;
+
+    let inventory = load_authoring_inventory(&connection)?;
+
+    Ok(AuthoringKnowledgePack::Found(
+        AuthoringKnowledgePackResult {
+            topic,
+            query,
+            inventory,
+            related_pages,
+            suggested_links,
+            suggested_categories,
+            suggested_templates,
+            template_baseline,
+            stub_existing_links,
+            stub_missing_links,
+            stub_detected_templates,
+            retrieval_mode,
+            chunks,
+            token_estimate_total,
+        },
+    ))
+}
+
 pub fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
@@ -1237,6 +1475,348 @@ fn query_chunks_scan_across_pages(
         }
     }
     Ok(out)
+}
+
+fn analyze_stub_hints(stub_content: Option<&str>) -> (Vec<String>, Vec<String>) {
+    let Some(content) = stub_content else {
+        return (Vec::new(), Vec::new());
+    };
+
+    let mut links = BTreeSet::new();
+    for link in extract_wikilinks(content) {
+        let normalized = normalize_query_title(&link.target_title);
+        if !normalized.is_empty() {
+            links.insert(normalized);
+        }
+    }
+
+    let mut templates = BTreeSet::new();
+    for invocation in extract_template_invocations(content) {
+        templates.insert(invocation.template_title);
+    }
+
+    (links.into_iter().collect(), templates.into_iter().collect())
+}
+
+fn query_local_search_for_connection(
+    connection: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<LocalSearchHit>> {
+    let normalized = normalize_spaces(&query.replace('_', " "));
+    if normalized.is_empty() {
+        return Ok(Vec::new());
+    }
+    if fts_table_exists(connection, "indexed_pages_fts") {
+        if let Ok(hits) = query_search_fts(connection, &normalized, limit)
+            && !hits.is_empty()
+        {
+            return Ok(hits);
+        }
+    }
+    query_search_like(connection, &normalized, limit)
+}
+
+fn collect_related_pages_for_authoring(
+    connection: &Connection,
+    stub_link_titles: &[String],
+    search_hits: Vec<LocalSearchHit>,
+    limit: usize,
+) -> Result<Vec<AuthoringPageCandidate>> {
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::<String>::new();
+
+    for title in stub_link_titles {
+        let normalized = normalize_query_title(title);
+        if normalized.is_empty() {
+            continue;
+        }
+        if let Some(page) = load_page_record(connection, &normalized)?
+            && seen.insert(page.title.to_ascii_lowercase())
+        {
+            out.push(AuthoringPageCandidate {
+                title: page.title,
+                namespace: page.namespace,
+                is_redirect: page.is_redirect,
+                source: "stub-link".to_string(),
+            });
+            if out.len() >= limit {
+                return Ok(out);
+            }
+        }
+    }
+
+    for hit in search_hits {
+        if !seen.insert(hit.title.to_ascii_lowercase()) {
+            continue;
+        }
+        out.push(AuthoringPageCandidate {
+            title: hit.title,
+            namespace: hit.namespace,
+            is_redirect: hit.is_redirect,
+            source: "topic-search".to_string(),
+        });
+        if out.len() >= limit {
+            break;
+        }
+    }
+
+    Ok(out)
+}
+
+fn query_suggested_main_links_for_sources(
+    connection: &Connection,
+    source_titles: &[String],
+    limit: usize,
+) -> Result<Vec<String>> {
+    if source_titles.is_empty() || limit == 0 {
+        return Ok(Vec::new());
+    }
+    if !table_exists(connection, "indexed_links")? {
+        return Ok(Vec::new());
+    }
+
+    let placeholders = std::iter::repeat("?")
+        .take(source_titles.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT target_title, COUNT(*) AS frequency
+         FROM indexed_links
+         WHERE source_title IN ({placeholders})
+           AND is_category_membership = 0
+           AND target_namespace = ?
+         GROUP BY target_title
+         ORDER BY frequency DESC, target_title ASC
+         LIMIT ?"
+    );
+    let limit_i64 = i64::try_from(limit).context("link suggestion limit does not fit into i64")?;
+    let mut values = source_titles
+        .iter()
+        .cloned()
+        .map(rusqlite::types::Value::from)
+        .collect::<Vec<_>>();
+    values.push(rusqlite::types::Value::from(
+        Namespace::Main.as_str().to_string(),
+    ));
+    values.push(rusqlite::types::Value::from(limit_i64));
+
+    let mut statement = connection
+        .prepare(&sql)
+        .context("failed to prepare suggested link query")?;
+    let rows = statement
+        .query_map(params_from_iter(values), |row| row.get::<_, String>(0))
+        .context("failed to run suggested link query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode suggested link row")?);
+    }
+    Ok(out)
+}
+
+fn query_suggested_categories_for_sources(
+    connection: &Connection,
+    source_titles: &[String],
+    limit: usize,
+) -> Result<Vec<String>> {
+    if source_titles.is_empty() || limit == 0 {
+        return Ok(Vec::new());
+    }
+    if !table_exists(connection, "indexed_links")? {
+        return Ok(Vec::new());
+    }
+
+    let placeholders = std::iter::repeat("?")
+        .take(source_titles.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT target_title, COUNT(*) AS frequency
+         FROM indexed_links
+         WHERE source_title IN ({placeholders})
+           AND is_category_membership = 1
+         GROUP BY target_title
+         ORDER BY frequency DESC, target_title ASC
+         LIMIT ?"
+    );
+    let limit_i64 =
+        i64::try_from(limit).context("category suggestion limit does not fit into i64")?;
+    let mut values = source_titles
+        .iter()
+        .cloned()
+        .map(rusqlite::types::Value::from)
+        .collect::<Vec<_>>();
+    values.push(rusqlite::types::Value::from(limit_i64));
+
+    let mut statement = connection
+        .prepare(&sql)
+        .context("failed to prepare suggested category query")?;
+    let rows = statement
+        .query_map(params_from_iter(values), |row| row.get::<_, String>(0))
+        .context("failed to run suggested category query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode suggested category row")?);
+    }
+    Ok(out)
+}
+
+#[derive(Default)]
+struct TemplateUsageAccumulator {
+    usage_count: usize,
+    parameter_key_counts: BTreeMap<String, usize>,
+}
+
+fn summarize_template_usage_for_sources(
+    connection: &Connection,
+    source_titles: Option<&[String]>,
+    limit: usize,
+) -> Result<Vec<TemplateUsageSummary>> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    if !table_exists(connection, "indexed_template_invocations")? {
+        return Ok(Vec::new());
+    }
+    if let Some(source_titles) = source_titles
+        && source_titles.is_empty()
+    {
+        return Ok(Vec::new());
+    }
+
+    let rows = load_template_invocation_rows_for_sources(connection, source_titles)?;
+    let mut template_map = BTreeMap::<String, TemplateUsageAccumulator>::new();
+    for (template_title, parameter_keys_serialized) in rows {
+        let entry = template_map.entry(template_title).or_default();
+        entry.usage_count = entry.usage_count.saturating_add(1);
+        for key in parse_parameter_key_list(&parameter_keys_serialized) {
+            let count = entry.parameter_key_counts.entry(key).or_insert(0);
+            *count = count.saturating_add(1);
+        }
+    }
+
+    let mut out = template_map
+        .into_iter()
+        .map(|(template_title, accumulator)| {
+            let mut parameter_keys = accumulator
+                .parameter_key_counts
+                .into_iter()
+                .collect::<Vec<_>>();
+            parameter_keys
+                .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+            TemplateUsageSummary {
+                template_title,
+                usage_count: accumulator.usage_count,
+                parameter_keys: parameter_keys
+                    .into_iter()
+                    .map(|(key, _)| key)
+                    .take(AUTHORING_TEMPLATE_KEY_LIMIT)
+                    .collect(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    out.sort_by(|left, right| {
+        right
+            .usage_count
+            .cmp(&left.usage_count)
+            .then_with(|| left.template_title.cmp(&right.template_title))
+    });
+    out.truncate(limit);
+    Ok(out)
+}
+
+fn load_template_invocation_rows_for_sources(
+    connection: &Connection,
+    source_titles: Option<&[String]>,
+) -> Result<Vec<(String, String)>> {
+    let (sql, values) = if let Some(source_titles) = source_titles {
+        let placeholders = std::iter::repeat("?")
+            .take(source_titles.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT template_title, parameter_keys
+             FROM indexed_template_invocations
+             WHERE source_title IN ({placeholders})"
+        );
+        let values = source_titles
+            .iter()
+            .cloned()
+            .map(rusqlite::types::Value::from)
+            .collect::<Vec<_>>();
+        (sql, values)
+    } else {
+        (
+            "SELECT template_title, parameter_keys FROM indexed_template_invocations".to_string(),
+            Vec::new(),
+        )
+    };
+
+    let mut statement = connection
+        .prepare(&sql)
+        .context("failed to prepare template invocation summary query")?;
+    let rows = statement
+        .query_map(params_from_iter(values), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .context("failed to run template invocation summary query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode template invocation summary row")?);
+    }
+    Ok(out)
+}
+
+fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventory> {
+    let indexed_pages_total = count_query(connection, "SELECT COUNT(*) FROM indexed_pages")
+        .context("failed to count indexed pages for authoring inventory")?;
+    let main_pages = count_query(
+        connection,
+        "SELECT COUNT(*) FROM indexed_pages WHERE namespace = 'Main'",
+    )
+    .context("failed to count main pages for authoring inventory")?;
+    let template_pages = count_query(
+        connection,
+        "SELECT COUNT(*) FROM indexed_pages WHERE namespace = 'Template'",
+    )
+    .context("failed to count template pages for authoring inventory")?;
+    let indexed_links_total = if table_exists(connection, "indexed_links")? {
+        count_query(connection, "SELECT COUNT(*) FROM indexed_links")
+            .context("failed to count indexed links for authoring inventory")?
+    } else {
+        0
+    };
+
+    let (template_invocation_rows, distinct_templates_invoked) =
+        if table_exists(connection, "indexed_template_invocations")? {
+            (
+                count_query(
+                    connection,
+                    "SELECT COUNT(*) FROM indexed_template_invocations",
+                )
+                .context("failed to count template invocation rows for authoring inventory")?,
+                count_query(
+                    connection,
+                    "SELECT COUNT(DISTINCT template_title) FROM indexed_template_invocations",
+                )
+                .context("failed to count distinct templates for authoring inventory")?,
+            )
+        } else {
+            (0, 0)
+        };
+
+    Ok(AuthoringInventory {
+        indexed_pages_total,
+        main_pages,
+        template_pages,
+        indexed_links_total,
+        template_invocation_rows,
+        distinct_templates_invoked,
+    })
 }
 
 fn load_indexed_context_chunks_for_connection(
@@ -2322,11 +2902,12 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        BrokenLinkIssue, LocalChunkAcrossRetrieval, LocalChunkRetrieval, build_local_context,
-        extract_template_invocations, extract_wikilinks, load_stored_index_stats, query_backlinks,
-        query_empty_categories, query_orphans, query_search_local, rebuild_index,
-        retrieve_local_context_chunks, retrieve_local_context_chunks_across_pages,
-        run_validation_checks,
+        AuthoringKnowledgePack, AuthoringKnowledgePackOptions, BrokenLinkIssue,
+        LocalChunkAcrossRetrieval, LocalChunkRetrieval, build_authoring_knowledge_pack,
+        build_local_context, extract_template_invocations, extract_wikilinks,
+        load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
+        query_search_local, rebuild_index, retrieve_local_context_chunks,
+        retrieve_local_context_chunks_across_pages, run_validation_checks,
     };
     use crate::filesystem::{Namespace, ScanOptions};
     use crate::runtime::{ResolvedPaths, ValueSource};
@@ -2678,6 +3259,98 @@ mod tests {
                 .iter()
                 .all(|chunk| chunk.chunk_text.contains("AlphaSignal"))
         );
+    }
+
+    #[test]
+    fn build_authoring_knowledge_pack_requires_topic_or_stub_signal() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "Alpha body text",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let report = build_authoring_knowledge_pack(
+            &paths,
+            None,
+            None,
+            &AuthoringKnowledgePackOptions::default(),
+        )
+        .expect("authoring pack");
+        assert_eq!(report, AuthoringKnowledgePack::QueryMissing);
+    }
+
+    #[test]
+    fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "{{Infobox person|name=Alpha|born=2020}}\n'''Alpha''' works with [[Beta]] and [[Gamma]].\n[[Category:People]]",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+            "{{Infobox organization|name=Beta Org|founder=Alpha}}\n'''Beta''' references [[Alpha]] and [[Gamma]].\n[[Category:Organizations]]",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+            "{{Navbox|name=Gamma nav|list1=[[Alpha]]}}\n'''Gamma''' is linked with [[Alpha]].\n[[Category:People]]",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let options = AuthoringKnowledgePackOptions {
+            related_page_limit: 6,
+            chunk_limit: 6,
+            token_budget: 420,
+            max_pages: 4,
+            link_limit: 8,
+            category_limit: 4,
+            template_limit: 6,
+            diversify: true,
+        };
+        let report = build_authoring_knowledge_pack(
+            &paths,
+            Some("Alpha"),
+            Some("{{Infobox person|name=Draft}}\nDraft body with [[Alpha]] and [[Missing Page]]."),
+            &options,
+        )
+        .expect("authoring pack");
+
+        let report = match report {
+            AuthoringKnowledgePack::Found(report) => report,
+            other => panic!("expected found authoring pack, got {other:?}"),
+        };
+        assert_eq!(report.topic, "Alpha");
+        assert_eq!(report.query, "Alpha");
+        assert!(report.inventory.indexed_pages_total >= 3);
+        assert!(!report.related_pages.is_empty());
+        assert!(report.suggested_links.contains(&"Alpha".to_string()));
+        assert!(
+            report
+                .suggested_templates
+                .iter()
+                .any(|entry| entry.template_title == "Template:Infobox person")
+        );
+        assert!(!report.template_baseline.is_empty());
+        assert!(report.stub_existing_links.contains(&"Alpha".to_string()));
+        assert!(
+            report
+                .stub_missing_links
+                .contains(&"Missing Page".to_string())
+        );
+        assert!(
+            report
+                .stub_detected_templates
+                .contains(&"Template:Infobox person".to_string())
+        );
+        assert!(report.retrieval_mode.contains("across"));
+        assert!(report.token_estimate_total <= 420);
     }
 
     #[test]
