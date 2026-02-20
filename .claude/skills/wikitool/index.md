@@ -1,35 +1,25 @@
----
+﻿---
 name: index
-description: Link graph operations - rebuild indexes, find backlinks, orphans
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
-argument-hint: <subcommand> [args]
+description: Run index rebuild/stats/backlinks/orphans workflows.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
+argument-hint: <subcommand> [options]
 ---
 
-# /wikitool index - Link Graph Operations
+# /wikitool index
 
-Manage the link graph index for analyzing page relationships.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full subcommands and flags.
-
-## Examples
+Thin wrapper for:
 
 ```bash
-/wikitool index rebuild              # Rebuild indexes
-/wikitool index stats                # Show statistics
-/wikitool index backlinks "Milady"   # Find links to Milady page
-/wikitool index orphans              # Find unlinked pages
-/wikitool index prune-categories     # List empty categories
+wikitool index $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool index $ARGUMENTS
+cargo run --quiet --package wikitool -- index $ARGUMENTS
 ```
 
+Validate flags via:
 
+1. `wikitool index --help`
+2. `docs/wikitool/reference.md`

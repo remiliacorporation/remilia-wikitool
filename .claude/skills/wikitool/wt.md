@@ -1,29 +1,26 @@
----
+﻿---
 name: wt
-description: Shorthand alias for /wikitool.
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*), Read, Write
-user_invocable: true
+description: Pass-through runner for arbitrary wikitool commands with guardrails.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
+argument-hint: <command> [options]
 ---
 
-<command-name>wt</command-name>
+# /wikitool wt
 
-# /wt - Shorthand Alias
+Pass-through entrypoint.
 
-Shorthand alias for `/wikitool`. Pass arguments directly.
-
-Wikitool auto-detects standalone vs embedded mode; run from the wikitool directory.
-
-## Examples
-
-- `/wt pull --full` is equivalent to `/wikitool pull --full`
-- `/wt status` is equivalent to `/wikitool status`
-- `/wt diff` is equivalent to `/wikitool diff`
-
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Preferred:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool $ARGUMENTS
+wikitool $ARGUMENTS
 ```
+
+Fallback:
+
+```bash
+cargo run --quiet --package wikitool -- $ARGUMENTS
+```
+
+Guardrail:
+
+1. For write flows, run `wikitool push --dry-run --summary "..."` before write push.

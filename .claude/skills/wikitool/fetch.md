@@ -1,40 +1,25 @@
----
+﻿---
 name: fetch
-description: Fetch raw wikitext from external wiki (not converted to markdown)
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
-argument-hint: <url> [options]
+description: Fetch external pages for local reference.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
+argument-hint: [url] [options]
 ---
 
-# /wikitool fetch - Fetch Raw Wikitext
+# /wikitool fetch
 
-Fetch raw wikitext from external wiki pages. Unlike `export`, this returns unconverted wikitext.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full flags and defaults.
-
-## When to Use
-
-- **Use `fetch`** when you need raw wikitext syntax (for templates, studying markup)
-- **Use `export`** when you need readable markdown (for AI context, documentation)
-
-## Examples
+Thin wrapper for:
 
 ```bash
-# Fetch raw wikitext
-/wikitool fetch "https://en.wikipedia.org/wiki/Ethereum"
-
-# Fetch template source
-/wikitool fetch "https://en.wikipedia.org/wiki/Template:Infobox_cryptocurrency"
+wikitool fetch $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool fetch $ARGUMENTS
+cargo run --quiet --package wikitool -- fetch $ARGUMENTS
 ```
 
+Validate flags via:
 
+1. `wikitool fetch --help`
+2. `docs/wikitool/reference.md`

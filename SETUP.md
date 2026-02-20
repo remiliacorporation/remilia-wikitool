@@ -77,8 +77,7 @@ Canonical command docs:
 - regenerate with:
 
 ```bash
-scripts/generate-wikitool-reference.ps1   # Windows
-scripts/generate-wikitool-reference.sh    # macOS/Linux
+wikitool docs generate-reference
 ```
 
 AI companion source assets are maintained under `ai-pack/` in this repository.
@@ -89,7 +88,19 @@ Release AI pack includes setup/docs/instructions outside the binary. If `ai/docs
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
 ```
 
-When packaging from an embedded host project (for example `wiki/custom/wikitool`), the release folder can also include host `.claude/rules`, host `.claude/skills`, and host `CLAUDE.md` so agent tooling has project-level context out of the box.
+Release assembly commands:
+
+```bash
+wikitool release package
+wikitool release build-matrix
+```
+
+`release build-matrix` uses versioned artifact names by default (`wikitool-vX.Y.Z-<target>.zip`).
+For ephemeral CI-style output names, add `--unversioned-names`.
+
+By default, release output is wikitool-generic and includes ai-pack `.claude/rules` and `.claude/skills`.
+To layer host `.claude/rules`, host `.claude/skills`, and host `CLAUDE.md` on top, pass `--host-project-root <PATH>`.
+When host overlay is used, wikitool-local guidance is preserved as `WIKITOOL_CLAUDE.md`.
 
 Codex skill templates are also included under `codex_skills/` and can be copied into `$CODEX_HOME/skills`.
 

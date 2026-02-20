@@ -1,35 +1,25 @@
----
+﻿---
 name: docs
-description: Import and search MediaWiki extension documentation
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*), Read
-argument-hint: <subcommand> [args]
+description: Run docs import/list/search/update/remove/reference workflows.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
+argument-hint: <subcommand> [options]
 ---
 
-# /wikitool docs - Documentation Management
+# /wikitool docs
 
-Import and manage MediaWiki extension documentation locally.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full subcommands and flags.
-
-## Examples
+Thin wrapper for:
 
 ```bash
-/wikitool docs import Extension:Cargo       # Import Cargo extension docs
-/wikitool docs import Extension:CirrusSearch
-/wikitool docs search "cargo table"         # Search imported docs
-/wikitool docs list                         # List what's imported
-/wikitool docs import-technical Manual:Hooks --subpages
+wikitool docs $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool docs $ARGUMENTS
+cargo run --quiet --package wikitool -- docs $ARGUMENTS
 ```
 
+Validate flags via:
 
+1. `wikitool docs --help`
+2. `docs/wikitool/reference.md`

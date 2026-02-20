@@ -1,6 +1,12 @@
 # Codex Skills Bundle
 
-These skills are packaged with `wikitool` AI companion artifacts to improve agentic CLI operation.
+These skills are thin overlays for editing safety and workflow sequencing.
+
+Canonical command and policy truth remains:
+
+1. `AGENTS.md` / `CLAUDE.md`
+2. `SETUP.md` + `docs/wikitool/*`
+3. Live CLI help (`wikitool --help`, `wikitool <command> --help`)
 
 ## Included skills
 

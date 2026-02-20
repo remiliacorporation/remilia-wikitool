@@ -1,36 +1,25 @@
----
+﻿---
 name: delete
-description: Delete a page from the live wiki (requires authentication)
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
-argument-hint: "<title>" --reason "Reason" [--dry-run]
+description: Run local delete workflow (prefer dry-run + reason).
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
+argument-hint: [title] --reason "..." [options]
 ---
 
-# /wikitool delete - Delete Wiki Pages
+# /wikitool delete
 
-Delete a page from wiki.remilia.org. Requires bot credentials.
-
-## Safety
-
-- Use `--dry-run` first.
-- Provide a clear `--reason`.
-- Avoid `--no-backup` unless explicitly requested.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full flags and defaults.
-
-## Examples
+Thin wrapper for:
 
 ```bash
-/wikitool delete "Page Title" --reason "Duplicate page" --dry-run
-/wikitool delete "Page Title" --reason "Duplicate page"
+wikitool delete $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool delete $ARGUMENTS
+cargo run --quiet --package wikitool -- delete $ARGUMENTS
 ```
+
+Validate flags via:
+
+1. `wikitool delete --help`
+2. `docs/wikitool/reference.md`

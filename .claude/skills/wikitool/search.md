@@ -1,33 +1,25 @@
----
+﻿---
 name: search
-description: Full-text search local wiki content
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
-argument-hint: "<query>" [options]
+description: Search local indexed content.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
+argument-hint: [query] [options]
 ---
 
-# /wikitool search - Search Local Content
+# /wikitool search
 
-Full-text search across local wiki content in `wiki_content/`.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full flags and defaults.
-
-## Examples
+Thin wrapper for:
 
 ```bash
-/wikitool search "Milady Maker"
-/wikitool search "Remilia Corporation"
-/wikitool search "NFT collection"
+wikitool search $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool search $ARGUMENTS
+cargo run --quiet --package wikitool -- search $ARGUMENTS
 ```
 
+Validate flags via:
 
+1. `wikitool search --help`
+2. `docs/wikitool/reference.md`

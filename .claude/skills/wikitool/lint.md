@@ -1,54 +1,25 @@
----
+﻿---
 name: lint
-description: Lint Lua modules with Selene for code quality
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
+description: Run Lua/module lint checks.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: [title] [options]
 ---
 
-# /wikitool lint - Lua Module Linting
+# /wikitool lint
 
-Lint Lua modules using Selene for code quality and style checks.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full flags and defaults.
-
-## Examples
+Thin wrapper for:
 
 ```bash
-/wikitool lint                           # Lint all modules
-/wikitool lint "Module:Infobox"          # Lint specific module
-/wikitool lint --format json             # JSON output
-/wikitool lint --strict                  # Strict mode
+wikitool lint $ARGUMENTS
 ```
 
-## Prerequisites
-
-Selene must be installed. Run from repo root:
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-# Windows
-scripts/setup-selene.ps1
-
-# macOS / Linux
-scripts/setup-selene.sh
+cargo run --quiet --package wikitool -- lint $ARGUMENTS
 ```
 
-Or run the full setup:
+Validate flags via:
 
-```bash
-# Windows
-scripts/setup-tools.ps1
-
-# macOS / Linux
-scripts/setup-tools.sh
-```
-
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
-
-```bash
-cd <wikitool-dir>
-bun run wikitool lint $ARGUMENTS
-```
+1. `wikitool lint --help`
+2. `docs/wikitool/reference.md`

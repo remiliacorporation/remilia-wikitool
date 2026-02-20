@@ -1,33 +1,25 @@
----
+﻿---
 name: validate
-description: Validate wiki content for broken links, missing refs, style issues
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
+description: Run validation checks for links/redirects/categories/orphans.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: [options]
 ---
 
-# /wikitool validate - Validate Wiki Content
+# /wikitool validate
 
-Check wiki content for common issues like broken links, missing references, and style problems.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full flags and defaults.
-
-## Examples
+Thin wrapper for:
 
 ```bash
-/wikitool validate                    # Check all articles
-/wikitool validate --report wikitool_exports/validation-report.md --format md
-/wikitool validate --include-remote --format json
+wikitool validate $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool validate $ARGUMENTS
+cargo run --quiet --package wikitool -- validate $ARGUMENTS
 ```
 
+Validate flags via:
 
+1. `wikitool validate --help`
+2. `docs/wikitool/reference.md`

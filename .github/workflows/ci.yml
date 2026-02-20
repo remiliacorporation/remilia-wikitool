@@ -13,90 +13,81 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: wikitool
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary_name: wikitool
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: wikitool.exe
 
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build release binary
-        run: cargo build --package wikitool --release --locked
-
-      - name: Verify binary (Unix)
-        if: runner.os != 'Windows'
-        run: test -f target/release/wikitool
-
-      - name: Verify binary (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          if (!(Test-Path target/release/wikitool.exe)) {
-            throw "target/release/wikitool.exe missing"
-          }
-
-      - name: Package release (Unix)
-        if: runner.os != 'Windows'
-        run: bash scripts/package-release.sh
-
-      - name: Package release (Windows)
-        if: runner.os == 'Windows'
-        run: scripts/package-release.ps1
+      - name: Build + package zipped release bundle
+        run: >
+          cargo run --quiet --package wikitool --
+          release build-matrix
+          --targets ${{ matrix.target }}
+          --unversioned-names
+          --output-dir dist/release-matrix
 
       - name: Verify packaged release (Unix)
         if: runner.os != 'Windows'
         run: |
-          test -f dist/release/wikitool
-          test -f dist/release/AGENTS.md
-          test -d dist/release/llm_instructions
-          test -f dist/release/manifest.json
+          test -f dist/release-matrix/wikitool-${{ matrix.target }}/${{ matrix.binary_name }}
+          test -f dist/release-matrix/wikitool-${{ matrix.target }}/AGENTS.md
+          test -f dist/release-matrix/wikitool-${{ matrix.target }}/CLAUDE.md
+          test -d dist/release-matrix/wikitool-${{ matrix.target }}/.claude/rules
+          test -d dist/release-matrix/wikitool-${{ matrix.target }}/.claude/skills
+          cmp -s dist/release-matrix/wikitool-${{ matrix.target }}/AGENTS.md dist/release-matrix/wikitool-${{ matrix.target }}/CLAUDE.md
+          test -d dist/release-matrix/wikitool-${{ matrix.target }}/llm_instructions
+          test -f dist/release-matrix/wikitool-${{ matrix.target }}/manifest.json
+          test -f dist/release-matrix/wikitool-${{ matrix.target }}.zip
 
       - name: Verify packaged release (Windows)
         if: runner.os == 'Windows'
         run: |
-          if (!(Test-Path dist/release/wikitool.exe)) { throw "dist/release/wikitool.exe missing" }
-          if (!(Test-Path dist/release/AGENTS.md)) { throw "dist/release/AGENTS.md missing" }
-          if (!(Test-Path dist/release/llm_instructions)) { throw "dist/release/llm_instructions missing" }
-          if (!(Test-Path dist/release/manifest.json)) { throw "dist/release/manifest.json missing" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}/${{ matrix.binary_name }})) { throw "release binary missing" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}/AGENTS.md)) { throw "AGENTS.md missing" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}/CLAUDE.md)) { throw "CLAUDE.md missing" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}/.claude/rules)) { throw ".claude/rules missing" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}/.claude/skills)) { throw ".claude/skills missing" }
+          $agentsHash = (Get-FileHash -Path dist/release-matrix/wikitool-${{ matrix.target }}/AGENTS.md -Algorithm SHA256).Hash
+          $claudeHash = (Get-FileHash -Path dist/release-matrix/wikitool-${{ matrix.target }}/CLAUDE.md -Algorithm SHA256).Hash
+          if ($agentsHash -ne $claudeHash) { throw "AGENTS.md and CLAUDE.md mismatch" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}/llm_instructions)) { throw "llm_instructions missing" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}/manifest.json)) { throw "manifest.json missing" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}.zip)) { throw "zip artifact missing" }
 
       - name: Generate checksums (Unix)
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist/release-checksums
-          shasum -a 256 dist/release/wikitool > dist/release-checksums/wikitool.sha256
-          (
-            cd dist/release
-            find . -type f | sort | xargs shasum -a 256
-          ) > dist/release-checksums/wikitool-release.sha256
+          shasum -a 256 dist/release-matrix/wikitool-${{ matrix.target }}.zip > dist/release-checksums/wikitool-${{ matrix.target }}.zip.sha256
 
       - name: Generate checksums (Windows)
         if: runner.os == 'Windows'
         run: |
           New-Item -ItemType Directory -Path dist/release-checksums -Force | Out-Null
-          $binaryHash = (Get-FileHash -Path dist/release/wikitool.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$binaryHash  dist/release/wikitool.exe" | Set-Content -Encoding utf8 dist/release-checksums/wikitool.sha256
-
-          $base = (Resolve-Path dist/release).Path
-          $lines = @()
-          Get-ChildItem -Path dist/release -Recurse -File | Sort-Object FullName | ForEach-Object {
-            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            $rel = $_.FullName.Substring($base.Length + 1).Replace('\', '/')
-            $lines += "$hash  ./$rel"
-          }
-          $lines | Set-Content -Encoding utf8 dist/release-checksums/wikitool-release.sha256
+          $zipHash = (Get-FileHash -Path dist/release-matrix/wikitool-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$zipHash  dist/release-matrix/wikitool-${{ matrix.target }}.zip" | Set-Content -Encoding utf8 dist/release-checksums/wikitool-${{ matrix.target }}.zip.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wikitool-release-${{ runner.os }}
-          path: dist/release/**
+          name: wikitool-release-${{ matrix.target }}
+          path: dist/release-matrix/wikitool-${{ matrix.target }}.zip
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wikitool-checksums-${{ runner.os }}
-          path: dist/release-checksums/**
+          name: wikitool-checksums-${{ matrix.target }}
+          path: dist/release-checksums/wikitool-${{ matrix.target }}.zip.sha256
           if-no-files-found: error
 
   rust-nightly-lint:

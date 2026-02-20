@@ -1,12 +1,11 @@
-﻿# Wikitool Command Reference
+# Wikitool Command Reference
 
 This file is generated from Rust CLI help output. Do not edit manually.
 
 Regenerate:
 
 ```bash
-scripts/generate-wikitool-reference.ps1
-scripts/generate-wikitool-reference.sh
+wikitool docs generate-reference
 ```
 
 ## Global
@@ -14,7 +13,7 @@ scripts/generate-wikitool-reference.sh
 ```text
 Rust rewrite CLI for remilia-wikitool
 
-Usage: wikitool.exe [OPTIONS] [COMMAND]
+Usage: wikitool [OPTIONS] [COMMAND]
 
 Commands:
   init                 
@@ -40,6 +39,9 @@ Commands:
   lsp:generate-config  
   lsp:status           
   lsp:info             
+  workflow             
+  release              
+  dev                  
   contracts            Contract bootstrap and differential harness helpers
   help                 Print this message or the help of the given subcommand(s)
 
@@ -55,7 +57,7 @@ Options:
 ## init
 
 ```text
-Usage: wikitool.exe init [OPTIONS]
+Usage: wikitool init [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -72,7 +74,7 @@ Options:
 ## pull
 
 ```text
-Usage: wikitool.exe pull [OPTIONS]
+Usage: wikitool pull [OPTIONS]
 
 Options:
       --full                 Full refresh (ignore last pull timestamp)
@@ -91,7 +93,7 @@ Options:
 ## push
 
 ```text
-Usage: wikitool.exe push [OPTIONS]
+Usage: wikitool push [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -110,7 +112,7 @@ Options:
 ## diff
 
 ```text
-Usage: wikitool.exe diff [OPTIONS]
+Usage: wikitool diff [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -125,7 +127,7 @@ Options:
 ## status
 
 ```text
-Usage: wikitool.exe status [OPTIONS]
+Usage: wikitool status [OPTIONS]
 
 Options:
       --modified             Only show modified
@@ -141,7 +143,7 @@ Options:
 ## context
 
 ```text
-Usage: wikitool.exe context [OPTIONS] <TITLE>
+Usage: wikitool context [OPTIONS] <TITLE>
 
 Arguments:
   <TITLE>  
@@ -157,7 +159,7 @@ Options:
 ## search
 
 ```text
-Usage: wikitool.exe search [OPTIONS] <QUERY>
+Usage: wikitool search [OPTIONS] <QUERY>
 
 Arguments:
   <QUERY>  
@@ -173,7 +175,7 @@ Options:
 ## search-external
 
 ```text
-Usage: wikitool.exe search-external [OPTIONS] <QUERY>
+Usage: wikitool search-external [OPTIONS] <QUERY>
 
 Arguments:
   <QUERY>  
@@ -189,7 +191,7 @@ Options:
 ## validate
 
 ```text
-Usage: wikitool.exe validate [OPTIONS]
+Usage: wikitool validate [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -202,7 +204,7 @@ Options:
 ## lint
 
 ```text
-Usage: wikitool.exe lint [OPTIONS] [TITLE]
+Usage: wikitool lint [OPTIONS] [TITLE]
 
 Arguments:
   [TITLE]  
@@ -221,7 +223,7 @@ Options:
 ## fetch
 
 ```text
-Usage: wikitool.exe fetch [OPTIONS] <URL>
+Usage: wikitool fetch [OPTIONS] <URL>
 
 Arguments:
   <URL>  
@@ -240,7 +242,7 @@ Options:
 ## export
 
 ```text
-Usage: wikitool.exe export [OPTIONS] <URL>
+Usage: wikitool export [OPTIONS] <URL>
 
 Arguments:
   <URL>  
@@ -262,7 +264,7 @@ Options:
 ## delete
 
 ```text
-Usage: wikitool.exe delete [OPTIONS] --reason <TEXT> <TITLE>
+Usage: wikitool delete [OPTIONS] --reason <TEXT> <TITLE>
 
 Arguments:
   <TITLE>  
@@ -282,7 +284,7 @@ Options:
 ## db
 
 ```text
-Usage: wikitool.exe db [OPTIONS] <COMMAND>
+Usage: wikitool db [OPTIONS] <COMMAND>
 
 Commands:
   stats    
@@ -301,7 +303,7 @@ Options:
 ## db stats
 
 ```text
-Usage: wikitool.exe db stats [OPTIONS]
+Usage: wikitool db stats [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -314,7 +316,7 @@ Options:
 ## db sync
 
 ```text
-Usage: wikitool.exe db sync [OPTIONS]
+Usage: wikitool db sync [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -327,7 +329,7 @@ Options:
 ## db migrate
 
 ```text
-Usage: wikitool.exe db migrate [OPTIONS]
+Usage: wikitool db migrate [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -340,16 +342,17 @@ Options:
 ## docs
 
 ```text
-Usage: wikitool.exe docs [OPTIONS] <COMMAND>
+Usage: wikitool docs [OPTIONS] <COMMAND>
 
 Commands:
-  import            
-  import-technical  
-  list              
-  update            
-  remove            
-  search            
-  help              Print this message or the help of the given subcommand(s)
+  import              
+  import-technical    
+  generate-reference  
+  list                
+  update              
+  remove              
+  search              
+  help                Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>  
@@ -362,7 +365,7 @@ Options:
 ## docs import
 
 ```text
-Usage: wikitool.exe docs import [OPTIONS] [EXTENSION]...
+Usage: wikitool docs import [OPTIONS] [EXTENSION]...
 
 Arguments:
   [EXTENSION]...  
@@ -381,7 +384,7 @@ Options:
 ## docs import-technical
 
 ```text
-Usage: wikitool.exe docs import-technical [OPTIONS] [PAGE]...
+Usage: wikitool docs import-technical [OPTIONS] [PAGE]...
 
 Arguments:
   [PAGE]...  
@@ -398,10 +401,24 @@ Options:
   -h, --help                 Print help
 ```
 
+## docs generate-reference
+
+```text
+Usage: wikitool docs generate-reference [OPTIONS]
+
+Options:
+      --output <PATH>        Output markdown path (default: docs/wikitool/reference.md in current directory)
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
 ## docs list
 
 ```text
-Usage: wikitool.exe docs list [OPTIONS]
+Usage: wikitool docs list [OPTIONS]
 
 Options:
       --outdated             Show only outdated docs
@@ -416,7 +433,7 @@ Options:
 ## docs update
 
 ```text
-Usage: wikitool.exe docs update [OPTIONS]
+Usage: wikitool docs update [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -429,7 +446,7 @@ Options:
 ## docs remove
 
 ```text
-Usage: wikitool.exe docs remove [OPTIONS] <TARGET>
+Usage: wikitool docs remove [OPTIONS] <TARGET>
 
 Arguments:
   <TARGET>  
@@ -445,7 +462,7 @@ Options:
 ## docs search
 
 ```text
-Usage: wikitool.exe docs search [OPTIONS] <QUERY>
+Usage: wikitool docs search [OPTIONS] <QUERY>
 
 Arguments:
   <QUERY>  
@@ -460,10 +477,27 @@ Options:
   -h, --help                 Print help
 ```
 
+## seo
+
+```text
+Usage: wikitool seo [OPTIONS] <COMMAND>
+
+Commands:
+  inspect  
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
 ## seo inspect
 
 ```text
-Usage: wikitool.exe seo inspect [OPTIONS] <TARGET>
+Usage: wikitool seo inspect [OPTIONS] <TARGET>
 
 Arguments:
   <TARGET>  
@@ -479,10 +513,27 @@ Options:
   -h, --help                 Print help
 ```
 
+## net
+
+```text
+Usage: wikitool net [OPTIONS] <COMMAND>
+
+Commands:
+  inspect  
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
 ## net inspect
 
 ```text
-Usage: wikitool.exe net inspect [OPTIONS] <TARGET>
+Usage: wikitool net inspect [OPTIONS] <TARGET>
 
 Arguments:
   <TARGET>  
@@ -500,10 +551,27 @@ Options:
   -h, --help                 Print help
 ```
 
+## perf
+
+```text
+Usage: wikitool perf [OPTIONS] <COMMAND>
+
+Commands:
+  lighthouse  
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
 ## perf lighthouse
 
 ```text
-Usage: wikitool.exe perf lighthouse [OPTIONS] [TARGET]
+Usage: wikitool perf lighthouse [OPTIONS] [TARGET]
 
 Arguments:
   [TARGET]  
@@ -524,10 +592,27 @@ Options:
   -h, --help                  Print help
 ```
 
+## import
+
+```text
+Usage: wikitool import [OPTIONS] <COMMAND>
+
+Commands:
+  cargo  
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
 ## import cargo
 
 ```text
-Usage: wikitool.exe import cargo [OPTIONS] --table <NAME> <PATH>
+Usage: wikitool import cargo [OPTIONS] --table <NAME> <PATH>
 
 Arguments:
   <PATH>  
@@ -554,7 +639,7 @@ Options:
 ## index
 
 ```text
-Usage: wikitool.exe index [OPTIONS] <COMMAND>
+Usage: wikitool index [OPTIONS] <COMMAND>
 
 Commands:
   rebuild           
@@ -575,7 +660,7 @@ Options:
 ## index rebuild
 
 ```text
-Usage: wikitool.exe index rebuild [OPTIONS]
+Usage: wikitool index rebuild [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -588,7 +673,7 @@ Options:
 ## index stats
 
 ```text
-Usage: wikitool.exe index stats [OPTIONS]
+Usage: wikitool index stats [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -601,7 +686,7 @@ Options:
 ## index backlinks
 
 ```text
-Usage: wikitool.exe index backlinks [OPTIONS] <TITLE>
+Usage: wikitool index backlinks [OPTIONS] <TITLE>
 
 Arguments:
   <TITLE>  
@@ -617,7 +702,7 @@ Options:
 ## index orphans
 
 ```text
-Usage: wikitool.exe index orphans [OPTIONS]
+Usage: wikitool index orphans [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -630,7 +715,7 @@ Options:
 ## index prune-categories
 
 ```text
-Usage: wikitool.exe index prune-categories [OPTIONS]
+Usage: wikitool index prune-categories [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -643,7 +728,7 @@ Options:
 ## lsp:generate-config
 
 ```text
-Usage: wikitool.exe lsp:generate-config [OPTIONS]
+Usage: wikitool lsp:generate-config [OPTIONS]
 
 Options:
       --force                Overwrite parser config if it already exists
@@ -657,7 +742,7 @@ Options:
 ## lsp:status
 
 ```text
-Usage: wikitool.exe lsp:status [OPTIONS]
+Usage: wikitool lsp:status [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -670,11 +755,173 @@ Options:
 ## lsp:info
 
 ```text
-Usage: wikitool.exe lsp:info [OPTIONS]
+Usage: wikitool lsp:info [OPTIONS]
 
 Options:
       --project-root <PATH>  
       --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## workflow
+
+```text
+Usage: wikitool workflow [OPTIONS] <COMMAND>
+
+Commands:
+  bootstrap     
+  full-refresh  
+  help          Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## workflow bootstrap
+
+```text
+Usage: wikitool workflow bootstrap [OPTIONS]
+
+Options:
+      --project-root <PATH>  
+      --templates            Create templates/ during initialization (default: true)
+      --data-dir <PATH>      
+      --no-templates         Do not create templates/ during initialization
+      --config <PATH>        
+      --pull                 Pull content after initialization (default: true)
+      --diagnostics          Print resolved runtime diagnostics
+      --no-pull              Skip content pull after initialization
+      --skip-reference       Skip docs reference generation
+      --skip-git-hooks       Skip commit-msg hook installation
+  -h, --help                 Print help
+```
+
+## workflow full-refresh
+
+```text
+Usage: wikitool workflow full-refresh [OPTIONS]
+
+Options:
+      --project-root <PATH>  
+      --yes                  Assume yes; do not prompt for confirmation
+      --data-dir <PATH>      
+      --templates            Create templates/ during initialization (default: true)
+      --config <PATH>        
+      --no-templates         Do not create templates/ during initialization
+      --diagnostics          Print resolved runtime diagnostics
+      --skip-reference       Skip docs reference generation
+  -h, --help                 Print help
+```
+
+## release
+
+```text
+Usage: wikitool release [OPTIONS] <COMMAND>
+
+Commands:
+  build-ai-pack  
+  package        
+  build-matrix   
+  help           Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## release build-ai-pack
+
+```text
+Usage: wikitool release build-ai-pack [OPTIONS]
+
+Options:
+      --project-root <PATH>       
+      --repo-root <PATH>          Wikitool repository root (default: current directory)
+      --data-dir <PATH>           
+      --output-dir <PATH>         Output directory (default: <repo>/dist/ai-pack)
+      --config <PATH>             
+      --host-project-root <PATH>  Optional host project root containing CLAUDE.md + .claude/{rules,skills}
+      --diagnostics               Print resolved runtime diagnostics
+  -h, --help                      Print help
+```
+
+## release package
+
+```text
+Usage: wikitool release package [OPTIONS]
+
+Options:
+      --project-root <PATH>       
+      --repo-root <PATH>          Wikitool repository root (default: current directory)
+      --binary-path <PATH>        Release binary path (default: <repo>/target/release/wikitool[.exe])
+      --data-dir <PATH>           
+      --config <PATH>             
+      --output-dir <PATH>         Output directory (default: <repo>/dist/release)
+      --diagnostics               Print resolved runtime diagnostics
+      --host-project-root <PATH>  Optional host project root containing CLAUDE.md + .claude/{rules,skills}
+  -h, --help                      Print help
+```
+
+## release build-matrix
+
+```text
+Usage: wikitool release build-matrix [OPTIONS]
+
+Options:
+      --project-root <PATH>       
+      --repo-root <PATH>          Wikitool repository root (default: current directory)
+      --data-dir <PATH>           
+      --targets <TRIPLE>          Target triples to build (repeat or use comma-separated list). Defaults to windows/linux/macos x86_64 targets.
+      --config <PATH>             
+      --output-dir <PATH>         Output directory for staged folders and zip artifacts (default: <repo>/dist/release-matrix)
+      --artifact-version <LABEL>  Version label used in bundle names (default: v<CARGO_PKG_VERSION>)
+      --diagnostics               Print resolved runtime diagnostics
+      --unversioned-names         Use unversioned bundle names (wikitool-<target>) for CI/ephemeral artifacts
+      --cargo-bin <PATH>          Cargo executable path used for target builds (default: cargo)
+      --skip-build                Skip cargo build and package existing target binaries
+      --locked                    Use cargo --locked for target builds (default: true)
+      --no-locked                 Do not pass --locked to cargo builds
+      --host-project-root <PATH>  Optional host project root containing CLAUDE.md + .claude/{rules,skills}
+  -h, --help                      Print help
+```
+
+## dev
+
+```text
+Usage: wikitool dev [OPTIONS] <COMMAND>
+
+Commands:
+  install-git-hooks  
+  help               Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## dev install-git-hooks
+
+```text
+Usage: wikitool dev install-git-hooks [OPTIONS]
+
+Options:
+      --project-root <PATH>  
+      --repo-root <PATH>     Repository root containing .git/hooks (default: current directory)
+      --data-dir <PATH>      
+      --source <PATH>        Hook source file (default: scripts/git-hooks/commit-msg under repo root)
+      --allow-missing-git    Do not fail when .git/hooks is missing (useful for zip-distributed binaries)
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -685,7 +932,7 @@ Options:
 ```text
 Contract bootstrap and differential harness helpers
 
-Usage: wikitool.exe contracts [OPTIONS] <COMMAND>
+Usage: wikitool contracts [OPTIONS] <COMMAND>
 
 Commands:
   snapshot         Generate an offline fixture snapshot used by the differential harness
@@ -705,7 +952,7 @@ Options:
 ```text
 Generate an offline fixture snapshot used by the differential harness
 
-Usage: wikitool.exe contracts snapshot [OPTIONS]
+Usage: wikitool contracts snapshot [OPTIONS]
 
 Options:
       --project-root <PROJECT_ROOT>    [default: .]
@@ -722,7 +969,7 @@ Options:
 ```text
 Print frozen command-surface contract as JSON
 
-Usage: wikitool.exe contracts command-surface [OPTIONS]
+Usage: wikitool contracts command-surface [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -731,4 +978,3 @@ Options:
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
-

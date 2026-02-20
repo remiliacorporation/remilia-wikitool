@@ -1,45 +1,25 @@
----
+﻿---
 name: push
-description: Upload local changes to the live wiki (always dry-run first!)
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
-argument-hint: -s "Edit summary" [options]
+description: Push local edits (dry-run first, then write).
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
+argument-hint: --dry-run --summary "..." [options]
 ---
 
-# /wikitool push - Upload Wiki Content
+# /wikitool push
 
-Push local changes to wiki.remilia.org.
-
-## Safety Rules
-
-1. **ALWAYS run `--dry-run` first** to preview changes
-2. **NEVER use `--force`** without explicit user confirmation
-3. **Check diff** before pushing: `/wikitool diff`
-4. **Confirm deletions** before using `--delete`
-
-## Reference
-
-See `docs/wikitool/reference.md` for full flags and defaults.
-
-## Standard Workflow
+Thin wrapper for:
 
 ```bash
-# 1. Check what changed
-/wikitool diff
-
-# 2. Preview the push
-/wikitool push --dry-run -s "Fix typos"
-
-# 3. If dry-run looks good, push for real
-/wikitool push -s "Fix typos"
+wikitool push $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool push $ARGUMENTS
+cargo run --quiet --package wikitool -- push $ARGUMENTS
 ```
 
+Validate flags via:
 
+1. `wikitool push --help`
+2. `docs/wikitool/reference.md`

@@ -1,6 +1,12 @@
+---
+name: wikitool-content-gate
+description: Run deterministic content quality gates for wiki edits before push, including validate, diff, index/category checks, and explicit dry-run gate output.
+---
+
 # Skill: wikitool-content-gate
 
-Run a deterministic content quality gate for AI-authored wiki changes.
+Keep this skill thin and policy-focused.
+Canonical command truth is CLI help and runbooks.
 
 ## Validation pass
 
@@ -9,7 +15,7 @@ wikitool validate
 wikitool diff
 ```
 
-## Link/category/index signals
+## Link, category, and index signals
 
 ```bash
 wikitool index orphans
@@ -25,11 +31,11 @@ wikitool docs search "extension feature"
 wikitool context "Template:Infobox person"
 ```
 
-## Push gate output standard
+## Push-gate report contract
 
 Before any write push, report:
 
 1. Validation result (`pass` or explicit failures)
 2. Diff scope summary
-3. Risk notes (deletes/force/templates/categories)
-4. Next command (`push --dry-run --summary ...`)
+3. Risk notes (delete, force, template/category scope)
+4. Next command (`wikitool push --dry-run --summary ...`)

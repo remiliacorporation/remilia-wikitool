@@ -1,33 +1,25 @@
----
+﻿---
 name: diff
-description: Show local changes compared to the live wiki
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
+description: Inspect local vs indexed changes before push.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: [options]
 ---
 
-# /wikitool diff - Show Local Changes
+# /wikitool diff
 
-Display differences between local files and wiki.remilia.org.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full flags and defaults.
-
-## Examples
+Thin wrapper for:
 
 ```bash
-/wikitool diff                    # Show all article changes
-/wikitool diff --templates        # Show template changes
-/wikitool diff --verbose          # Include hash/timestamp details
+wikitool diff $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool diff $ARGUMENTS
+cargo run --quiet --package wikitool -- diff $ARGUMENTS
 ```
 
+Validate flags via:
 
+1. `wikitool diff --help`
+2. `docs/wikitool/reference.md`

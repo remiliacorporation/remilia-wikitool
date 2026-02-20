@@ -1,34 +1,25 @@
----
+﻿---
 name: status
-description: Show sync status between local files and wiki
-allowed-tools: Bash(bun run wikitool:*), Bash(cd:*)
+description: Inspect runtime and local state status.
+allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: [options]
 ---
 
-# /wikitool status - Show Sync Status
+# /wikitool status
 
-Display synchronization status between local files and wiki.remilia.org.
-
-## Reference
-
-See `docs/wikitool/reference.md` for full flags and defaults.
-
-## Examples
+Thin wrapper for:
 
 ```bash
-/wikitool status              # Article sync status
-/wikitool status --templates  # Template sync status
-/wikitool status --modified   # Only modified
-/wikitool status --conflicts  # Only conflicts
+wikitool status $ARGUMENTS
 ```
 
-## Execution
-
-Run from the wikitool directory (auto-detects standalone vs embedded mode):
+Fallback when `wikitool` is not on PATH:
 
 ```bash
-cd <wikitool-dir>
-bun run wikitool status $ARGUMENTS
+cargo run --quiet --package wikitool -- status $ARGUMENTS
 ```
 
+Validate flags via:
 
+1. `wikitool status --help`
+2. `docs/wikitool/reference.md`

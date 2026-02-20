@@ -97,6 +97,51 @@ wikitool net inspect "Main Page" --limit 25
 wikitool perf lighthouse "Main Page" --output html
 ```
 
+## Build release bundles (manual)
+
+```bash
+wikitool release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin
+```
+
+Default output names are versioned (`wikitool-vX.Y.Z-<target>.zip`).
+
+For ephemeral CI-style names:
+
+```bash
+wikitool release build-matrix --targets x86_64-unknown-linux-gnu --unversioned-names
+```
+
+To inject host project guardrails into packaged artifacts:
+
+```bash
+wikitool release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
+```
+
+## Community-parity smoke test
+
+Goal: validate the same packaged experience a community editor gets.
+
+1. Build one target bundle without host overlay:
+
+```bash
+wikitool release build-matrix --targets x86_64-unknown-linux-gnu --artifact-version vlocal
+```
+
+2. Unzip `wikitool-vlocal-x86_64-unknown-linux-gnu.zip`.
+3. Confirm package includes:
+   - `AGENTS.md`, `CLAUDE.md`, `SETUP.md`, `README.md`
+   - `.claude/rules/`, `.claude/skills/`
+   - `llm_instructions/`
+   - `docs/wikitool/`
+   - `codex_skills/`
+4. Confirm no host overlay unless requested:
+   - `CLAUDE.md` and `AGENTS.md` are identical
+   - no `WIKITOOL_CLAUDE.md`
+5. Run basic commands from the unpacked folder:
+   - `wikitool --help`
+   - `wikitool init --project-root <test-project> --templates`
+   - `wikitool pull --project-root <test-project> --full --all`
+
 ## Runtime checks
 
 ```bash

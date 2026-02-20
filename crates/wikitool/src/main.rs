@@ -1,7 +1,11 @@
+use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, Command, CommandFactory, Parser, Subcommand, error::ErrorKind};
 use wikitool_core::contracts::{command_surface, generate_fixture_snapshot};
 use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
 use wikitool_core::docs::{
@@ -39,6 +43,8 @@ use wikitool_core::sync::{
     NS_TEMPLATE, PullOptions, PushOptions, RemoteDeleteStatus, delete_remote_page,
     diff_local_against_sync, pull_from_remote, push_to_remote, search_external_wiki,
 };
+use zip::write::FileOptions;
+use zip::{CompressionMethod, ZipWriter};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -107,6 +113,9 @@ enum Commands {
     LspStatus,
     #[command(name = "lsp:info")]
     LspInfo,
+    Workflow(WorkflowArgs),
+    Release(ReleaseArgs),
+    Dev(DevArgs),
     #[command(
         name = "contracts",
         about = "Contract bootstrap and differential harness helpers"
@@ -299,6 +308,8 @@ enum DocsSubcommand {
     Import(DocsImportArgs),
     #[command(name = "import-technical")]
     ImportTechnical(DocsImportTechnicalArgs),
+    #[command(name = "generate-reference")]
+    GenerateReference(DocsGenerateReferenceArgs),
     List(DocsListArgs),
     Update,
     Remove {
@@ -359,6 +370,16 @@ struct DocsListArgs {
     outdated: bool,
     #[arg(long, value_name = "TYPE", help = "Filter technical docs by type")]
     r#type: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct DocsGenerateReferenceArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Output markdown path (default: docs/wikitool/reference.md in current directory)"
+    )]
+    output: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -515,6 +536,197 @@ struct LspGenerateConfigArgs {
 }
 
 #[derive(Debug, Args)]
+struct WorkflowArgs {
+    #[command(subcommand)]
+    command: WorkflowSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum WorkflowSubcommand {
+    Bootstrap(WorkflowBootstrapArgs),
+    #[command(name = "full-refresh")]
+    FullRefresh(WorkflowFullRefreshArgs),
+}
+
+#[derive(Debug, Args)]
+struct WorkflowBootstrapArgs {
+    #[arg(long, help = "Create templates/ during initialization (default: true)")]
+    templates: bool,
+    #[arg(long, help = "Do not create templates/ during initialization")]
+    no_templates: bool,
+    #[arg(long, help = "Pull content after initialization (default: true)")]
+    pull: bool,
+    #[arg(long, help = "Skip content pull after initialization")]
+    no_pull: bool,
+    #[arg(long, help = "Skip docs reference generation")]
+    skip_reference: bool,
+    #[arg(long, help = "Skip commit-msg hook installation")]
+    skip_git_hooks: bool,
+}
+
+#[derive(Debug, Args)]
+struct WorkflowFullRefreshArgs {
+    #[arg(long, help = "Assume yes; do not prompt for confirmation")]
+    yes: bool,
+    #[arg(long, help = "Create templates/ during initialization (default: true)")]
+    templates: bool,
+    #[arg(long, help = "Do not create templates/ during initialization")]
+    no_templates: bool,
+    #[arg(long, help = "Skip docs reference generation")]
+    skip_reference: bool,
+}
+
+#[derive(Debug, Args)]
+struct ReleaseArgs {
+    #[command(subcommand)]
+    command: ReleaseSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum ReleaseSubcommand {
+    #[command(name = "build-ai-pack")]
+    BuildAiPack(ReleaseBuildAiPackArgs),
+    Package(ReleasePackageArgs),
+    #[command(name = "build-matrix")]
+    BuildMatrix(ReleaseBuildMatrixArgs),
+}
+
+#[derive(Debug, Args)]
+struct ReleaseBuildAiPackArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Wikitool repository root (default: current directory)"
+    )]
+    repo_root: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Output directory (default: <repo>/dist/ai-pack)"
+    )]
+    output_dir: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Optional host project root containing CLAUDE.md + .claude/{rules,skills}"
+    )]
+    host_project_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct ReleasePackageArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Wikitool repository root (default: current directory)"
+    )]
+    repo_root: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Release binary path (default: <repo>/target/release/wikitool[.exe])"
+    )]
+    binary_path: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Output directory (default: <repo>/dist/release)"
+    )]
+    output_dir: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Optional host project root containing CLAUDE.md + .claude/{rules,skills}"
+    )]
+    host_project_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct ReleaseBuildMatrixArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Wikitool repository root (default: current directory)"
+    )]
+    repo_root: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "TRIPLE",
+        value_delimiter = ',',
+        help = "Target triples to build (repeat or use comma-separated list). Defaults to windows/linux/macos x86_64 targets."
+    )]
+    targets: Vec<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Output directory for staged folders and zip artifacts (default: <repo>/dist/release-matrix)"
+    )]
+    output_dir: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "LABEL",
+        help = "Version label used in bundle names (default: v<CARGO_PKG_VERSION>)"
+    )]
+    artifact_version: Option<String>,
+    #[arg(
+        long,
+        help = "Use unversioned bundle names (wikitool-<target>) for CI/ephemeral artifacts"
+    )]
+    unversioned_names: bool,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Cargo executable path used for target builds (default: cargo)"
+    )]
+    cargo_bin: Option<PathBuf>,
+    #[arg(long, help = "Skip cargo build and package existing target binaries")]
+    skip_build: bool,
+    #[arg(long, help = "Use cargo --locked for target builds (default: true)")]
+    locked: bool,
+    #[arg(long, help = "Do not pass --locked to cargo builds")]
+    no_locked: bool,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Optional host project root containing CLAUDE.md + .claude/{rules,skills}"
+    )]
+    host_project_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct DevArgs {
+    #[command(subcommand)]
+    command: DevSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum DevSubcommand {
+    #[command(name = "install-git-hooks")]
+    InstallGitHooks(InstallGitHooksArgs),
+}
+
+#[derive(Debug, Args)]
+struct InstallGitHooksArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Repository root containing .git/hooks (default: current directory)"
+    )]
+    repo_root: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Hook source file (default: scripts/git-hooks/commit-msg under repo root)"
+    )]
+    source: Option<PathBuf>,
+    #[arg(
+        long,
+        help = "Do not fail when .git/hooks is missing (useful for zip-distributed binaries)"
+    )]
+    allow_missing_git: bool,
+}
+
+#[derive(Debug, Args)]
 struct ContractsArgs {
     #[command(subcommand)]
     command: ContractsCommand,
@@ -547,6 +759,9 @@ fn main() -> Result<()> {
         Some(Commands::LspGenerateConfig(args)) => run_lsp_generate_config(&runtime, args),
         Some(Commands::LspStatus) => run_lsp_status(&runtime),
         Some(Commands::LspInfo) => run_lsp_info(),
+        Some(Commands::Workflow(args)) => run_workflow(&runtime, args),
+        Some(Commands::Release(args)) => run_release(args),
+        Some(Commands::Dev(args)) => run_dev(args),
         Some(Commands::Db(DbArgs {
             command: DbSubcommand::Migrate,
         })) => run_db_migrate_policy_error(&runtime),
@@ -573,6 +788,7 @@ fn main() -> Result<()> {
         Some(Commands::Docs(DocsArgs { command })) => match command {
             DocsSubcommand::Import(args) => run_docs_import(&runtime, args),
             DocsSubcommand::ImportTechnical(args) => run_docs_import_technical(&runtime, args),
+            DocsSubcommand::GenerateReference(args) => run_docs_generate_reference(args),
             DocsSubcommand::List(args) => run_docs_list(&runtime, args),
             DocsSubcommand::Update => run_docs_update(&runtime),
             DocsSubcommand::Remove { target } => run_docs_remove(&runtime, &target),
@@ -1775,9 +1991,7 @@ fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
         println!("lint");
         println!("selene: missing");
         println!("warning: Selene not found");
-        println!(
-            "hint: run scripts/setup-selene.ps1 or scripts/setup-selene.sh, or set SELENE_PATH"
-        );
+        println!("hint: install Selene manually or set SELENE_PATH");
     } else {
         println!("lint");
         println!(
@@ -2436,6 +2650,1059 @@ fn run_docs_search(
     Ok(())
 }
 
+fn run_docs_generate_reference(args: DocsGenerateReferenceArgs) -> Result<()> {
+    let output = args
+        .output
+        .unwrap_or_else(|| PathBuf::from("docs/wikitool/reference.md"));
+    let output = if output.is_absolute() {
+        output
+    } else {
+        std::env::current_dir()
+            .context("failed to resolve current directory")?
+            .join(output)
+    };
+
+    let markdown = generate_docs_reference_markdown()?;
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create directory {}", normalize_path(parent)))?;
+    }
+    fs::write(&output, markdown)
+        .with_context(|| format!("failed to write {}", normalize_path(&output)))?;
+
+    println!("Wrote {}", normalize_path(&output));
+    Ok(())
+}
+
+fn generate_docs_reference_markdown() -> Result<String> {
+    let command = Cli::command();
+    let mut command_paths = Vec::new();
+    collect_command_paths(&command, &[], &mut command_paths);
+
+    let mut lines = vec![
+        "# Wikitool Command Reference".to_string(),
+        "".to_string(),
+        "This file is generated from Rust CLI help output. Do not edit manually.".to_string(),
+        "".to_string(),
+        "Regenerate:".to_string(),
+        "".to_string(),
+        "```bash".to_string(),
+        "wikitool docs generate-reference".to_string(),
+        "```".to_string(),
+        "".to_string(),
+    ];
+
+    for path in command_paths {
+        let title = if path.is_empty() {
+            "Global".to_string()
+        } else {
+            path.join(" ")
+        };
+        let help_text = help_text_for_command_path(&path)?;
+        lines.push(format!("## {title}"));
+        lines.push(String::new());
+        lines.push("```text".to_string());
+        lines.push(help_text);
+        lines.push("```".to_string());
+        lines.push(String::new());
+    }
+
+    Ok(lines.join("\n"))
+}
+
+fn collect_command_paths(command: &Command, prefix: &[String], out: &mut Vec<Vec<String>>) {
+    out.push(prefix.to_vec());
+
+    for subcommand in command.get_subcommands() {
+        let mut next = prefix.to_vec();
+        next.push(subcommand.get_name().to_string());
+        collect_command_paths(subcommand, &next, out);
+    }
+}
+
+fn help_text_for_command_path(path: &[String]) -> Result<String> {
+    let mut command = Cli::command();
+    command = command.bin_name("wikitool");
+
+    let mut args = Vec::with_capacity(path.len() + 2);
+    args.push("wikitool".to_string());
+    args.extend(path.iter().cloned());
+    args.push("--help".to_string());
+
+    match command.try_get_matches_from(args) {
+        Ok(_) => bail!(
+            "failed to render help for path {}",
+            if path.is_empty() {
+                "<global>".to_string()
+            } else {
+                path.join(" ")
+            }
+        ),
+        Err(error) => match error.kind() {
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
+                Ok(error.to_string().trim_end().to_string())
+            }
+            _ => Err(error).with_context(|| {
+                format!(
+                    "failed to resolve command path {}",
+                    if path.is_empty() {
+                        "<global>".to_string()
+                    } else {
+                        path.join(" ")
+                    }
+                )
+            }),
+        },
+    }
+}
+
+fn run_workflow(runtime: &RuntimeOptions, args: WorkflowArgs) -> Result<()> {
+    match args.command {
+        WorkflowSubcommand::Bootstrap(options) => run_workflow_bootstrap(runtime, options),
+        WorkflowSubcommand::FullRefresh(options) => run_workflow_full_refresh(runtime, options),
+    }
+}
+
+fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs) -> Result<()> {
+    let include_templates = resolve_default_true_flag(
+        args.templates,
+        args.no_templates,
+        "workflow bootstrap templates",
+    )?;
+    let should_pull =
+        resolve_default_true_flag(args.pull, args.no_pull, "workflow bootstrap pull")?;
+
+    run_init(
+        runtime,
+        InitArgs {
+            templates: include_templates,
+            force: false,
+            no_config: false,
+            no_parser_config: false,
+        },
+    )?;
+
+    let paths = resolve_runtime_paths(runtime)?;
+
+    if !args.skip_reference {
+        run_docs_generate_reference(DocsGenerateReferenceArgs {
+            output: Some(paths.project_root.join("docs/wikitool/reference.md")),
+        })?;
+    }
+
+    if !args.skip_git_hooks {
+        run_dev_install_git_hooks(InstallGitHooksArgs {
+            repo_root: Some(paths.project_root.clone()),
+            source: None,
+            allow_missing_git: true,
+        })?;
+    }
+
+    if should_pull {
+        run_pull(
+            runtime,
+            PullArgs {
+                full: true,
+                overwrite_local: false,
+                category: None,
+                templates: false,
+                categories: false,
+                all: true,
+            },
+        )?;
+    } else {
+        println!("workflow bootstrap: pull skipped (--no-pull)");
+    }
+
+    Ok(())
+}
+
+fn run_workflow_full_refresh(
+    runtime: &RuntimeOptions,
+    args: WorkflowFullRefreshArgs,
+) -> Result<()> {
+    let include_templates = resolve_default_true_flag(
+        args.templates,
+        args.no_templates,
+        "workflow full-refresh templates",
+    )?;
+    if !args.yes
+        && !prompt_yes_no(
+            "This will reset .wikitool/data/wikitool.db and re-download content/templates. Continue? (y/N) ",
+        )?
+    {
+        println!("Aborted.");
+        return Ok(());
+    }
+
+    let paths = resolve_runtime_paths(runtime)?;
+    if paths.db_path.exists() {
+        fs::remove_file(&paths.db_path)
+            .with_context(|| format!("failed to delete {}", normalize_path(&paths.db_path)))?;
+        println!("Removed {}", normalize_path(&paths.db_path));
+    }
+
+    run_init(
+        runtime,
+        InitArgs {
+            templates: include_templates,
+            force: false,
+            no_config: false,
+            no_parser_config: false,
+        },
+    )?;
+
+    if !args.skip_reference {
+        run_docs_generate_reference(DocsGenerateReferenceArgs {
+            output: Some(paths.project_root.join("docs/wikitool/reference.md")),
+        })?;
+    }
+
+    run_pull(
+        runtime,
+        PullArgs {
+            full: true,
+            overwrite_local: false,
+            category: None,
+            templates: false,
+            categories: false,
+            all: true,
+        },
+    )?;
+    run_validate(runtime)?;
+    run_status(
+        runtime,
+        StatusArgs {
+            modified: false,
+            conflicts: false,
+            templates: true,
+        },
+    )?;
+    Ok(())
+}
+
+fn run_release(args: ReleaseArgs) -> Result<()> {
+    match args.command {
+        ReleaseSubcommand::BuildAiPack(options) => run_release_build_ai_pack(options),
+        ReleaseSubcommand::Package(options) => run_release_package(options),
+        ReleaseSubcommand::BuildMatrix(options) => run_release_build_matrix(options),
+    }
+}
+
+fn run_release_build_ai_pack(args: ReleaseBuildAiPackArgs) -> Result<()> {
+    let repo_root = resolve_repo_root(args.repo_root)?;
+    let output_dir = args
+        .output_dir
+        .unwrap_or_else(|| repo_root.join("dist/ai-pack"));
+
+    let result = build_ai_pack(&repo_root, &output_dir, args.host_project_root.as_deref())?;
+
+    println!("release build-ai-pack");
+    println!("repo_root: {}", normalize_path(&repo_root));
+    println!("output_dir: {}", normalize_path(&result.output_dir));
+    println!(
+        "host_context_included: {}",
+        format_flag(result.host_context_included)
+    );
+    println!(
+        "claude_rules_included: {}",
+        format_flag(result.claude_rules_included)
+    );
+    println!(
+        "claude_skills_included: {}",
+        format_flag(result.claude_skills_included)
+    );
+    println!(
+        "codex_skills_included: {}",
+        format_flag(result.codex_skills_included)
+    );
+    println!(
+        "docs_bundle_included: {}",
+        format_flag(result.docs_bundle_included)
+    );
+
+    Ok(())
+}
+
+fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
+    let repo_root = resolve_repo_root(args.repo_root)?;
+    let output_dir = args
+        .output_dir
+        .unwrap_or_else(|| repo_root.join("dist/release"));
+    let binary_path = args.binary_path.unwrap_or_else(|| {
+        repo_root
+            .join("target/release")
+            .join(default_release_binary_name())
+    });
+    if !binary_path.is_file() {
+        bail!("missing release binary: {}", normalize_path(&binary_path));
+    }
+
+    let ai_pack_dir = repo_root.join("dist/ai-pack");
+    let ai_pack_result =
+        build_ai_pack(&repo_root, &ai_pack_dir, args.host_project_root.as_deref())?;
+
+    reset_directory(&output_dir)?;
+    copy_file(
+        &binary_path,
+        &output_dir.join(default_release_binary_name()),
+    )?;
+    copy_dir_contents(&ai_pack_dir, &output_dir)?;
+
+    println!("release package");
+    println!("repo_root: {}", normalize_path(&repo_root));
+    println!("binary_path: {}", normalize_path(&binary_path));
+    println!("output_dir: {}", normalize_path(&output_dir));
+    println!(
+        "host_context_included: {}",
+        format_flag(ai_pack_result.host_context_included)
+    );
+    println!(
+        "claude_rules_included: {}",
+        format_flag(ai_pack_result.claude_rules_included)
+    );
+    println!(
+        "claude_skills_included: {}",
+        format_flag(ai_pack_result.claude_skills_included)
+    );
+    println!(
+        "codex_skills_included: {}",
+        format_flag(ai_pack_result.codex_skills_included)
+    );
+    println!(
+        "docs_bundle_included: {}",
+        format_flag(ai_pack_result.docs_bundle_included)
+    );
+    Ok(())
+}
+
+#[derive(Debug)]
+struct ReleaseMatrixArtifact {
+    target: String,
+    binary_path: PathBuf,
+    bundle_dir: PathBuf,
+    zip_path: PathBuf,
+}
+
+fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<()> {
+    let repo_root = resolve_repo_root(args.repo_root)?;
+    let output_dir = args
+        .output_dir
+        .unwrap_or_else(|| repo_root.join("dist/release-matrix"));
+    fs::create_dir_all(&output_dir)
+        .with_context(|| format!("failed to create {}", normalize_path(&output_dir)))?;
+
+    let cargo_bin = args.cargo_bin.unwrap_or_else(|| PathBuf::from("cargo"));
+    let use_locked = resolve_default_true_flag(
+        args.locked,
+        args.no_locked,
+        "release build-matrix lockfile flag",
+    )?;
+    let targets = resolve_release_targets(&args.targets);
+    let artifact_version =
+        resolve_release_artifact_version(args.artifact_version.as_deref(), args.unversioned_names)?;
+
+    let ai_pack_dir = output_dir.join("_ai-pack-staging");
+    let ai_pack_result =
+        build_ai_pack(&repo_root, &ai_pack_dir, args.host_project_root.as_deref())?;
+
+    let mut artifacts = Vec::new();
+    for target in &targets {
+        if !args.skip_build {
+            run_cargo_release_build_for_target(&repo_root, &cargo_bin, target, use_locked)?;
+        }
+
+        let binary_path = release_binary_path_for_target(&repo_root, target);
+        if !binary_path.is_file() {
+            bail!(
+                "missing built binary for target {target}: {}",
+                normalize_path(&binary_path)
+            );
+        }
+
+        let bundle_name = release_bundle_name(target, artifact_version.as_deref());
+        let bundle_dir = output_dir.join(&bundle_name);
+        reset_directory(&bundle_dir)?;
+        copy_file(
+            &binary_path,
+            &bundle_dir.join(release_binary_name_for_target(target)),
+        )?;
+        copy_dir_contents(&ai_pack_dir, &bundle_dir)?;
+
+        let zip_path = output_dir.join(format!("{bundle_name}.zip"));
+        zip_release_bundle(&bundle_dir, &zip_path, &bundle_name)?;
+
+        artifacts.push(ReleaseMatrixArtifact {
+            target: target.clone(),
+            binary_path,
+            bundle_dir,
+            zip_path,
+        });
+    }
+
+    if ai_pack_dir.exists() {
+        fs::remove_dir_all(&ai_pack_dir)
+            .with_context(|| format!("failed to remove {}", normalize_path(&ai_pack_dir)))?;
+    }
+
+    println!("release build-matrix");
+    println!("repo_root: {}", normalize_path(&repo_root));
+    println!("output_dir: {}", normalize_path(&output_dir));
+    println!(
+        "artifact_version: {}",
+        artifact_version.as_deref().unwrap_or("<none>")
+    );
+    println!("target_count: {}", artifacts.len());
+    println!(
+        "host_context_included: {}",
+        format_flag(ai_pack_result.host_context_included)
+    );
+    println!(
+        "claude_rules_included: {}",
+        format_flag(ai_pack_result.claude_rules_included)
+    );
+    println!(
+        "claude_skills_included: {}",
+        format_flag(ai_pack_result.claude_skills_included)
+    );
+    println!(
+        "codex_skills_included: {}",
+        format_flag(ai_pack_result.codex_skills_included)
+    );
+    println!(
+        "docs_bundle_included: {}",
+        format_flag(ai_pack_result.docs_bundle_included)
+    );
+    for artifact in &artifacts {
+        println!("artifact.target: {}", artifact.target);
+        println!(
+            "artifact.binary_path: {}",
+            normalize_path(&artifact.binary_path)
+        );
+        println!(
+            "artifact.bundle_dir: {}",
+            normalize_path(&artifact.bundle_dir)
+        );
+        println!("artifact.zip_path: {}", normalize_path(&artifact.zip_path));
+    }
+    Ok(())
+}
+
+fn run_dev(args: DevArgs) -> Result<()> {
+    match args.command {
+        DevSubcommand::InstallGitHooks(options) => run_dev_install_git_hooks(options),
+    }
+}
+
+fn run_dev_install_git_hooks(args: InstallGitHooksArgs) -> Result<()> {
+    let repo_root = resolve_repo_root(args.repo_root)?;
+    let hooks_dir = repo_root.join(".git/hooks");
+    if !hooks_dir.is_dir() {
+        if args.allow_missing_git {
+            println!(
+                "No .git/hooks directory found at {}. Skipping hook install.",
+                normalize_path(&hooks_dir)
+            );
+            return Ok(());
+        }
+        bail!(
+            "no .git/hooks directory found at {}",
+            normalize_path(&hooks_dir)
+        );
+    }
+
+    let source = args
+        .source
+        .unwrap_or_else(|| repo_root.join("scripts/git-hooks/commit-msg"));
+    if !source.is_file() {
+        bail!("hook source not found: {}", normalize_path(&source));
+    }
+    let destination = hooks_dir.join("commit-msg");
+    copy_file(&source, &destination)?;
+    set_executable_if_unix(&destination)?;
+
+    println!(
+        "Installed commit-msg hook: {}",
+        normalize_path(&destination)
+    );
+    Ok(())
+}
+
+#[derive(Debug)]
+struct AiPackBuildResult {
+    output_dir: PathBuf,
+    host_context_included: bool,
+    claude_rules_included: bool,
+    claude_skills_included: bool,
+    codex_skills_included: bool,
+    docs_bundle_included: bool,
+}
+
+fn build_ai_pack(
+    repo_root: &Path,
+    output_dir: &Path,
+    host_project_root: Option<&Path>,
+) -> Result<AiPackBuildResult> {
+    let ai_pack_root = repo_root.join("ai-pack");
+    reset_directory(output_dir)?;
+
+    for file in ["SETUP.md", "README.md"] {
+        let src = repo_root.join(file);
+        if !src.is_file() {
+            bail!("missing required AI pack file: {}", normalize_path(&src));
+        }
+        copy_file(&src, &output_dir.join(file))?;
+    }
+
+    let ai_pack_agents = ai_pack_root.join("AGENTS.md");
+    let ai_pack_claude = ai_pack_root.join("CLAUDE.md");
+    for file in [&ai_pack_agents, &ai_pack_claude] {
+        if !file.is_file() {
+            bail!(
+                "missing required AI pack source file: {}",
+                normalize_path(file)
+            );
+        }
+    }
+    ensure_files_identical(
+        &ai_pack_agents,
+        &ai_pack_claude,
+        "ai-pack instruction contract violation",
+    )?;
+
+    let claude_rules_source = ai_pack_root.join(".claude/rules");
+    if !claude_rules_source.is_dir() {
+        bail!(
+            "missing required AI pack Claude rules directory: {}",
+            normalize_path(&claude_rules_source)
+        );
+    }
+    copy_dir_recursive(&claude_rules_source, &output_dir.join(".claude/rules"))?;
+    let mut claude_rules_included = true;
+
+    let claude_skills_source = ai_pack_root.join(".claude/skills");
+    if !claude_skills_source.is_dir() {
+        bail!(
+            "missing required AI pack Claude skills directory: {}",
+            normalize_path(&claude_skills_source)
+        );
+    }
+    copy_dir_recursive(&claude_skills_source, &output_dir.join(".claude/skills"))?;
+    let mut claude_skills_included = true;
+
+    let mut effective_claude_source = ai_pack_claude.clone();
+
+    let mut host_context_included = false;
+    if let Some(host_root) = detect_host_context_root(repo_root, host_project_root)?
+        && !paths_equivalent(&host_root, repo_root)?
+    {
+        copy_file(&ai_pack_claude, &output_dir.join("WIKITOOL_CLAUDE.md"))?;
+        effective_claude_source = host_root.join("CLAUDE.md");
+        copy_dir_recursive(
+            &host_root.join(".claude/rules"),
+            &output_dir.join(".claude/rules"),
+        )?;
+        copy_dir_recursive(
+            &host_root.join(".claude/skills"),
+            &output_dir.join(".claude/skills"),
+        )?;
+        claude_rules_included = true;
+        claude_skills_included = true;
+        host_context_included = true;
+    }
+
+    copy_file(&effective_claude_source, &output_dir.join("CLAUDE.md"))?;
+    copy_file(&effective_claude_source, &output_dir.join("AGENTS.md"))?;
+
+    let llm_source = ai_pack_root.join("llm_instructions");
+    if !llm_source.is_dir() {
+        bail!(
+            "missing llm_instructions directory: {}",
+            normalize_path(&llm_source)
+        );
+    }
+    let llm_dest = output_dir.join("llm_instructions");
+    fs::create_dir_all(&llm_dest)
+        .with_context(|| format!("failed to create {}", normalize_path(&llm_dest)))?;
+    let mut llm_count = 0usize;
+    for entry in fs::read_dir(&llm_source)
+        .with_context(|| format!("failed to read {}", normalize_path(&llm_source)))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() && is_markdown_file(&path) {
+            copy_file(&path, &llm_dest.join(entry.file_name()))?;
+            llm_count += 1;
+        }
+    }
+    if llm_count == 0 {
+        bail!("no ai-pack/llm_instructions/*.md files found");
+    }
+
+    let docs_source = repo_root.join("docs/wikitool");
+    if docs_source.is_dir() {
+        let docs_dest = output_dir.join("docs/wikitool");
+        fs::create_dir_all(&docs_dest)
+            .with_context(|| format!("failed to create {}", normalize_path(&docs_dest)))?;
+        for entry in fs::read_dir(&docs_source)
+            .with_context(|| format!("failed to read {}", normalize_path(&docs_source)))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() && is_markdown_file(&path) {
+                copy_file(&path, &docs_dest.join(entry.file_name()))?;
+            }
+        }
+    }
+
+    let codex_skills_source = ai_pack_root.join("codex_skills");
+    let mut codex_skills_included = false;
+    if codex_skills_source.is_dir() {
+        copy_dir_recursive(&codex_skills_source, &output_dir.join("codex_skills"))?;
+        codex_skills_included = true;
+    }
+
+    let docs_bundle_source = ai_pack_root.join("docs-bundle-v1.json");
+    let mut docs_bundle_included = false;
+    if docs_bundle_source.is_file() {
+        copy_file(
+            &docs_bundle_source,
+            &output_dir.join("ai/docs-bundle-v1.json"),
+        )?;
+        docs_bundle_included = true;
+    }
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let manifest = serde_json::json!({
+        "schema_version": 1,
+        "generated_at_unix": now_unix,
+        "host_context_included": host_context_included,
+        "claude_rules_included": claude_rules_included,
+        "claude_skills_included": claude_skills_included,
+        "codex_skills_included": codex_skills_included,
+        "docs_bundle_included": docs_bundle_included,
+        "agents_mirrors_claude": true,
+        "notes": "AI companion pack for wikitool; content is intentionally shipped outside the binary."
+    });
+    fs::write(
+        output_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest)?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to write {}",
+            normalize_path(&output_dir.join("manifest.json"))
+        )
+    })?;
+
+    Ok(AiPackBuildResult {
+        output_dir: output_dir.to_path_buf(),
+        host_context_included,
+        claude_rules_included,
+        claude_skills_included,
+        codex_skills_included,
+        docs_bundle_included,
+    })
+}
+
+fn resolve_repo_root(value: Option<PathBuf>) -> Result<PathBuf> {
+    let repo_root = match value {
+        Some(path) => path,
+        None => std::env::current_dir().context("failed to resolve current directory")?,
+    };
+    if !repo_root.exists() {
+        bail!("path does not exist: {}", normalize_path(&repo_root));
+    }
+    fs::canonicalize(&repo_root)
+        .with_context(|| format!("failed to canonicalize {}", normalize_path(&repo_root)))
+}
+
+fn resolve_default_true_flag(enabled: bool, disabled: bool, label: &str) -> Result<bool> {
+    if enabled && disabled {
+        bail!("invalid options for {label}: enable and disable flags both set");
+    }
+    if disabled {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+fn prompt_yes_no(prompt: &str) -> Result<bool> {
+    print!("{prompt}");
+    io::stdout().flush().context("failed to flush stdout")?;
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .context("failed to read confirmation input")?;
+    let normalized = input.trim().to_ascii_lowercase();
+    Ok(matches!(normalized.as_str(), "y" | "yes"))
+}
+
+fn detect_host_context_root(repo_root: &Path, explicit: Option<&Path>) -> Result<Option<PathBuf>> {
+    let _ = repo_root;
+    let Some(path) = explicit else {
+        return Ok(None);
+    };
+
+    let root = fs::canonicalize(path)
+        .with_context(|| format!("failed to canonicalize {}", normalize_path(path)))?;
+    if !root.join("CLAUDE.md").is_file()
+        || !root.join(".claude/rules").is_dir()
+        || !root.join(".claude/skills").is_dir()
+    {
+        bail!(
+            "invalid host project root {}: expected CLAUDE.md and .claude/{{rules,skills}}",
+            normalize_path(&root)
+        );
+    }
+    Ok(Some(root))
+}
+
+fn ensure_files_identical(left: &Path, right: &Path, label: &str) -> Result<()> {
+    let left_bytes =
+        fs::read(left).with_context(|| format!("failed to read {}", normalize_path(left)))?;
+    let right_bytes =
+        fs::read(right).with_context(|| format!("failed to read {}", normalize_path(right)))?;
+    if left_bytes != right_bytes {
+        bail!(
+            "{label}: {} and {} must match",
+            normalize_path(left),
+            normalize_path(right)
+        );
+    }
+    Ok(())
+}
+
+fn reset_directory(path: &Path) -> Result<()> {
+    if path.exists() {
+        fs::remove_dir_all(path)
+            .with_context(|| format!("failed to remove {}", normalize_path(path)))?;
+    }
+    fs::create_dir_all(path).with_context(|| format!("failed to create {}", normalize_path(path)))
+}
+
+fn copy_file(source: &Path, destination: &Path) -> Result<()> {
+    if !source.is_file() {
+        bail!("file not found: {}", normalize_path(source));
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
+    }
+    fs::copy(source, destination).with_context(|| {
+        format!(
+            "failed to copy {} -> {}",
+            normalize_path(source),
+            normalize_path(destination)
+        )
+    })?;
+    Ok(())
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
+    if !source.is_dir() {
+        bail!("directory not found: {}", normalize_path(source));
+    }
+    fs::create_dir_all(destination)
+        .with_context(|| format!("failed to create {}", normalize_path(destination)))?;
+
+    for entry in fs::read_dir(source)
+        .with_context(|| format!("failed to read {}", normalize_path(source)))?
+    {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let metadata = entry
+            .metadata()
+            .with_context(|| format!("failed to read metadata {}", normalize_path(&source_path)))?;
+        if metadata.is_dir() {
+            copy_dir_recursive(&source_path, &destination_path)?;
+        } else if metadata.is_file() {
+            copy_file(&source_path, &destination_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_dir_contents(source: &Path, destination: &Path) -> Result<()> {
+    if !source.is_dir() {
+        bail!("directory not found: {}", normalize_path(source));
+    }
+    fs::create_dir_all(destination)
+        .with_context(|| format!("failed to create {}", normalize_path(destination)))?;
+
+    for entry in fs::read_dir(source)
+        .with_context(|| format!("failed to read {}", normalize_path(source)))?
+    {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let metadata = entry
+            .metadata()
+            .with_context(|| format!("failed to read metadata {}", normalize_path(&source_path)))?;
+        if metadata.is_dir() {
+            copy_dir_recursive(&source_path, &destination_path)?;
+        } else if metadata.is_file() {
+            copy_file(&source_path, &destination_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn paths_equivalent(left: &Path, right: &Path) -> Result<bool> {
+    let left = fs::canonicalize(left)
+        .with_context(|| format!("failed to canonicalize {}", normalize_path(left)))?;
+    let right = fs::canonicalize(right)
+        .with_context(|| format!("failed to canonicalize {}", normalize_path(right)))?;
+    Ok(left == right)
+}
+
+fn default_release_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "wikitool.exe"
+    } else {
+        "wikitool"
+    }
+}
+
+const DEFAULT_RELEASE_MATRIX_TARGETS: [&str; 3] = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+];
+
+fn resolve_release_targets(raw_targets: &[String]) -> Vec<String> {
+    let mut targets = Vec::new();
+    for raw in raw_targets {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !targets.iter().any(|existing| existing == trimmed) {
+            targets.push(trimmed.to_string());
+        }
+    }
+    if targets.is_empty() {
+        return DEFAULT_RELEASE_MATRIX_TARGETS
+            .iter()
+            .map(|target| (*target).to_string())
+            .collect();
+    }
+    targets
+}
+
+fn resolve_release_artifact_version(
+    raw_label: Option<&str>,
+    unversioned_names: bool,
+) -> Result<Option<String>> {
+    if unversioned_names {
+        if raw_label.is_some() {
+            bail!("cannot combine --artifact-version with --unversioned-names");
+        }
+        return Ok(None);
+    }
+
+    let label = raw_label
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("v{}", env!("CARGO_PKG_VERSION")));
+
+    if !label
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'))
+    {
+        bail!("invalid artifact version label `{label}`: allowed characters are [A-Za-z0-9._-]");
+    }
+    Ok(Some(label))
+}
+
+fn release_bundle_name(target: &str, artifact_version: Option<&str>) -> String {
+    match artifact_version {
+        Some(version) => format!("wikitool-{version}-{target}"),
+        None => format!("wikitool-{target}"),
+    }
+}
+
+fn run_cargo_release_build_for_target(
+    repo_root: &Path,
+    cargo_bin: &Path,
+    target: &str,
+    use_locked: bool,
+) -> Result<()> {
+    let mut command = ProcessCommand::new(cargo_bin);
+    command
+        .current_dir(repo_root)
+        .arg("build")
+        .arg("--package")
+        .arg("wikitool")
+        .arg("--release")
+        .arg("--target")
+        .arg(target);
+    if use_locked {
+        command.arg("--locked");
+    }
+    let status = command.status().with_context(|| {
+        format!(
+            "failed to execute {} for target {target}",
+            normalize_path(cargo_bin)
+        )
+    })?;
+    if !status.success() {
+        bail!("cargo build failed for target {target}");
+    }
+    Ok(())
+}
+
+fn release_binary_name_for_target(target: &str) -> &'static str {
+    if target.to_ascii_lowercase().contains("windows") {
+        "wikitool.exe"
+    } else {
+        "wikitool"
+    }
+}
+
+fn release_binary_path_for_target(repo_root: &Path, target: &str) -> PathBuf {
+    repo_root
+        .join("target")
+        .join(target)
+        .join("release")
+        .join(release_binary_name_for_target(target))
+}
+
+fn zip_release_bundle(source_dir: &Path, zip_path: &Path, bundle_name: &str) -> Result<()> {
+    if !source_dir.is_dir() {
+        bail!("directory not found: {}", normalize_path(source_dir));
+    }
+    if let Some(parent) = zip_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
+    }
+
+    let zip_file = fs::File::create(zip_path)
+        .with_context(|| format!("failed to create {}", normalize_path(zip_path)))?;
+    let mut zip_writer = ZipWriter::new(zip_file);
+    let dir_options = FileOptions::default()
+        .compression_method(CompressionMethod::Stored)
+        .unix_permissions(0o755);
+    zip_writer
+        .add_directory(format!("{bundle_name}/"), dir_options)
+        .with_context(|| format!("failed to create zip root in {}", normalize_path(zip_path)))?;
+
+    for relative_path in collect_relative_file_paths(source_dir)? {
+        let source_path = source_dir.join(&relative_path);
+        let normalized_relative = normalize_path(&relative_path);
+        let entry_name = format!("{bundle_name}/{normalized_relative}");
+        let mode = if is_release_binary_entry(&relative_path) {
+            0o755
+        } else {
+            0o644
+        };
+        let file_options = FileOptions::default()
+            .compression_method(CompressionMethod::Deflated)
+            .unix_permissions(mode);
+        zip_writer
+            .start_file(&entry_name, file_options)
+            .with_context(|| {
+                format!(
+                    "failed to create zip entry {} in {}",
+                    entry_name,
+                    normalize_path(zip_path)
+                )
+            })?;
+        let mut input = fs::File::open(&source_path)
+            .with_context(|| format!("failed to open {}", normalize_path(&source_path)))?;
+        io::copy(&mut input, &mut zip_writer).with_context(|| {
+            format!(
+                "failed to write zip entry {} in {}",
+                entry_name,
+                normalize_path(zip_path)
+            )
+        })?;
+    }
+
+    zip_writer
+        .finish()
+        .with_context(|| format!("failed to finalize {}", normalize_path(zip_path)))?;
+    Ok(())
+}
+
+fn collect_relative_file_paths(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    collect_relative_file_paths_recursive(root, root, &mut files)?;
+    files.sort_by_key(|path| normalize_path(path));
+    Ok(files)
+}
+
+fn collect_relative_file_paths_recursive(
+    root: &Path,
+    current: &Path,
+    output: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(current)
+        .with_context(|| format!("failed to read {}", normalize_path(current)))?
+    {
+        entries.push(entry?);
+    }
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let metadata = entry
+            .metadata()
+            .with_context(|| format!("failed to read metadata {}", normalize_path(&path)))?;
+        if metadata.is_dir() {
+            collect_relative_file_paths_recursive(root, &path, output)?;
+        } else if metadata.is_file() {
+            let relative = path.strip_prefix(root).with_context(|| {
+                format!(
+                    "failed to derive relative path from {} using root {}",
+                    normalize_path(&path),
+                    normalize_path(root)
+                )
+            })?;
+            output.push(relative.to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+fn is_release_binary_entry(relative_path: &Path) -> bool {
+    relative_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value == "wikitool")
+        .unwrap_or(false)
+}
+
+fn is_markdown_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("md"))
+        .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn set_executable_if_unix(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("failed to read metadata {}", normalize_path(path)))?;
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .with_context(|| format!("failed to set permissions {}", normalize_path(path)))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_executable_if_unix(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
 fn infer_doc_type_from_title(title: &str) -> TechnicalDocType {
     if title.starts_with("Manual:Hooks") {
         return TechnicalDocType::Hooks;
@@ -2791,7 +4058,11 @@ fn collapse_whitespace(value: &str) -> String {
 }
 
 fn normalize_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let mut value = path.to_string_lossy().replace('\\', "/");
+    if let Some(stripped) = value.strip_prefix("//?/") {
+        value = stripped.to_string();
+    }
+    value
 }
 
 fn format_flag(value: bool) -> &'static str {
