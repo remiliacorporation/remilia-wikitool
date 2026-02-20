@@ -133,6 +133,24 @@ pub struct LocalContextBundle {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LocalChunkRetrievalResult {
+    pub title: String,
+    pub namespace: String,
+    pub relative_path: String,
+    pub query: Option<String>,
+    pub retrieval_mode: String,
+    pub chunks: Vec<LocalContextChunk>,
+    pub token_estimate_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub enum LocalChunkRetrieval {
+    IndexMissing,
+    TitleMissing { title: String },
+    Found(LocalChunkRetrievalResult),
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BrokenLinkIssue {
     pub source_title: String,
     pub target_title: String,
@@ -523,6 +541,60 @@ pub fn build_local_context(
     }))
 }
 
+pub fn retrieve_local_context_chunks(
+    paths: &ResolvedPaths,
+    title: &str,
+    query: Option<&str>,
+    limit: usize,
+    token_budget: usize,
+) -> Result<LocalChunkRetrieval> {
+    let connection = match open_indexed_connection(paths)? {
+        Some(connection) => connection,
+        None => return Ok(LocalChunkRetrieval::IndexMissing),
+    };
+    let normalized_title = normalize_query_title(title);
+    if normalized_title.is_empty() {
+        return Ok(LocalChunkRetrieval::TitleMissing {
+            title: title.to_string(),
+        });
+    }
+    let page = match load_page_record(&connection, &normalized_title)? {
+        Some(page) => page,
+        None => {
+            return Ok(LocalChunkRetrieval::TitleMissing {
+                title: normalized_title,
+            });
+        }
+    };
+    let normalized_query = query
+        .map(|value| normalize_spaces(&value.replace('_', " ")))
+        .filter(|value| !value.is_empty());
+    let max_chunks = limit.max(1);
+    let max_tokens = token_budget.max(1);
+    let (chunks, retrieval_mode) = load_chunks_for_query(
+        paths,
+        &connection,
+        &page.relative_path,
+        normalized_query.as_deref(),
+        max_chunks,
+    )?;
+    let chunks = apply_context_chunk_budget(chunks, max_chunks, max_tokens);
+    let token_estimate_total = chunks
+        .iter()
+        .map(|chunk| chunk.token_estimate)
+        .sum::<usize>();
+
+    Ok(LocalChunkRetrieval::Found(LocalChunkRetrievalResult {
+        title: page.title,
+        namespace: page.namespace,
+        relative_path: page.relative_path,
+        query: normalized_query,
+        retrieval_mode,
+        chunks,
+        token_estimate_total,
+    }))
+}
+
 pub fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
@@ -688,6 +760,63 @@ fn load_template_invocations_for_bundle(
     ))
 }
 
+fn load_chunks_for_query(
+    paths: &ResolvedPaths,
+    connection: &Connection,
+    source_relative_path: &str,
+    normalized_query: Option<&str>,
+    limit: usize,
+) -> Result<(Vec<LocalContextChunk>, String)> {
+    if table_exists(connection, "indexed_page_chunks")? {
+        if let Some(query) = normalized_query {
+            if fts_table_exists(connection, "indexed_page_chunks_fts")
+                && let Ok(hits) = query_page_chunks_fts_for_connection(
+                    connection,
+                    source_relative_path,
+                    query,
+                    limit,
+                )
+                && !hits.is_empty()
+            {
+                return Ok((hits, "fts".to_string()));
+            }
+
+            let hits = query_page_chunks_like_for_connection(
+                connection,
+                source_relative_path,
+                query,
+                limit,
+            )?;
+            return Ok((hits, "like".to_string()));
+        }
+
+        let hits = load_indexed_context_chunks_for_connection(
+            connection,
+            source_relative_path,
+            limit,
+            usize::MAX,
+        )?;
+        return Ok((hits, "ordered".to_string()));
+    }
+
+    let content = fs::read_to_string(absolute_path_from_relative(paths, source_relative_path))
+        .with_context(|| format!("failed to read indexed source file {source_relative_path}"))?;
+    let mut chunks = chunk_article_context(&content)
+        .into_iter()
+        .map(|row| LocalContextChunk {
+            section_heading: row.section_heading,
+            token_estimate: row.token_estimate,
+            chunk_text: row.chunk_text,
+        })
+        .collect::<Vec<_>>();
+    if let Some(query) = normalized_query {
+        let lowered = query.to_ascii_lowercase();
+        chunks.retain(|chunk| chunk.chunk_text.to_ascii_lowercase().contains(&lowered));
+        return Ok((chunks, "scan-like".to_string()));
+    }
+    Ok((chunks, "scan-ordered".to_string()))
+}
+
 fn load_indexed_context_chunks_for_connection(
     connection: &Connection,
     source_relative_path: &str,
@@ -723,6 +852,88 @@ fn load_indexed_context_chunks_for_connection(
         });
     }
     Ok(apply_context_chunk_budget(out, max_chunks, token_budget))
+}
+
+fn query_page_chunks_fts_for_connection(
+    connection: &Connection,
+    source_relative_path: &str,
+    normalized_query: &str,
+    limit: usize,
+) -> Result<Vec<LocalContextChunk>> {
+    let limit_i64 = i64::try_from(limit).context("chunk query limit does not fit into i64")?;
+    let fts_query = format!("\"{normalized_query}\" *");
+    let mut statement = connection
+        .prepare(
+            "SELECT c.section_heading, c.token_estimate, c.chunk_text
+             FROM indexed_page_chunks_fts fts
+             JOIN indexed_page_chunks c ON c.rowid = fts.rowid
+             WHERE c.source_relative_path = ?1
+               AND indexed_page_chunks_fts MATCH ?2
+             ORDER BY rank
+             LIMIT ?3",
+        )
+        .context("failed to prepare chunk FTS query")?;
+    let rows = statement
+        .query_map(params![source_relative_path, fts_query, limit_i64], |row| {
+            let token_estimate_i64: i64 = row.get(1)?;
+            Ok(LocalContextChunk {
+                section_heading: row.get(0)?,
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+                chunk_text: row.get(2)?,
+            })
+        })
+        .context("failed to run chunk FTS query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode chunk FTS row")?);
+    }
+    Ok(out)
+}
+
+fn query_page_chunks_like_for_connection(
+    connection: &Connection,
+    source_relative_path: &str,
+    normalized_query: &str,
+    limit: usize,
+) -> Result<Vec<LocalContextChunk>> {
+    let wildcard = format!("%{normalized_query}%");
+    let prefix = format!("{normalized_query}%");
+    let limit_i64 = i64::try_from(limit).context("chunk query limit does not fit into i64")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT section_heading, token_estimate, chunk_text
+             FROM indexed_page_chunks
+             WHERE source_relative_path = ?1
+               AND lower(chunk_text) LIKE lower(?2)
+             ORDER BY
+               CASE
+                 WHEN lower(chunk_text) LIKE lower(?3) THEN 0
+                 ELSE 1
+               END,
+               chunk_index ASC
+             LIMIT ?4",
+        )
+        .context("failed to prepare chunk LIKE query")?;
+    let rows = statement
+        .query_map(
+            params![source_relative_path, wildcard, prefix, limit_i64],
+            |row| {
+                let token_estimate_i64: i64 = row.get(1)?;
+                Ok(LocalContextChunk {
+                    section_heading: row.get(0)?,
+                    token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+                    chunk_text: row.get(2)?,
+                })
+            },
+        )
+        .context("failed to run chunk LIKE query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode chunk LIKE row")?);
+    }
+    Ok(out)
 }
 
 fn load_indexed_template_invocations_for_connection(
@@ -1689,9 +1900,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        BrokenLinkIssue, build_local_context, extract_template_invocations, extract_wikilinks,
-        load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
-        query_search_local, rebuild_index, run_validation_checks,
+        BrokenLinkIssue, LocalChunkRetrieval, build_local_context, extract_template_invocations,
+        extract_wikilinks, load_stored_index_stats, query_backlinks, query_empty_categories,
+        query_orphans, query_search_local, rebuild_index, retrieve_local_context_chunks,
+        run_validation_checks,
     };
     use crate::filesystem::{Namespace, ScanOptions};
     use crate::runtime::{ResolvedPaths, ValueSource};
@@ -1935,6 +2147,50 @@ mod tests {
             invocations
                 .iter()
                 .all(|invocation| !invocation.template_title.starts_with("Template:#"))
+        );
+    }
+
+    #[test]
+    fn retrieve_local_context_chunks_returns_index_missing_when_not_built() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        let retrieval = retrieve_local_context_chunks(&paths, "Alpha", None, 4, 200)
+            .expect("retrieve chunks without index");
+        assert_eq!(retrieval, LocalChunkRetrieval::IndexMissing);
+    }
+
+    #[test]
+    fn retrieve_local_context_chunks_supports_query_and_budget() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "Lead paragraph with CinderSignal marker and extra tokens for chunking.\n== History ==\nThis section carries CinderSignal data for retrieval testing and deterministic filtering.",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let retrieval = retrieve_local_context_chunks(&paths, "Alpha", Some("CinderSignal"), 3, 80)
+            .expect("retrieve chunks with query");
+        let report = match retrieval {
+            LocalChunkRetrieval::Found(report) => report,
+            other => panic!("expected found report, got {other:?}"),
+        };
+        assert_eq!(report.title, "Alpha");
+        assert_eq!(report.query.as_deref(), Some("CinderSignal"));
+        assert_eq!(report.retrieval_mode, "like");
+        assert!(!report.chunks.is_empty());
+        assert!(report.token_estimate_total <= 80);
+        assert!(
+            report
+                .chunks
+                .iter()
+                .all(|chunk| chunk.chunk_text.contains("CinderSignal"))
         );
     }
 

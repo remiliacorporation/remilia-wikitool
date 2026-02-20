@@ -39,6 +39,7 @@ pub const COMMAND_SURFACE: &[&str] = &[
     "delete",
     "index rebuild",
     "index stats",
+    "index chunks",
     "index backlinks",
     "index orphans",
     "index prune-categories",

@@ -24,9 +24,9 @@ use wikitool_core::import_cargo::{
     CargoImportOptions, ImportSourceType, ImportUpdateMode, import_to_cargo,
 };
 use wikitool_core::index::{
-    LocalContextBundle, LocalSearchHit, StoredIndexStats, build_local_context,
+    LocalChunkRetrieval, LocalContextBundle, LocalSearchHit, StoredIndexStats, build_local_context,
     load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
-    query_search_local, rebuild_index, run_validation_checks,
+    query_search_local, rebuild_index, retrieve_local_context_chunks, run_validation_checks,
 };
 use wikitool_core::inspect::{
     LighthouseOutputFormat, LighthouseRunOptions, NetInspectOptions, find_lighthouse_binary,
@@ -522,6 +522,29 @@ struct IndexArgs {
 enum IndexSubcommand {
     Rebuild,
     Stats,
+    Chunks {
+        title: String,
+        #[arg(
+            long,
+            value_name = "QUERY",
+            help = "Optional relevance query applied to cached chunks for the page"
+        )]
+        query: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 8,
+            value_name = "N",
+            help = "Maximum number of chunks to return"
+        )]
+        limit: usize,
+        #[arg(
+            long,
+            default_value_t = 720,
+            value_name = "TOKENS",
+            help = "Token budget across returned chunks"
+        )]
+        token_budget: usize,
+    },
     Backlinks {
         title: String,
     },
@@ -879,6 +902,12 @@ fn main() -> Result<()> {
         Some(Commands::Index(IndexArgs { command })) => match command {
             IndexSubcommand::Rebuild => run_index_rebuild(&runtime),
             IndexSubcommand::Stats => run_index_stats(&runtime),
+            IndexSubcommand::Chunks {
+                title,
+                query,
+                limit,
+                token_budget,
+            } => run_index_chunks(&runtime, &title, query.as_deref(), limit, token_budget),
             IndexSubcommand::Backlinks { title } => run_index_backlinks(&runtime, &title),
             IndexSubcommand::Orphans => run_index_orphans(&runtime),
             IndexSubcommand::PruneCategories => run_index_prune_categories(&runtime),
@@ -1812,6 +1841,65 @@ fn build_context_from_scan(
         modules: Vec::new(),
         template_invocations: Vec::new(),
     }))
+}
+
+fn run_index_chunks(
+    runtime: &RuntimeOptions,
+    title: &str,
+    query: Option<&str>,
+    limit: usize,
+    token_budget: usize,
+) -> Result<()> {
+    if title.trim().is_empty() {
+        bail!("index chunks requires a non-empty title");
+    }
+    if limit == 0 {
+        bail!("index chunks requires --limit >= 1");
+    }
+    if token_budget == 0 {
+        bail!("index chunks requires --token-budget >= 1");
+    }
+
+    let paths = resolve_runtime_paths(runtime)?;
+    println!("index chunks");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("target: {}", title.trim());
+    println!("query: {}", query.unwrap_or("<none>"));
+    println!("limit: {limit}");
+    println!("token_budget: {token_budget}");
+
+    match retrieve_local_context_chunks(&paths, title, query, limit, token_budget)? {
+        LocalChunkRetrieval::IndexMissing => {
+            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+        }
+        LocalChunkRetrieval::TitleMissing { title } => {
+            bail!("page not found in local index: {title}");
+        }
+        LocalChunkRetrieval::Found(report) => {
+            println!("chunks.title: {}", report.title);
+            println!("chunks.namespace: {}", report.namespace);
+            println!("chunks.relative_path: {}", report.relative_path);
+            println!("chunks.retrieval_mode: {}", report.retrieval_mode);
+            println!("chunks.count: {}", report.chunks.len());
+            println!(
+                "chunks.tokens_estimate_total: {}",
+                report.token_estimate_total
+            );
+            for chunk in &report.chunks {
+                println!(
+                    "chunk: section={} tokens={} text={}",
+                    chunk.section_heading.as_deref().unwrap_or("<lead>"),
+                    chunk.token_estimate,
+                    chunk.chunk_text
+                );
+            }
+        }
+    }
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
 }
 
 fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {

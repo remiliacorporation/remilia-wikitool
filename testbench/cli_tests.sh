@@ -227,6 +227,15 @@ else
     fail "index stats reports data (got: $OUTPUT)"
 fi
 
+# --- index chunks ---
+section "index chunks"
+OUTPUT=$(wt "$PROJ" index chunks "Alpha" --query "Alpha" --limit 2 --token-budget 120 2>&1 || true)
+if echo "$OUTPUT" | grep -q "chunks.count:" && echo "$OUTPUT" | grep -q "chunks.retrieval_mode:"; then
+    pass "index chunks returns chunked retrieval output"
+else
+    fail "index chunks returns chunked retrieval output (got: $OUTPUT)"
+fi
+
 # --- index backlinks ---
 section "index backlinks"
 OUTPUT=$(wt "$PROJ" index backlinks "Alpha" 2>&1)
