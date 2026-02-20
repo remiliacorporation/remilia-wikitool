@@ -687,19 +687,24 @@ Options:
 ## index chunks
 
 ```text
-Usage: wikitool index chunks [OPTIONS] <TITLE>
+Usage: wikitool index chunks [OPTIONS] [TITLE]
 
 Arguments:
-  <TITLE>  
+  [TITLE]  
 
 Options:
       --project-root <PATH>    
-      --query <QUERY>          Optional relevance query applied to cached chunks for the page
+      --query <QUERY>          Optional relevance query applied to chunk retrieval
+      --across-pages           Retrieve chunks across indexed pages (query required, omit TITLE)
       --data-dir <PATH>        
-      --limit <N>              Maximum number of chunks to return [default: 8]
       --config <PATH>          
-      --token-budget <TOKENS>  Token budget across returned chunks [default: 720]
+      --limit <N>              Maximum number of chunks to return [default: 8]
       --diagnostics            Print resolved runtime diagnostics
+      --token-budget <TOKENS>  Token budget across returned chunks [default: 720]
+      --max-pages <N>          Maximum distinct source pages in across-pages mode [default: 12]
+      --format <FORMAT>        Output format: text|json [default: text]
+      --diversify              Enable lexical de-duplication and diversification
+      --no-diversify           Disable lexical de-duplication and diversification
   -h, --help                   Print help
 ```
 

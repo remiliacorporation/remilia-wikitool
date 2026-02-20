@@ -49,16 +49,25 @@ resolve_wikitool_cmd() {
     if [ -n "$WIKITOOL_RAW" ]; then
         # shellcheck disable=SC2206 # Intentional word splitting for command string overrides.
         WIKITOOL_CMD=($WIKITOOL_RAW)
+        WIKITOOL_PATH_MODE="${WIKITOOL_PATH_MODE:-auto}"
         return
     fi
 
     if command -v cargo > /dev/null 2>&1; then
+        local cargo_path
+        cargo_path=$(command -v cargo)
         WIKITOOL_CMD=(cargo run --quiet --)
+        if [[ "$cargo_path" == *.exe ]]; then
+            WIKITOOL_PATH_MODE="windows"
+        else
+            WIKITOOL_PATH_MODE="posix"
+        fi
         return
     fi
 
     if command -v cargo.exe > /dev/null 2>&1; then
         WIKITOOL_CMD=(cargo.exe run --quiet --)
+        WIKITOOL_PATH_MODE="windows"
         return
     fi
 
@@ -66,6 +75,7 @@ resolve_wikitool_cmd() {
     for candidate in /mnt/c/Users/*/.cargo/bin/cargo.exe; do
         if [ -x "$candidate" ]; then
             WIKITOOL_CMD=("$candidate" run --quiet --)
+            WIKITOOL_PATH_MODE="windows"
             return
         fi
     done
@@ -104,23 +114,29 @@ setup_project() {
 wt() {
     local root="$1"
     shift
-    local wt_root
-    wt_root=$(to_wikitool_path "$root")
+    if [ "${WIKITOOL_PATH_MODE:-posix}" = "windows" ] || [ "${WIKITOOL_PATH_MODE:-posix}" = "auto" ]; then
+        local wt_root
+        wt_root=$(to_wikitool_path "$root")
 
-    local arg
-    local normalized_args=()
-    for arg in "$@"; do
-        if [[ "$arg" =~ ^/mnt/[a-zA-Z]/.*$ || "$arg" =~ ^/[a-zA-Z]/.*$ ]]; then
-            normalized_args+=("$(to_wikitool_path "$arg")")
-        else
-            normalized_args+=("$arg")
-        fi
-    done
+        local arg
+        local normalized_args=()
+        for arg in "$@"; do
+            if [[ "$arg" =~ ^/mnt/[a-zA-Z]/.*$ || "$arg" =~ ^/[a-zA-Z]/.*$ ]]; then
+                normalized_args+=("$(to_wikitool_path "$arg")")
+            else
+                normalized_args+=("$arg")
+            fi
+        done
 
-    "${WIKITOOL_CMD[@]}" --project-root "$wt_root" "${normalized_args[@]}"
+        "${WIKITOOL_CMD[@]}" --project-root "$wt_root" "${normalized_args[@]}"
+        return
+    fi
+
+    "${WIKITOOL_CMD[@]}" --project-root "$root" "$@"
 }
 
 WIKITOOL_CMD=()
+WIKITOOL_PATH_MODE=""
 resolve_wikitool_cmd
 
 # --- banner ---
@@ -234,6 +250,15 @@ if echo "$OUTPUT" | grep -q "chunks.count:" && echo "$OUTPUT" | grep -q "chunks.
     pass "index chunks returns chunked retrieval output"
 else
     fail "index chunks returns chunked retrieval output (got: $OUTPUT)"
+fi
+
+# --- index chunks (across-pages json) ---
+section "index chunks across-pages json"
+OUTPUT=$(wt "$PROJ" index chunks --across-pages --query "article" --limit 3 --max-pages 2 --token-budget 140 --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"Found"' && echo "$OUTPUT" | grep -q '"retrieval_mode"' && echo "$OUTPUT" | grep -q '"source_page_count"'; then
+    pass "index chunks across-pages emits JSON report"
+else
+    fail "index chunks across-pages emits JSON report (got: $OUTPUT)"
 fi
 
 # --- index backlinks ---

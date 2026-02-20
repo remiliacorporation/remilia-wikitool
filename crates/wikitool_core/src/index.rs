@@ -69,6 +69,9 @@ const CONTEXT_CHUNK_LIMIT: usize = 8;
 const CONTEXT_TOKEN_BUDGET: usize = 720;
 const TEMPLATE_INVOCATION_LIMIT: usize = 24;
 const NO_PARAMETER_KEYS_SENTINEL: &str = "__none__";
+const CHUNK_CANDIDATE_MULTIPLIER_SINGLE: usize = 6;
+const CHUNK_CANDIDATE_MULTIPLIER_ACROSS: usize = 10;
+const CHUNK_LEXICAL_SIMILARITY_THRESHOLD: f32 = 0.86;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RebuildReport {
@@ -148,6 +151,33 @@ pub enum LocalChunkRetrieval {
     IndexMissing,
     TitleMissing { title: String },
     Found(LocalChunkRetrievalResult),
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RetrievedChunk {
+    pub source_title: String,
+    pub source_namespace: String,
+    pub source_relative_path: String,
+    pub section_heading: Option<String>,
+    pub token_estimate: usize,
+    pub chunk_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LocalChunkAcrossPagesResult {
+    pub query: String,
+    pub retrieval_mode: String,
+    pub max_pages: usize,
+    pub source_page_count: usize,
+    pub chunks: Vec<RetrievedChunk>,
+    pub token_estimate_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub enum LocalChunkAcrossRetrieval {
+    IndexMissing,
+    QueryMissing,
+    Found(LocalChunkAcrossPagesResult),
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -548,6 +578,17 @@ pub fn retrieve_local_context_chunks(
     limit: usize,
     token_budget: usize,
 ) -> Result<LocalChunkRetrieval> {
+    retrieve_local_context_chunks_with_options(paths, title, query, limit, token_budget, true)
+}
+
+pub fn retrieve_local_context_chunks_with_options(
+    paths: &ResolvedPaths,
+    title: &str,
+    query: Option<&str>,
+    limit: usize,
+    token_budget: usize,
+    diversify: bool,
+) -> Result<LocalChunkRetrieval> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
         None => return Ok(LocalChunkRetrieval::IndexMissing),
@@ -571,14 +612,41 @@ pub fn retrieve_local_context_chunks(
         .filter(|value| !value.is_empty());
     let max_chunks = limit.max(1);
     let max_tokens = token_budget.max(1);
+    let candidate_limit = candidate_limit(max_chunks, CHUNK_CANDIDATE_MULTIPLIER_SINGLE);
     let (chunks, retrieval_mode) = load_chunks_for_query(
         paths,
         &connection,
         &page.relative_path,
         normalized_query.as_deref(),
-        max_chunks,
+        candidate_limit,
     )?;
-    let chunks = apply_context_chunk_budget(chunks, max_chunks, max_tokens);
+    let chunk_candidates = chunks
+        .into_iter()
+        .map(|chunk| RetrievedChunk {
+            source_title: page.title.clone(),
+            source_namespace: page.namespace.clone(),
+            source_relative_path: page.relative_path.clone(),
+            section_heading: chunk.section_heading,
+            token_estimate: chunk.token_estimate,
+            chunk_text: chunk.chunk_text,
+        })
+        .collect::<Vec<_>>();
+    let selected = select_retrieved_chunks(
+        chunk_candidates,
+        max_chunks,
+        max_tokens,
+        diversify,
+        Some(1),
+        false,
+    );
+    let chunks = selected
+        .into_iter()
+        .map(|chunk| LocalContextChunk {
+            section_heading: chunk.section_heading,
+            token_estimate: chunk.token_estimate,
+            chunk_text: chunk.chunk_text,
+        })
+        .collect::<Vec<_>>();
     let token_estimate_total = chunks
         .iter()
         .map(|chunk| chunk.token_estimate)
@@ -593,6 +661,94 @@ pub fn retrieve_local_context_chunks(
         chunks,
         token_estimate_total,
     }))
+}
+
+pub fn retrieve_local_context_chunks_across_pages(
+    paths: &ResolvedPaths,
+    query: &str,
+    limit: usize,
+    token_budget: usize,
+    max_pages: usize,
+    diversify: bool,
+) -> Result<LocalChunkAcrossRetrieval> {
+    let connection = match open_indexed_connection(paths)? {
+        Some(connection) => connection,
+        None => return Ok(LocalChunkAcrossRetrieval::IndexMissing),
+    };
+    let normalized_query = normalize_spaces(&query.replace('_', " "));
+    if normalized_query.is_empty() {
+        return Ok(LocalChunkAcrossRetrieval::QueryMissing);
+    }
+
+    let max_chunks = limit.max(1);
+    let max_tokens = token_budget.max(1);
+    let max_pages = max_pages.max(1);
+    let candidate_cap = candidate_limit(max_chunks, CHUNK_CANDIDATE_MULTIPLIER_ACROSS);
+
+    let (candidates, retrieval_mode) = if table_exists(&connection, "indexed_page_chunks")? {
+        if fts_table_exists(&connection, "indexed_page_chunks_fts") {
+            let hits = query_chunks_fts_across_pages_for_connection(
+                &connection,
+                &normalized_query,
+                candidate_cap,
+            )?;
+            if !hits.is_empty() {
+                (hits, "fts-across".to_string())
+            } else {
+                (
+                    query_chunks_like_across_pages_for_connection(
+                        &connection,
+                        &normalized_query,
+                        candidate_cap,
+                    )?,
+                    "like-across".to_string(),
+                )
+            }
+        } else {
+            (
+                query_chunks_like_across_pages_for_connection(
+                    &connection,
+                    &normalized_query,
+                    candidate_cap,
+                )?,
+                "like-across".to_string(),
+            )
+        }
+    } else {
+        (
+            query_chunks_scan_across_pages(paths, &normalized_query, candidate_cap)?,
+            "scan-across".to_string(),
+        )
+    };
+
+    let chunks = select_retrieved_chunks(
+        candidates,
+        max_chunks,
+        max_tokens,
+        diversify,
+        Some(max_pages),
+        true,
+    );
+    let source_page_count = chunks
+        .iter()
+        .map(|chunk| chunk.source_relative_path.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
+    let token_estimate_total = chunks
+        .iter()
+        .map(|chunk| chunk.token_estimate)
+        .sum::<usize>();
+
+    Ok(LocalChunkAcrossRetrieval::Found(
+        LocalChunkAcrossPagesResult {
+            query: normalized_query,
+            retrieval_mode,
+            max_pages,
+            source_page_count,
+            chunks,
+            token_estimate_total,
+        },
+    ))
 }
 
 pub fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
@@ -692,6 +848,13 @@ struct IndexedContextChunkRow {
     section_heading: Option<String>,
     token_estimate: usize,
     chunk_text: String,
+}
+
+#[derive(Debug, Clone)]
+struct RetrievedChunkCandidate {
+    chunk: RetrievedChunk,
+    lexical_signature: String,
+    lexical_terms: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -815,6 +978,265 @@ fn load_chunks_for_query(
         return Ok((chunks, "scan-like".to_string()));
     }
     Ok((chunks, "scan-ordered".to_string()))
+}
+
+fn candidate_limit(limit: usize, multiplier: usize) -> usize {
+    limit
+        .saturating_mul(multiplier.max(1))
+        .clamp(limit.max(1), 512)
+}
+
+fn select_retrieved_chunks(
+    candidates: Vec<RetrievedChunk>,
+    limit: usize,
+    token_budget: usize,
+    diversify: bool,
+    max_pages: Option<usize>,
+    round_robin_pages: bool,
+) -> Vec<RetrievedChunk> {
+    let capped_limit = limit.max(1);
+    let capped_token_budget = token_budget.max(1);
+    let max_pages = max_pages.map(|value| value.max(1));
+
+    let mut candidates = candidates
+        .into_iter()
+        .map(|chunk| {
+            let lexical_terms = lexical_terms(&chunk.chunk_text);
+            RetrievedChunkCandidate {
+                lexical_signature: lexical_signature_from_terms(&lexical_terms),
+                lexical_terms,
+                chunk,
+            }
+        })
+        .collect::<Vec<_>>();
+    if round_robin_pages && max_pages.is_some() {
+        candidates = round_robin_by_source(candidates, max_pages.unwrap_or(1));
+    }
+
+    let mut out = Vec::new();
+    let mut used_tokens = 0usize;
+    let mut used_signatures = BTreeSet::<String>::new();
+    let mut selected_terms = Vec::<BTreeSet<String>>::new();
+    let mut selected_pages = BTreeSet::<String>::new();
+
+    for candidate in candidates {
+        if out.len() >= capped_limit {
+            break;
+        }
+        if used_signatures.contains(&candidate.lexical_signature) {
+            continue;
+        }
+        if let Some(max_pages) = max_pages
+            && !selected_pages.contains(&candidate.chunk.source_relative_path)
+            && selected_pages.len() >= max_pages
+        {
+            continue;
+        }
+        if diversify
+            && !selected_terms.is_empty()
+            && selected_terms.iter().any(|terms| {
+                lexical_similarity_terms(terms, &candidate.lexical_terms)
+                    >= CHUNK_LEXICAL_SIMILARITY_THRESHOLD
+            })
+        {
+            continue;
+        }
+
+        let next_tokens = used_tokens.saturating_add(candidate.chunk.token_estimate);
+        if !out.is_empty() && next_tokens > capped_token_budget {
+            continue;
+        }
+
+        used_tokens = next_tokens;
+        used_signatures.insert(candidate.lexical_signature);
+        selected_terms.push(candidate.lexical_terms);
+        selected_pages.insert(candidate.chunk.source_relative_path.clone());
+        out.push(candidate.chunk);
+    }
+
+    out
+}
+
+fn round_robin_by_source(
+    candidates: Vec<RetrievedChunkCandidate>,
+    max_pages: usize,
+) -> Vec<RetrievedChunkCandidate> {
+    let mut source_order = Vec::<String>::new();
+    let mut buckets =
+        BTreeMap::<String, std::collections::VecDeque<RetrievedChunkCandidate>>::new();
+    for candidate in candidates {
+        let source = candidate.chunk.source_relative_path.clone();
+        if !buckets.contains_key(&source) {
+            if source_order.len() >= max_pages {
+                continue;
+            }
+            source_order.push(source.clone());
+        }
+        buckets.entry(source).or_default().push_back(candidate);
+    }
+
+    let mut out = Vec::new();
+    loop {
+        let mut made_progress = false;
+        for source in &source_order {
+            if let Some(bucket) = buckets.get_mut(source)
+                && let Some(candidate) = bucket.pop_front()
+            {
+                out.push(candidate);
+                made_progress = true;
+            }
+        }
+        if !made_progress {
+            break;
+        }
+    }
+    out
+}
+
+fn lexical_signature_from_terms(terms: &BTreeSet<String>) -> String {
+    terms.iter().cloned().collect::<Vec<_>>().join(" ")
+}
+
+fn lexical_terms(value: &str) -> BTreeSet<String> {
+    value
+        .split_whitespace()
+        .map(|token| {
+            token
+                .chars()
+                .filter(|ch| ch.is_ascii_alphanumeric())
+                .collect::<String>()
+                .to_ascii_lowercase()
+        })
+        .filter(|token| token.len() >= 3)
+        .collect()
+}
+
+fn lexical_similarity_terms(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f32 {
+    if left.is_empty() || right.is_empty() {
+        return 0.0;
+    }
+    let intersection = left.intersection(right).count();
+    let union = left.union(right).count();
+    if union == 0 {
+        return 0.0;
+    }
+    intersection as f32 / union as f32
+}
+
+fn query_chunks_fts_across_pages_for_connection(
+    connection: &Connection,
+    normalized_query: &str,
+    limit: usize,
+) -> Result<Vec<RetrievedChunk>> {
+    let limit_i64 = i64::try_from(limit).context("chunk query limit does not fit into i64")?;
+    let fts_query = format!("\"{normalized_query}\" *");
+    let mut statement = connection
+        .prepare(
+            "SELECT c.source_title, c.source_namespace, c.source_relative_path, c.section_heading, c.token_estimate, c.chunk_text
+             FROM indexed_page_chunks_fts fts
+             JOIN indexed_page_chunks c ON c.rowid = fts.rowid
+             WHERE indexed_page_chunks_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+        )
+        .context("failed to prepare cross-page chunk FTS query")?;
+    let rows = statement
+        .query_map(params![fts_query, limit_i64], |row| {
+            let token_estimate_i64: i64 = row.get(4)?;
+            Ok(RetrievedChunk {
+                source_title: row.get(0)?,
+                source_namespace: row.get(1)?,
+                source_relative_path: row.get(2)?,
+                section_heading: row.get(3)?,
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+                chunk_text: row.get(5)?,
+            })
+        })
+        .context("failed to run cross-page chunk FTS query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode cross-page chunk FTS row")?);
+    }
+    Ok(out)
+}
+
+fn query_chunks_like_across_pages_for_connection(
+    connection: &Connection,
+    normalized_query: &str,
+    limit: usize,
+) -> Result<Vec<RetrievedChunk>> {
+    let wildcard = format!("%{normalized_query}%");
+    let prefix = format!("{normalized_query}%");
+    let limit_i64 = i64::try_from(limit).context("chunk query limit does not fit into i64")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT source_title, source_namespace, source_relative_path, section_heading, token_estimate, chunk_text
+             FROM indexed_page_chunks
+             WHERE lower(chunk_text) LIKE lower(?1)
+             ORDER BY
+               CASE
+                 WHEN lower(chunk_text) LIKE lower(?2) THEN 0
+                 ELSE 1
+               END,
+               source_title ASC,
+               chunk_index ASC
+             LIMIT ?3",
+        )
+        .context("failed to prepare cross-page chunk LIKE query")?;
+    let rows = statement
+        .query_map(params![wildcard, prefix, limit_i64], |row| {
+            let token_estimate_i64: i64 = row.get(4)?;
+            Ok(RetrievedChunk {
+                source_title: row.get(0)?,
+                source_namespace: row.get(1)?,
+                source_relative_path: row.get(2)?,
+                section_heading: row.get(3)?,
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+                chunk_text: row.get(5)?,
+            })
+        })
+        .context("failed to run cross-page chunk LIKE query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode cross-page chunk LIKE row")?);
+    }
+    Ok(out)
+}
+
+fn query_chunks_scan_across_pages(
+    paths: &ResolvedPaths,
+    normalized_query: &str,
+    limit: usize,
+) -> Result<Vec<RetrievedChunk>> {
+    let lowered_query = normalized_query.to_ascii_lowercase();
+    let files = scan_files(paths, &ScanOptions::default())?;
+    let mut out = Vec::new();
+    for file in files {
+        let content = load_scanned_file_content(paths, &file)?;
+        for chunk in chunk_article_context(&content) {
+            if !chunk
+                .chunk_text
+                .to_ascii_lowercase()
+                .contains(&lowered_query)
+            {
+                continue;
+            }
+            out.push(RetrievedChunk {
+                source_title: file.title.clone(),
+                source_namespace: file.namespace.clone(),
+                source_relative_path: file.relative_path.clone(),
+                section_heading: chunk.section_heading,
+                token_estimate: chunk.token_estimate,
+                chunk_text: chunk.chunk_text,
+            });
+            if out.len() >= limit {
+                return Ok(out);
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn load_indexed_context_chunks_for_connection(
@@ -1893,16 +2315,17 @@ fn unix_timestamp() -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::{Path, PathBuf};
 
     use tempfile::tempdir;
 
     use super::{
-        BrokenLinkIssue, LocalChunkRetrieval, build_local_context, extract_template_invocations,
-        extract_wikilinks, load_stored_index_stats, query_backlinks, query_empty_categories,
-        query_orphans, query_search_local, rebuild_index, retrieve_local_context_chunks,
+        BrokenLinkIssue, LocalChunkAcrossRetrieval, LocalChunkRetrieval, build_local_context,
+        extract_template_invocations, extract_wikilinks, load_stored_index_stats, query_backlinks,
+        query_empty_categories, query_orphans, query_search_local, rebuild_index,
+        retrieve_local_context_chunks, retrieve_local_context_chunks_across_pages,
         run_validation_checks,
     };
     use crate::filesystem::{Namespace, ScanOptions};
@@ -2191,6 +2614,69 @@ mod tests {
                 .chunks
                 .iter()
                 .all(|chunk| chunk.chunk_text.contains("CinderSignal"))
+        );
+    }
+
+    #[test]
+    fn retrieve_local_context_chunks_across_pages_requires_query() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "Alpha chunk body",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let retrieval = retrieve_local_context_chunks_across_pages(&paths, " ", 4, 200, 2, true)
+            .expect("across-pages retrieval");
+        assert_eq!(retrieval, LocalChunkAcrossRetrieval::QueryMissing);
+    }
+
+    #[test]
+    fn retrieve_local_context_chunks_across_pages_returns_multi_source_chunks() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "Lead AlphaSignal signal chunk one.\n== A ==\nAlphaSignal chunk two with overlap.",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+            "Lead AlphaSignal beta chunk one.\n== B ==\nAlphaSignal beta chunk two with overlap.",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+            "Lead AlphaSignal gamma chunk one.\n== C ==\nAlphaSignal gamma chunk two with overlap.",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let retrieval =
+            retrieve_local_context_chunks_across_pages(&paths, "AlphaSignal", 4, 140, 2, true)
+                .expect("across-pages retrieval");
+        let report = match retrieval {
+            LocalChunkAcrossRetrieval::Found(report) => report,
+            other => panic!("expected found report, got {other:?}"),
+        };
+        assert!(report.retrieval_mode.contains("across"));
+        assert!(report.source_page_count <= 2);
+        assert!(report.token_estimate_total <= 140);
+        assert!(!report.chunks.is_empty());
+        let unique_sources = report
+            .chunks
+            .iter()
+            .map(|chunk| chunk.source_relative_path.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(unique_sources.len() <= 2);
+        assert!(
+            report
+                .chunks
+                .iter()
+                .all(|chunk| chunk.chunk_text.contains("AlphaSignal"))
         );
     }
 

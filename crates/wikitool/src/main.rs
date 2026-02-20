@@ -24,9 +24,11 @@ use wikitool_core::import_cargo::{
     CargoImportOptions, ImportSourceType, ImportUpdateMode, import_to_cargo,
 };
 use wikitool_core::index::{
-    LocalChunkRetrieval, LocalContextBundle, LocalSearchHit, StoredIndexStats, build_local_context,
-    load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
-    query_search_local, rebuild_index, retrieve_local_context_chunks, run_validation_checks,
+    LocalChunkAcrossRetrieval, LocalChunkRetrieval, LocalContextBundle, LocalSearchHit,
+    StoredIndexStats, build_local_context, load_stored_index_stats, query_backlinks,
+    query_empty_categories, query_orphans, query_search_local, rebuild_index,
+    retrieve_local_context_chunks_across_pages, retrieve_local_context_chunks_with_options,
+    run_validation_checks,
 };
 use wikitool_core::inspect::{
     LighthouseOutputFormat, LighthouseRunOptions, NetInspectOptions, find_lighthouse_binary,
@@ -523,13 +525,18 @@ enum IndexSubcommand {
     Rebuild,
     Stats,
     Chunks {
-        title: String,
+        title: Option<String>,
         #[arg(
             long,
             value_name = "QUERY",
-            help = "Optional relevance query applied to cached chunks for the page"
+            help = "Optional relevance query applied to chunk retrieval"
         )]
         query: Option<String>,
+        #[arg(
+            long,
+            help = "Retrieve chunks across indexed pages (query required, omit TITLE)"
+        )]
+        across_pages: bool,
         #[arg(
             long,
             default_value_t = 8,
@@ -544,6 +551,24 @@ enum IndexSubcommand {
             help = "Token budget across returned chunks"
         )]
         token_budget: usize,
+        #[arg(
+            long,
+            default_value_t = 12,
+            value_name = "N",
+            help = "Maximum distinct source pages in across-pages mode"
+        )]
+        max_pages: usize,
+        #[arg(
+            long,
+            default_value = "text",
+            value_name = "FORMAT",
+            help = "Output format: text|json"
+        )]
+        format: String,
+        #[arg(long, help = "Enable lexical de-duplication and diversification")]
+        diversify: bool,
+        #[arg(long, help = "Disable lexical de-duplication and diversification")]
+        no_diversify: bool,
     },
     Backlinks {
         title: String,
@@ -905,9 +930,25 @@ fn main() -> Result<()> {
             IndexSubcommand::Chunks {
                 title,
                 query,
+                across_pages,
                 limit,
                 token_budget,
-            } => run_index_chunks(&runtime, &title, query.as_deref(), limit, token_budget),
+                max_pages,
+                format,
+                diversify,
+                no_diversify,
+            } => run_index_chunks(
+                &runtime,
+                title.as_deref(),
+                query.as_deref(),
+                across_pages,
+                limit,
+                token_budget,
+                max_pages,
+                &format,
+                diversify,
+                no_diversify,
+            ),
             IndexSubcommand::Backlinks { title } => run_index_backlinks(&runtime, &title),
             IndexSubcommand::Orphans => run_index_orphans(&runtime),
             IndexSubcommand::PruneCategories => run_index_prune_categories(&runtime),
@@ -1845,53 +1886,142 @@ fn build_context_from_scan(
 
 fn run_index_chunks(
     runtime: &RuntimeOptions,
-    title: &str,
+    title: Option<&str>,
     query: Option<&str>,
+    across_pages: bool,
     limit: usize,
     token_budget: usize,
+    max_pages: usize,
+    format: &str,
+    diversify: bool,
+    no_diversify: bool,
 ) -> Result<()> {
-    if title.trim().is_empty() {
-        bail!("index chunks requires a non-empty title");
-    }
     if limit == 0 {
         bail!("index chunks requires --limit >= 1");
     }
     if token_budget == 0 {
         bail!("index chunks requires --token-budget >= 1");
     }
+    if max_pages == 0 {
+        bail!("index chunks requires --max-pages >= 1");
+    }
+
+    let format = format.to_ascii_lowercase();
+    if format != "text" && format != "json" {
+        bail!("unsupported format: {} (expected text|json)", format);
+    }
+    if diversify && no_diversify {
+        bail!("cannot use --diversify and --no-diversify together");
+    }
+    let use_diversify = !no_diversify;
 
     let paths = resolve_runtime_paths(runtime)?;
-    println!("index chunks");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("target: {}", title.trim());
-    println!("query: {}", query.unwrap_or("<none>"));
-    println!("limit: {limit}");
-    println!("token_budget: {token_budget}");
 
-    match retrieve_local_context_chunks(&paths, title, query, limit, token_budget)? {
-        LocalChunkRetrieval::IndexMissing => {
-            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+    if across_pages {
+        if title.is_some() {
+            bail!("omit TITLE when using --across-pages");
         }
-        LocalChunkRetrieval::TitleMissing { title } => {
-            bail!("page not found in local index: {title}");
+        let query = query.unwrap_or_default().trim();
+        if query.is_empty() {
+            bail!("index chunks --across-pages requires --query");
         }
-        LocalChunkRetrieval::Found(report) => {
-            println!("chunks.title: {}", report.title);
-            println!("chunks.namespace: {}", report.namespace);
-            println!("chunks.relative_path: {}", report.relative_path);
-            println!("chunks.retrieval_mode: {}", report.retrieval_mode);
-            println!("chunks.count: {}", report.chunks.len());
-            println!(
-                "chunks.tokens_estimate_total: {}",
-                report.token_estimate_total
-            );
-            for chunk in &report.chunks {
-                println!(
-                    "chunk: section={} tokens={} text={}",
-                    chunk.section_heading.as_deref().unwrap_or("<lead>"),
-                    chunk.token_estimate,
-                    chunk.chunk_text
-                );
+
+        let retrieval = retrieve_local_context_chunks_across_pages(
+            &paths,
+            query,
+            limit,
+            token_budget,
+            max_pages,
+            use_diversify,
+        )?;
+        if format == "json" {
+            println!("{}", serde_json::to_string_pretty(&retrieval)?);
+        } else {
+            println!("index chunks");
+            println!("project_root: {}", normalize_path(&paths.project_root));
+            println!("target: <across-pages>");
+            println!("query: {query}");
+            println!("limit: {limit}");
+            println!("token_budget: {token_budget}");
+            println!("max_pages: {max_pages}");
+            println!("diversify: {use_diversify}");
+            match retrieval {
+                LocalChunkAcrossRetrieval::IndexMissing => {
+                    println!("index.storage: <not built> (run `wikitool index rebuild`)");
+                }
+                LocalChunkAcrossRetrieval::QueryMissing => {
+                    bail!("query is required for across-pages chunk retrieval");
+                }
+                LocalChunkAcrossRetrieval::Found(report) => {
+                    println!("chunks.retrieval_mode: {}", report.retrieval_mode);
+                    println!("chunks.count: {}", report.chunks.len());
+                    println!("chunks.source_page_count: {}", report.source_page_count);
+                    println!(
+                        "chunks.tokens_estimate_total: {}",
+                        report.token_estimate_total
+                    );
+                    for chunk in &report.chunks {
+                        println!(
+                            "chunk: source={} section={} tokens={} text={}",
+                            chunk.source_title,
+                            chunk.section_heading.as_deref().unwrap_or("<lead>"),
+                            chunk.token_estimate,
+                            chunk.chunk_text
+                        );
+                    }
+                }
+            }
+        }
+    } else {
+        let title = title.unwrap_or_default().trim();
+        if title.is_empty() {
+            bail!("index chunks requires a non-empty TITLE unless --across-pages is set");
+        }
+
+        let retrieval = retrieve_local_context_chunks_with_options(
+            &paths,
+            title,
+            query,
+            limit,
+            token_budget,
+            use_diversify,
+        )?;
+        if format == "json" {
+            println!("{}", serde_json::to_string_pretty(&retrieval)?);
+        } else {
+            println!("index chunks");
+            println!("project_root: {}", normalize_path(&paths.project_root));
+            println!("target: {title}");
+            println!("query: {}", query.unwrap_or("<none>"));
+            println!("limit: {limit}");
+            println!("token_budget: {token_budget}");
+            println!("diversify: {use_diversify}");
+            match retrieval {
+                LocalChunkRetrieval::IndexMissing => {
+                    println!("index.storage: <not built> (run `wikitool index rebuild`)");
+                }
+                LocalChunkRetrieval::TitleMissing { title } => {
+                    bail!("page not found in local index: {title}");
+                }
+                LocalChunkRetrieval::Found(report) => {
+                    println!("chunks.title: {}", report.title);
+                    println!("chunks.namespace: {}", report.namespace);
+                    println!("chunks.relative_path: {}", report.relative_path);
+                    println!("chunks.retrieval_mode: {}", report.retrieval_mode);
+                    println!("chunks.count: {}", report.chunks.len());
+                    println!(
+                        "chunks.tokens_estimate_total: {}",
+                        report.token_estimate_total
+                    );
+                    for chunk in &report.chunks {
+                        println!(
+                            "chunk: section={} tokens={} text={}",
+                            chunk.section_heading.as_deref().unwrap_or("<lead>"),
+                            chunk.token_estimate,
+                            chunk.chunk_text
+                        );
+                    }
+                }
             }
         }
     }
