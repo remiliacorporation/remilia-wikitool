@@ -12,6 +12,9 @@ data/
 exports/
 wikitool_exports/
 
+# Generated docs bundles (contain machine-specific paths; build at release time)
+ai-pack/docs-bundle-*.json
+
 # Test coverage
 coverage/
 
