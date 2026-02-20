@@ -224,12 +224,22 @@ pub struct MediaWikiClientConfig {
 
 impl MediaWikiClientConfig {
     pub fn from_env() -> Self {
+        Self::from_env_with_defaults("", crate::config::DEFAULT_USER_AGENT)
+    }
+
+    pub fn from_config(config: &crate::config::WikiConfig) -> Self {
+        let api_default = config
+            .wiki
+            .api_url
+            .as_deref()
+            .unwrap_or("");
+        Self::from_env_with_defaults(api_default, &config.user_agent())
+    }
+
+    fn from_env_with_defaults(api_url_default: &str, user_agent_default: &str) -> Self {
         Self {
-            api_url: env_value("WIKI_API_URL", "https://wiki.remilia.org/api.php"),
-            user_agent: env_value(
-                "WIKI_USER_AGENT",
-                "wikitool-rust/0.1 (+https://wiki.remilia.org)",
-            ),
+            api_url: env_value("WIKI_API_URL", api_url_default),
+            user_agent: env_value("WIKI_USER_AGENT", user_agent_default),
             timeout_ms: env_value_u64("WIKI_HTTP_TIMEOUT_MS", 30_000),
             rate_limit_read_ms: env_value_u64("WIKI_RATE_LIMIT_READ", 300),
             rate_limit_write_ms: env_value_u64("WIKI_RATE_LIMIT_WRITE", 1_000),
@@ -810,6 +820,7 @@ pub fn diff_local_against_sync(
         &ScanOptions {
             include_content: true,
             include_templates: options.include_templates,
+            ..ScanOptions::default()
         },
     )?;
     let ledger = load_sync_ledger_map(&connection, options.include_templates)?;
@@ -977,6 +988,7 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
         &ScanOptions {
             include_content: true,
             include_templates: options.include_templates,
+            ..ScanOptions::default()
         },
     )?;
     let mut local_map = BTreeMap::new();
@@ -2142,7 +2154,7 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join("remilia-parser.json"),
+            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,
             config_source: ValueSource::Default,

@@ -42,6 +42,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "template_invocations",
         sql: include_str!("migrations/v006_template_invocations.sql"),
     },
+    Migration {
+        version: 7,
+        name: "extended_template_categories",
+        sql: include_str!("migrations/v007_extended_template_categories.sql"),
+    },
 ];
 
 /// Report returned after running migrations.
@@ -211,7 +216,7 @@ mod tests {
             state_dir: project_root.join(".wikitool"),
             data_dir: project_root.join(".wikitool/data"),
             config_path: project_root.join(".wikitool/config.toml"),
-            parser_config_path: project_root.join(".wikitool/remilia-parser.json"),
+            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root,
             root_source: crate::runtime::ValueSource::Flag,
             data_source: crate::runtime::ValueSource::Default,
@@ -225,7 +230,7 @@ mod tests {
         let (_temp, paths) = test_paths();
         let report = run_migrations(&paths).expect("run_migrations");
         assert_eq!(report.applied.len(), MIGRATIONS.len());
-        assert_eq!(report.current_version, 6);
+        assert_eq!(report.current_version, 7);
     }
 
     #[test]
@@ -236,7 +241,7 @@ mod tests {
 
         let second = run_migrations(&paths).expect("second run");
         assert!(second.applied.is_empty());
-        assert_eq!(second.current_version, 6);
+        assert_eq!(second.current_version, 7);
     }
 
     #[test]
@@ -258,7 +263,7 @@ mod tests {
     fn migrations_create_ai_context_and_template_invocation_tables() {
         let (_temp, paths) = test_paths();
         let report = run_migrations(&paths).expect("run_migrations");
-        assert_eq!(report.current_version, 6);
+        assert_eq!(report.current_version, 7);
 
         let connection = open_connection(&paths.db_path).expect("open migrated db");
         for table in [

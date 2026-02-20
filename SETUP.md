@@ -45,16 +45,22 @@ wikitool status
 wikitool index stats
 ```
 
-## 5) Optional: configure write credentials
+## 5) Optional: configure credentials and API target
 
-Create `.env` in project root and set:
+Create `.env` in project root (next to `wiki_content/`) and set:
 
 ```bash
 WIKI_BOT_USER=Username@BotName
 WIKI_BOT_PASS=your-bot-password
 ```
 
-Bot password setup:
+If targeting a wiki other than `wiki.remilia.org`:
+
+```bash
+WIKI_API_URL=https://your-wiki.example.org/api.php
+```
+
+Bot password setup (for Remilia Wiki):
 
 1. Open `https://wiki.remilia.org/Special:BotPasswords`
 2. Create a bot password with edit grants
@@ -106,7 +112,7 @@ Codex skill templates are also included under `codex_skills/` and can be copied 
 
 ## 8) Troubleshooting
 
-`db migrate` is intentionally unsupported during cutover.
+Schema migrations run automatically on startup. To run manually: `wikitool db migrate`.
 
 If runtime/schema changes break local state:
 

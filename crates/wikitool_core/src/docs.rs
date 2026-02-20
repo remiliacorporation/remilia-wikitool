@@ -53,8 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_technical_docs_title ON technical_docs(page_title
 "#;
 
 const DEFAULT_DOCS_API_URL: &str = "https://www.mediawiki.org/w/api.php";
-const DEFAULT_INSTALLED_EXT_API_URL: &str = "https://wiki.remilia.org/api.php";
-const DEFAULT_USER_AGENT: &str = "wikitool-rust/0.1 (+https://wiki.remilia.org)";
+const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
 const DOCS_NAMESPACE_MAIN: i32 = 0;
 const DOCS_CACHE_TTL_SECONDS: u64 = 7 * 24 * 60 * 60;
 const DOCS_SUBPAGE_LIMIT_DEFAULT: usize = 100;
@@ -536,10 +535,12 @@ impl DocsApi for MediaWikiDocsClient {
 }
 
 pub fn discover_installed_extensions_from_wiki() -> Result<Vec<String>> {
-    let api_url = env_value(
-        "WIKITOOL_INSTALLED_EXTENSIONS_API_URL",
-        &env_value("WIKI_API_URL", DEFAULT_INSTALLED_EXT_API_URL),
-    );
+    let wiki_api = std::env::var("WIKI_API_URL")
+        .or_else(|_| std::env::var("WIKITOOL_INSTALLED_EXTENSIONS_API_URL"))
+        .map_err(|_| {
+            anyhow::anyhow!("WIKI_API_URL must be set to discover installed extensions")
+        })?;
+    let api_url = env_value("WIKITOOL_INSTALLED_EXTENSIONS_API_URL", wiki_api.trim());
     let user_agent = env_value("WIKITOOL_DOCS_USER_AGENT", DEFAULT_USER_AGENT);
     let timeout_ms = env_value_u64("WIKITOOL_DOCS_TIMEOUT_MS", 30_000);
     let max_retries = env_value_usize("WIKITOOL_DOCS_RETRIES", 2);

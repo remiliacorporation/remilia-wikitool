@@ -12,59 +12,6 @@ use walkdir::WalkDir;
 
 use crate::runtime::ResolvedPaths;
 
-// Sync contract: these entries must stay in sync with migrations/v004_template_categories.sql.
-// The DB table is authoritative at runtime; this constant is the fallback when no DB is available.
-const TEMPLATE_CATEGORY_MAPPINGS: [(&str, &str); 49] = [
-    ("Template:Cite", "cite"),
-    ("Module:Citation", "cite"),
-    ("Template:Ref", "reference"),
-    ("Template:Efn", "reference"),
-    ("Module:Reference", "reference"),
-    ("Template:Infobox", "infobox"),
-    ("Module:Infobox", "infobox"),
-    ("Module:InfoboxImage", "infobox"),
-    ("Template:About", "hatnote"),
-    ("Template:See also", "hatnote"),
-    ("Template:Main", "hatnote"),
-    ("Template:Further", "hatnote"),
-    ("Template:Hatnote", "hatnote"),
-    ("Template:Redirect", "hatnote"),
-    ("Template:Distinguish", "hatnote"),
-    ("Module:Hatnote", "hatnote"),
-    ("Template:Navbox", "navbox"),
-    ("Template:Navbar", "navbox"),
-    ("Template:Flatlist", "navbox"),
-    ("Template:Hlist", "navbox"),
-    ("Module:Navbox", "navbox"),
-    ("Module:Navbar", "navbox"),
-    ("Template:Blockquote", "quotation"),
-    ("Template:Cquote", "quotation"),
-    ("Template:Quote", "quotation"),
-    ("Template:Poem", "quotation"),
-    ("Template:Verse", "quotation"),
-    ("Module:Quotation", "quotation"),
-    ("Template:Ambox", "message"),
-    ("Template:Article quality", "message"),
-    ("Template:Stub", "message"),
-    ("Template:Update", "message"),
-    ("Template:Citation needed", "message"),
-    ("Template:Cn", "message"),
-    ("Template:Clarify", "message"),
-    ("Template:When", "message"),
-    ("Template:As of", "message"),
-    ("Module:Message", "message"),
-    ("Template:Sidebar", "sidebar"),
-    ("Template:Portal", "sidebar"),
-    ("Template:Remilia events", "sidebar"),
-    ("Module:Sidebar", "sidebar"),
-    ("Template:Repost", "repost"),
-    ("Template:Mirror", "repost"),
-    ("Template:Goldenlight repost", "repost"),
-    ("Module:Repost", "repost"),
-    ("Template:Etherscan", "blockchain"),
-    ("Template:Explorer", "blockchain"),
-    ("Template:OpenSea", "blockchain"),
-];
 
 #[derive(Debug, Clone)]
 struct CachedTemplateCategoryMappings {
@@ -81,7 +28,6 @@ pub enum Namespace {
     Category,
     File,
     User,
-    Goldenlight,
     Template,
     Module,
     MediaWiki,
@@ -94,7 +40,6 @@ impl Namespace {
             Self::Category => "Category",
             Self::File => "File",
             Self::User => "User",
-            Self::Goldenlight => "Goldenlight",
             Self::Template => "Template",
             Self::Module => "Module",
             Self::MediaWiki => "MediaWiki",
@@ -106,6 +51,7 @@ impl Namespace {
 pub struct ScanOptions {
     pub include_content: bool,
     pub include_templates: bool,
+    pub custom_content_folders: Vec<String>,
 }
 
 impl Default for ScanOptions {
@@ -113,6 +59,7 @@ impl Default for ScanOptions {
         Self {
             include_content: true,
             include_templates: true,
+            custom_content_folders: Vec::new(),
         }
     }
 }
@@ -140,7 +87,7 @@ pub struct ScanStats {
 pub fn scan_files(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Vec<ScannedFile>> {
     let mut files = Vec::new();
     if options.include_content && paths.wiki_content_dir.exists() {
-        scan_content_files(paths, &mut files)?;
+        scan_content_files(paths, &options.custom_content_folders, &mut files)?;
     }
     if options.include_templates && paths.templates_dir.exists() {
         scan_template_files(paths, &mut files)?;
@@ -180,7 +127,59 @@ pub fn scan_stats(paths: &ResolvedPaths, options: &ScanOptions) -> Result<ScanSt
     })
 }
 
+/// Check if a title belongs to a custom content namespace (e.g. "Goldenlight:Page").
+/// Returns `(folder_name, bare_title)` if the prefix matches a known custom namespace,
+/// or `None` if it doesn't. The `custom_folders` are the folder names that exist under
+/// wiki_content/ for custom namespaces.
+fn custom_namespace_parts(
+    title: &str,
+    custom_folders: &[String],
+) -> Option<(String, String)> {
+    for folder in custom_folders {
+        let prefix = format!("{folder}:");
+        if let Some(rest) = title.strip_prefix(&prefix) {
+            return Some((folder.clone(), rest.to_string()));
+        }
+    }
+    None
+}
+
+const STANDARD_CONTENT_FOLDERS: &[&str] = &["Main", "Category", "File", "User"];
+
+/// Discover custom content namespace folders by listing directories under wiki_content/
+/// that aren't standard namespace folders.
+fn custom_content_folders(paths: &ResolvedPaths) -> Vec<String> {
+    if !paths.wiki_content_dir.exists() {
+        return Vec::new();
+    }
+    let mut folders = Vec::new();
+    let Ok(entries) = fs::read_dir(&paths.wiki_content_dir) else {
+        return Vec::new();
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if !STANDARD_CONTENT_FOLDERS.contains(&name_str.as_ref()) {
+            folders.push(name_str.to_string());
+        }
+    }
+    folders
+}
+
 pub fn title_to_relative_path(paths: &ResolvedPaths, title: &str, is_redirect: bool) -> String {
+    // Check custom namespaces first (they aren't in the Namespace enum)
+    if let Some((folder, bare)) = custom_namespace_parts(title, &custom_content_folders(paths)) {
+        let filename = bare.replace(' ', "_").replace('/', "___").replace(':', "--");
+        let content_rel = rel_from_root(paths, &paths.wiki_content_dir);
+        if is_redirect {
+            return format!("{content_rel}/{folder}/_redirects/{filename}.wiki");
+        }
+        return format!("{content_rel}/{folder}/{filename}.wiki");
+    }
+
     let namespace = namespace_from_title(title);
     let content_rel = rel_from_root(paths, &paths.wiki_content_dir);
     let templates_rel = rel_from_root(paths, &paths.templates_dir);
@@ -304,9 +303,14 @@ pub fn validate_scoped_path(paths: &ResolvedPaths, candidate: &Path) -> Result<(
     )
 }
 
-fn scan_content_files(paths: &ResolvedPaths, out: &mut Vec<ScannedFile>) -> Result<()> {
+fn scan_content_files(
+    paths: &ResolvedPaths,
+    custom_folders: &[String],
+    out: &mut Vec<ScannedFile>,
+) -> Result<()> {
     let content_rel = rel_from_root(paths, &paths.wiki_content_dir);
-    for folder in ["Main", "Category", "File", "User", "Goldenlight"] {
+    let standard = ["Main", "Category", "File", "User"];
+    for folder in standard.iter().copied().chain(custom_folders.iter().map(String::as_str)) {
         let base = paths.wiki_content_dir.join(folder);
         if !base.exists() {
             continue;
@@ -372,7 +376,7 @@ fn read_scanned_file(paths: &ResolvedPaths, path: &Path, relative: &str) -> Resu
         fs::metadata(path).with_context(|| format!("failed to stat {}", path.display()))?;
     let (is_redirect, redirect_target) = parse_redirect(&content);
     let title = relative_path_to_title(paths, relative);
-    let namespace = namespace_from_title(&title).as_str().to_string();
+    let namespace = namespace_string_from_title(&title);
 
     Ok(ScannedFile {
         relative_path: normalize_separators(relative),
@@ -420,11 +424,10 @@ pub fn content_path_to_title(content_rel_path: &str) -> String {
     let filename = segments.last().copied().unwrap_or("");
     let name = decode_segment(strip_known_extensions(filename));
     let prefix = match folder {
-        "Category" => "Category:",
-        "File" => "File:",
-        "User" => "User:",
-        "Goldenlight" => "Goldenlight:",
-        _ => "",
+        "Main" => "",
+        other => {
+            return format!("{other}:{name}");
+        }
     };
     format!("{prefix}{name}")
 }
@@ -572,8 +575,6 @@ pub fn namespace_from_title(title: &str) -> Namespace {
         Namespace::File
     } else if title.starts_with("User:") {
         Namespace::User
-    } else if title.starts_with("Goldenlight:") {
-        Namespace::Goldenlight
     } else if title.starts_with("Template:") {
         Namespace::Template
     } else if title.starts_with("Module:") {
@@ -585,33 +586,53 @@ pub fn namespace_from_title(title: &str) -> Namespace {
     }
 }
 
+/// Returns the namespace name as a string, handling both standard and custom namespaces.
+/// For standard namespaces, returns the canonical name (e.g. "Category").
+/// For custom namespaces (like "Goldenlight:"), extracts the prefix before the colon.
+/// For Main namespace titles, returns "Main".
+fn namespace_string_from_title(title: &str) -> String {
+    let ns = namespace_from_title(title);
+    if ns != Namespace::Main {
+        return ns.as_str().to_string();
+    }
+    // Check if title has a colon prefix that might be a custom namespace
+    if let Some(colon_pos) = title.find(':') {
+        let prefix = &title[..colon_pos];
+        // Only treat it as a namespace if the prefix is non-empty and not a known non-namespace
+        if !prefix.is_empty() && prefix.chars().next().is_some_and(|c| c.is_uppercase()) {
+            return prefix.to_string();
+        }
+    }
+    "Main".to_string()
+}
+
 fn namespace_folder(namespace: Namespace) -> &'static str {
     match namespace {
         Namespace::Main => "Main",
         Namespace::Category => "Category",
         Namespace::File => "File",
         Namespace::User => "User",
-        Namespace::Goldenlight => "Goldenlight",
         Namespace::Template | Namespace::Module | Namespace::MediaWiki => "Main",
     }
 }
 
 fn title_without_namespace(title: &str) -> &str {
-    for prefix in [
-        "Category:",
-        "File:",
-        "User:",
-        "Goldenlight:",
-        "Template:",
-        "Module:",
-        "MediaWiki:",
-    ] {
+    for prefix in NAMESPACE_PREFIXES {
         if let Some(value) = title.strip_prefix(prefix) {
             return value;
         }
     }
     title
 }
+
+const NAMESPACE_PREFIXES: &[&str] = &[
+    "Category:",
+    "File:",
+    "User:",
+    "Template:",
+    "Module:",
+    "MediaWiki:",
+];
 
 fn title_to_filename(title: &str) -> String {
     title_without_namespace(title)
@@ -674,35 +695,11 @@ fn template_category_with_db(title: &str, db_path: Option<&std::path::Path>) -> 
     if title.starts_with("MediaWiki:") {
         return Cow::Borrowed("mediawiki");
     }
-
-    // Try DB lookup first if a database path is provided
     if let Some(path) = db_path
         && let Some(category) = template_category_from_db(path, title)
     {
         return Cow::Owned(category);
     }
-
-    // Hardcoded constant fallback
-    for (prefix, category) in TEMPLATE_CATEGORY_MAPPINGS {
-        if title.starts_with(prefix) {
-            return Cow::Borrowed(category);
-        }
-    }
-
-    if title.starts_with("Template:Translation") || title.starts_with("Module:Translation") {
-        return Cow::Borrowed("translations");
-    }
-    if title.starts_with("Template:Birth date")
-        || title.starts_with("Template:Start date")
-        || title.starts_with("Template:End date")
-        || title.starts_with("Module:Age")
-    {
-        return Cow::Borrowed("date");
-    }
-    if title.starts_with("Template:Remilia navigation") {
-        return Cow::Borrowed("navigation");
-    }
-
     Cow::Borrowed("misc")
 }
 
@@ -825,7 +822,7 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join("remilia-parser.json"),
+            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root,
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,
@@ -833,9 +830,33 @@ mod tests {
         }
     }
 
+    fn paths_with_db(temp: &tempfile::TempDir) -> ResolvedPaths {
+        let project_root = temp.path().join("project");
+        std::fs::create_dir_all(project_root.join(".wikitool/data")).expect("create data dir");
+        let paths = ResolvedPaths {
+            wiki_content_dir: project_root.join("wiki_content"),
+            templates_dir: project_root.join("templates"),
+            state_dir: project_root.join(".wikitool"),
+            data_dir: project_root.join(".wikitool").join("data"),
+            db_path: project_root
+                .join(".wikitool")
+                .join("data")
+                .join("wikitool.db"),
+            config_path: project_root.join(".wikitool").join("config.toml"),
+            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
+            project_root,
+            root_source: ValueSource::Flag,
+            data_source: ValueSource::Default,
+            config_source: ValueSource::Default,
+        };
+        crate::migrate::run_migrations(&paths).expect("migrations");
+        paths
+    }
+
     #[test]
     fn mapping_roundtrip_content_and_templates() {
-        let paths = paths("/workspace/project");
+        let temp = tempdir().expect("tempdir");
+        let paths = paths_with_db(&temp);
 
         let cases = [
             ("Alpha", false, "wiki_content/Main/Alpha.wiki"),
@@ -864,7 +885,7 @@ mod tests {
 
         for (title, redirect, expected) in cases {
             let relative = title_to_relative_path(&paths, title, redirect);
-            assert_eq!(relative, expected);
+            assert_eq!(relative, expected, "failed for title={title} redirect={redirect}");
             let parsed = relative_path_to_title(&paths, &relative);
             if title == "MediaWiki:Common.css" {
                 assert_eq!(parsed, "MediaWiki:Common.css");
@@ -996,7 +1017,7 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join("remilia-parser.json"),
+            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root,
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,

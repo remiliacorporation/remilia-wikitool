@@ -2411,9 +2411,6 @@ fn canonical_namespace(prefix: &str) -> Option<&'static str> {
     if trimmed.eq_ignore_ascii_case("User") {
         return Some(Namespace::User.as_str());
     }
-    if trimmed.eq_ignore_ascii_case("Goldenlight") {
-        return Some(Namespace::Goldenlight.as_str());
-    }
     if trimmed.eq_ignore_ascii_case("Template") {
         return Some(Namespace::Template.as_str());
     }
@@ -2923,7 +2920,7 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join("remilia-parser.json"),
+            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root: project_root.to_path_buf(),
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,

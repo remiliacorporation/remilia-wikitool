@@ -30,7 +30,7 @@ Wikitool resolves paths from project root and uses `.wikitool/` for local runtim
 - `.wikitool/config.toml` runtime config
 - `.wikitool/data/wikitool.db` local index/sync database
 
-No migration path is provided during this cutover. For incompatible binary/schema changes, delete the local DB and repull.
+Schema migrations run automatically on startup (`wikitool db migrate` for manual control). For incompatible binary/schema changes, delete the local DB and repull.
 
 ## Core Workflow
 
@@ -86,12 +86,13 @@ Manual multi-OS artifact builds are also available via GitHub Actions:
 Release folder contents:
 
 1. `AGENTS.md`, `CLAUDE.md`, `SETUP.md`, `README.md`
-2. `.claude/rules/*`, `.claude/skills/*` (baseline ai-pack guidance)
-3. `llm_instructions/*.md`
-4. `docs/wikitool/*.md`
-5. `codex_skills/*` installable Codex skill bundle
-6. optional `ai/docs-bundle-v1.json`
-7. optional host overlay extras when `--host-project-root` is provided:
+2. `LICENSE`, `LICENSE-SSL`, `LICENSE-VPL`
+3. `.claude/rules/*`, `.claude/skills/*` (baseline ai-pack guidance)
+4. `llm_instructions/*.md`
+5. `docs/wikitool/*.md`
+6. `codex_skills/*` installable Codex skill bundle
+7. optional `ai/docs-bundle-v1.json` (generated at build time, not committed)
+8. optional host overlay extras when `--host-project-root` is provided:
    - host `CLAUDE.md` (mirrored to `AGENTS.md`)
    - `WIKITOOL_CLAUDE.md` preserving wikitool-local guidance
    - host `.claude/{rules,skills}` merged over baseline
@@ -124,17 +125,24 @@ wikitool docs generate-reference
 
 ## Environment
 
-Push/delete writes need bot credentials:
+Set these in `.env` at your project root (next to `wiki_content/`).
+
+Required for push/delete:
 
 ```bash
 WIKI_BOT_USER=Username@BotName
 WIKI_BOT_PASS=your-bot-password
 ```
 
-Useful overrides:
+Required if targeting a wiki other than `wiki.remilia.org`:
 
 ```bash
-WIKI_API_URL=https://wiki.remilia.org/api.php
+WIKI_API_URL=https://your-wiki.example.org/api.php
+```
+
+Optional tuning:
+
+```bash
 WIKI_HTTP_TIMEOUT_MS=30000
 WIKI_HTTP_RETRIES=2
 WIKI_HTTP_WRITE_RETRIES=1
@@ -143,4 +151,4 @@ WIKI_HTTP_RETRY_DELAY_MS=500
 
 ## License
 
-This project is licensed under the Viral Public License + Source Seppuku License.
+AGPL-3.0-only. See `LICENSE`. Supplementary terms in `LICENSE-SSL` and `LICENSE-VPL`.

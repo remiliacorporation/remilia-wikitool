@@ -8,7 +8,9 @@ use anyhow::{Context, Result, bail};
 pub const MIGRATIONS_POLICY_MESSAGE: &str =
     "Run `wikitool db migrate` to apply pending schema migrations.";
 
-const EMBEDDED_PARSER_CONFIG: &str = include_str!("../../../config/remilia-parser.json");
+const EMBEDDED_PARSER_CONFIG: &str = include_str!("../../../config/default-parser.json");
+
+pub const PARSER_CONFIG_FILENAME: &str = "parser-config.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueSource {
@@ -217,7 +219,13 @@ where
     let state_dir = project_root.join(".wikitool");
     let wiki_content_dir = project_root.join("wiki_content");
     let templates_dir = project_root.join("templates");
-    let parser_config_path = state_dir.join("remilia-parser.json");
+    let new_parser_path = state_dir.join(PARSER_CONFIG_FILENAME);
+    let legacy_parser_path = state_dir.join("remilia-parser.json");
+    let parser_config_path = if new_parser_path.exists() || !legacy_parser_path.exists() {
+        new_parser_path
+    } else {
+        legacy_parser_path
+    };
 
     let (data_dir, data_source) = if let Some(path) = overrides.data_dir.as_deref() {
         (
@@ -329,14 +337,24 @@ pub fn render_materialized_config(paths: &ResolvedPaths, include_templates: bool
     let parser_config_path = normalize_for_display(&paths.parser_config_path);
 
     format!(
-        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Run `wikitool db migrate` to apply pending schema migrations.\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n\n[database]\nmigrations = \"enabled\"\nstrategy = \"sequential\"\n",
+        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Run `wikitool db migrate` to apply pending schema migrations.\n\n[wiki]\nurl = \"https://wiki.remilia.org\"\napi_url = \"https://wiki.remilia.org/api.php\"\narticle_path = \"/$1\"\n# user_agent = \"wikitool/0.1\"\n\n[[wiki.custom_namespaces]]\nname = \"Goldenlight\"\nid = 3000\nfolder = \"Goldenlight\"\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n\n[database]\nmigrations = \"enabled\"\nstrategy = \"sequential\"\n",
     )
 }
 
-pub fn lsp_settings_json(paths: &ResolvedPaths) -> String {
+pub fn lsp_settings_json(
+    paths: &ResolvedPaths,
+    config: &crate::config::WikiConfig,
+) -> String {
     let parser_path = normalize_for_display(&paths.parser_config_path);
+    let article_path = config.article_path_owned();
+    let article_url = if let Some(wiki_url) = config.wiki_url() {
+        let base = wiki_url.trim_end_matches('/');
+        format!("{base}{article_path}")
+    } else {
+        article_path
+    };
     format!(
-        "{{\n  \"wikiparser.articlePath\": \"https://wiki.remilia.org/wiki/$1\",\n  \"wikiparser.config\": \"{parser_path}\",\n  \"wikiparser.linter.enable\": true,\n  \"wikiparser.linter.severity\": \"errors and warnings\",\n  \"wikiparser.inlay\": true,\n  \"wikiparser.completion\": true,\n  \"wikiparser.color\": true,\n  \"wikiparser.hover\": true,\n  \"wikiparser.signature\": true\n}}"
+        "{{\n  \"wikiparser.articlePath\": \"{article_url}\",\n  \"wikiparser.config\": \"{parser_path}\",\n  \"wikiparser.linter.enable\": true,\n  \"wikiparser.linter.severity\": \"errors and warnings\",\n  \"wikiparser.inlay\": true,\n  \"wikiparser.completion\": true,\n  \"wikiparser.color\": true,\n  \"wikiparser.hover\": true,\n  \"wikiparser.signature\": true\n}}"
     )
 }
 

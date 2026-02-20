@@ -10,8 +10,7 @@ use reqwest::Url;
 use reqwest::blocking::Client;
 use serde::Serialize;
 
-pub const DEFAULT_WIKI_URL: &str = "https://wiki.remilia.org";
-const DEFAULT_USER_AGENT: &str = "wikitool-rust/0.1 (+https://wiki.remilia.org)";
+const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
 const DEFAULT_EXPORTS_DIR: &str = "wikitool_exports";
 
 #[derive(Debug, Clone, Serialize)]
@@ -322,7 +321,11 @@ pub fn resolve_target_url(target: &str, override_url: Option<&str>) -> Result<St
         return Ok(target.to_string());
     }
 
-    let base = resolve_wiki_url();
+    let base = resolve_wiki_url().ok_or_else(|| {
+        anyhow::anyhow!(
+            "no wiki URL configured; set WIKI_URL or WIKI_API_URL, or use --url"
+        )
+    })?;
     let mut url = Url::parse(&format!("{}/wiki/", trim_trailing_slash(&base)))
         .with_context(|| format!("invalid wiki base URL: {base}"))?;
     let normalized_title = target.replace(' ', "_");
@@ -333,19 +336,19 @@ pub fn resolve_target_url(target: &str, override_url: Option<&str>) -> Result<St
     Ok(url.to_string())
 }
 
-pub fn resolve_wiki_url() -> String {
+pub fn resolve_wiki_url() -> Option<String> {
     if let Ok(value) = env::var("WIKI_URL") {
-        let trimmed = value.trim();
+        let trimmed = value.trim().to_string();
         if !trimmed.is_empty() {
-            return trim_trailing_slash(trimmed).to_string();
+            return Some(trim_trailing_slash(&trimmed).to_string());
         }
     }
     if let Ok(value) = env::var("WIKI_API_URL")
         && let Some(derived) = derive_wiki_url(&value)
     {
-        return derived;
+        return Some(derived);
     }
-    DEFAULT_WIKI_URL.to_string()
+    None
 }
 
 pub fn derive_wiki_url(api_url: &str) -> Option<String> {
@@ -1183,8 +1186,7 @@ fn is_chrome_launcher_cleanup_line(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_WIKI_URL, derive_wiki_url, extract_head, resolve_target_url, sanitize_filename,
-        scan_tags,
+        derive_wiki_url, extract_head, resolve_target_url, sanitize_filename, scan_tags,
     };
 
     #[test]
@@ -1201,10 +1203,9 @@ mod tests {
 
     #[test]
     fn resolve_target_url_builds_page_url() {
-        let url = resolve_target_url("Alpha Beta", Some("https://wiki.remilia.org/wiki/Fallback"))
+        let url = resolve_target_url("Alpha Beta", Some("https://wiki.example.org/wiki/Fallback"))
             .expect("url");
-        assert_eq!(url, "https://wiki.remilia.org/wiki/Fallback");
-        assert!(DEFAULT_WIKI_URL.starts_with("https://"));
+        assert_eq!(url, "https://wiki.example.org/wiki/Fallback");
     }
 
     #[test]

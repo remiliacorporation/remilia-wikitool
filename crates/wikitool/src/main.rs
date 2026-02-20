@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Command, CommandFactory, Parser, Subcommand, error::ErrorKind};
+use wikitool_core::config::{WikiConfig, load_config};
 use wikitool_core::contracts::{command_surface, generate_fixture_snapshot};
 use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
 use wikitool_core::docs::{
@@ -141,7 +142,7 @@ struct InitArgs {
     force: bool,
     #[arg(long, help = "Skip writing .wikitool/config.toml")]
     no_config: bool,
-    #[arg(long, help = "Skip writing .wikitool/remilia-parser.json")]
+    #[arg(long, help = "Skip writing parser config")]
     no_parser_config: bool,
 }
 
@@ -1101,11 +1102,11 @@ fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
 }
 
 fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
 
-    let namespaces = pull_namespaces_from_args(&args);
+    let namespaces = pull_namespaces_from_args(&args, &config);
     let report = pull_from_remote(
         &paths,
         &PullOptions {
@@ -1342,7 +1343,7 @@ fn run_search_external(runtime: &RuntimeOptions, query: &str) -> Result<()> {
     Ok(())
 }
 
-fn pull_namespaces_from_args(args: &PullArgs) -> Vec<i32> {
+fn pull_namespaces_from_args(args: &PullArgs, config: &WikiConfig) -> Vec<i32> {
     if args.templates {
         return vec![NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
     }
@@ -1350,19 +1351,30 @@ fn pull_namespaces_from_args(args: &PullArgs) -> Vec<i32> {
         return vec![NS_CATEGORY];
     }
     if args.all {
-        return vec![NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
+        let mut ns = vec![NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
+        for custom in &config.wiki.custom_namespaces {
+            ns.push(custom.id);
+        }
+        return ns;
     }
     vec![NS_MAIN]
 }
 
 fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
+    let custom_folders: Vec<String> = config
+        .wiki
+        .custom_namespaces
+        .iter()
+        .map(|ns| ns.folder().to_string())
+        .collect();
     let scan = scan_stats(
         &paths,
         &ScanOptions {
             include_content: true,
             include_templates: args.templates,
+            custom_content_folders: custom_folders,
         },
     )?;
 
@@ -4546,7 +4558,7 @@ fn derive_topic_from_stub_path(path: Option<&Path>) -> Option<String> {
 }
 
 fn run_lsp_generate_config(runtime: &RuntimeOptions, args: LspGenerateConfigArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
     let wrote = materialize_parser_config(&paths, args.force)?;
     if wrote {
         println!(
@@ -4560,7 +4572,7 @@ fn run_lsp_generate_config(runtime: &RuntimeOptions, args: LspGenerateConfigArgs
         );
     }
     println!();
-    println!("{}", lsp_settings_json(&paths));
+    println!("{}", lsp_settings_json(&paths, &config));
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -4601,7 +4613,7 @@ fn run_lsp_status(runtime: &RuntimeOptions) -> Result<()> {
 fn run_lsp_info() -> Result<()> {
     println!("wikitext LSP integration");
     println!("  command: wikitool lsp:generate-config");
-    println!("  output parser config: <project-root>/.wikitool/remilia-parser.json");
+    println!("  output parser config: <project-root>/.wikitool/parser-config.json");
     println!("  policy: {MIGRATIONS_POLICY_MESSAGE}");
     Ok(())
 }
@@ -4664,6 +4676,14 @@ fn resolve_runtime_paths(
     }
 
     resolve_paths(&context, &overrides)
+}
+
+fn resolve_runtime_with_config(
+    runtime: &RuntimeOptions,
+) -> Result<(wikitool_core::runtime::ResolvedPaths, WikiConfig)> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let config = load_config(&paths.config_path);
+    Ok((paths, config))
 }
 
 fn normalize_title_query(value: &str) -> String {

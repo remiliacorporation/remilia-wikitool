@@ -275,10 +275,9 @@ mod tests {
         );
         assert_eq!(namespace_from_title("File:Logo.png"), Namespace::File);
         assert_eq!(namespace_from_title("User:Admin"), Namespace::User);
-        assert_eq!(
-            namespace_from_title("Goldenlight:Test"),
-            Namespace::Goldenlight
-        );
+        // Custom namespaces (like Goldenlight) map to Main in the enum;
+        // they are handled via config, not hardcoded variants.
+        assert_eq!(namespace_from_title("Goldenlight:Test"), Namespace::Main);
     }
 
     #[test]
@@ -329,11 +328,6 @@ mod tests {
                 "Category:Test",
                 "Category",
             ),
-            (
-                "wiki_content/Goldenlight/Page.wiki",
-                "Goldenlight:Page",
-                "Goldenlight",
-            ),
         ];
 
         for (path, expected_title, expected_ns) in content_cases {
@@ -341,6 +335,15 @@ mod tests {
             assert_eq!(title, expected_title);
             assert_eq!(namespace_from_title(&title).as_str(), expected_ns);
         }
+
+        // Custom namespaces work for filepath → title parsing via folder name
+        let title = filepath_to_title_content(
+            "wiki_content/Goldenlight/Page.wiki",
+            "wiki_content",
+        );
+        assert_eq!(title, "Goldenlight:Page");
+        // But namespace_from_title returns Main (custom ns not in enum)
+        assert_eq!(namespace_from_title(&title), Namespace::Main);
     }
 
     #[test]

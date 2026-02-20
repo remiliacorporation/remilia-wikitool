@@ -87,6 +87,7 @@ pub fn lint_modules(paths: &ResolvedPaths, title: Option<&str>) -> Result<LuaLin
             &ScanOptions {
                 include_content: false,
                 include_templates: true,
+                ..ScanOptions::default()
             },
         )?;
 

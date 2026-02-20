@@ -250,7 +250,7 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join("remilia-parser.json"),
+            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root: project_root.to_path_buf(),
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,

@@ -10,7 +10,7 @@ use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::Value;
 
-const DEFAULT_USER_AGENT: &str = "wikitool-rust/0.1 (+https://wiki.remilia.org)";
+const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const DEFAULT_MAX_BYTES: usize = 1_000_000;
 const DEFAULT_RETRIES: usize = 2;
