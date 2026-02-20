@@ -33,6 +33,7 @@ use wikitool_core::inspect::{
     lighthouse_version, net_inspect, run_lighthouse, seo_inspect,
 };
 use wikitool_core::lint::lint_modules;
+use wikitool_core::migrate::pending_migration_count;
 use wikitool_core::runtime::{
     InitOptions, MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext,
     embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
@@ -1749,7 +1750,7 @@ fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
     println!("inserted_rows: {}", report.inserted_rows);
     println!("inserted_links: {}", report.inserted_links);
     print_scan_stats("scan", &report.scan);
-    println!("migrations: disabled");
+    print_migration_status(&paths);
     println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -1802,11 +1803,14 @@ fn build_context_from_scan(
             format!("{content_preview}...")
         },
         sections: Vec::new(),
+        context_chunks: Vec::new(),
+        context_tokens_estimate: 0,
         outgoing_links: Vec::new(),
         backlinks: Vec::new(),
         categories: Vec::new(),
         templates: Vec::new(),
         modules: Vec::new(),
+        template_invocations: Vec::new(),
     }))
 }
 
@@ -1943,7 +1947,7 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
         Some(stored) => print_stored_index_stats("index", &stored),
         None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
     }
-    println!("migrations: disabled");
+    print_migration_status(&paths);
     println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -1965,7 +1969,7 @@ fn run_db_sync(runtime: &RuntimeOptions) -> Result<()> {
     println!("synced_rows: {}", report.inserted_rows);
     println!("synced_links: {}", report.inserted_links);
     print_scan_stats("scan", &report.scan);
-    println!("migrations: disabled");
+    print_migration_status(&paths);
     println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -3730,6 +3734,23 @@ fn print_scan_stats(prefix: &str, stats: &ScanStats) {
     }
 }
 
+fn print_migration_status(paths: &wikitool_core::runtime::ResolvedPaths) {
+    match pending_migration_count(paths) {
+        Ok(0) => {
+            println!("migrations: up_to_date");
+            println!("migrations.pending: 0");
+        }
+        Ok(count) => {
+            println!("migrations: pending");
+            println!("migrations.pending: {count}");
+        }
+        Err(error) => {
+            println!("migrations: unknown");
+            println!("migrations.error: {error}");
+        }
+    }
+}
+
 fn print_stored_index_stats(prefix: &str, stats: &StoredIndexStats) {
     println!("{prefix}.indexed_rows: {}", stats.indexed_rows);
     println!("{prefix}.redirects: {}", stats.redirects);
@@ -3819,11 +3840,42 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
             section.level, section.heading
         );
     }
+    println!(
+        "{prefix}.context_chunks.count: {}",
+        bundle.context_chunks.len()
+    );
+    println!(
+        "{prefix}.context_chunks.tokens_estimate_total: {}",
+        bundle.context_tokens_estimate
+    );
+    for chunk in &bundle.context_chunks {
+        println!(
+            "{prefix}.context_chunk: section={} tokens={} text={}",
+            chunk.section_heading.as_deref().unwrap_or("<lead>"),
+            chunk.token_estimate,
+            chunk.chunk_text
+        );
+    }
     print_string_list(&format!("{prefix}.outgoing_links"), &bundle.outgoing_links);
     print_string_list(&format!("{prefix}.backlinks"), &bundle.backlinks);
     print_string_list(&format!("{prefix}.categories"), &bundle.categories);
     print_string_list(&format!("{prefix}.templates"), &bundle.templates);
     print_string_list(&format!("{prefix}.modules"), &bundle.modules);
+    println!(
+        "{prefix}.template_invocations.count: {}",
+        bundle.template_invocations.len()
+    );
+    for invocation in &bundle.template_invocations {
+        println!(
+            "{prefix}.template_invocation: title={} keys={}",
+            invocation.template_title,
+            if invocation.parameter_keys.is_empty() {
+                "<none>".to_string()
+            } else {
+                invocation.parameter_keys.join(",")
+            }
+        );
+    }
 }
 
 fn print_validation_issues(report: &wikitool_core::index::ValidationReport) {
@@ -3997,7 +4049,10 @@ fn run_db_migrate(runtime: &RuntimeOptions) -> Result<()> {
     println!("project_root: {}", normalize_path(&paths.project_root));
     let report = wikitool_core::migrate::run_migrations(&paths)?;
     if report.applied.is_empty() {
-        println!("database is up to date (version {})", report.current_version);
+        println!(
+            "database is up to date (version {})",
+            report.current_version
+        );
     } else {
         for entry in &report.applied {
             println!("  applied v{:03}_{}", entry.version, entry.name);

@@ -10,8 +10,10 @@ set -euo pipefail
 TIER="${TIER:-offline}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
-WIKITOOL="${WIKITOOL:-cargo run --quiet --}"
-TMPDIR_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/wikitool-test-XXXXXX")
+WIKITOOL_RAW="${WIKITOOL:-}"
+TMP_BASE="${TMPDIR:-$SCRIPT_DIR/.tmp}"
+mkdir -p "$TMP_BASE"
+TMPDIR_ROOT=$(mktemp -d "$TMP_BASE/wikitool-test-XXXXXX")
 
 PASS=0
 FAIL=0
@@ -43,6 +45,54 @@ cleanup() {
 }
 trap cleanup EXIT
 
+resolve_wikitool_cmd() {
+    if [ -n "$WIKITOOL_RAW" ]; then
+        # shellcheck disable=SC2206 # Intentional word splitting for command string overrides.
+        WIKITOOL_CMD=($WIKITOOL_RAW)
+        return
+    fi
+
+    if command -v cargo > /dev/null 2>&1; then
+        WIKITOOL_CMD=(cargo run --quiet --)
+        return
+    fi
+
+    if command -v cargo.exe > /dev/null 2>&1; then
+        WIKITOOL_CMD=(cargo.exe run --quiet --)
+        return
+    fi
+
+    local candidate
+    for candidate in /mnt/c/Users/*/.cargo/bin/cargo.exe; do
+        if [ -x "$candidate" ]; then
+            WIKITOOL_CMD=("$candidate" run --quiet --)
+            return
+        fi
+    done
+
+    echo "ERROR: Unable to locate cargo/cargo.exe. Set WIKITOOL to an explicit command." >&2
+    exit 1
+}
+
+to_wikitool_path() {
+    local path="$1"
+    if [[ "$path" =~ ^/mnt/([a-zA-Z])/(.*)$ ]]; then
+        local drive="${BASH_REMATCH[1]}"
+        local rest="${BASH_REMATCH[2]}"
+        drive=$(printf "%s" "$drive" | tr "[:lower:]" "[:upper:]")
+        printf "%s:/%s" "$drive" "$rest"
+        return
+    fi
+    if [[ "$path" =~ ^/([a-zA-Z])/(.*)$ ]]; then
+        local drive="${BASH_REMATCH[1]}"
+        local rest="${BASH_REMATCH[2]}"
+        drive=$(printf "%s" "$drive" | tr "[:lower:]" "[:upper:]")
+        printf "%s:/%s" "$drive" "$rest"
+        return
+    fi
+    printf "%s" "$path"
+}
+
 # Create a fresh project root for isolated testing
 setup_project() {
     local dir="$TMPDIR_ROOT/project-$1"
@@ -54,8 +104,24 @@ setup_project() {
 wt() {
     local root="$1"
     shift
-    $WIKITOOL --project-root "$root" "$@"
+    local wt_root
+    wt_root=$(to_wikitool_path "$root")
+
+    local arg
+    local normalized_args=()
+    for arg in "$@"; do
+        if [[ "$arg" =~ ^/mnt/[a-zA-Z]/.*$ || "$arg" =~ ^/[a-zA-Z]/.*$ ]]; then
+            normalized_args+=("$(to_wikitool_path "$arg")")
+        else
+            normalized_args+=("$arg")
+        fi
+    done
+
+    "${WIKITOOL_CMD[@]}" --project-root "$wt_root" "${normalized_args[@]}"
 }
+
+WIKITOOL_CMD=()
+resolve_wikitool_cmd
 
 # --- banner ---
 echo "=== wikitool CLI regression tests ==="
@@ -103,7 +169,7 @@ cat > "$PROJ/wiki_content/Main/Test_Page.wiki" << 'WIKIEOF'
 [[Category:Test]]
 WIKIEOF
 OUTPUT=$(wt "$PROJ" diff 2>&1 || true)
-if echo "$OUTPUT" | grep -q -i "diff\|no changes\|untracked\|new"; then
+if echo "$OUTPUT" | grep -q -i "^diff$" && echo "$OUTPUT" | grep -q -i "diff\."; then
     pass "diff produces output"
 else
     fail "diff produces output (got: $OUTPUT)"
@@ -114,7 +180,7 @@ section "status"
 PROJ=$(setup_project status)
 wt "$PROJ" init > /dev/null 2>&1
 OUTPUT=$(wt "$PROJ" status 2>&1 || true)
-if echo "$OUTPUT" | grep -q -i "project_root\|status\|wiki_content"; then
+if echo "$OUTPUT" | grep -q "project_root:" && echo "$OUTPUT" | grep -q "wiki_content_exists:"; then
     pass "status shows expected fields"
 else
     fail "status shows expected fields (got: $OUTPUT)"
@@ -146,15 +212,10 @@ cat > "$PROJ/wiki_content/Main/Beta.wiki" << 'WIKIEOF'
 [[Category:Test]]
 WIKIEOF
 OUTPUT=$(wt "$PROJ" index rebuild 2>&1)
-if echo "$OUTPUT" | grep -q "inserted_rows.*2\|2.*rows\|inserted.*2"; then
+if echo "$OUTPUT" | grep -q "inserted_rows: 2"; then
     pass "index rebuild inserts correct row count"
 else
-    # More lenient check
-    if echo "$OUTPUT" | grep -qi "rebuild\|inserted"; then
-        pass "index rebuild produces output"
-    else
-        fail "index rebuild inserts rows (got: $OUTPUT)"
-    fi
+    fail "index rebuild inserts rows (got: $OUTPUT)"
 fi
 
 # --- index stats ---
@@ -169,7 +230,7 @@ fi
 # --- index backlinks ---
 section "index backlinks"
 OUTPUT=$(wt "$PROJ" index backlinks "Alpha" 2>&1)
-if echo "$OUTPUT" | grep -qi "Beta\|backlink"; then
+if echo "$OUTPUT" | grep -q "backlinks.source: Beta"; then
     pass "index backlinks finds linking article"
 else
     fail "index backlinks finds linking article (got: $OUTPUT)"
@@ -263,7 +324,7 @@ fi
 # --- search ---
 section "search"
 OUTPUT=$(wt "$PROJ" search "Alpha" 2>&1)
-if echo "$OUTPUT" | grep -qi "Alpha"; then
+if echo "$OUTPUT" | grep -q "search.hit: Alpha"; then
     pass "search finds indexed article"
 else
     fail "search finds indexed article (got: $OUTPUT)"
@@ -290,12 +351,12 @@ fi
 # --- import cargo (CSV) ---
 section "import cargo (CSV)"
 if [ -f "$FIXTURES/sample_import.csv" ]; then
-    OUTPUT=$(wt "$PROJ" import cargo "$FIXTURES/sample_import.csv" --table "test_csv" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "import\|row\|article\|skip\|dry"; then
-        pass "import cargo CSV produces output"
-    else
-        fail "import cargo CSV produces output (got: $OUTPUT)"
-    fi
+OUTPUT=$(wt "$PROJ" import cargo "$FIXTURES/sample_import.csv" --table "test_csv" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "source_type: csv" && echo "$OUTPUT" | grep -q "created:"; then
+    pass "import cargo CSV produces output"
+else
+    fail "import cargo CSV produces output (got: $OUTPUT)"
+fi
 else
     skip "import cargo CSV (fixture missing)"
 fi
@@ -303,12 +364,12 @@ fi
 # --- import cargo (JSON) ---
 section "import cargo (JSON)"
 if [ -f "$FIXTURES/sample_import.json" ]; then
-    OUTPUT=$(wt "$PROJ" import cargo "$FIXTURES/sample_import.json" --table "test_json" --format json 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "import\|row\|article\|skip\|dry"; then
-        pass "import cargo JSON produces output"
-    else
-        fail "import cargo JSON produces output (got: $OUTPUT)"
-    fi
+OUTPUT=$(wt "$PROJ" import cargo "$FIXTURES/sample_import.json" --table "test_json" --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"pages_created"' && echo "$OUTPUT" | grep -q '"errors"'; then
+    pass "import cargo JSON produces output"
+else
+    fail "import cargo JSON produces output (got: $OUTPUT)"
+fi
 else
     skip "import cargo JSON (fixture missing)"
 fi
@@ -343,12 +404,12 @@ fi
 # --- docs import --bundle ---
 section "docs import --bundle"
 if [ -f "$FIXTURES/sample_docs_bundle.json" ]; then
-    OUTPUT=$(wt "$PROJ" docs import --bundle "$FIXTURES/sample_docs_bundle.json" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "import\|TestExtension\|extension\|page\|bundle"; then
-        pass "docs import bundle processes fixture"
-    else
-        fail "docs import bundle processes fixture (got: $OUTPUT)"
-    fi
+OUTPUT=$(wt "$PROJ" docs import --bundle "$FIXTURES/sample_docs_bundle.json" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "imported_extensions: 1" && echo "$OUTPUT" | grep -q "imported_pages:"; then
+    pass "docs import bundle processes fixture"
+else
+    fail "docs import bundle processes fixture (got: $OUTPUT)"
+fi
 else
     skip "docs import bundle (fixture missing)"
 fi
@@ -365,10 +426,50 @@ fi
 # --- docs search ---
 section "docs search"
 OUTPUT=$(wt "$PROJ" docs search "TestExtension" 2>&1 || true)
-if echo "$OUTPUT" | grep -qi "TestExtension\|search\|result\|match\|no.*found\|0 results"; then
+if echo "$OUTPUT" | grep -q "hit: \[extension\] Extension:TestExtension"; then
     pass "docs search returns results or reports none"
 else
     fail "docs search returns results (got: $OUTPUT)"
+fi
+
+# --- FTS continuity: local search substring ---
+section "search substring continuity across migrate"
+PROJ_FTS=$(setup_project fts-search)
+wt "$PROJ_FTS" init > /dev/null 2>&1
+mkdir -p "$PROJ_FTS/wiki_content/Main"
+cat > "$PROJ_FTS/wiki_content/Main/AlphaBeta.wiki" << 'WIKIEOF'
+{{SHORTDESC:AlphaBeta article}}
+{{Article quality|unverified}}
+
+'''AlphaBeta''' is a test article.
+
+== References ==
+{{Reflist}}
+
+[[Category:Test]]
+WIKIEOF
+wt "$PROJ_FTS" index rebuild > /dev/null 2>&1
+BEFORE=$(wt "$PROJ_FTS" search "pha" 2>&1)
+wt "$PROJ_FTS" db migrate > /dev/null 2>&1
+AFTER=$(wt "$PROJ_FTS" search "pha" 2>&1)
+if echo "$BEFORE" | grep -q "search.hit: AlphaBeta" && echo "$AFTER" | grep -q "search.hit: AlphaBeta"; then
+    pass "substring search works before and after migrate"
+else
+    fail "substring search continuity failed (before: $BEFORE | after: $AFTER)"
+fi
+
+# --- FTS continuity: docs search substring ---
+section "docs search substring continuity across migrate"
+PROJ_DOCS_FTS=$(setup_project fts-docs)
+wt "$PROJ_DOCS_FTS" init > /dev/null 2>&1
+wt "$PROJ_DOCS_FTS" docs import --bundle "$FIXTURES/sample_docs_bundle.json" > /dev/null 2>&1
+BEFORE=$(wt "$PROJ_DOCS_FTS" docs search "BetaToken" 2>&1)
+wt "$PROJ_DOCS_FTS" db migrate > /dev/null 2>&1
+AFTER=$(wt "$PROJ_DOCS_FTS" docs search "BetaToken" 2>&1)
+if echo "$BEFORE" | grep -q "Extension:TestExtension" && echo "$AFTER" | grep -q "Extension:TestExtension"; then
+    pass "docs substring search works before and after migrate"
+else
+    fail "docs substring search continuity failed (before: $BEFORE | after: $AFTER)"
 fi
 
 # --- docs remove ---
@@ -414,7 +515,7 @@ if [ "$TIER" = "live" ]; then
 
     # --- pull ---
     section "pull (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" pull --category "Remilia Corporation" --limit 2 2>&1 || true)
+    OUTPUT=$(wt "$PROJ_LIVE" pull --category "Remilia Corporation" 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "pull\|page\|synced\|download"; then
         pass "pull fetches from live wiki"
     else
@@ -432,7 +533,7 @@ if [ "$TIER" = "live" ]; then
 
     # --- seo inspect ---
     section "seo inspect (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" seo inspect 2>&1 || true)
+    OUTPUT=$(wt "$PROJ_LIVE" seo inspect "Main Page" 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "seo\|title\|meta\|inspect\|description"; then
         pass "seo inspect produces report"
     else
@@ -441,7 +542,7 @@ if [ "$TIER" = "live" ]; then
 
     # --- net inspect ---
     section "net inspect (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" net inspect 2>&1 || true)
+    OUTPUT=$(wt "$PROJ_LIVE" net inspect "Main Page" 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "net\|inspect\|status\|response\|http\|dns"; then
         pass "net inspect produces report"
     else
@@ -461,7 +562,7 @@ if [ "$TIER" = "live" ]; then
     section "export (live)"
     EXPORT_DIR="$TMPDIR_ROOT/exports"
     mkdir -p "$EXPORT_DIR"
-    OUTPUT=$(wt "$PROJ_LIVE" export "Remilia Corporation" --out "$EXPORT_DIR" 2>&1 || true)
+    OUTPUT=$(wt "$PROJ_LIVE" export "Remilia Corporation" --output "$EXPORT_DIR" 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "export\|wrote\|saved\|Remilia"; then
         pass "export saves page locally"
     else

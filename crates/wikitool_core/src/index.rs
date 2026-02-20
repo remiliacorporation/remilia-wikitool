@@ -37,7 +37,38 @@ CREATE TABLE IF NOT EXISTS indexed_links (
 CREATE INDEX IF NOT EXISTS idx_indexed_links_target ON indexed_links(target_title);
 CREATE INDEX IF NOT EXISTS idx_indexed_links_source ON indexed_links(source_title);
 CREATE INDEX IF NOT EXISTS idx_indexed_links_category_membership ON indexed_links(is_category_membership, target_title);
+
+CREATE TABLE IF NOT EXISTS indexed_page_chunks (
+    source_relative_path TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    source_title TEXT NOT NULL,
+    source_namespace TEXT NOT NULL,
+    section_heading TEXT,
+    chunk_text TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    PRIMARY KEY (source_relative_path, chunk_index),
+    FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_page_chunks_title ON indexed_page_chunks(source_title);
+CREATE INDEX IF NOT EXISTS idx_indexed_page_chunks_tokens ON indexed_page_chunks(token_estimate);
+
+CREATE TABLE IF NOT EXISTS indexed_template_invocations (
+    source_relative_path TEXT NOT NULL,
+    source_title TEXT NOT NULL,
+    template_title TEXT NOT NULL,
+    parameter_keys TEXT NOT NULL,
+    PRIMARY KEY (source_relative_path, template_title, parameter_keys),
+    FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_template_invocations_template ON indexed_template_invocations(template_title);
+CREATE INDEX IF NOT EXISTS idx_indexed_template_invocations_source ON indexed_template_invocations(source_title);
 "#;
+
+const INDEX_CHUNK_WORD_TARGET: usize = 96;
+const CONTEXT_CHUNK_LIMIT: usize = 8;
+const CONTEXT_TOKEN_BUDGET: usize = 720;
+const TEMPLATE_INVOCATION_LIMIT: usize = 24;
+const NO_PARAMETER_KEYS_SENTINEL: &str = "__none__";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RebuildReport {
@@ -67,6 +98,19 @@ pub struct LocalContextHeading {
     pub heading: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LocalContextChunk {
+    pub section_heading: Option<String>,
+    pub token_estimate: usize,
+    pub chunk_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LocalTemplateInvocation {
+    pub template_title: String,
+    pub parameter_keys: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LocalContextBundle {
     pub title: String,
@@ -78,11 +122,14 @@ pub struct LocalContextBundle {
     pub word_count: usize,
     pub content_preview: String,
     pub sections: Vec<LocalContextHeading>,
+    pub context_chunks: Vec<LocalContextChunk>,
+    pub context_tokens_estimate: usize,
     pub outgoing_links: Vec<String>,
     pub backlinks: Vec<String>,
     pub categories: Vec<String>,
     pub templates: Vec<String>,
     pub modules: Vec<String>,
+    pub template_invocations: Vec<LocalTemplateInvocation>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -148,6 +195,31 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         )
         .context("failed to prepare indexed_links insert")?;
 
+    let mut chunk_statement = transaction
+        .prepare(
+            "INSERT INTO indexed_page_chunks (
+                source_relative_path,
+                chunk_index,
+                source_title,
+                source_namespace,
+                section_heading,
+                chunk_text,
+                token_estimate
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )
+        .context("failed to prepare indexed_page_chunks insert")?;
+
+    let mut template_invocation_statement = transaction
+        .prepare(
+            "INSERT OR IGNORE INTO indexed_template_invocations (
+                source_relative_path,
+                source_title,
+                template_title,
+                parameter_keys
+            ) VALUES (?1, ?2, ?3, ?4)",
+        )
+        .context("failed to prepare indexed_template_invocations insert")?;
+
     let mut inserted_rows = 0usize;
     let mut inserted_links = 0usize;
     for file in &files {
@@ -182,7 +254,49 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 .with_context(|| format!("failed to insert links for {}", file.relative_path))?;
             inserted_links += affected;
         }
+
+        let context_chunks = chunk_article_context(&content);
+        for (chunk_index, chunk) in context_chunks.iter().enumerate() {
+            chunk_statement
+                .execute(params![
+                    file.relative_path,
+                    i64::try_from(chunk_index).context("chunk index does not fit into i64")?,
+                    file.title,
+                    file.namespace,
+                    chunk.section_heading.as_deref(),
+                    chunk.chunk_text.as_str(),
+                    i64::try_from(chunk.token_estimate)
+                        .context("chunk token estimate does not fit into i64")?,
+                ])
+                .with_context(|| {
+                    format!("failed to insert context chunks for {}", file.relative_path)
+                })?;
+        }
+
+        let mut seen_signatures = BTreeSet::new();
+        for invocation in extract_template_invocations(&content) {
+            let parameter_keys = canonical_parameter_key_list(&invocation.parameter_keys);
+            let signature = format!("{}|{}", invocation.template_title, parameter_keys);
+            if !seen_signatures.insert(signature) {
+                continue;
+            }
+            template_invocation_statement
+                .execute(params![
+                    file.relative_path,
+                    file.title,
+                    invocation.template_title,
+                    parameter_keys,
+                ])
+                .with_context(|| {
+                    format!(
+                        "failed to insert template invocations for {}",
+                        file.relative_path
+                    )
+                })?;
+        }
     }
+    drop(template_invocation_statement);
+    drop(chunk_statement);
     drop(link_statement);
     drop(page_statement);
 
@@ -243,7 +357,9 @@ pub fn query_search_local(
 
     // Try FTS5 first if the virtual table exists
     if fts_table_exists(&connection, "indexed_pages_fts") {
-        if let Ok(hits) = query_search_fts(&connection, &normalized, limit) {
+        if let Ok(hits) = query_search_fts(&connection, &normalized, limit)
+            && !hits.is_empty()
+        {
             return Ok(Some(hits));
         }
     }
@@ -356,6 +472,15 @@ pub fn build_local_context(
 
     let link_rows = load_outgoing_link_rows(&connection, &page.relative_path)?;
     let backlinks = query_backlinks_for_connection(&connection, &page.title)?;
+    let sections = parse_section_headings(&content, 24);
+    let context_chunks =
+        load_context_chunks_for_bundle(&connection, &page.relative_path, &content)?;
+    let context_tokens_estimate = context_chunks
+        .iter()
+        .map(|chunk| chunk.token_estimate)
+        .sum::<usize>();
+    let template_invocations =
+        load_template_invocations_for_bundle(&connection, &page.relative_path, &content)?;
 
     let mut outgoing_set = BTreeSet::new();
     let mut category_set = BTreeSet::new();
@@ -373,6 +498,9 @@ pub fn build_local_context(
             module_set.insert(link.target_title.clone());
         }
     }
+    for invocation in &template_invocations {
+        template_set.insert(invocation.template_title.clone());
+    }
 
     Ok(Some(LocalContextBundle {
         title: page.title,
@@ -383,12 +511,15 @@ pub fn build_local_context(
         bytes: page.bytes,
         word_count: count_words(&content),
         content_preview: make_content_preview(&content, 280),
-        sections: parse_section_headings(&content, 24),
+        sections,
+        context_chunks,
+        context_tokens_estimate,
         outgoing_links: outgoing_set.into_iter().collect(),
         backlinks,
         categories: category_set.into_iter().collect(),
         templates: template_set.into_iter().collect(),
         modules: module_set.into_iter().collect(),
+        template_invocations,
     }))
 }
 
@@ -482,6 +613,491 @@ struct IndexedLinkRow {
     target_title: String,
     target_namespace: String,
     is_category_membership: bool,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedContextChunkRow {
+    section_heading: Option<String>,
+    token_estimate: usize,
+    chunk_text: String,
+}
+
+#[derive(Debug, Clone)]
+struct ParsedTemplateInvocation {
+    template_title: String,
+    parameter_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ArticleContextChunkRow {
+    section_heading: Option<String>,
+    chunk_text: String,
+    token_estimate: usize,
+}
+
+fn load_context_chunks_for_bundle(
+    connection: &Connection,
+    source_relative_path: &str,
+    content: &str,
+) -> Result<Vec<LocalContextChunk>> {
+    if table_exists(connection, "indexed_page_chunks")? {
+        let db_rows = load_indexed_context_chunks_for_connection(
+            connection,
+            source_relative_path,
+            CONTEXT_CHUNK_LIMIT,
+            CONTEXT_TOKEN_BUDGET,
+        )?;
+        if !db_rows.is_empty() {
+            return Ok(db_rows);
+        }
+    }
+
+    let fallback_rows = chunk_article_context(content);
+    Ok(apply_context_chunk_budget(
+        fallback_rows
+            .into_iter()
+            .map(|row| LocalContextChunk {
+                section_heading: row.section_heading,
+                token_estimate: row.token_estimate,
+                chunk_text: row.chunk_text,
+            })
+            .collect(),
+        CONTEXT_CHUNK_LIMIT,
+        CONTEXT_TOKEN_BUDGET,
+    ))
+}
+
+fn load_template_invocations_for_bundle(
+    connection: &Connection,
+    source_relative_path: &str,
+    content: &str,
+) -> Result<Vec<LocalTemplateInvocation>> {
+    if table_exists(connection, "indexed_template_invocations")? {
+        let db_rows = load_indexed_template_invocations_for_connection(
+            connection,
+            source_relative_path,
+            TEMPLATE_INVOCATION_LIMIT,
+        )?;
+        if !db_rows.is_empty() {
+            return Ok(db_rows);
+        }
+    }
+    Ok(summarize_template_invocations(
+        extract_template_invocations(content),
+        TEMPLATE_INVOCATION_LIMIT,
+    ))
+}
+
+fn load_indexed_context_chunks_for_connection(
+    connection: &Connection,
+    source_relative_path: &str,
+    max_chunks: usize,
+    token_budget: usize,
+) -> Result<Vec<LocalContextChunk>> {
+    let mut statement = connection
+        .prepare(
+            "SELECT section_heading, token_estimate, chunk_text
+             FROM indexed_page_chunks
+             WHERE source_relative_path = ?1
+             ORDER BY chunk_index ASC",
+        )
+        .context("failed to prepare indexed_page_chunks query")?;
+    let rows = statement
+        .query_map([source_relative_path], |row| {
+            let token_estimate_i64: i64 = row.get(1)?;
+            Ok(IndexedContextChunkRow {
+                section_heading: row.get(0)?,
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+                chunk_text: row.get(2)?,
+            })
+        })
+        .context("failed to run indexed_page_chunks query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        let row = row.context("failed to decode indexed_page_chunks row")?;
+        out.push(LocalContextChunk {
+            section_heading: row.section_heading,
+            token_estimate: row.token_estimate,
+            chunk_text: row.chunk_text,
+        });
+    }
+    Ok(apply_context_chunk_budget(out, max_chunks, token_budget))
+}
+
+fn load_indexed_template_invocations_for_connection(
+    connection: &Connection,
+    source_relative_path: &str,
+    limit: usize,
+) -> Result<Vec<LocalTemplateInvocation>> {
+    let limit_i64 =
+        i64::try_from(limit).context("template invocation limit does not fit into i64")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT template_title, parameter_keys
+             FROM indexed_template_invocations
+             WHERE source_relative_path = ?1
+             ORDER BY template_title ASC, parameter_keys ASC
+             LIMIT ?2",
+        )
+        .context("failed to prepare indexed_template_invocations query")?;
+    let rows = statement
+        .query_map(params![source_relative_path, limit_i64], |row| {
+            let template_title: String = row.get(0)?;
+            let parameter_keys: String = row.get(1)?;
+            Ok(LocalTemplateInvocation {
+                template_title,
+                parameter_keys: parse_parameter_key_list(&parameter_keys),
+            })
+        })
+        .context("failed to run indexed_template_invocations query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode indexed_template_invocations row")?);
+    }
+    Ok(out)
+}
+
+fn parse_parameter_key_list(value: &str) -> Vec<String> {
+    if value.trim().is_empty() || value == NO_PARAMETER_KEYS_SENTINEL {
+        return Vec::new();
+    }
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn canonical_parameter_key_list(keys: &[String]) -> String {
+    if keys.is_empty() {
+        return NO_PARAMETER_KEYS_SENTINEL.to_string();
+    }
+    let mut normalized = Vec::new();
+    for key in keys {
+        let key = normalize_template_parameter_key(key);
+        if !key.is_empty() {
+            normalized.push(key);
+        }
+    }
+    normalized.sort();
+    normalized.dedup();
+    if normalized.is_empty() {
+        return NO_PARAMETER_KEYS_SENTINEL.to_string();
+    }
+    normalized.join(",")
+}
+
+fn apply_context_chunk_budget(
+    chunks: Vec<LocalContextChunk>,
+    max_chunks: usize,
+    token_budget: usize,
+) -> Vec<LocalContextChunk> {
+    let mut out = Vec::new();
+    let mut used_tokens = 0usize;
+    for chunk in chunks {
+        if out.len() >= max_chunks {
+            break;
+        }
+        let next_tokens = used_tokens.saturating_add(chunk.token_estimate);
+        if !out.is_empty() && next_tokens > token_budget {
+            break;
+        }
+        used_tokens = next_tokens;
+        out.push(chunk);
+    }
+    out
+}
+
+fn chunk_article_context(content: &str) -> Vec<ArticleContextChunkRow> {
+    let mut out = Vec::new();
+    for (section_heading, text) in split_content_sections(content) {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        if words.is_empty() {
+            continue;
+        }
+        let mut cursor = 0usize;
+        while cursor < words.len() {
+            let end = (cursor + INDEX_CHUNK_WORD_TARGET).min(words.len());
+            let chunk_text = words[cursor..end].join(" ");
+            if !chunk_text.is_empty() {
+                out.push(ArticleContextChunkRow {
+                    section_heading: section_heading.clone(),
+                    token_estimate: estimate_tokens(&chunk_text),
+                    chunk_text,
+                });
+            }
+            cursor = end;
+        }
+    }
+    out
+}
+
+fn split_content_sections(content: &str) -> Vec<(Option<String>, String)> {
+    let mut out = Vec::new();
+    let mut current_heading: Option<String> = None;
+    let mut current_lines = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(heading) = parse_heading_line(trimmed) {
+            flush_content_section(&mut out, current_heading.take(), &current_lines);
+            current_lines.clear();
+            current_heading = Some(heading);
+            continue;
+        }
+        current_lines.push(line);
+    }
+    flush_content_section(&mut out, current_heading, &current_lines);
+    out
+}
+
+fn flush_content_section(
+    out: &mut Vec<(Option<String>, String)>,
+    section_heading: Option<String>,
+    lines: &[&str],
+) {
+    let text = normalize_spaces(&lines.join(" "));
+    if text.is_empty() {
+        return;
+    }
+    out.push((section_heading, text));
+}
+
+fn parse_heading_line(value: &str) -> Option<String> {
+    if value.len() < 4 || !value.starts_with('=') || !value.ends_with('=') {
+        return None;
+    }
+    let leading = value.chars().take_while(|ch| *ch == '=').count();
+    let trailing = value.chars().rev().take_while(|ch| *ch == '=').count();
+    if leading != trailing || !(2..=6).contains(&leading) {
+        return None;
+    }
+    if leading * 2 >= value.len() {
+        return None;
+    }
+    let heading = value[leading..value.len() - trailing].trim();
+    if heading.is_empty() {
+        return None;
+    }
+    Some(heading.to_string())
+}
+
+fn estimate_tokens(value: &str) -> usize {
+    let chars = value.chars().count();
+    (chars + 3) / 4
+}
+
+fn summarize_template_invocations(
+    invocations: Vec<ParsedTemplateInvocation>,
+    limit: usize,
+) -> Vec<LocalTemplateInvocation> {
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for invocation in invocations {
+        let parameter_keys = canonical_parameter_key_list(&invocation.parameter_keys);
+        let signature = format!("{}|{}", invocation.template_title, parameter_keys);
+        if !seen.insert(signature) {
+            continue;
+        }
+        out.push(LocalTemplateInvocation {
+            template_title: invocation.template_title,
+            parameter_keys: parse_parameter_key_list(&parameter_keys),
+        });
+        if out.len() >= limit {
+            break;
+        }
+    }
+    out
+}
+
+fn extract_template_invocations(content: &str) -> Vec<ParsedTemplateInvocation> {
+    let bytes = content.as_bytes();
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+    let mut stack = Vec::new();
+
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] == b'{' && bytes[cursor + 1] == b'{' {
+            stack.push(cursor + 2);
+            cursor += 2;
+            continue;
+        }
+        if bytes[cursor] == b'}' && bytes[cursor + 1] == b'}' {
+            if let Some(start) = stack.pop()
+                && cursor >= start
+            {
+                let inner = &content[start..cursor];
+                if let Some(invocation) = parse_template_invocation(inner) {
+                    out.push(invocation);
+                }
+            }
+            cursor += 2;
+            continue;
+        }
+        cursor += 1;
+    }
+
+    out
+}
+
+fn parse_template_invocation(inner: &str) -> Option<ParsedTemplateInvocation> {
+    let segments = split_template_segments(inner);
+    let raw_name = segments.first()?.trim();
+    let template_title = canonical_template_title(raw_name)?;
+
+    let mut parameter_keys = Vec::new();
+    let mut positional_index = 1usize;
+    for segment in segments.iter().skip(1) {
+        let value = segment.trim();
+        if value.is_empty() {
+            continue;
+        }
+        if let Some((key, _)) = split_once_top_level_equals(value) {
+            let normalized = normalize_template_parameter_key(&key);
+            if !normalized.is_empty() {
+                parameter_keys.push(normalized);
+                continue;
+            }
+        }
+        parameter_keys.push(format!("${positional_index}"));
+        positional_index += 1;
+    }
+    parameter_keys.sort();
+    parameter_keys.dedup();
+
+    Some(ParsedTemplateInvocation {
+        template_title,
+        parameter_keys,
+    })
+}
+
+fn split_template_segments(inner: &str) -> Vec<String> {
+    let chars: Vec<char> = inner.chars().collect();
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut cursor = 0usize;
+    let mut template_depth = 0usize;
+    let mut link_depth = 0usize;
+
+    while cursor < chars.len() {
+        let current_char = chars[cursor];
+        let next_char = chars.get(cursor + 1).copied();
+        if current_char == '{' && next_char == Some('{') {
+            template_depth += 1;
+            current.push('{');
+            current.push('{');
+            cursor += 2;
+            continue;
+        }
+        if current_char == '}' && next_char == Some('}') {
+            template_depth = template_depth.saturating_sub(1);
+            current.push('}');
+            current.push('}');
+            cursor += 2;
+            continue;
+        }
+        if current_char == '[' && next_char == Some('[') {
+            link_depth += 1;
+            current.push('[');
+            current.push('[');
+            cursor += 2;
+            continue;
+        }
+        if current_char == ']' && next_char == Some(']') {
+            link_depth = link_depth.saturating_sub(1);
+            current.push(']');
+            current.push(']');
+            cursor += 2;
+            continue;
+        }
+        if current_char == '|' && template_depth == 0 && link_depth == 0 {
+            out.push(current.trim().to_string());
+            current.clear();
+            cursor += 1;
+            continue;
+        }
+        current.push(current_char);
+        cursor += 1;
+    }
+
+    out.push(current.trim().to_string());
+    out
+}
+
+fn split_once_top_level_equals(value: &str) -> Option<(String, String)> {
+    let chars: Vec<char> = value.chars().collect();
+    let mut cursor = 0usize;
+    let mut template_depth = 0usize;
+    let mut link_depth = 0usize;
+    while cursor < chars.len() {
+        let current_char = chars[cursor];
+        let next_char = chars.get(cursor + 1).copied();
+        if current_char == '{' && next_char == Some('{') {
+            template_depth += 1;
+            cursor += 2;
+            continue;
+        }
+        if current_char == '}' && next_char == Some('}') {
+            template_depth = template_depth.saturating_sub(1);
+            cursor += 2;
+            continue;
+        }
+        if current_char == '[' && next_char == Some('[') {
+            link_depth += 1;
+            cursor += 2;
+            continue;
+        }
+        if current_char == ']' && next_char == Some(']') {
+            link_depth = link_depth.saturating_sub(1);
+            cursor += 2;
+            continue;
+        }
+        if current_char == '=' && template_depth == 0 && link_depth == 0 {
+            let key = chars[..cursor].iter().collect::<String>();
+            let value = chars[cursor + 1..].iter().collect::<String>();
+            return Some((key, value));
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn canonical_template_title(raw: &str) -> Option<String> {
+    let mut name = normalize_spaces(&raw.replace('_', " "));
+    while let Some(stripped) = name.strip_prefix(':') {
+        name = stripped.trim_start().to_string();
+    }
+    if name.is_empty() {
+        return None;
+    }
+    if name.starts_with('#')
+        || name.starts_with('!')
+        || name.contains('{')
+        || name.contains('}')
+        || name.contains('[')
+        || name.contains(']')
+    {
+        return None;
+    }
+
+    if let Some((prefix, rest)) = name.split_once(':') {
+        if !prefix.eq_ignore_ascii_case("Template") {
+            return None;
+        }
+        let body = normalize_spaces(rest);
+        if body.is_empty() {
+            return None;
+        }
+        return Some(format!("Template:{body}"));
+    }
+    Some(format!("Template:{name}"))
+}
+
+fn normalize_template_parameter_key(value: &str) -> String {
+    normalize_spaces(&value.replace('_', " ")).to_ascii_lowercase()
 }
 
 fn extract_wikilinks(content: &str) -> Vec<ParsedLink> {
@@ -1043,8 +1659,12 @@ fn fts_table_exists(connection: &Connection, table_name: &str) -> bool {
 
 fn rebuild_fts_index(connection: &Connection) {
     if fts_table_exists(connection, "indexed_pages_fts") {
+        let _ = connection
+            .execute_batch("INSERT INTO indexed_pages_fts(indexed_pages_fts) VALUES('rebuild')");
+    }
+    if fts_table_exists(connection, "indexed_page_chunks_fts") {
         let _ = connection.execute_batch(
-            "INSERT INTO indexed_pages_fts(indexed_pages_fts) VALUES('rebuild')",
+            "INSERT INTO indexed_page_chunks_fts(indexed_page_chunks_fts) VALUES('rebuild')",
         );
     }
 }
@@ -1069,9 +1689,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        BrokenLinkIssue, build_local_context, extract_wikilinks, load_stored_index_stats,
-        query_backlinks, query_empty_categories, query_orphans, query_search_local, rebuild_index,
-        run_validation_checks,
+        BrokenLinkIssue, build_local_context, extract_template_invocations, extract_wikilinks,
+        load_stored_index_stats, query_backlinks, query_empty_categories, query_orphans,
+        query_search_local, rebuild_index, run_validation_checks,
     };
     use crate::filesystem::{Namespace, ScanOptions};
     use crate::runtime::{ResolvedPaths, ValueSource};
@@ -1217,7 +1837,7 @@ mod tests {
 
         write_file(
             &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
-            "Lead paragraph\n== History ==\n[[Beta]] [[Template:Infobox person]] [[Module:Navbar]] [[Category:People]]",
+            "Lead paragraph\n{{Infobox person|name=Alpha|birth_date={{Birth date|2000|1|1}}}}\n== History ==\n[[Beta]] [[Module:Navbar]] [[Category:People]]",
         );
         write_file(
             &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
@@ -1248,12 +1868,36 @@ mod tests {
         assert_eq!(context.sections.len(), 1);
         assert_eq!(context.sections[0].heading, "History");
         assert_eq!(context.categories, vec!["Category:People".to_string()]);
-        assert_eq!(
-            context.templates,
-            vec!["Template:Infobox person".to_string()]
+        assert!(
+            context
+                .templates
+                .contains(&"Template:Infobox person".to_string())
+        );
+        assert!(
+            context
+                .templates
+                .contains(&"Template:Birth date".to_string())
         );
         assert_eq!(context.modules, vec!["Module:Navbar".to_string()]);
         assert_eq!(context.backlinks.len(), 0);
+        let infobox_invocation = context
+            .template_invocations
+            .iter()
+            .find(|invocation| invocation.template_title == "Template:Infobox person")
+            .expect("infobox invocation");
+        assert_eq!(
+            infobox_invocation.parameter_keys,
+            vec!["birth date".to_string(), "name".to_string()]
+        );
+        let birth_date_invocation = context
+            .template_invocations
+            .iter()
+            .find(|invocation| invocation.template_title == "Template:Birth date")
+            .expect("birth date invocation");
+        assert_eq!(
+            birth_date_invocation.parameter_keys,
+            vec!["$1".to_string(), "$2".to_string(), "$3".to_string()]
+        );
 
         let beta_context = build_local_context(&paths, "Beta")
             .expect("beta context query")
@@ -1261,6 +1905,36 @@ mod tests {
         assert_eq!(
             beta_context.backlinks,
             vec!["Alpha".to_string(), "Gamma".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_template_invocations_captures_nested_templates() {
+        let content =
+            "{{Infobox person|name=Alpha|birth_date={{Birth date|2000|1|1}}}} {{#if:foo|bar|baz}}";
+        let invocations = extract_template_invocations(content);
+
+        let infobox = invocations
+            .iter()
+            .find(|invocation| invocation.template_title == "Template:Infobox person")
+            .expect("infobox invocation");
+        assert_eq!(
+            infobox.parameter_keys,
+            vec!["birth date".to_string(), "name".to_string()]
+        );
+
+        let birth_date = invocations
+            .iter()
+            .find(|invocation| invocation.template_title == "Template:Birth date")
+            .expect("birth date invocation");
+        assert_eq!(
+            birth_date.parameter_keys,
+            vec!["$1".to_string(), "$2".to_string(), "$3".to_string()]
+        );
+        assert!(
+            invocations
+                .iter()
+                .all(|invocation| !invocation.template_title.starts_with("Template:#"))
         );
     }
 

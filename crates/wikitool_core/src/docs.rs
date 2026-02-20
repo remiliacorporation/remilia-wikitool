@@ -628,6 +628,8 @@ pub fn import_docs_bundle(
     let mut imported_technical_types = 0usize;
     let mut imported_pages = 0usize;
     let mut failures = Vec::new();
+    let mut needs_extension_fts_rebuild = false;
+    let mut needs_technical_fts_rebuild = false;
 
     for extension in &bundle.extensions {
         let extension_name = normalize_extension_name(&extension.extension_name);
@@ -673,9 +675,11 @@ pub fn import_docs_bundle(
             &fetched_pages,
             now_unix,
             expires_at_unix,
+            false,
         )?;
         imported_extensions += 1;
         imported_pages += fetched_pages.len();
+        needs_extension_fts_rebuild = true;
     }
 
     let mut technical_pages_by_type = BTreeMap::<TechnicalDocType, Vec<FetchedDocsPage>>::new();
@@ -713,10 +717,25 @@ pub fn import_docs_bundle(
         if pages.is_empty() {
             continue;
         }
-        persist_technical_docs(paths, doc_type, &pages, now_unix, expires_at_unix, true)?;
+        persist_technical_docs(
+            paths,
+            doc_type,
+            &pages,
+            now_unix,
+            expires_at_unix,
+            true,
+            false,
+        )?;
         imported_technical_types += 1;
         imported_pages += pages.len();
+        needs_technical_fts_rebuild = true;
     }
+
+    rebuild_docs_fts_indexes(
+        paths,
+        needs_extension_fts_rebuild,
+        needs_technical_fts_rebuild,
+    )?;
 
     Ok(DocsBundleImportReport {
         schema_version: bundle.schema_version,
@@ -751,6 +770,7 @@ pub fn import_extension_docs_with_api<A: DocsApi>(
     let mut imported_extensions = 0usize;
     let mut imported_pages = 0usize;
     let mut failures = Vec::new();
+    let mut needs_extension_fts_rebuild = false;
 
     for extension in normalize_extensions(&options.extensions) {
         let main_page = format!("Extension:{extension}");
@@ -799,11 +819,15 @@ pub fn import_extension_docs_with_api<A: DocsApi>(
             &fetched_pages,
             now_unix,
             expires_at_unix,
+            false,
         )?;
 
         imported_extensions += 1;
         imported_pages += fetched_pages.len();
+        needs_extension_fts_rebuild = true;
     }
+
+    rebuild_docs_fts_indexes(paths, needs_extension_fts_rebuild, false)?;
 
     Ok(DocsImportReport {
         requested_extensions,
@@ -836,6 +860,7 @@ pub fn import_technical_docs_with_api<A: DocsApi>(
     let mut imported_pages = 0usize;
     let mut imported_by_type = BTreeMap::new();
     let mut failures = Vec::new();
+    let mut needs_technical_fts_rebuild = false;
 
     for task in &options.tasks {
         let mut pages_to_fetch = Vec::new();
@@ -900,13 +925,17 @@ pub fn import_technical_docs_with_api<A: DocsApi>(
             now_unix,
             expires_at_unix,
             task.page_title.is_none(),
+            false,
         )?;
 
         imported_pages += fetched_pages.len();
         *imported_by_type
             .entry(task.doc_type.as_str().to_string())
             .or_insert(0) += fetched_pages.len();
+        needs_technical_fts_rebuild = true;
     }
+
+    rebuild_docs_fts_indexes(paths, false, needs_technical_fts_rebuild)?;
 
     Ok(DocsImportTechnicalReport {
         requested_tasks: options.tasks.len(),
@@ -964,11 +993,16 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
     let mut updated_pages = 0usize;
     let mut failures = Vec::new();
 
-    for extension in &outdated.extensions {
+    if !outdated.extensions.is_empty() {
+        let extension_names = outdated
+            .extensions
+            .iter()
+            .map(|extension| extension.extension_name.clone())
+            .collect::<Vec<_>>();
         let report = import_extension_docs_with_api(
             paths,
             &DocsImportOptions {
-                extensions: vec![extension.extension_name.clone()],
+                extensions: extension_names,
                 include_subpages: true,
             },
             api,
@@ -985,22 +1019,24 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
         }
     }
 
-    for doc_type in technical_types {
+    let technical_tasks = technical_types
+        .into_iter()
+        .map(|doc_type| TechnicalImportTask {
+            doc_type,
+            page_title: None,
+            include_subpages: true,
+        })
+        .collect::<Vec<_>>();
+    if !technical_tasks.is_empty() {
         let report = import_technical_docs_with_api(
             paths,
             &DocsImportTechnicalOptions {
-                tasks: vec![TechnicalImportTask {
-                    doc_type,
-                    page_title: None,
-                    include_subpages: true,
-                }],
+                tasks: technical_tasks,
                 limit: DOCS_SUBPAGE_LIMIT_DEFAULT,
             },
             api,
         )?;
-        if report.imported_pages > 0 {
-            updated_technical_types += 1;
-        }
+        updated_technical_types += report.imported_by_type.len();
         updated_pages += report.imported_pages;
         failures.extend(report.failures);
     }
@@ -1128,11 +1164,12 @@ pub fn search_docs(
 
     if search_extension {
         let ext_hits = if use_fts_ext {
-            search_extension_docs_fts(&connection, &normalized_query, per_tier_limit)
-                .unwrap_or_else(|_| {
-                    search_extension_docs_like(&connection, &normalized_query, per_tier_limit)
-                        .unwrap_or_default()
-                })
+            match search_extension_docs_fts(&connection, &normalized_query, per_tier_limit) {
+                Ok(hits) if !hits.is_empty() => hits,
+                Ok(_) | Err(_) => {
+                    search_extension_docs_like(&connection, &normalized_query, per_tier_limit)?
+                }
+            }
         } else {
             search_extension_docs_like(&connection, &normalized_query, per_tier_limit)?
         };
@@ -1141,11 +1178,12 @@ pub fn search_docs(
 
     if search_technical {
         let tech_hits = if use_fts_tech {
-            search_technical_docs_fts(&connection, &normalized_query, per_tier_limit)
-                .unwrap_or_else(|_| {
-                    search_technical_docs_like(&connection, &normalized_query, per_tier_limit)
-                        .unwrap_or_default()
-                })
+            match search_technical_docs_fts(&connection, &normalized_query, per_tier_limit) {
+                Ok(hits) if !hits.is_empty() => hits,
+                Ok(_) | Err(_) => {
+                    search_technical_docs_like(&connection, &normalized_query, per_tier_limit)?
+                }
+            }
         } else {
             search_technical_docs_like(&connection, &normalized_query, per_tier_limit)?
         };
@@ -1170,6 +1208,33 @@ fn fts_table_exists(connection: &Connection, table_name: &str) -> bool {
         )
         .unwrap_or(0);
     exists == 1
+}
+
+fn rebuild_docs_fts_indexes(
+    paths: &ResolvedPaths,
+    rebuild_extension_docs: bool,
+    rebuild_technical_docs: bool,
+) -> Result<()> {
+    if !rebuild_extension_docs && !rebuild_technical_docs {
+        return Ok(());
+    }
+    let connection = open_docs_connection(paths)?;
+    initialize_docs_schema(&connection)?;
+
+    if rebuild_extension_docs && fts_table_exists(&connection, "extension_doc_pages_fts") {
+        connection
+            .execute_batch(
+                "INSERT INTO extension_doc_pages_fts(extension_doc_pages_fts) VALUES('rebuild')",
+            )
+            .context("failed to rebuild extension_doc_pages_fts")?;
+    }
+    if rebuild_technical_docs && fts_table_exists(&connection, "technical_docs_fts") {
+        connection
+            .execute_batch("INSERT INTO technical_docs_fts(technical_docs_fts) VALUES('rebuild')")
+            .context("failed to rebuild technical_docs_fts")?;
+    }
+
+    Ok(())
 }
 
 fn search_extension_docs_fts(
@@ -1346,6 +1411,7 @@ fn persist_extension_docs(
     pages: &[FetchedDocsPage],
     fetched_at_unix: u64,
     expires_at_unix: u64,
+    rebuild_fts_after_commit: bool,
 ) -> Result<()> {
     let mut connection = open_docs_connection(paths)?;
     initialize_docs_schema(&connection)?;
@@ -1425,11 +1491,8 @@ fn persist_extension_docs(
         .commit()
         .context("failed to commit extension docs transaction")?;
 
-    // Rebuild FTS index if virtual table exists (created by migration v003)
-    if fts_table_exists(&connection, "extension_doc_pages_fts") {
-        let _ = connection.execute_batch(
-            "INSERT INTO extension_doc_pages_fts(extension_doc_pages_fts) VALUES('rebuild')",
-        );
+    if rebuild_fts_after_commit {
+        rebuild_docs_fts_indexes(paths, true, false)?;
     }
 
     Ok(())
@@ -1442,6 +1505,7 @@ fn persist_technical_docs(
     fetched_at_unix: u64,
     expires_at_unix: u64,
     replace_existing_for_type: bool,
+    rebuild_fts_after_commit: bool,
 ) -> Result<()> {
     let mut connection = open_docs_connection(paths)?;
     initialize_docs_schema(&connection)?;
@@ -1508,11 +1572,8 @@ fn persist_technical_docs(
         .commit()
         .context("failed to commit technical docs transaction")?;
 
-    // Rebuild FTS index if virtual table exists (created by migration v003)
-    if fts_table_exists(&connection, "technical_docs_fts") {
-        let _ = connection.execute_batch(
-            "INSERT INTO technical_docs_fts(technical_docs_fts) VALUES('rebuild')",
-        );
+    if rebuild_fts_after_commit {
+        rebuild_docs_fts_indexes(paths, false, true)?;
     }
 
     Ok(())

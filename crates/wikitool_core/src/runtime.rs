@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-pub const MIGRATIONS_POLICY_MESSAGE: &str = "Run `wikitool db migrate` to apply pending schema migrations.";
+pub const MIGRATIONS_POLICY_MESSAGE: &str =
+    "Run `wikitool db migrate` to apply pending schema migrations.";
 
 const EMBEDDED_PARSER_CONFIG: &str = include_str!("../../../config/remilia-parser.json");
 

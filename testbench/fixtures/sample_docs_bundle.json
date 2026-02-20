@@ -1,4 +1,7 @@
 {
+  "schema_version": 1,
+  "generated_at_unix": 1739000000,
+  "source": "testbench_fixture",
   "extensions": [
     {
       "extension_name": "TestExtension",
@@ -8,7 +11,7 @@
         {
           "page_title": "Extension:TestExtension",
           "local_path": "extensions/TestExtension.md",
-          "content": "TestExtension is a fictional MediaWiki extension used for wikitool testbench validation. It provides searchable content for docs search testing. Configuration: $wgTestExtensionEnable = true;"
+          "content": "TestExtension is a fictional MediaWiki extension used for wikitool testbench validation. It provides AlphaBetaToken searchable content for docs search testing. Configuration: $wgTestExtensionEnable = true;"
         },
         {
           "page_title": "Extension:TestExtension/Configuration",
@@ -20,10 +23,14 @@
   ],
   "technical": [
     {
-      "doc_type": "hook",
-      "page_title": "Manual:Hooks/TestHook",
-      "local_path": "hooks/TestHook.md",
-      "content": "TestHook is called during testbench validation. Parameters: $parser (Parser object), $text (string, wikitext content). Return true to continue processing."
+      "doc_type": "hooks",
+      "pages": [
+        {
+          "page_title": "Manual:Hooks/TestHook",
+          "local_path": "hooks/TestHook.md",
+          "content": "TestHook is called during testbench validation. Parameters: $parser (Parser object), $text (string, wikitext content). Return true to continue processing."
+        }
+      ]
     }
   ]
 }

@@ -32,6 +32,16 @@ const MIGRATIONS: &[Migration] = &[
         name: "template_categories",
         sql: include_str!("migrations/v004_template_categories.sql"),
     },
+    Migration {
+        version: 5,
+        name: "ai_context_cache",
+        sql: include_str!("migrations/v005_ai_context_cache.sql"),
+    },
+    Migration {
+        version: 6,
+        name: "template_invocations",
+        sql: include_str!("migrations/v006_template_invocations.sql"),
+    },
 ];
 
 /// Report returned after running migrations.
@@ -61,8 +71,12 @@ pub fn run_migrations(paths: &ResolvedPaths) -> Result<MigrateReport> {
         if migration.version <= current {
             continue;
         }
-        apply_migration(&connection, migration)
-            .with_context(|| format!("failed to apply migration v{:03}_{}", migration.version, migration.name))?;
+        apply_migration(&connection, migration).with_context(|| {
+            format!(
+                "failed to apply migration v{:03}_{}",
+                migration.version, migration.name
+            )
+        })?;
         applied.push(AppliedMigration {
             version: migration.version,
             name: migration.name.to_string(),
@@ -84,10 +98,7 @@ pub fn pending_migration_count(paths: &ResolvedPaths) -> Result<usize> {
     let connection = open_connection(&paths.db_path)?;
     ensure_schema_migrations_table(&connection)?;
     let current = current_version(&connection)?;
-    Ok(MIGRATIONS
-        .iter()
-        .filter(|m| m.version > current)
-        .count())
+    Ok(MIGRATIONS.iter().filter(|m| m.version > current).count())
 }
 
 /// Returns the highest applied migration version, or 0 if none applied.
@@ -158,8 +169,8 @@ fn apply_migration(connection: &Connection, migration: &Migration) -> Result<()>
 }
 
 fn open_connection(db_path: &std::path::Path) -> Result<Connection> {
-    let connection =
-        Connection::open(db_path).with_context(|| format!("failed to open {}", db_path.display()))?;
+    let connection = Connection::open(db_path)
+        .with_context(|| format!("failed to open {}", db_path.display()))?;
     connection
         .pragma_update(None, "foreign_keys", "ON")
         .context("failed to enable foreign_keys pragma")?;
@@ -214,7 +225,7 @@ mod tests {
         let (_temp, paths) = test_paths();
         let report = run_migrations(&paths).expect("run_migrations");
         assert_eq!(report.applied.len(), MIGRATIONS.len());
-        assert_eq!(report.current_version, 4);
+        assert_eq!(report.current_version, 6);
     }
 
     #[test]
@@ -225,7 +236,7 @@ mod tests {
 
         let second = run_migrations(&paths).expect("second run");
         assert!(second.applied.is_empty());
-        assert_eq!(second.current_version, 4);
+        assert_eq!(second.current_version, 6);
     }
 
     #[test]
@@ -241,5 +252,28 @@ mod tests {
         run_migrations(&paths).expect("run_migrations");
         let count = pending_migration_count(&paths).expect("pending count");
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn migrations_create_ai_context_and_template_invocation_tables() {
+        let (_temp, paths) = test_paths();
+        let report = run_migrations(&paths).expect("run_migrations");
+        assert_eq!(report.current_version, 6);
+
+        let connection = open_connection(&paths.db_path).expect("open migrated db");
+        for table in [
+            "indexed_page_chunks",
+            "indexed_page_chunks_fts",
+            "indexed_template_invocations",
+        ] {
+            let exists: i64 = connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                    [table],
+                    |row| row.get(0),
+                )
+                .expect("query sqlite_master");
+            assert_eq!(exists, 1, "expected table to exist: {table}");
+        }
     }
 }

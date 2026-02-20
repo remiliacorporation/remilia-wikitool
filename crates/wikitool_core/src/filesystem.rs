@@ -1,6 +1,9 @@
-use std::collections::BTreeMap;
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
@@ -60,6 +63,15 @@ const TEMPLATE_CATEGORY_MAPPINGS: [(&str, &str); 49] = [
     ("Template:Explorer", "blockchain"),
     ("Template:OpenSea", "blockchain"),
 ];
+
+#[derive(Debug, Clone)]
+struct CachedTemplateCategoryMappings {
+    modified_at: Option<SystemTime>,
+    mappings: Vec<(String, String)>,
+}
+
+static TEMPLATE_CATEGORY_CACHE: OnceLock<Mutex<HashMap<String, CachedTemplateCategoryMappings>>> =
+    OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Namespace {
@@ -656,40 +668,40 @@ fn file_extension(namespace: Namespace, title: &str) -> &'static str {
     }
 }
 
-fn template_category_with_db(title: &str, db_path: Option<&std::path::Path>) -> &'static str {
+fn template_category_with_db(title: &str, db_path: Option<&std::path::Path>) -> Cow<'static, str> {
     if title.starts_with("MediaWiki:") {
-        return "mediawiki";
+        return Cow::Borrowed("mediawiki");
     }
 
     // Try DB lookup first if a database path is provided
     if let Some(path) = db_path {
         if let Some(category) = template_category_from_db(path, title) {
-            return Box::leak(category.into_boxed_str());
+            return Cow::Owned(category);
         }
     }
 
     // Hardcoded constant fallback
     for (prefix, category) in TEMPLATE_CATEGORY_MAPPINGS {
         if title.starts_with(prefix) {
-            return category;
+            return Cow::Borrowed(category);
         }
     }
 
     if title.starts_with("Template:Translation") || title.starts_with("Module:Translation") {
-        return "translations";
+        return Cow::Borrowed("translations");
     }
     if title.starts_with("Template:Birth date")
         || title.starts_with("Template:Start date")
         || title.starts_with("Template:End date")
         || title.starts_with("Module:Age")
     {
-        return "date";
+        return Cow::Borrowed("date");
     }
     if title.starts_with("Template:Remilia navigation") {
-        return "navigation";
+        return Cow::Borrowed("navigation");
     }
 
-    "misc"
+    Cow::Borrowed("misc")
 }
 
 /// Query the template_category_mappings table for a matching prefix.
@@ -698,8 +710,39 @@ fn template_category_from_db(db_path: &std::path::Path, title: &str) -> Option<S
     if !db_path.exists() {
         return None;
     }
+
+    let cache_key = normalize_separators(&db_path.to_string_lossy());
+    let modified_at = fs::metadata(db_path)
+        .ok()
+        .and_then(|meta| meta.modified().ok());
+    let cache = TEMPLATE_CATEGORY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().ok()?;
+
+    let needs_refresh = guard
+        .get(&cache_key)
+        .is_none_or(|entry| entry.modified_at != modified_at);
+    if needs_refresh {
+        let mappings = load_template_category_mappings(db_path)?;
+        guard.insert(
+            cache_key.clone(),
+            CachedTemplateCategoryMappings {
+                modified_at,
+                mappings,
+            },
+        );
+    }
+
+    let mappings = guard.get(&cache_key)?;
+    for (prefix, category) in &mappings.mappings {
+        if title.starts_with(prefix) {
+            return Some(category.clone());
+        }
+    }
+    None
+}
+
+fn load_template_category_mappings(db_path: &std::path::Path) -> Option<Vec<(String, String)>> {
     let connection = rusqlite::Connection::open(db_path).ok()?;
-    // Check if the table exists
     let exists: i64 = connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'template_category_mappings')",
@@ -710,18 +753,27 @@ fn template_category_from_db(db_path: &std::path::Path, title: &str) -> Option<S
     if exists != 1 {
         return None;
     }
-    // Find the longest matching prefix
+
     let mut statement = connection
         .prepare(
-            "SELECT category FROM template_category_mappings
-             WHERE ?1 LIKE (prefix || '%')
-             ORDER BY length(prefix) DESC
-             LIMIT 1",
+            "SELECT prefix, category
+             FROM template_category_mappings
+             ORDER BY length(prefix) DESC, prefix ASC",
         )
         .ok()?;
-    statement
-        .query_row([title], |row| row.get::<_, String>(0))
-        .ok()
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .ok()?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        if let Ok((prefix, category)) = row {
+            out.push((prefix, category));
+        }
+    }
+    Some(out)
 }
 
 fn normalize_separators(path: &str) -> String {
