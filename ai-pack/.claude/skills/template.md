@@ -15,7 +15,7 @@ wikitool docs search "TemplateStyles" --tier extension
 
 ```bash
 wikitool pull --templates
-# edit files in custom/templates/
+# edit files in templates/
 wikitool diff --templates
 wikitool validate
 wikitool push --templates --dry-run --summary "Template update"

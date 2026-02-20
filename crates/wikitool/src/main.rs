@@ -54,7 +54,7 @@ use zip::{CompressionMethod, ZipWriter};
 #[command(
     name = "wikitool",
     version,
-    about = "Rust rewrite CLI for remilia-wikitool"
+    about = "Remilia Wiki management CLI"
 )]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
@@ -876,7 +876,7 @@ struct SnapshotArgs {
     project_root: PathBuf,
     #[arg(long, default_value = "wiki_content")]
     content_dir: String,
-    #[arg(long, default_value = "custom/templates")]
+    #[arg(long, default_value = "templates")]
     templates_dir: String,
 }
 
@@ -1965,6 +1965,7 @@ fn build_context_from_scan(
     }))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_index_chunks(
     runtime: &RuntimeOptions,
     title: Option<&str>,
@@ -3290,7 +3291,8 @@ fn run_workflow_authoring_pack(
                 "workflow authoring-pack requires a topic or a stub with at least one resolvable wikilink"
             );
         }
-        AuthoringKnowledgePack::Found(report) => {
+        AuthoringKnowledgePack::Found(boxed_report) => {
+            let report = *boxed_report;
             println!("pack.query: {}", report.query);
             println!(
                 "inventory.pages.total: {}",

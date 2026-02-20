@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
+use crate::filesystem::{
+    content_path_to_title, namespace_from_title, normalize_separators, template_path_to_title,
+};
+
 const CONTENT_EXTENSIONS: [&str; 1] = [".wiki"];
 const TEMPLATE_EXTENSIONS: [&str; 5] = [".wiki", ".wikitext", ".lua", ".css", ".js"];
 
@@ -18,6 +22,8 @@ pub const COMMAND_SURFACE: &[&str] = &[
     "context",
     "search",
     "search-external",
+    "fetch",
+    "export",
     "db stats",
     "db sync",
     "db migrate",
@@ -27,6 +33,7 @@ pub const COMMAND_SURFACE: &[&str] = &[
     "docs update",
     "docs remove",
     "docs search",
+    "docs generate-reference",
     "lsp:generate-config",
     "lsp:status",
     "lsp:info",
@@ -164,7 +171,7 @@ fn build_snapshot_file(
     let (is_redirect, redirect_target) = parse_redirect(&content);
     Ok(SnapshotFile {
         relative_path: normalize_separators(relative_path),
-        namespace: namespace_from_title(&title).to_string(),
+        namespace: namespace_from_title(&title).as_str().to_string(),
         title,
         is_redirect,
         redirect_target,
@@ -207,202 +214,24 @@ fn compute_hash(content: &str) -> String {
     output
 }
 
-fn namespace_from_title(title: &str) -> &'static str {
-    if title.starts_with("Category:") {
-        "Category"
-    } else if title.starts_with("Template:") {
-        "Template"
-    } else if title.starts_with("Module:") {
-        "Module"
-    } else if title.starts_with("MediaWiki:") {
-        "MediaWiki"
-    } else if title.starts_with("File:") {
-        "File"
-    } else if title.starts_with("User:") {
-        "User"
-    } else if title.starts_with("Goldenlight:") {
-        "Goldenlight"
-    } else {
-        "Main"
-    }
-}
-
+/// Strip the content_dir prefix and delegate to filesystem::content_path_to_title.
 fn filepath_to_title_content(relative_path: &str, content_dir: &str) -> String {
     let normalized_path = normalize_separators(relative_path);
     let content_prefix = normalize_separators(content_dir);
     let without_base = normalized_path
-        .strip_prefix(&(content_prefix + "/"))
+        .strip_prefix(&(content_prefix.clone() + "/"))
         .unwrap_or(&normalized_path);
-
-    let mut segments: Vec<&str> = without_base
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    if segments.is_empty() {
-        return decode_segment(strip_known_extensions(without_base));
-    }
-
-    let namespace_folder = segments.remove(0);
-    segments.retain(|segment| *segment != "_redirects");
-    let filename = segments.last().copied().unwrap_or(without_base);
-    let title_name = decode_segment(strip_known_extensions(filename));
-
-    let prefix = match namespace_folder {
-        "Category" => "Category:",
-        "File" => "File:",
-        "User" => "User:",
-        "Goldenlight" => "Goldenlight:",
-        _ => "",
-    };
-
-    format!("{prefix}{title_name}")
+    content_path_to_title(without_base)
 }
 
+/// Strip the templates_dir prefix and delegate to filesystem::template_path_to_title.
 fn filepath_to_title_template(relative_path: &str, templates_dir: &str) -> String {
     let normalized_path = normalize_separators(relative_path);
     let templates_prefix = normalize_separators(templates_dir);
     let without_base = normalized_path
-        .strip_prefix(&(templates_prefix + "/"))
+        .strip_prefix(&(templates_prefix.clone() + "/"))
         .unwrap_or(&normalized_path);
-
-    let raw_segments: Vec<&str> = without_base
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    let mut segments: Vec<&str> = raw_segments
-        .into_iter()
-        .filter(|segment| *segment != "_redirects")
-        .collect();
-
-    if segments.is_empty() {
-        return decode_segment(strip_known_extensions(without_base));
-    }
-
-    let category = segments.remove(0);
-    let rest = segments;
-
-    if category == "mediawiki" {
-        if rest.is_empty() {
-            return format!(
-                "MediaWiki:{}",
-                decode_segment(strip_known_extensions(
-                    Path::new(&normalized_path)
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or(without_base)
-                ))
-            );
-        }
-
-        let mut subpages = Vec::new();
-        for (index, segment) in rest.iter().enumerate() {
-            let value = if index == rest.len() - 1 {
-                strip_subpage_extension(segment)
-            } else {
-                segment
-            };
-            subpages.push(decode_segment(value));
-        }
-        return format!("MediaWiki:{}", subpages.join("/"));
-    }
-
-    if let Some(base_index) = rest
-        .iter()
-        .position(|segment| segment.starts_with("Template_") || segment.starts_with("Module_"))
-    {
-        let base_segment = rest[base_index];
-        let base_ext = extension_of(base_segment);
-        let base_clean = strip_base_extension(base_segment);
-        let is_module = base_clean.starts_with("Module_");
-        let is_template = base_clean.starts_with("Template_");
-        if is_module || is_template {
-            let prefix_len = if is_module { 7 } else { 9 };
-            let mut base_name_raw = base_clean[prefix_len..].to_string();
-            let mut subpage_segments: Vec<&str> = rest[base_index + 1..].to_vec();
-
-            if is_module
-                && subpage_segments.is_empty()
-                && base_name_raw.ends_with("_styles")
-                && base_ext == "css"
-            {
-                base_name_raw.truncate(base_name_raw.len().saturating_sub(7));
-                subpage_segments = vec!["styles.css"];
-            }
-
-            let namespace = if is_module { "Module" } else { "Template" };
-            let base_title = decode_segment(&base_name_raw);
-            if subpage_segments.is_empty() {
-                return format!("{namespace}:{base_title}");
-            }
-
-            let mut subpages = Vec::new();
-            for (index, segment) in subpage_segments.iter().enumerate() {
-                let value = if index == subpage_segments.len() - 1 {
-                    strip_subpage_extension(segment)
-                } else {
-                    segment
-                };
-                subpages.push(decode_segment(value));
-            }
-
-            return format!("{namespace}:{base_title}/{}", subpages.join("/"));
-        }
-    }
-
-    let filename = Path::new(&normalized_path)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(without_base);
-    let name_without_ext = strip_known_extensions(filename);
-
-    if let Some(module_name) = name_without_ext.strip_prefix("Module_") {
-        if module_name.ends_with("_styles") && extension_of(filename) == "css" {
-            let base = decode_segment(&module_name[..module_name.len().saturating_sub(7)]);
-            return format!("Module:{base}/styles.css");
-        }
-        return format!("Module:{}", decode_segment(module_name));
-    }
-
-    if let Some(template_name) = name_without_ext.strip_prefix("Template_") {
-        return format!("Template:{}", decode_segment(template_name));
-    }
-
-    decode_segment(name_without_ext)
-}
-
-fn extension_of(path: &str) -> &str {
-    Path::new(path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("")
-}
-
-fn strip_known_extensions(value: &str) -> &str {
-    strip_one_of(value, &[".wiki", ".wikitext", ".lua", ".css", ".js"])
-}
-
-fn strip_base_extension(value: &str) -> &str {
-    strip_one_of(value, &[".wiki", ".wikitext", ".lua", ".css"])
-}
-
-fn strip_subpage_extension(value: &str) -> &str {
-    strip_one_of(value, &[".wiki", ".wikitext", ".lua"])
-}
-
-fn strip_one_of<'a>(value: &'a str, extensions: &[&str]) -> &'a str {
-    for extension in extensions {
-        if let Some(stripped) = value.strip_suffix(extension) {
-            return stripped;
-        }
-    }
-    value
-}
-
-fn decode_segment(value: &str) -> String {
-    value
-        .replace("___", "/")
-        .replace("--", ":")
-        .replace('_', " ")
+    template_path_to_title(without_base)
 }
 
 fn has_allowed_extension(path: &Path, allowed_extensions: &[&str]) -> bool {
@@ -416,10 +245,6 @@ fn has_allowed_extension(path: &Path, allowed_extensions: &[&str]) -> bool {
     }
 }
 
-fn normalize_separators(path: &str) -> String {
-    path.replace('\\', "/")
-}
-
 fn normalize_path(path: impl AsRef<Path>) -> String {
     let joined = path
         .as_ref()
@@ -428,4 +253,115 @@ fn normalize_path(path: impl AsRef<Path>) -> String {
         .collect::<Vec<_>>()
         .join("/");
     normalize_separators(&joined)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::filesystem::Namespace;
+
+    #[test]
+    fn namespace_from_title_correctness() {
+        assert_eq!(namespace_from_title("Alpha"), Namespace::Main);
+        assert_eq!(namespace_from_title("Category:Test"), Namespace::Category);
+        assert_eq!(
+            namespace_from_title("Template:Infobox person"),
+            Namespace::Template
+        );
+        assert_eq!(namespace_from_title("Module:Navbar"), Namespace::Module);
+        assert_eq!(
+            namespace_from_title("MediaWiki:Common.css"),
+            Namespace::MediaWiki
+        );
+        assert_eq!(namespace_from_title("File:Logo.png"), Namespace::File);
+        assert_eq!(namespace_from_title("User:Admin"), Namespace::User);
+        assert_eq!(
+            namespace_from_title("Goldenlight:Test"),
+            Namespace::Goldenlight
+        );
+    }
+
+    #[test]
+    fn filepath_to_title_content_basic() {
+        assert_eq!(
+            filepath_to_title_content("wiki_content/Main/Alpha.wiki", "wiki_content"),
+            "Alpha"
+        );
+        assert_eq!(
+            filepath_to_title_content("wiki_content/Category/Test.wiki", "wiki_content"),
+            "Category:Test"
+        );
+        assert_eq!(
+            filepath_to_title_content(
+                "wiki_content/Main/_redirects/Old_Name.wiki",
+                "wiki_content"
+            ),
+            "Old Name"
+        );
+    }
+
+    #[test]
+    fn filepath_to_title_template_basic() {
+        assert_eq!(
+            filepath_to_title_template(
+                "templates/infobox/Template_Infobox_person.wiki",
+                "templates"
+            ),
+            "Template:Infobox person"
+        );
+        assert_eq!(
+            filepath_to_title_template("templates/navbox/Module_Navbar.lua", "templates"),
+            "Module:Navbar"
+        );
+        assert_eq!(
+            filepath_to_title_template("templates/mediawiki/Common.css", "templates"),
+            "MediaWiki:Common.css"
+        );
+    }
+
+    #[test]
+    fn filepath_roundtrip_consistency() {
+        // Content paths should produce titles that re-derive the same namespace
+        let content_cases = [
+            ("wiki_content/Main/Alpha.wiki", "Alpha", "Main"),
+            (
+                "wiki_content/Category/Test.wiki",
+                "Category:Test",
+                "Category",
+            ),
+            (
+                "wiki_content/Goldenlight/Page.wiki",
+                "Goldenlight:Page",
+                "Goldenlight",
+            ),
+        ];
+
+        for (path, expected_title, expected_ns) in content_cases {
+            let title = filepath_to_title_content(path, "wiki_content");
+            assert_eq!(title, expected_title);
+            assert_eq!(namespace_from_title(&title).as_str(), expected_ns);
+        }
+    }
+
+    #[test]
+    fn command_surface_includes_required_entries() {
+        let surface = command_surface();
+        for required in ["fetch", "export", "docs generate-reference"] {
+            assert!(
+                surface.contains(&required.to_string()),
+                "COMMAND_SURFACE missing: {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn command_surface_excludes_internal_commands() {
+        let surface = command_surface();
+        for internal in ["release", "dev", "contracts"] {
+            assert!(
+                !surface.iter().any(|cmd| cmd == internal),
+                "COMMAND_SURFACE should not contain internal command: {internal}"
+            );
+        }
+    }
 }

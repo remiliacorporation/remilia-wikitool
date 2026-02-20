@@ -228,7 +228,7 @@ pub struct AuthoringKnowledgePackResult {
 pub enum AuthoringKnowledgePack {
     IndexMissing,
     QueryMissing,
-    Found(AuthoringKnowledgePackResult),
+    Found(Box<AuthoringKnowledgePackResult>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -482,12 +482,11 @@ pub fn query_search_local(
     }
 
     // Try FTS5 first if the virtual table exists
-    if fts_table_exists(&connection, "indexed_pages_fts") {
-        if let Ok(hits) = query_search_fts(&connection, &normalized, limit)
-            && !hits.is_empty()
-        {
-            return Ok(Some(hits));
-        }
+    if fts_table_exists(&connection, "indexed_pages_fts")
+        && let Ok(hits) = query_search_fts(&connection, &normalized, limit)
+        && !hits.is_empty()
+    {
+        return Ok(Some(hits));
     }
 
     // Fallback to LIKE-based search
@@ -969,7 +968,7 @@ pub fn build_authoring_knowledge_pack(
 
     let inventory = load_authoring_inventory(&connection)?;
 
-    Ok(AuthoringKnowledgePack::Found(
+    Ok(AuthoringKnowledgePack::Found(Box::new(
         AuthoringKnowledgePackResult {
             topic,
             query,
@@ -986,7 +985,7 @@ pub fn build_authoring_knowledge_pack(
             chunks,
             token_estimate_total,
         },
-    ))
+    )))
 }
 
 pub fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
@@ -1507,12 +1506,11 @@ fn query_local_search_for_connection(
     if normalized.is_empty() {
         return Ok(Vec::new());
     }
-    if fts_table_exists(connection, "indexed_pages_fts") {
-        if let Ok(hits) = query_search_fts(connection, &normalized, limit)
-            && !hits.is_empty()
-        {
-            return Ok(hits);
-        }
+    if fts_table_exists(connection, "indexed_pages_fts")
+        && let Ok(hits) = query_search_fts(connection, &normalized, limit)
+        && !hits.is_empty()
+    {
+        return Ok(hits);
     }
     query_search_like(connection, &normalized, limit)
 }
@@ -1576,8 +1574,7 @@ fn query_suggested_main_links_for_sources(
         return Ok(Vec::new());
     }
 
-    let placeholders = std::iter::repeat("?")
-        .take(source_titles.len())
+    let placeholders = std::iter::repeat_n("?", source_titles.len())
         .collect::<Vec<_>>()
         .join(", ");
     let sql = format!(
@@ -1627,8 +1624,7 @@ fn query_suggested_categories_for_sources(
         return Ok(Vec::new());
     }
 
-    let placeholders = std::iter::repeat("?")
-        .take(source_titles.len())
+    let placeholders = std::iter::repeat_n("?", source_titles.len())
         .collect::<Vec<_>>()
         .join(", ");
     let sql = format!(
@@ -1733,8 +1729,7 @@ fn load_template_invocation_rows_for_sources(
     source_titles: Option<&[String]>,
 ) -> Result<Vec<(String, String)>> {
     let (sql, values) = if let Some(source_titles) = source_titles {
-        let placeholders = std::iter::repeat("?")
-            .take(source_titles.len())
+        let placeholders = std::iter::repeat_n("?", source_titles.len())
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
@@ -2099,8 +2094,7 @@ fn parse_heading_line(value: &str) -> Option<String> {
 }
 
 fn estimate_tokens(value: &str) -> usize {
-    let chars = value.chars().count();
-    (chars + 3) / 4
+    value.chars().count().div_ceil(4)
 }
 
 fn summarize_template_invocations(
@@ -3323,7 +3317,7 @@ mod tests {
         .expect("authoring pack");
 
         let report = match report {
-            AuthoringKnowledgePack::Found(report) => report,
+            AuthoringKnowledgePack::Found(report) => *report,
             other => panic!("expected found authoring pack, got {other:?}"),
         };
         assert_eq!(report.topic, "Alpha");

@@ -12,6 +12,8 @@ use walkdir::WalkDir;
 
 use crate::runtime::ResolvedPaths;
 
+// Sync contract: these entries must stay in sync with migrations/v004_template_categories.sql.
+// The DB table is authoritative at runtime; this constant is the fallback when no DB is available.
 const TEMPLATE_CATEGORY_MAPPINGS: [(&str, &str); 49] = [
     ("Template:Cite", "cite"),
     ("Module:Citation", "cite"),
@@ -403,7 +405,7 @@ fn is_syncable_template_path(relative: &str, templates_rel: &str) -> bool {
     segments.first().copied() == Some("mediawiki")
 }
 
-fn content_path_to_title(content_rel_path: &str) -> String {
+pub fn content_path_to_title(content_rel_path: &str) -> String {
     let normalized = normalize_separators(content_rel_path);
     let mut segments: Vec<&str> = normalized
         .split('/')
@@ -427,7 +429,7 @@ fn content_path_to_title(content_rel_path: &str) -> String {
     format!("{prefix}{name}")
 }
 
-fn template_path_to_title(templates_rel_path: &str) -> String {
+pub fn template_path_to_title(templates_rel_path: &str) -> String {
     let normalized = normalize_separators(templates_rel_path);
     let raw_segments: Vec<&str> = normalized
         .split('/')
@@ -563,7 +565,7 @@ fn parse_redirect(content: &str) -> (bool, Option<String>) {
     (true, None)
 }
 
-fn namespace_from_title(title: &str) -> Namespace {
+pub fn namespace_from_title(title: &str) -> Namespace {
     if title.starts_with("Category:") {
         Namespace::Category
     } else if title.starts_with("File:") {
@@ -674,10 +676,10 @@ fn template_category_with_db(title: &str, db_path: Option<&std::path::Path>) -> 
     }
 
     // Try DB lookup first if a database path is provided
-    if let Some(path) = db_path {
-        if let Some(category) = template_category_from_db(path, title) {
-            return Cow::Owned(category);
-        }
+    if let Some(path) = db_path
+        && let Some(category) = template_category_from_db(path, title)
+    {
+        return Cow::Owned(category);
     }
 
     // Hardcoded constant fallback
@@ -768,15 +770,13 @@ fn load_template_category_mappings(db_path: &std::path::Path) -> Option<Vec<(Str
         .ok()?;
 
     let mut out = Vec::new();
-    for row in rows {
-        if let Ok((prefix, category)) = row {
-            out.push((prefix, category));
-        }
+    for (prefix, category) in rows.flatten() {
+        out.push((prefix, category));
     }
     Some(out)
 }
 
-fn normalize_separators(path: &str) -> String {
+pub fn normalize_separators(path: &str) -> String {
     path.replace('\\', "/")
 }
 

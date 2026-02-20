@@ -11,7 +11,7 @@ wikitool docs generate-reference
 ## Global
 
 ```text
-Rust rewrite CLI for remilia-wikitool
+Remilia Wiki management CLI
 
 Usage: wikitool [OPTIONS] [COMMAND]
 
@@ -1012,7 +1012,7 @@ Options:
       --content-dir <CONTENT_DIR>      [default: wiki_content]
       --data-dir <PATH>                
       --config <PATH>                  
-      --templates-dir <TEMPLATES_DIR>  [default: custom/templates]
+      --templates-dir <TEMPLATES_DIR>  [default: templates]
       --diagnostics                    Print resolved runtime diagnostics
   -h, --help                           Print help
 ```

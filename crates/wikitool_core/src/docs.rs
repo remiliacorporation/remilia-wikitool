@@ -1403,6 +1403,7 @@ struct FetchedDocsPage {
     content: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn persist_extension_docs(
     paths: &ResolvedPaths,
     extension_name: &str,
