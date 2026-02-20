@@ -66,6 +66,18 @@ This is the second line.
 [[File:Video_name.webm|thumb|right|300px|Caption here]]
 ```
 
+## Image galleries
+
+```wikitext
+<gallery>
+File:Example1.png|Caption one
+File:Example2.png|Caption two
+File:Example3.png|Caption three
+</gallery>
+```
+
+Optional attributes: `mode="packed"`, `widths=200px`, `heights=150px`, `perrow=4`.
+
 ## Dynamic page lists (DPL4)
 
 ```wikitext

@@ -1,0 +1,27 @@
+title,content
+"Test Article Alpha","{{SHORTDESC:Test article for import validation}}
+{{Article quality|unverified}}
+
+'''Test Article Alpha''' is a synthetic article created for wikitool import testing.
+
+== Background ==
+
+This article exists solely to validate the CSV import pipeline. It contains proper wikitext structure including a short description, article quality tag, bold lead, and references section.
+
+== References ==
+{{Reflist}}
+
+[[Category:Test]]"
+"Test Article Beta","{{SHORTDESC:Second test article for import}}
+{{Article quality|unverified}}
+
+'''Test Article Beta''' is another synthetic article for import pipeline validation.
+
+== Overview ==
+
+Beta article provides a second data point for batch import testing, verifying that multi-row CSV imports process correctly.
+
+== References ==
+{{Reflist}}
+
+[[Category:Test]]"

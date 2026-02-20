@@ -1114,66 +1114,42 @@ pub fn search_docs(
         bail!("unsupported docs tier `{value}`; expected extension or technical");
     }
 
-    let pattern = format!("%{normalized_query}%");
     let per_tier_limit = i64::try_from(limit).context("docs search limit does not fit into i64")?;
     let mut hits = Vec::new();
 
-    if tier_filter.is_none()
-        || tier_filter.is_some_and(|value| value.eq_ignore_ascii_case("extension"))
-    {
-        let mut statement = connection
-            .prepare(
-                "SELECT page_title, content
-                 FROM extension_doc_pages
-                 WHERE lower(page_title) LIKE ?1 OR lower(content) LIKE ?1
-                 ORDER BY page_title ASC
-                 LIMIT ?2",
-            )
-            .context("failed to prepare extension docs search query")?;
-        let rows = statement
-            .query_map(params![pattern, per_tier_limit], |row| {
-                let title: String = row.get(0)?;
-                let content: String = row.get(1)?;
-                Ok((title, content))
-            })
-            .context("failed to query extension docs search rows")?;
-        for row in rows {
-            let (title, content) = row.context("failed to decode extension docs search row")?;
-            hits.push(DocsSearchHit {
-                tier: "extension".to_string(),
-                title,
-                snippet: make_snippet(&content, &normalized_query),
-            });
-        }
+    let search_extension = tier_filter.is_none()
+        || tier_filter.is_some_and(|value| value.eq_ignore_ascii_case("extension"));
+    let search_technical = tier_filter.is_none()
+        || tier_filter.is_some_and(|value| value.eq_ignore_ascii_case("technical"));
+
+    // Try FTS5 first, fall back to LIKE if FTS tables don't exist
+    let use_fts_ext = search_extension && fts_table_exists(&connection, "extension_doc_pages_fts");
+    let use_fts_tech = search_technical && fts_table_exists(&connection, "technical_docs_fts");
+
+    if search_extension {
+        let ext_hits = if use_fts_ext {
+            search_extension_docs_fts(&connection, &normalized_query, per_tier_limit)
+                .unwrap_or_else(|_| {
+                    search_extension_docs_like(&connection, &normalized_query, per_tier_limit)
+                        .unwrap_or_default()
+                })
+        } else {
+            search_extension_docs_like(&connection, &normalized_query, per_tier_limit)?
+        };
+        hits.extend(ext_hits);
     }
 
-    if tier_filter.is_none()
-        || tier_filter.is_some_and(|value| value.eq_ignore_ascii_case("technical"))
-    {
-        let mut statement = connection
-            .prepare(
-                "SELECT page_title, content
-                 FROM technical_docs
-                 WHERE lower(page_title) LIKE ?1 OR lower(content) LIKE ?1
-                 ORDER BY page_title ASC
-                 LIMIT ?2",
-            )
-            .context("failed to prepare technical docs search query")?;
-        let rows = statement
-            .query_map(params![pattern, per_tier_limit], |row| {
-                let title: String = row.get(0)?;
-                let content: String = row.get(1)?;
-                Ok((title, content))
-            })
-            .context("failed to query technical docs search rows")?;
-        for row in rows {
-            let (title, content) = row.context("failed to decode technical docs search row")?;
-            hits.push(DocsSearchHit {
-                tier: "technical".to_string(),
-                title,
-                snippet: make_snippet(&content, &normalized_query),
-            });
-        }
+    if search_technical {
+        let tech_hits = if use_fts_tech {
+            search_technical_docs_fts(&connection, &normalized_query, per_tier_limit)
+                .unwrap_or_else(|_| {
+                    search_technical_docs_like(&connection, &normalized_query, per_tier_limit)
+                        .unwrap_or_default()
+                })
+        } else {
+            search_technical_docs_like(&connection, &normalized_query, per_tier_limit)?
+        };
+        hits.extend(tech_hits);
     }
 
     hits.sort_by(|left, right| {
@@ -1182,6 +1158,155 @@ pub fn search_docs(
             .then_with(|| left.title.cmp(&right.title))
     });
     hits.truncate(limit);
+    Ok(hits)
+}
+
+fn fts_table_exists(connection: &Connection, table_name: &str) -> bool {
+    let exists: i64 = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            [table_name],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    exists == 1
+}
+
+fn search_extension_docs_fts(
+    connection: &Connection,
+    normalized_query: &str,
+    per_tier_limit: i64,
+) -> Result<Vec<DocsSearchHit>> {
+    let fts_query = format!("\"{normalized_query}\" *");
+    let mut statement = connection
+        .prepare(
+            "SELECT edp.page_title, edp.content
+             FROM extension_doc_pages_fts fts
+             JOIN extension_doc_pages edp ON edp.rowid = fts.rowid
+             WHERE extension_doc_pages_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+        )
+        .context("failed to prepare FTS extension docs search")?;
+    let rows = statement
+        .query_map(params![fts_query, per_tier_limit], |row| {
+            let title: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            Ok((title, content))
+        })
+        .context("failed to run FTS extension docs search")?;
+    let mut hits = Vec::new();
+    for row in rows {
+        let (title, content) = row.context("failed to decode FTS extension docs row")?;
+        hits.push(DocsSearchHit {
+            tier: "extension".to_string(),
+            title,
+            snippet: make_snippet(&content, normalized_query),
+        });
+    }
+    Ok(hits)
+}
+
+fn search_extension_docs_like(
+    connection: &Connection,
+    normalized_query: &str,
+    per_tier_limit: i64,
+) -> Result<Vec<DocsSearchHit>> {
+    let pattern = format!("%{normalized_query}%");
+    let mut statement = connection
+        .prepare(
+            "SELECT page_title, content
+             FROM extension_doc_pages
+             WHERE lower(page_title) LIKE ?1 OR lower(content) LIKE ?1
+             ORDER BY page_title ASC
+             LIMIT ?2",
+        )
+        .context("failed to prepare extension docs search query")?;
+    let rows = statement
+        .query_map(params![pattern, per_tier_limit], |row| {
+            let title: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            Ok((title, content))
+        })
+        .context("failed to query extension docs search rows")?;
+    let mut hits = Vec::new();
+    for row in rows {
+        let (title, content) = row.context("failed to decode extension docs search row")?;
+        hits.push(DocsSearchHit {
+            tier: "extension".to_string(),
+            title,
+            snippet: make_snippet(&content, normalized_query),
+        });
+    }
+    Ok(hits)
+}
+
+fn search_technical_docs_fts(
+    connection: &Connection,
+    normalized_query: &str,
+    per_tier_limit: i64,
+) -> Result<Vec<DocsSearchHit>> {
+    let fts_query = format!("\"{normalized_query}\" *");
+    let mut statement = connection
+        .prepare(
+            "SELECT td.page_title, td.content
+             FROM technical_docs_fts fts
+             JOIN technical_docs td ON td.rowid = fts.rowid
+             WHERE technical_docs_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+        )
+        .context("failed to prepare FTS technical docs search")?;
+    let rows = statement
+        .query_map(params![fts_query, per_tier_limit], |row| {
+            let title: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            Ok((title, content))
+        })
+        .context("failed to run FTS technical docs search")?;
+    let mut hits = Vec::new();
+    for row in rows {
+        let (title, content) = row.context("failed to decode FTS technical docs row")?;
+        hits.push(DocsSearchHit {
+            tier: "technical".to_string(),
+            title,
+            snippet: make_snippet(&content, normalized_query),
+        });
+    }
+    Ok(hits)
+}
+
+fn search_technical_docs_like(
+    connection: &Connection,
+    normalized_query: &str,
+    per_tier_limit: i64,
+) -> Result<Vec<DocsSearchHit>> {
+    let pattern = format!("%{normalized_query}%");
+    let mut statement = connection
+        .prepare(
+            "SELECT page_title, content
+             FROM technical_docs
+             WHERE lower(page_title) LIKE ?1 OR lower(content) LIKE ?1
+             ORDER BY page_title ASC
+             LIMIT ?2",
+        )
+        .context("failed to prepare technical docs search query")?;
+    let rows = statement
+        .query_map(params![pattern, per_tier_limit], |row| {
+            let title: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            Ok((title, content))
+        })
+        .context("failed to query technical docs search rows")?;
+    let mut hits = Vec::new();
+    for row in rows {
+        let (title, content) = row.context("failed to decode technical docs search row")?;
+        hits.push(DocsSearchHit {
+            tier: "technical".to_string(),
+            title,
+            snippet: make_snippet(&content, normalized_query),
+        });
+    }
     Ok(hits)
 }
 
@@ -1299,6 +1424,14 @@ fn persist_extension_docs(
     transaction
         .commit()
         .context("failed to commit extension docs transaction")?;
+
+    // Rebuild FTS index if virtual table exists (created by migration v003)
+    if fts_table_exists(&connection, "extension_doc_pages_fts") {
+        let _ = connection.execute_batch(
+            "INSERT INTO extension_doc_pages_fts(extension_doc_pages_fts) VALUES('rebuild')",
+        );
+    }
+
     Ok(())
 }
 
@@ -1374,6 +1507,14 @@ fn persist_technical_docs(
     transaction
         .commit()
         .context("failed to commit technical docs transaction")?;
+
+    // Rebuild FTS index if virtual table exists (created by migration v003)
+    if fts_table_exists(&connection, "technical_docs_fts") {
+        let _ = connection.execute_batch(
+            "INSERT INTO technical_docs_fts(technical_docs_fts) VALUES('rebuild')",
+        );
+    }
+
     Ok(())
 }
 

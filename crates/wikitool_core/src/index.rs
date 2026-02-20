@@ -190,6 +190,9 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         .commit()
         .context("failed to commit index rebuild transaction")?;
 
+    // Rebuild FTS5 index if the virtual table exists (created by migration v003)
+    rebuild_fts_index(&connection);
+
     Ok(RebuildReport {
         db_path: normalize_path(&paths.db_path),
         inserted_rows,
@@ -238,6 +241,60 @@ pub fn query_search_local(
         return Ok(Some(Vec::new()));
     }
 
+    // Try FTS5 first if the virtual table exists
+    if fts_table_exists(&connection, "indexed_pages_fts") {
+        if let Ok(hits) = query_search_fts(&connection, &normalized, limit) {
+            return Ok(Some(hits));
+        }
+    }
+
+    // Fallback to LIKE-based search
+    query_search_like(&connection, &normalized, limit).map(Some)
+}
+
+fn query_search_fts(
+    connection: &Connection,
+    normalized: &str,
+    limit: usize,
+) -> Result<Vec<LocalSearchHit>> {
+    let limit_i64 = i64::try_from(limit).context("search limit does not fit into i64")?;
+    // FTS5 match expression: quote the term for phrase matching, add * for prefix
+    let fts_query = format!("\"{normalized}\" *");
+    let mut statement = connection
+        .prepare(
+            "SELECT ip.title, ip.namespace, ip.is_redirect
+             FROM indexed_pages_fts fts
+             JOIN indexed_pages ip ON ip.rowid = fts.rowid
+             WHERE indexed_pages_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+        )
+        .context("failed to prepare FTS search query")?;
+    let rows = statement
+        .query_map(params![fts_query, limit_i64], |row| {
+            let title: String = row.get(0)?;
+            let namespace: String = row.get(1)?;
+            let is_redirect: i64 = row.get(2)?;
+            Ok(LocalSearchHit {
+                title,
+                namespace,
+                is_redirect: is_redirect == 1,
+            })
+        })
+        .context("failed to run FTS search query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode FTS search row")?);
+    }
+    Ok(out)
+}
+
+fn query_search_like(
+    connection: &Connection,
+    normalized: &str,
+    limit: usize,
+) -> Result<Vec<LocalSearchHit>> {
     let wildcard = format!("%{normalized}%");
     let prefix = format!("{normalized}%");
     let limit_i64 = i64::try_from(limit).context("search limit does not fit into i64")?;
@@ -273,7 +330,7 @@ pub fn query_search_local(
     for row in rows {
         out.push(row.context("failed to decode local search row")?);
     }
-    Ok(Some(out))
+    Ok(out)
 }
 
 pub fn build_local_context(
@@ -978,6 +1035,18 @@ fn namespace_counts(connection: &Connection) -> Result<BTreeMap<String, usize>> 
         out.insert(namespace, count);
     }
     Ok(out)
+}
+
+fn fts_table_exists(connection: &Connection, table_name: &str) -> bool {
+    table_exists(connection, table_name).unwrap_or(false)
+}
+
+fn rebuild_fts_index(connection: &Connection) {
+    if fts_table_exists(connection, "indexed_pages_fts") {
+        let _ = connection.execute_batch(
+            "INSERT INTO indexed_pages_fts(indexed_pages_fts) VALUES('rebuild')",
+        );
+    }
 }
 
 fn normalize_path(path: &Path) -> String {

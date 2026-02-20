@@ -117,11 +117,11 @@ Focus citations on the claims that matter most. Let general context breathe with
 ### Citation templates
 
 ```wikitext
-{{Cite web|url=|title=|author=|date=|access-date=2026-02-13|website=}}
+{{Cite web|url=|title=|author=|date=|access-date=YYYY-MM-DD|website=}}
 {{Cite tweet|user=|number=|title=|date=}}
-{{Cite news|url=|title=|author=|date=|access-date=2026-02-13|work=}}
-{{Cite post|url=|title=|author=|date=|access-date=2026-02-13}}
-{{Cite video|url=|title=|author=|date=|access-date=2026-02-13}}
+{{Cite news|url=|title=|author=|date=|access-date=YYYY-MM-DD|work=}}
+{{Cite post|url=|title=|author=|date=|access-date=YYYY-MM-DD}}
+{{Cite video|url=|title=|author=|date=|access-date=YYYY-MM-DD}}
 ```
 
 - Fill in all available fields. Leave unknown fields empty (omit them).

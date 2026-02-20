@@ -34,7 +34,7 @@ use wikitool_core::inspect::{
 };
 use wikitool_core::lint::lint_modules;
 use wikitool_core::runtime::{
-    InitOptions, NO_MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext,
+    InitOptions, MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext,
     embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
     lsp_settings_json, materialize_parser_config, resolve_paths,
 };
@@ -764,7 +764,7 @@ fn main() -> Result<()> {
         Some(Commands::Dev(args)) => run_dev(args),
         Some(Commands::Db(DbArgs {
             command: DbSubcommand::Migrate,
-        })) => run_db_migrate_policy_error(&runtime),
+        })) => run_db_migrate(&runtime),
         Some(Commands::Contracts(contracts)) => run_contracts(contracts),
         Some(Commands::Pull(args)) => run_pull(&runtime, args),
         Some(Commands::Push(args)) => run_push(&runtime, args),
@@ -918,7 +918,7 @@ fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     println!("created_dirs: {}", report.created_dirs.len());
     println!("wrote_config: {}", report.wrote_config);
     println!("wrote_parser_config: {}", report.wrote_parser_config);
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -992,7 +992,7 @@ fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
             println!("  - {warning}");
         }
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1063,7 +1063,7 @@ fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
     for error in &report.errors {
         println!("push.error: {error}");
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1102,7 +1102,7 @@ fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
                 "diff.sync_ledger: <not built> (run `wikitool pull --full{}`)",
                 if args.templates { " --templates" } else { "" }
             );
-            println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+            println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
             if runtime.diagnostics {
                 println!("\n[diagnostics]\n{}", paths.diagnostics());
             }
@@ -1139,7 +1139,7 @@ fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
         }
     }
 
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1160,7 +1160,7 @@ fn run_search_external(runtime: &RuntimeOptions, query: &str) -> Result<()> {
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("query: {query}");
     print_external_search_hits("search_external", &hits);
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1228,7 +1228,7 @@ fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
             println!("  - {warning}");
         }
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1272,7 +1272,7 @@ fn run_search(runtime: &RuntimeOptions, query: &str) -> Result<()> {
             print_search_hits("search", &results);
         }
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1311,7 +1311,7 @@ fn run_context(runtime: &RuntimeOptions, title: &str) -> Result<()> {
             );
         }
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1328,7 +1328,7 @@ fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
         Some(report) => report,
         None => {
             println!("index.storage: <not built> (run `wikitool index rebuild`)");
-            println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+            println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
             if runtime.diagnostics {
                 println!("\n[diagnostics]\n{}", paths.diagnostics());
             }
@@ -1337,7 +1337,7 @@ fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
     };
 
     print_validation_issues(&report);
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1407,7 +1407,7 @@ fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()> {
         println!("{}", result.content);
     }
 
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1550,7 +1550,7 @@ fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<()> {
         }
     }
 
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1729,7 +1729,7 @@ fn run_delete(runtime: &RuntimeOptions, args: DeleteArgs) -> Result<()> {
             remote.detail.as_deref().unwrap_or("<none>")
         );
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1750,7 +1750,7 @@ fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
     println!("inserted_links: {}", report.inserted_links);
     print_scan_stats("scan", &report.scan);
     println!("migrations: disabled");
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1836,7 +1836,7 @@ fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
             println!("index.storage: <not built> (run `wikitool index rebuild`)");
         }
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1863,7 +1863,7 @@ fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
             println!("index.storage: <not built> (run `wikitool index rebuild`)");
         }
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1891,7 +1891,7 @@ fn run_index_prune_categories(runtime: &RuntimeOptions) -> Result<()> {
             println!("index.storage: <not built> (run `wikitool index rebuild`)");
         }
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1915,7 +1915,7 @@ fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
         Some(stored) => print_stored_index_stats("index", &stored),
         None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1944,7 +1944,7 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
         None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
     }
     println!("migrations: disabled");
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -1966,7 +1966,7 @@ fn run_db_sync(runtime: &RuntimeOptions) -> Result<()> {
     println!("synced_links: {}", report.inserted_links);
     print_scan_stats("scan", &report.scan);
     println!("migrations: disabled");
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2026,7 +2026,7 @@ fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
         }
     }
 
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2085,7 +2085,7 @@ fn run_seo_inspect(
         }
     }
 
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2139,7 +2139,7 @@ fn run_net_inspect(
         }
     }
 
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2176,7 +2176,7 @@ fn run_perf_lighthouse(
                 println!("stderr: {}", info.stderr.trim());
             }
         }
-        println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+        println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
         if runtime.diagnostics {
             println!("\n[diagnostics]\n{}", paths.diagnostics());
         }
@@ -2226,7 +2226,7 @@ fn run_perf_lighthouse(
         }
     }
 
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2313,7 +2313,7 @@ fn run_import_cargo(
         }
     }
 
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2346,7 +2346,7 @@ fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()>
         for failure in &report.failures {
             println!("failure: {failure}");
         }
-        println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+        println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
         if runtime.diagnostics {
             println!("\n[diagnostics]\n{}", paths.diagnostics());
         }
@@ -2401,7 +2401,7 @@ fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()>
     for failure in &report.failures {
         println!("failure: {failure}");
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2482,7 +2482,7 @@ fn run_docs_import_technical(
     for failure in &report.failures {
         println!("failure: {failure}");
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2542,7 +2542,7 @@ fn run_docs_list(runtime: &RuntimeOptions, args: DocsListArgs) -> Result<()> {
                 format_expiration(listing.now_unix, doc.expires_at_unix)
             );
         }
-        println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+        println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
         if runtime.diagnostics {
             println!("\n[diagnostics]\n{}", paths.diagnostics());
         }
@@ -2569,7 +2569,7 @@ fn run_docs_list(runtime: &RuntimeOptions, args: DocsListArgs) -> Result<()> {
             format_expiration(listing.now_unix, doc.expires_at_unix)
         );
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2593,7 +2593,7 @@ fn run_docs_update(runtime: &RuntimeOptions) -> Result<()> {
     for failure in &report.failures {
         println!("failure: {failure}");
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2609,7 +2609,7 @@ fn run_docs_remove(runtime: &RuntimeOptions, target: &str) -> Result<()> {
     println!("target: {}", report.target);
     println!("kind: {:?}", report.kind);
     println!("removed_rows: {}", report.removed_rows);
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -2643,7 +2643,7 @@ fn run_docs_search(
             println!("hit.snippet: {}", hit.snippet);
         }
     }
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -3977,7 +3977,7 @@ fn run_lsp_status(runtime: &RuntimeOptions) -> Result<()> {
         "embedded parser baseline bytes: {}",
         embedded_parser_config().len()
     );
-    println!("policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -3988,14 +3988,27 @@ fn run_lsp_info() -> Result<()> {
     println!("wikitext LSP integration");
     println!("  command: wikitool lsp:generate-config");
     println!("  output parser config: <project-root>/.wikitool/remilia-parser.json");
-    println!("  policy: {NO_MIGRATIONS_POLICY_MESSAGE}");
+    println!("  policy: {MIGRATIONS_POLICY_MESSAGE}");
     Ok(())
 }
 
-fn run_db_migrate_policy_error(runtime: &RuntimeOptions) -> Result<()> {
+fn run_db_migrate(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     println!("project_root: {}", normalize_path(&paths.project_root));
-    bail!("`db migrate` is unavailable. {NO_MIGRATIONS_POLICY_MESSAGE}");
+    let report = wikitool_core::migrate::run_migrations(&paths)?;
+    if report.applied.is_empty() {
+        println!("database is up to date (version {})", report.current_version);
+    } else {
+        for entry in &report.applied {
+            println!("  applied v{:03}_{}", entry.version, entry.name);
+        }
+        println!(
+            "applied {} migration(s), now at version {}",
+            report.applied.len(),
+            report.current_version
+        );
+    }
+    Ok(())
 }
 
 fn run_contracts(args: ContractsArgs) -> Result<()> {

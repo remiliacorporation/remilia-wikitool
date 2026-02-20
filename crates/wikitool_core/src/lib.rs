@@ -7,5 +7,6 @@ pub mod import_cargo;
 pub mod index;
 pub mod inspect;
 pub mod lint;
+pub mod migrate;
 pub mod runtime;
 pub mod sync;

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-pub const NO_MIGRATIONS_POLICY_MESSAGE: &str = "Database migrations are disabled in full-cutover mode. Delete .wikitool/data/wikitool.db and run `wikitool pull --full --all`.";
+pub const MIGRATIONS_POLICY_MESSAGE: &str = "Run `wikitool db migrate` to apply pending schema migrations.";
 
 const EMBEDDED_PARSER_CONFIG: &str = include_str!("../../../config/remilia-parser.json");
 
@@ -97,7 +97,7 @@ impl ResolvedPaths {
             normalize_for_display(&self.config_path),
             self.config_source.as_str(),
             normalize_for_display(&self.parser_config_path),
-            NO_MIGRATIONS_POLICY_MESSAGE
+            MIGRATIONS_POLICY_MESSAGE
         )
     }
 }
@@ -328,7 +328,7 @@ pub fn render_materialized_config(paths: &ResolvedPaths, include_templates: bool
     let parser_config_path = normalize_for_display(&paths.parser_config_path);
 
     format!(
-        "# wikitool runtime configuration (materialized by `wikitool init`)\n# full-cutover mode: database migrations are intentionally disabled\n# policy: delete DB and repull after binary/schema changes\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n\n[database]\nmigrations = \"disabled\"\nreset_strategy = \"delete_db_and_repull\"\n",
+        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Run `wikitool db migrate` to apply pending schema migrations.\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n\n[database]\nmigrations = \"enabled\"\nstrategy = \"sequential\"\n",
     )
 }
 
@@ -447,7 +447,7 @@ fn reject_legacy_layout(project_root: &Path) -> Result<()> {
         .join("\n");
 
     bail!(
-        "Legacy runtime layout detected under custom/*:\n{found_lines}\nFull cutover mode only supports project-root runtime layout (wiki_content/, templates/, .wikitool/).\nMigration tooling is intentionally disabled.\nRecommended cutover:\n  1) Initialize a clean project root: wikitool init --project-root <new-root> --templates\n  2) Pull fresh state from live wiki: wikitool pull --full --all"
+        "Legacy runtime layout detected under custom/*:\n{found_lines}\nOnly project-root runtime layout is supported (wiki_content/, templates/, .wikitool/).\nRecommended migration:\n  1) Initialize a clean project root: wikitool init --project-root <new-root> --templates\n  2) Pull fresh state from live wiki: wikitool pull --full --all\n  3) Apply schema migrations: wikitool db migrate"
     );
 }
 
@@ -511,7 +511,7 @@ mod tests {
         let err = resolve_paths_with_lookup(&context, &overrides, |_| None).expect_err("must fail");
         let message = err.to_string();
         assert!(message.contains("Legacy runtime layout detected"));
-        assert!(message.contains("Migration tooling is intentionally disabled"));
+        assert!(message.contains("Only project-root runtime layout is supported"));
     }
 
     #[test]

@@ -1,0 +1,10 @@
+[
+  {
+    "title": "Test Article Gamma",
+    "content": "{{SHORTDESC:JSON import test article}}\n{{Article quality|unverified}}\n\n'''Test Article Gamma''' is a synthetic article created for JSON import validation.\n\n== Purpose ==\n\nThis article validates that the JSON import pipeline correctly handles structured input.\n\n== References ==\n{{Reflist}}\n\n[[Category:Test]]"
+  },
+  {
+    "title": "Test Article Delta",
+    "content": "{{SHORTDESC:Second JSON import test}}\n{{Article quality|unverified}}\n\n'''Test Article Delta''' provides a second JSON import test case.\n\n== Overview ==\n\nDelta exists to verify multi-entry JSON batch imports.\n\n== References ==\n{{Reflist}}\n\n[[Category:Test]]"
+  }
+]

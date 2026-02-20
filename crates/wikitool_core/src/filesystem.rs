@@ -178,7 +178,7 @@ pub fn title_to_relative_path(paths: &ResolvedPaths, title: &str, is_redirect: b
             namespace,
             Namespace::Template | Namespace::Module | Namespace::MediaWiki
         ) {
-            let category = template_category(title);
+            let category = template_category_with_db(title, Some(&paths.db_path));
             let encoded = match namespace {
                 Namespace::Template => format!("Template_{}", bare_title.replace(' ', "_")),
                 Namespace::Module => {
@@ -209,7 +209,7 @@ pub fn title_to_relative_path(paths: &ResolvedPaths, title: &str, is_redirect: b
         namespace,
         Namespace::Template | Namespace::Module | Namespace::MediaWiki
     ) {
-        let category = template_category(title);
+        let category = template_category_with_db(title, Some(&paths.db_path));
         let extension = file_extension(namespace, title);
         let encoded = match namespace {
             Namespace::Template => format!("Template_{}", bare_title.replace(' ', "_")),
@@ -656,11 +656,19 @@ fn file_extension(namespace: Namespace, title: &str) -> &'static str {
     }
 }
 
-fn template_category(title: &str) -> &'static str {
+fn template_category_with_db(title: &str, db_path: Option<&std::path::Path>) -> &'static str {
     if title.starts_with("MediaWiki:") {
         return "mediawiki";
     }
 
+    // Try DB lookup first if a database path is provided
+    if let Some(path) = db_path {
+        if let Some(category) = template_category_from_db(path, title) {
+            return Box::leak(category.into_boxed_str());
+        }
+    }
+
+    // Hardcoded constant fallback
     for (prefix, category) in TEMPLATE_CATEGORY_MAPPINGS {
         if title.starts_with(prefix) {
             return category;
@@ -682,6 +690,38 @@ fn template_category(title: &str) -> &'static str {
     }
 
     "misc"
+}
+
+/// Query the template_category_mappings table for a matching prefix.
+/// Returns None if the table doesn't exist or no match is found.
+fn template_category_from_db(db_path: &std::path::Path, title: &str) -> Option<String> {
+    if !db_path.exists() {
+        return None;
+    }
+    let connection = rusqlite::Connection::open(db_path).ok()?;
+    // Check if the table exists
+    let exists: i64 = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'template_category_mappings')",
+            [],
+            |row| row.get(0),
+        )
+        .ok()?;
+    if exists != 1 {
+        return None;
+    }
+    // Find the longest matching prefix
+    let mut statement = connection
+        .prepare(
+            "SELECT category FROM template_category_mappings
+             WHERE ?1 LIKE (prefix || '%')
+             ORDER BY length(prefix) DESC
+             LIMIT 1",
+        )
+        .ok()?;
+    statement
+        .query_row([title], |row| row.get::<_, String>(0))
+        .ok()
 }
 
 fn normalize_separators(path: &str) -> String {

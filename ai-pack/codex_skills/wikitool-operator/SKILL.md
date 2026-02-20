@@ -56,4 +56,4 @@ wikitool docs import --installed
 2. Do not use `--force` without explicit user approval.
 3. For delete flows, require `--reason` and prefer `--dry-run` first.
 4. Treat infrastructure/release operations as out of scope unless explicitly requested.
-5. Treat `db migrate` as intentionally unsupported during cutover.
+5. Run `db migrate` to apply pending schema migrations when prompted.

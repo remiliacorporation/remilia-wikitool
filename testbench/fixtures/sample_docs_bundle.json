@@ -1,0 +1,29 @@
+{
+  "extensions": [
+    {
+      "extension_name": "TestExtension",
+      "source_wiki": "https://www.mediawiki.org",
+      "version": "1.0.0",
+      "pages": [
+        {
+          "page_title": "Extension:TestExtension",
+          "local_path": "extensions/TestExtension.md",
+          "content": "TestExtension is a fictional MediaWiki extension used for wikitool testbench validation. It provides searchable content for docs search testing. Configuration: $wgTestExtensionEnable = true;"
+        },
+        {
+          "page_title": "Extension:TestExtension/Configuration",
+          "local_path": "extensions/TestExtension/Configuration.md",
+          "content": "Configuration options for TestExtension. Set $wgTestExtensionDebug to enable debug logging. The extension supports both SQLite and MySQL backends."
+        }
+      ]
+    }
+  ],
+  "technical": [
+    {
+      "doc_type": "hook",
+      "page_title": "Manual:Hooks/TestHook",
+      "local_path": "hooks/TestHook.md",
+      "content": "TestHook is called during testbench validation. Parameters: $parser (Parser object), $text (string, wikitext content). Return true to continue processing."
+    }
+  ]
+}
