@@ -93,7 +93,8 @@ Every release zip includes a complete AI companion pack:
 |--------|---------|
 | Windows x86_64 | `wikitool-v0.1.0-x86_64-pc-windows-msvc.zip` |
 | Linux x86_64 | `wikitool-v0.1.0-x86_64-unknown-linux-gnu.zip` |
-| macOS x86_64 | `wikitool-v0.1.0-x86_64-apple-darwin.zip` |
+| macOS x86_64 (Intel) | `wikitool-v0.1.0-x86_64-apple-darwin.zip` |
+| macOS ARM (Apple Silicon) | `wikitool-v0.1.0-aarch64-apple-darwin.zip` |
 
 ### Technical
 

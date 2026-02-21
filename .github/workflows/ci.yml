@@ -8,7 +8,6 @@ on:
 
 jobs:
   rust-build-smoke:
-    if: ${{ hashFiles('Cargo.toml') != '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -17,8 +16,11 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_name: wikitool
-          - os: macos-latest
+          - os: macos-13
             target: x86_64-apple-darwin
+            binary_name: wikitool
+          - os: macos-latest
+            target: aarch64-apple-darwin
             binary_name: wikitool
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -91,7 +93,6 @@ jobs:
           if-no-files-found: error
 
   rust-nightly-lint:
-    if: ${{ hashFiles('Cargo.toml') != '' }}
     runs-on: ubuntu-latest
 
     steps:
