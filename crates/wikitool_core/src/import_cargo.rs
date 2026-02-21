@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::filesystem::{title_to_relative_path, validate_scoped_path};
+use crate::filesystem::{NamespaceMapper, validate_scoped_path};
 use crate::runtime::ResolvedPaths;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,6 +123,7 @@ pub fn import_to_cargo(
     };
 
     let mut result = ImportResult::default();
+    let namespace_mapper = NamespaceMapper::load(paths)?;
 
     for (index, row) in rows.iter().enumerate() {
         let row_number = index + 1;
@@ -135,7 +136,7 @@ pub fn import_to_cargo(
             continue;
         };
 
-        let relative_path = title_to_relative_path(paths, &title, false);
+        let relative_path = namespace_mapper.title_to_relative_path(paths, &title, false);
         let absolute_path = absolute_from_relative(paths, &relative_path);
         validate_scoped_path(paths, &absolute_path)?;
         let exists = absolute_path.exists();
@@ -460,7 +461,9 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
+            parser_config_path: project_root
+                .join(".wikitool")
+                .join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root,
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,

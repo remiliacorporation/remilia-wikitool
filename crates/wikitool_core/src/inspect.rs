@@ -103,6 +103,8 @@ impl LighthouseOutputFormat {
 pub struct LighthouseRunOptions {
     pub target: Option<String>,
     pub target_url_override: Option<String>,
+    pub default_wiki_url: Option<String>,
+    pub article_path: Option<String>,
     pub output_format: LighthouseOutputFormat,
     pub output_path_override: Option<PathBuf>,
     pub categories: Vec<String>,
@@ -140,8 +142,13 @@ struct ProcessOutput {
     stderr: String,
 }
 
-pub fn seo_inspect(target: &str, override_url: Option<&str>) -> Result<SeoInspectResult> {
-    let requested_url = resolve_target_url(target, override_url)?;
+pub fn seo_inspect(
+    target: &str,
+    override_url: Option<&str>,
+    default_wiki_url: Option<&str>,
+    article_path: Option<&str>,
+) -> Result<SeoInspectResult> {
+    let requested_url = resolve_target_url(target, override_url, default_wiki_url, article_path)?;
     let client = build_http_client()?;
     let response = client
         .get(&requested_url)
@@ -174,9 +181,12 @@ pub fn seo_inspect(target: &str, override_url: Option<&str>) -> Result<SeoInspec
 pub fn net_inspect(
     target: &str,
     override_url: Option<&str>,
+    default_wiki_url: Option<&str>,
+    article_path: Option<&str>,
     options: &NetInspectOptions,
 ) -> Result<NetInspectResult> {
-    let requested_url = resolve_target_url(target, override_url)?;
+    let requested_url =
+        resolve_target_url(target, override_url, default_wiki_url, article_path)?;
     let client = build_http_client()?;
     let response = client
         .get(&requested_url)
@@ -269,7 +279,12 @@ pub fn run_lighthouse(
         .target
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("target is required unless --show-version is used"))?;
-    let url = resolve_target_url(target, options.target_url_override.as_deref())?;
+    let url = resolve_target_url(
+        target,
+        options.target_url_override.as_deref(),
+        options.default_wiki_url.as_deref(),
+        options.article_path.as_deref(),
+    )?;
     let output_path = resolve_lighthouse_output_path(
         project_root,
         target,
@@ -313,7 +328,12 @@ pub fn run_lighthouse(
     })
 }
 
-pub fn resolve_target_url(target: &str, override_url: Option<&str>) -> Result<String> {
+pub fn resolve_target_url(
+    target: &str,
+    override_url: Option<&str>,
+    default_wiki_url: Option<&str>,
+    article_path: Option<&str>,
+) -> Result<String> {
     if let Some(url) = override_url {
         return Ok(url.trim().to_string());
     }
@@ -321,48 +341,20 @@ pub fn resolve_target_url(target: &str, override_url: Option<&str>) -> Result<St
         return Ok(target.to_string());
     }
 
-    let base = resolve_wiki_url().ok_or_else(|| {
-        anyhow::anyhow!(
-            "no wiki URL configured; set WIKI_URL or WIKI_API_URL, or use --url"
-        )
-    })?;
-    let mut url = Url::parse(&format!("{}/wiki/", trim_trailing_slash(&base)))
-        .with_context(|| format!("invalid wiki base URL: {base}"))?;
+    let base = default_wiki_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no wiki URL configured; set wiki.url in config.toml, WIKI_URL env, or use --url"
+            )
+        })?;
     let normalized_title = target.replace(' ', "_");
-    url.path_segments_mut()
-        .map_err(|_| anyhow::anyhow!("wiki base URL does not support path segments"))?
-        .pop_if_empty()
-        .push(&normalized_title);
-    Ok(url.to_string())
-}
-
-pub fn resolve_wiki_url() -> Option<String> {
-    if let Ok(value) = env::var("WIKI_URL") {
-        let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            return Some(trim_trailing_slash(&trimmed).to_string());
-        }
-    }
-    if let Ok(value) = env::var("WIKI_API_URL")
-        && let Some(derived) = derive_wiki_url(&value)
-    {
-        return Some(derived);
-    }
-    None
-}
-
-pub fn derive_wiki_url(api_url: &str) -> Option<String> {
-    let mut parsed = Url::parse(api_url.trim()).ok()?;
-    let path = parsed.path().to_ascii_lowercase();
-    if path.ends_with("/api.php") {
-        let next = parsed.path().to_string();
-        parsed.set_path(&next[..next.len().saturating_sub(8)]);
-    } else if path.ends_with("api.php") {
-        let next = parsed.path().to_string();
-        parsed.set_path(&next[..next.len().saturating_sub(7)]);
-    }
-    let value = trim_trailing_slash(parsed.as_str()).to_string();
-    if value.is_empty() { None } else { Some(value) }
+    let pattern = article_path.unwrap_or(crate::config::DEFAULT_ARTICLE_PATH);
+    let path = pattern.replace("$1", &normalized_title);
+    let full = format!("{}{}", trim_trailing_slash(base), path);
+    Url::parse(&full).with_context(|| format!("invalid constructed URL: {full}"))?;
+    Ok(full)
 }
 
 fn build_http_client() -> Result<Client> {
@@ -377,7 +369,11 @@ fn build_http_client() -> Result<Client> {
 }
 
 fn user_agent() -> String {
-    env::var("WIKI_USER_AGENT").unwrap_or_else(|_| DEFAULT_USER_AGENT.to_string())
+    env::var("WIKI_USER_AGENT")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_USER_AGENT.to_string())
 }
 
 fn extract_head(html: &str) -> String {
@@ -1185,27 +1181,42 @@ fn is_chrome_launcher_cleanup_line(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        derive_wiki_url, extract_head, resolve_target_url, sanitize_filename, scan_tags,
-    };
+    use super::{extract_head, resolve_target_url, sanitize_filename, scan_tags};
 
     #[test]
-    fn derive_wiki_url_strips_api_php() {
-        assert_eq!(
-            derive_wiki_url("https://wiki.example.org/api.php"),
-            Some("https://wiki.example.org".to_string())
-        );
-        assert_eq!(
-            derive_wiki_url("https://wiki.example.org/w/api.php"),
-            Some("https://wiki.example.org/w".to_string())
-        );
+    fn resolve_target_url_uses_override() {
+        let url = resolve_target_url(
+            "Alpha Beta",
+            Some("https://wiki.example.org/wiki/Fallback"),
+            None,
+            None,
+        )
+        .expect("url");
+        assert_eq!(url, "https://wiki.example.org/wiki/Fallback");
     }
 
     #[test]
-    fn resolve_target_url_builds_page_url() {
-        let url = resolve_target_url("Alpha Beta", Some("https://wiki.example.org/wiki/Fallback"))
-            .expect("url");
-        assert_eq!(url, "https://wiki.example.org/wiki/Fallback");
+    fn resolve_target_url_uses_default_article_path() {
+        let url = resolve_target_url(
+            "Alpha Beta",
+            None,
+            Some("https://wiki.example.org"),
+            None,
+        )
+        .expect("url");
+        assert_eq!(url, "https://wiki.example.org/Alpha_Beta");
+    }
+
+    #[test]
+    fn resolve_target_url_uses_custom_article_path() {
+        let url = resolve_target_url(
+            "Alpha Beta",
+            None,
+            Some("https://wiki.example.org"),
+            Some("/wiki/$1"),
+        )
+        .expect("url");
+        assert_eq!(url, "https://wiki.example.org/wiki/Alpha_Beta");
     }
 
     #[test]

@@ -10,8 +10,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
+use crate::config::load_config;
 use crate::runtime::ResolvedPaths;
-
 
 #[derive(Debug, Clone)]
 struct CachedTemplateCategoryMappings {
@@ -44,6 +44,56 @@ impl Namespace {
             Self::Module => "Module",
             Self::MediaWiki => "MediaWiki",
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CustomNamespaceRule {
+    name: String,
+    folder: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NamespaceMapper {
+    custom_rules: Vec<CustomNamespaceRule>,
+}
+
+impl NamespaceMapper {
+    pub fn load(paths: &ResolvedPaths) -> Result<Self> {
+        Ok(Self {
+            custom_rules: load_custom_namespace_rules(paths)?,
+        })
+    }
+
+    pub fn title_to_relative_path(
+        &self,
+        paths: &ResolvedPaths,
+        title: &str,
+        is_redirect: bool,
+    ) -> String {
+        title_to_relative_path_with_rules(paths, title, is_redirect, &self.custom_rules)
+    }
+
+    pub fn relative_path_to_title(&self, paths: &ResolvedPaths, relative_path: &str) -> String {
+        relative_path_to_title_with_rules(paths, relative_path, &self.custom_rules)
+    }
+
+    pub fn custom_folders(&self) -> Vec<String> {
+        let mut folders = Vec::new();
+        for rule in &self.custom_rules {
+            if folders
+                .iter()
+                .any(|folder: &String| folder.eq_ignore_ascii_case(&rule.folder))
+            {
+                continue;
+            }
+            folders.push(rule.folder.clone());
+        }
+        folders
+    }
+
+    fn custom_rules(&self) -> &[CustomNamespaceRule] {
+        &self.custom_rules
     }
 }
 
@@ -85,12 +135,19 @@ pub struct ScanStats {
 }
 
 pub fn scan_files(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Vec<ScannedFile>> {
+    let mapper = NamespaceMapper::load(paths)?;
+    let custom_folders = if options.custom_content_folders.is_empty() {
+        mapper.custom_folders()
+    } else {
+        options.custom_content_folders.clone()
+    };
+
     let mut files = Vec::new();
     if options.include_content && paths.wiki_content_dir.exists() {
-        scan_content_files(paths, &options.custom_content_folders, &mut files)?;
+        scan_content_files(paths, &custom_folders, mapper.custom_rules(), &mut files)?;
     }
     if options.include_templates && paths.templates_dir.exists() {
-        scan_template_files(paths, &mut files)?;
+        scan_template_files(paths, mapper.custom_rules(), &mut files)?;
     }
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(files)
@@ -129,16 +186,19 @@ pub fn scan_stats(paths: &ResolvedPaths, options: &ScanOptions) -> Result<ScanSt
 
 /// Check if a title belongs to a custom content namespace (e.g. "Goldenlight:Page").
 /// Returns `(folder_name, bare_title)` if the prefix matches a known custom namespace,
-/// or `None` if it doesn't. The `custom_folders` are the folder names that exist under
-/// wiki_content/ for custom namespaces.
+/// or `None` if it doesn't.
 fn custom_namespace_parts(
     title: &str,
-    custom_folders: &[String],
+    custom_rules: &[CustomNamespaceRule],
 ) -> Option<(String, String)> {
-    for folder in custom_folders {
-        let prefix = format!("{folder}:");
-        if let Some(rest) = title.strip_prefix(&prefix) {
-            return Some((folder.clone(), rest.to_string()));
+    let (prefix, rest) = title.split_once(':')?;
+    let normalized_prefix = prefix.trim();
+    if normalized_prefix.is_empty() || rest.trim().is_empty() {
+        return None;
+    }
+    for rule in custom_rules {
+        if rule.name.eq_ignore_ascii_case(normalized_prefix) {
+            return Some((rule.folder.clone(), rest.to_string()));
         }
     }
     None
@@ -169,10 +229,88 @@ fn custom_content_folders(paths: &ResolvedPaths) -> Vec<String> {
     folders
 }
 
-pub fn title_to_relative_path(paths: &ResolvedPaths, title: &str, is_redirect: bool) -> String {
+fn load_custom_namespace_rules(paths: &ResolvedPaths) -> Result<Vec<CustomNamespaceRule>> {
+    let mut rules = Vec::new();
+    if paths.config_path.exists() {
+        let config = load_config(&paths.config_path)?;
+        for namespace in config.wiki.custom_namespaces {
+            let name = normalize_namespace_token(&namespace.name);
+            let folder = normalize_namespace_token(namespace.folder());
+            if name.is_empty()
+                || folder.is_empty()
+                || !is_valid_namespace_name(&name)
+                || !is_valid_namespace_folder(&folder)
+            {
+                continue;
+            }
+            if rules.iter().any(|rule: &CustomNamespaceRule| {
+                rule.name.eq_ignore_ascii_case(&name) || rule.folder.eq_ignore_ascii_case(&folder)
+            }) {
+                continue;
+            }
+            rules.push(CustomNamespaceRule { name, folder });
+        }
+    }
+
+    for folder in custom_content_folders(paths) {
+        if !is_valid_namespace_folder(&folder) {
+            continue;
+        }
+        if rules
+            .iter()
+            .any(|rule| rule.folder.eq_ignore_ascii_case(&folder))
+        {
+            continue;
+        }
+        rules.push(CustomNamespaceRule {
+            name: folder.clone(),
+            folder,
+        });
+    }
+    Ok(rules)
+}
+
+fn normalize_namespace_token(value: &str) -> String {
+    value.trim().replace('_', " ")
+}
+
+fn is_valid_namespace_name(value: &str) -> bool {
+    !value.contains(':')
+        && !value.contains('/')
+        && !value.contains('\\')
+        && value != "."
+        && value != ".."
+}
+
+fn is_valid_namespace_folder(value: &str) -> bool {
+    !value.contains('/')
+        && !value.contains('\\')
+        && !value.contains(':')
+        && value != "."
+        && value != ".."
+}
+
+pub fn title_to_relative_path(
+    paths: &ResolvedPaths,
+    title: &str,
+    is_redirect: bool,
+) -> Result<String> {
+    let mapper = NamespaceMapper::load(paths)?;
+    Ok(mapper.title_to_relative_path(paths, title, is_redirect))
+}
+
+fn title_to_relative_path_with_rules(
+    paths: &ResolvedPaths,
+    title: &str,
+    is_redirect: bool,
+    custom_rules: &[CustomNamespaceRule],
+) -> String {
     // Check custom namespaces first (they aren't in the Namespace enum)
-    if let Some((folder, bare)) = custom_namespace_parts(title, &custom_content_folders(paths)) {
-        let filename = bare.replace(' ', "_").replace('/', "___").replace(':', "--");
+    if let Some((folder, bare)) = custom_namespace_parts(title, custom_rules) {
+        let filename = bare
+            .replace(' ', "_")
+            .replace('/', "___")
+            .replace(':', "--");
         let content_rel = rel_from_root(paths, &paths.wiki_content_dir);
         if is_redirect {
             return format!("{content_rel}/{folder}/_redirects/{filename}.wiki");
@@ -257,13 +395,22 @@ pub fn title_to_relative_path(paths: &ResolvedPaths, title: &str, is_redirect: b
     )
 }
 
-pub fn relative_path_to_title(paths: &ResolvedPaths, relative_path: &str) -> String {
+pub fn relative_path_to_title(paths: &ResolvedPaths, relative_path: &str) -> Result<String> {
+    let mapper = NamespaceMapper::load(paths)?;
+    Ok(mapper.relative_path_to_title(paths, relative_path))
+}
+
+fn relative_path_to_title_with_rules(
+    paths: &ResolvedPaths,
+    relative_path: &str,
+    custom_rules: &[CustomNamespaceRule],
+) -> String {
     let normalized = normalize_separators(relative_path);
     let content_rel = rel_from_root(paths, &paths.wiki_content_dir);
     let templates_rel = rel_from_root(paths, &paths.templates_dir);
 
     if let Some(rest) = normalized.strip_prefix(&format!("{content_rel}/")) {
-        return content_path_to_title(rest);
+        return content_path_to_title_with_rules(rest, custom_rules);
     }
     if let Some(rest) = normalized.strip_prefix(&format!("{templates_rel}/")) {
         return template_path_to_title(rest);
@@ -306,11 +453,16 @@ pub fn validate_scoped_path(paths: &ResolvedPaths, candidate: &Path) -> Result<(
 fn scan_content_files(
     paths: &ResolvedPaths,
     custom_folders: &[String],
+    custom_rules: &[CustomNamespaceRule],
     out: &mut Vec<ScannedFile>,
 ) -> Result<()> {
     let content_rel = rel_from_root(paths, &paths.wiki_content_dir);
     let standard = ["Main", "Category", "File", "User"];
-    for folder in standard.iter().copied().chain(custom_folders.iter().map(String::as_str)) {
+    for folder in standard
+        .iter()
+        .copied()
+        .chain(custom_folders.iter().map(String::as_str))
+    {
         let base = paths.wiki_content_dir.join(folder);
         if !base.exists() {
             continue;
@@ -329,13 +481,17 @@ fn scan_content_files(
             if !normalize_separators(&relative).starts_with(&format!("{content_rel}/")) {
                 continue;
             }
-            out.push(read_scanned_file(paths, path, &relative)?);
+            out.push(read_scanned_file(paths, path, &relative, custom_rules)?);
         }
     }
     Ok(())
 }
 
-fn scan_template_files(paths: &ResolvedPaths, out: &mut Vec<ScannedFile>) -> Result<()> {
+fn scan_template_files(
+    paths: &ResolvedPaths,
+    custom_rules: &[CustomNamespaceRule],
+    out: &mut Vec<ScannedFile>,
+) -> Result<()> {
     let templates_rel = rel_from_root(paths, &paths.templates_dir);
     if !paths.templates_dir.exists() {
         return Ok(());
@@ -364,19 +520,24 @@ fn scan_template_files(paths: &ResolvedPaths, out: &mut Vec<ScannedFile>) -> Res
         if !is_syncable_template_path(&normalized, &templates_rel) {
             continue;
         }
-        out.push(read_scanned_file(paths, path, &relative)?);
+        out.push(read_scanned_file(paths, path, &relative, custom_rules)?);
     }
     Ok(())
 }
 
-fn read_scanned_file(paths: &ResolvedPaths, path: &Path, relative: &str) -> Result<ScannedFile> {
+fn read_scanned_file(
+    paths: &ResolvedPaths,
+    path: &Path,
+    relative: &str,
+    custom_rules: &[CustomNamespaceRule],
+) -> Result<ScannedFile> {
     let content =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let metadata =
         fs::metadata(path).with_context(|| format!("failed to stat {}", path.display()))?;
     let (is_redirect, redirect_target) = parse_redirect(&content);
-    let title = relative_path_to_title(paths, relative);
-    let namespace = namespace_string_from_title(&title);
+    let title = relative_path_to_title_with_rules(paths, relative, custom_rules);
+    let namespace = namespace_string_from_title(&title, custom_rules);
 
     Ok(ScannedFile {
         relative_path: normalize_separators(relative),
@@ -410,6 +571,13 @@ fn is_syncable_template_path(relative: &str, templates_rel: &str) -> bool {
 }
 
 pub fn content_path_to_title(content_rel_path: &str) -> String {
+    content_path_to_title_with_rules(content_rel_path, &[])
+}
+
+fn content_path_to_title_with_rules(
+    content_rel_path: &str,
+    custom_rules: &[CustomNamespaceRule],
+) -> String {
     let normalized = normalize_separators(content_rel_path);
     let mut segments: Vec<&str> = normalized
         .split('/')
@@ -423,13 +591,21 @@ pub fn content_path_to_title(content_rel_path: &str) -> String {
     segments.retain(|segment| *segment != "_redirects");
     let filename = segments.last().copied().unwrap_or("");
     let name = decode_segment(strip_known_extensions(filename));
-    let prefix = match folder {
-        "Main" => "",
+    match folder {
+        "Main" => name,
         other => {
-            return format!("{other}:{name}");
+            if let Some(rule) = custom_rules
+                .iter()
+                .find(|rule| rule.folder.eq_ignore_ascii_case(other))
+            {
+                return format!("{}:{name}", rule.name);
+            }
+            if matches!(other, "Category" | "File" | "User") {
+                return format!("{other}:{name}");
+            }
+            format!("{other}:{name}")
         }
-    };
-    format!("{prefix}{name}")
+    }
 }
 
 pub fn template_path_to_title(templates_rel_path: &str) -> String {
@@ -590,17 +766,16 @@ pub fn namespace_from_title(title: &str) -> Namespace {
 /// For standard namespaces, returns the canonical name (e.g. "Category").
 /// For custom namespaces (like "Goldenlight:"), extracts the prefix before the colon.
 /// For Main namespace titles, returns "Main".
-fn namespace_string_from_title(title: &str) -> String {
+fn namespace_string_from_title(title: &str, custom_rules: &[CustomNamespaceRule]) -> String {
     let ns = namespace_from_title(title);
     if ns != Namespace::Main {
         return ns.as_str().to_string();
     }
-    // Check if title has a colon prefix that might be a custom namespace
-    if let Some(colon_pos) = title.find(':') {
-        let prefix = &title[..colon_pos];
-        // Only treat it as a namespace if the prefix is non-empty and not a known non-namespace
-        if !prefix.is_empty() && prefix.chars().next().is_some_and(|c| c.is_uppercase()) {
-            return prefix.to_string();
+    if let Some((prefix, _)) = title.split_once(':') {
+        for rule in custom_rules {
+            if rule.name.eq_ignore_ascii_case(prefix.trim()) {
+                return rule.name.clone();
+            }
         }
     }
     "Main".to_string()
@@ -804,8 +979,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        Namespace, ScanOptions, content_path_to_title, relative_path_to_title, scan_stats,
-        template_path_to_title, title_to_relative_path, validate_scoped_path,
+        Namespace, ScanOptions, content_path_to_title, relative_path_to_title, scan_files,
+        scan_stats, template_path_to_title, title_to_relative_path, validate_scoped_path,
     };
     use crate::runtime::{ResolvedPaths, ValueSource};
     use tempfile::tempdir;
@@ -822,7 +997,9 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
+            parser_config_path: project_root
+                .join(".wikitool")
+                .join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root,
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,
@@ -843,7 +1020,9 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
+            parser_config_path: project_root
+                .join(".wikitool")
+                .join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root,
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,
@@ -884,15 +1063,58 @@ mod tests {
         ];
 
         for (title, redirect, expected) in cases {
-            let relative = title_to_relative_path(&paths, title, redirect);
-            assert_eq!(relative, expected, "failed for title={title} redirect={redirect}");
-            let parsed = relative_path_to_title(&paths, &relative);
+            let relative = title_to_relative_path(&paths, title, redirect).expect("relative");
+            assert_eq!(
+                relative, expected,
+                "failed for title={title} redirect={redirect}"
+            );
+            let parsed = relative_path_to_title(&paths, &relative).expect("title");
             if title == "MediaWiki:Common.css" {
                 assert_eq!(parsed, "MediaWiki:Common.css");
             } else {
                 assert_eq!(parsed, title);
             }
         }
+    }
+
+    #[test]
+    fn custom_namespace_uses_configured_name_folder_mapping() {
+        let temp = tempdir().expect("tempdir");
+        let paths = paths_with_db(&temp);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("content dir");
+        fs::write(
+            &paths.config_path,
+            r#"
+[wiki]
+
+[[wiki.custom_namespaces]]
+name = "Lore"
+id = 3000
+folder = "LorePages"
+"#,
+        )
+        .expect("write config");
+        fs::create_dir_all(paths.wiki_content_dir.join("LorePages")).expect("lore pages dir");
+
+        let relative = title_to_relative_path(&paths, "Lore:Chronicle", false).expect("relative");
+        assert_eq!(relative, "wiki_content/LorePages/Chronicle.wiki");
+        let parsed = relative_path_to_title(&paths, &relative).expect("title");
+        assert_eq!(parsed, "Lore:Chronicle");
+
+        fs::write(
+            paths
+                .wiki_content_dir
+                .join("LorePages")
+                .join("Chronicle.wiki"),
+            "Lore content",
+        )
+        .expect("write custom namespace page");
+        let files = scan_files(&paths, &ScanOptions::default()).expect("scan files");
+        let scanned = files
+            .iter()
+            .find(|file| file.title == "Lore:Chronicle")
+            .expect("custom namespace page must be scanned");
+        assert_eq!(scanned.namespace, "Lore");
     }
 
     #[test]
@@ -1017,7 +1239,9 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
+            parser_config_path: project_root
+                .join(".wikitool")
+                .join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root,
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,

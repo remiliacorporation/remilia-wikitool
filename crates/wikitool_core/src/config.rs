@@ -2,18 +2,20 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-use serde::Deserialize;
+use anyhow::{Context, Result, bail};
+use serde::{Deserialize, Serialize};
+use toml::Value;
 
 pub const DEFAULT_USER_AGENT: &str = "wikitool/0.1";
 pub const DEFAULT_ARTICLE_PATH: &str = "/$1";
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct WikiConfig {
     #[serde(default)]
     pub wiki: WikiSection,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct WikiSection {
     pub url: Option<String>,
     pub api_url: Option<String>,
@@ -23,7 +25,7 @@ pub struct WikiSection {
     pub custom_namespaces: Vec<CustomNamespace>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CustomNamespace {
     pub name: String,
     pub id: i32,
@@ -37,16 +39,6 @@ impl CustomNamespace {
 }
 
 impl WikiConfig {
-    /// Resolve the wiki API URL: env WIKI_API_URL > config > None.
-    pub fn api_url(&self) -> Option<&str> {
-        if let Ok(value) = env::var("WIKI_API_URL") {
-            // Env var exists but we can't return a reference to a local.
-            // Callers should use `api_url_owned()` when env override is needed.
-            let _ = value;
-        }
-        self.wiki.api_url.as_deref()
-    }
-
     /// Resolve the wiki API URL with owned return: env > config > None.
     pub fn api_url_owned(&self) -> Option<String> {
         if let Ok(value) = env::var("WIKI_API_URL") {
@@ -109,19 +101,102 @@ impl WikiConfig {
 }
 
 /// Load and parse a WikiConfig from a TOML file. Returns default if file doesn't exist.
-pub fn load_config(config_path: &Path) -> WikiConfig {
+pub fn load_config(config_path: &Path) -> Result<WikiConfig> {
     if !config_path.exists() {
-        return WikiConfig::default();
+        return Ok(WikiConfig::default());
     }
-    let content = match fs::read_to_string(config_path) {
-        Ok(content) => content,
-        Err(_) => return WikiConfig::default(),
-    };
-    toml::from_str(&content).unwrap_or_default()
+    let content = fs::read_to_string(config_path)
+        .with_context(|| format!("failed to read {}", config_path.display()))?;
+    let parsed: WikiConfig = toml::from_str(&content)
+        .with_context(|| format!("failed to parse {}", config_path.display()))?;
+    Ok(parsed)
 }
 
-/// Derive wiki base URL from an API URL by stripping `/api.php`.
-fn derive_wiki_url(api_url: &str) -> Option<String> {
+#[derive(Debug, Clone, Default)]
+pub struct WikiConfigPatch {
+    pub set_url: Option<String>,
+    pub set_api_url: Option<String>,
+    pub set_custom_namespaces: Option<Vec<CustomNamespace>>,
+}
+
+/// Update selected keys under `[wiki]` while preserving all other config sections.
+/// Returns `true` when a write occurred.
+pub fn patch_wiki_config(config_path: &Path, patch: &WikiConfigPatch) -> Result<bool> {
+    if patch.set_url.is_none()
+        && patch.set_api_url.is_none()
+        && patch.set_custom_namespaces.is_none()
+    {
+        return Ok(false);
+    }
+
+    let mut root = if config_path.exists() {
+        let content = fs::read_to_string(config_path)
+            .with_context(|| format!("failed to read {}", config_path.display()))?;
+        toml::from_str::<Value>(&content)
+            .with_context(|| format!("failed to parse {}", config_path.display()))?
+    } else {
+        Value::Table(Default::default())
+    };
+    let original = root.clone();
+
+    let root_table = root.as_table_mut().ok_or_else(|| {
+        anyhow::anyhow!(
+            "top-level TOML must be a table in {}",
+            config_path.display()
+        )
+    })?;
+    let wiki_entry = root_table
+        .entry("wiki".to_string())
+        .or_insert_with(|| Value::Table(Default::default()));
+    let wiki_table = wiki_entry
+        .as_table_mut()
+        .ok_or_else(|| anyhow::anyhow!("[wiki] must be a table in {}", config_path.display()))?;
+
+    if let Some(url) = &patch.set_url {
+        wiki_table.insert("url".to_string(), Value::String(url.clone()));
+    }
+    if let Some(api_url) = &patch.set_api_url {
+        wiki_table.insert("api_url".to_string(), Value::String(api_url.clone()));
+    }
+    if let Some(custom_namespaces) = &patch.set_custom_namespaces {
+        if custom_namespaces.is_empty() {
+            wiki_table.remove("custom_namespaces");
+        } else {
+            let mut array = Vec::with_capacity(custom_namespaces.len());
+            for ns in custom_namespaces {
+                if ns.name.trim().is_empty() {
+                    bail!("custom namespace name cannot be empty");
+                }
+                let mut table = toml::map::Map::new();
+                table.insert("name".to_string(), Value::String(ns.name.clone()));
+                table.insert("id".to_string(), Value::Integer(i64::from(ns.id)));
+                if let Some(folder) = &ns.folder
+                    && !folder.trim().is_empty()
+                {
+                    table.insert("folder".to_string(), Value::String(folder.clone()));
+                }
+                array.push(Value::Table(table));
+            }
+            wiki_table.insert("custom_namespaces".to_string(), Value::Array(array));
+        }
+    }
+
+    if root == original {
+        return Ok(false);
+    }
+
+    let parent = config_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("config path has no parent: {}", config_path.display()))?;
+    fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
+    let rendered = toml::to_string_pretty(&root).context("failed to serialize config TOML")?;
+    fs::write(config_path, rendered)
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+    Ok(true)
+}
+
+/// Derive wiki base URL from an API URL by stripping `/api.php` or `/w/api.php`.
+pub fn derive_wiki_url(api_url: &str) -> Option<String> {
     let trimmed = api_url.trim();
     let stripped = trimmed
         .strip_suffix("/api.php")
@@ -150,7 +225,7 @@ mod tests {
 
     #[test]
     fn load_config_returns_default_for_missing_file() {
-        let config = load_config(Path::new("/nonexistent/config.toml"));
+        let config = load_config(Path::new("/nonexistent/config.toml")).expect("load config");
         assert!(config.wiki.url.is_none());
     }
 
@@ -175,17 +250,14 @@ folder = "Custom"
         )
         .expect("write config");
 
-        let config = load_config(&config_path);
+        let config = load_config(&config_path).expect("load config");
         assert_eq!(config.wiki.url.as_deref(), Some("https://example.wiki"));
         assert_eq!(
             config.wiki.api_url.as_deref(),
             Some("https://example.wiki/api.php")
         );
         assert_eq!(config.wiki.article_path.as_deref(), Some("/wiki/$1"));
-        assert_eq!(
-            config.wiki.user_agent.as_deref(),
-            Some("test-agent/1.0")
-        );
+        assert_eq!(config.wiki.user_agent.as_deref(), Some("test-agent/1.0"));
         assert_eq!(config.wiki.custom_namespaces.len(), 1);
         assert_eq!(config.wiki.custom_namespaces[0].name, "Custom");
         assert_eq!(config.wiki.custom_namespaces[0].id, 3000);
@@ -195,15 +267,51 @@ folder = "Custom"
     fn load_config_tolerates_partial_toml() {
         let temp = tempdir().expect("tempdir");
         let config_path = temp.path().join("config.toml");
-        fs::write(
-            &config_path,
-            "[paths]\nproject_root = \"/foo\"\n",
-        )
-        .expect("write config");
+        fs::write(&config_path, "[paths]\nproject_root = \"/foo\"\n").expect("write config");
 
-        let config = load_config(&config_path);
+        let config = load_config(&config_path).expect("load config");
         assert!(config.wiki.url.is_none());
         assert!(config.wiki.custom_namespaces.is_empty());
+    }
+
+    #[test]
+    fn load_config_returns_error_for_invalid_toml() {
+        let temp = tempdir().expect("tempdir");
+        let config_path = temp.path().join("config.toml");
+        fs::write(&config_path, "[wiki\nurl = \"oops\"").expect("write config");
+        let error = load_config(&config_path).expect_err("must fail");
+        assert!(error.to_string().contains("failed to parse"));
+    }
+
+    #[test]
+    fn patch_wiki_config_updates_custom_namespaces() {
+        let temp = tempdir().expect("tempdir");
+        let config_path = temp.path().join("config.toml");
+        fs::write(&config_path, "[paths]\nproject_root = \"/repo\"\n").expect("write config");
+
+        let wrote = patch_wiki_config(
+            &config_path,
+            &WikiConfigPatch {
+                set_url: Some("https://wiki.example.org".to_string()),
+                set_api_url: Some("https://wiki.example.org/api.php".to_string()),
+                set_custom_namespaces: Some(vec![CustomNamespace {
+                    name: "Lore".to_string(),
+                    id: 3000,
+                    folder: Some("Lore".to_string()),
+                }]),
+            },
+        )
+        .expect("patch");
+        assert!(wrote);
+
+        let config = load_config(&config_path).expect("load config");
+        assert_eq!(config.wiki.url.as_deref(), Some("https://wiki.example.org"));
+        assert_eq!(
+            config.wiki.api_url.as_deref(),
+            Some("https://wiki.example.org/api.php")
+        );
+        assert_eq!(config.wiki.custom_namespaces.len(), 1);
+        assert_eq!(config.wiki.custom_namespaces[0].name, "Lore");
     }
 
     #[test]

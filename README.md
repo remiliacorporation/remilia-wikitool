@@ -1,6 +1,6 @@
-# Remilia Wikitool
+# Wikitool
 
-Unified MediaWiki tooling for Remilia Wiki.
+Unified MediaWiki tooling for file-backed wiki workflows.
 
 Primary runtime is a Rust CLI binary (`wikitool`) on stable Rust (edition 2024).
 
@@ -134,7 +134,7 @@ WIKI_BOT_USER=Username@BotName
 WIKI_BOT_PASS=your-bot-password
 ```
 
-Required if targeting a wiki other than `wiki.remilia.org`:
+Recommended for read/write API access when not set in `.wikitool/config.toml`:
 
 ```bash
 WIKI_API_URL=https://your-wiki.example.org/api.php

@@ -65,7 +65,7 @@ pub fn lint_modules(paths: &ResolvedPaths, title: Option<&str>) -> Result<LuaLin
 
     if let Some(title) = title {
         let normalized = normalize_module_title(title);
-        let relative_path = title_to_relative_path(paths, &normalized, false);
+        let relative_path = title_to_relative_path(paths, &normalized, false)?;
         let absolute_path = absolute_from_relative(paths, &relative_path);
         if !absolute_path.exists() {
             bail!("module not found: {normalized}");

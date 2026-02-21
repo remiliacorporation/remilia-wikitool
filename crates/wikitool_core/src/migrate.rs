@@ -216,7 +216,9 @@ mod tests {
             state_dir: project_root.join(".wikitool"),
             data_dir: project_root.join(".wikitool/data"),
             config_path: project_root.join(".wikitool/config.toml"),
-            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
+            parser_config_path: project_root
+                .join(".wikitool")
+                .join(crate::runtime::PARSER_CONFIG_FILENAME),
             project_root,
             root_source: crate::runtime::ValueSource::Flag,
             data_source: crate::runtime::ValueSource::Default,

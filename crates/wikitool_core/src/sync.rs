@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::filesystem::{ScanOptions, scan_files, title_to_relative_path, validate_scoped_path};
+use crate::filesystem::{NamespaceMapper, ScanOptions, scan_files, validate_scoped_path};
 use crate::index::{RebuildReport, rebuild_index};
 use crate::runtime::ResolvedPaths;
 
@@ -228,11 +228,7 @@ impl MediaWikiClientConfig {
     }
 
     pub fn from_config(config: &crate::config::WikiConfig) -> Self {
-        let api_default = config
-            .wiki
-            .api_url
-            .as_deref()
-            .unwrap_or("");
+        let api_default = config.wiki.api_url.as_deref().unwrap_or("");
         Self::from_env_with_defaults(api_default, &config.user_agent())
     }
 
@@ -261,6 +257,10 @@ pub struct MediaWikiClient {
 impl MediaWikiClient {
     pub fn from_env() -> Result<Self> {
         Self::new(MediaWikiClientConfig::from_env())
+    }
+
+    pub fn from_config(config: &crate::config::WikiConfig) -> Result<Self> {
+        Self::new(MediaWikiClientConfig::from_config(config))
     }
 
     pub fn new(config: MediaWikiClientConfig) -> Result<Self> {
@@ -435,6 +435,40 @@ impl MediaWikiClient {
         sleep(Duration::from_millis(
             base.saturating_mul(multiplier).saturating_add(jitter),
         ));
+    }
+
+    fn discover_custom_namespaces(&mut self) -> Result<Vec<crate::config::CustomNamespace>> {
+        let payload = self.request_json_get(&[
+            ("action", "query".to_string()),
+            ("meta", "siteinfo".to_string()),
+            ("siprop", "namespaces".to_string()),
+        ])?;
+        let parsed: SiteInfoResponse = serde_json::from_value(payload)
+            .context("failed to decode namespace discovery response")?;
+
+        let mut namespaces = Vec::new();
+        for (key, mut ns) in parsed.query.namespaces {
+            if ns.id == 0
+                && let Ok(parsed_id) = key.parse::<i32>()
+                && parsed_id != 0
+            {
+                ns.id = parsed_id;
+            }
+            if !should_include_discovered_namespace(&ns) {
+                continue;
+            }
+            let Some(name) = namespace_display_name(&ns) else {
+                continue;
+            };
+            namespaces.push(crate::config::CustomNamespace {
+                folder: Some(name.clone()),
+                id: ns.id,
+                name,
+            });
+        }
+        namespaces.sort_by_key(|ns| ns.id);
+        namespaces.dedup_by_key(|ns| ns.id);
+        Ok(namespaces)
     }
 
     fn ensure_csrf_token(&mut self) -> Result<String> {
@@ -790,7 +824,15 @@ impl WikiWriteApi for MediaWikiClient {
 }
 
 pub fn pull_from_remote(paths: &ResolvedPaths, options: &PullOptions) -> Result<PullReport> {
-    let mut client = MediaWikiClient::from_env()?;
+    pull_from_remote_with_config(paths, options, &crate::config::WikiConfig::default())
+}
+
+pub fn pull_from_remote_with_config(
+    paths: &ResolvedPaths,
+    options: &PullOptions,
+    config: &crate::config::WikiConfig,
+) -> Result<PullReport> {
+    let mut client = MediaWikiClient::from_config(config)?;
     pull_from_remote_with_api(paths, options, &mut client)
 }
 
@@ -799,8 +841,109 @@ pub fn search_external_wiki(
     namespaces: &[i32],
     limit: usize,
 ) -> Result<Vec<ExternalSearchHit>> {
-    let mut client = MediaWikiClient::from_env()?;
+    search_external_wiki_with_config(
+        query,
+        namespaces,
+        limit,
+        &crate::config::WikiConfig::default(),
+    )
+}
+
+pub fn search_external_wiki_with_config(
+    query: &str,
+    namespaces: &[i32],
+    limit: usize,
+    config: &crate::config::WikiConfig,
+) -> Result<Vec<ExternalSearchHit>> {
+    let mut client = MediaWikiClient::from_config(config)?;
     client.search(query, namespaces, limit)
+}
+
+pub fn push_to_remote(paths: &ResolvedPaths, options: &PushOptions) -> Result<PushReport> {
+    push_to_remote_with_config(paths, options, &crate::config::WikiConfig::default())
+}
+
+pub fn push_to_remote_with_config(
+    paths: &ResolvedPaths,
+    options: &PushOptions,
+    config: &crate::config::WikiConfig,
+) -> Result<PushReport> {
+    let username = env::var("WIKI_BOT_USER")
+        .map_err(|_| anyhow::anyhow!("WIKI_BOT_USER is required for push"))?;
+    let password = env::var("WIKI_BOT_PASS")
+        .map_err(|_| anyhow::anyhow!("WIKI_BOT_PASS is required for push"))?;
+    let mut client = MediaWikiClient::from_config(config)?;
+    push_to_remote_with_api(paths, options, &mut client, Some((&username, &password)))
+}
+
+pub fn delete_remote_page(title: &str, reason: &str) -> Result<RemoteDeleteReport> {
+    delete_remote_page_with_config(title, reason, &crate::config::WikiConfig::default())
+}
+
+pub fn delete_remote_page_with_config(
+    title: &str,
+    reason: &str,
+    config: &crate::config::WikiConfig,
+) -> Result<RemoteDeleteReport> {
+    let username = match env::var("WIKI_BOT_USER") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(RemoteDeleteReport {
+                status: RemoteDeleteStatus::SkippedMissingCredentials,
+                title: title.to_string(),
+                detail: Some("WIKI_BOT_USER is not set".to_string()),
+                request_count: 0,
+            });
+        }
+    };
+    let password = match env::var("WIKI_BOT_PASS") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(RemoteDeleteReport {
+                status: RemoteDeleteStatus::SkippedMissingCredentials,
+                title: title.to_string(),
+                detail: Some("WIKI_BOT_PASS is not set".to_string()),
+                request_count: 0,
+            });
+        }
+    };
+
+    let mut client = MediaWikiClient::from_config(config)?;
+    client
+        .login(username.trim(), password.trim())
+        .context("remote delete login failed")?;
+
+    match client.delete_page(title, reason) {
+        Ok(()) => Ok(RemoteDeleteReport {
+            status: RemoteDeleteStatus::Deleted,
+            title: title.to_string(),
+            detail: None,
+            request_count: client.request_count(),
+        }),
+        Err(error) => {
+            let message = error.to_string();
+            if message.contains("missingtitle") {
+                Ok(RemoteDeleteReport {
+                    status: RemoteDeleteStatus::AlreadyMissing,
+                    title: title.to_string(),
+                    detail: Some(message),
+                    request_count: client.request_count(),
+                })
+            } else {
+                Err(error).context(format!("remote delete failed for {title}"))
+            }
+        }
+    }
+}
+
+pub fn discover_custom_namespaces(
+    config: &crate::config::WikiConfig,
+) -> Result<Vec<crate::config::CustomNamespace>> {
+    if config.api_url_owned().is_none() {
+        bail!("wiki API URL is not configured (set [wiki].api_url or WIKI_API_URL)");
+    }
+    let mut client = MediaWikiClient::from_config(config)?;
+    client.discover_custom_namespaces()
 }
 
 pub fn diff_local_against_sync(
@@ -893,67 +1036,6 @@ pub fn diff_local_against_sync(
         deleted_local,
         changes,
     }))
-}
-
-pub fn push_to_remote(paths: &ResolvedPaths, options: &PushOptions) -> Result<PushReport> {
-    let username = env::var("WIKI_BOT_USER")
-        .map_err(|_| anyhow::anyhow!("WIKI_BOT_USER is required for push"))?;
-    let password = env::var("WIKI_BOT_PASS")
-        .map_err(|_| anyhow::anyhow!("WIKI_BOT_PASS is required for push"))?;
-    let mut client = MediaWikiClient::from_env()?;
-    push_to_remote_with_api(paths, options, &mut client, Some((&username, &password)))
-}
-
-pub fn delete_remote_page(title: &str, reason: &str) -> Result<RemoteDeleteReport> {
-    let username = match env::var("WIKI_BOT_USER") {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => {
-            return Ok(RemoteDeleteReport {
-                status: RemoteDeleteStatus::SkippedMissingCredentials,
-                title: title.to_string(),
-                detail: Some("WIKI_BOT_USER is not set".to_string()),
-                request_count: 0,
-            });
-        }
-    };
-    let password = match env::var("WIKI_BOT_PASS") {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => {
-            return Ok(RemoteDeleteReport {
-                status: RemoteDeleteStatus::SkippedMissingCredentials,
-                title: title.to_string(),
-                detail: Some("WIKI_BOT_PASS is not set".to_string()),
-                request_count: 0,
-            });
-        }
-    };
-
-    let mut client = MediaWikiClient::from_env()?;
-    client
-        .login(username.trim(), password.trim())
-        .context("remote delete login failed")?;
-
-    match client.delete_page(title, reason) {
-        Ok(()) => Ok(RemoteDeleteReport {
-            status: RemoteDeleteStatus::Deleted,
-            title: title.to_string(),
-            detail: None,
-            request_count: client.request_count(),
-        }),
-        Err(error) => {
-            let message = error.to_string();
-            if message.contains("missingtitle") {
-                Ok(RemoteDeleteReport {
-                    status: RemoteDeleteStatus::AlreadyMissing,
-                    title: title.to_string(),
-                    detail: Some(message),
-                    request_count: client.request_count(),
-                })
-            } else {
-                Err(error).context(format!("remote delete failed for {title}"))
-            }
-        }
-    }
 }
 
 fn push_to_remote_with_api<A: WikiWriteApi>(
@@ -1238,6 +1320,7 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
 
     let mut wrote_files = false;
     let mut max_timestamp: Option<String> = None;
+    let namespace_mapper = NamespaceMapper::load(paths)?;
 
     for title in &pages_to_pull {
         let key = normalized_title_key(title);
@@ -1263,7 +1346,8 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
         }
 
         let (is_redirect, redirect_target) = parse_redirect(&page.content);
-        let relative_path = title_to_relative_path(paths, &page.title, is_redirect);
+        let relative_path =
+            namespace_mapper.title_to_relative_path(paths, &page.title, is_redirect);
         let absolute_path = absolute_path_from_relative(paths, &relative_path);
         validate_scoped_path(paths, &absolute_path)?;
         ensure_parent_dir(&absolute_path)?;
@@ -1840,7 +1924,11 @@ fn unix_timestamp() -> Result<u64> {
 }
 
 fn env_value(key: &str, default: &str) -> String {
-    env::var(key).unwrap_or_else(|_| default.to_string())
+    env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default.to_string())
 }
 
 fn env_value_u64(key: &str, default: u64) -> u64 {
@@ -1859,6 +1947,84 @@ fn env_value_usize(key: &str, default: usize) -> usize {
 
 fn is_template_namespace_id(namespace: i32) -> bool {
     matches!(namespace, NS_TEMPLATE | NS_MODULE | NS_MEDIAWIKI)
+}
+
+fn should_include_discovered_namespace(namespace: &SiteInfoNamespace) -> bool {
+    if namespace.id < 0 || namespace.id % 2 != 0 {
+        return false;
+    }
+    if is_builtin_namespace_id(namespace.id) {
+        return false;
+    }
+    let Some(name) = namespace_display_name(namespace) else {
+        return false;
+    };
+    if is_builtin_namespace_name(&name) {
+        return false;
+    }
+    namespace_is_content(namespace) || namespace.id >= 3000
+}
+
+fn namespace_display_name(namespace: &SiteInfoNamespace) -> Option<String> {
+    for candidate in [
+        namespace.canonical.as_deref(),
+        namespace.name.as_deref(),
+        namespace.star_name.as_deref(),
+    ] {
+        let value = candidate.unwrap_or_default().trim();
+        if value.is_empty() {
+            continue;
+        }
+        let normalized = value.replace('_', " ");
+        if !normalized.trim().is_empty() {
+            return Some(normalized.trim().to_string());
+        }
+    }
+    None
+}
+
+fn namespace_is_content(namespace: &SiteInfoNamespace) -> bool {
+    match namespace.content.as_ref() {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::String(value)) => value.is_empty() || value.eq_ignore_ascii_case("true"),
+        Some(Value::Number(value)) => value.as_i64().is_some_and(|v| v != 0),
+        Some(Value::Object(map)) => map
+            .get("content")
+            .is_some_and(|nested| nested.as_bool().unwrap_or(false)),
+        Some(Value::Array(items)) => !items.is_empty(),
+        _ => false,
+    }
+}
+
+fn is_builtin_namespace_id(id: i32) -> bool {
+    matches!(
+        id,
+        0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 828 | 829
+    )
+}
+
+fn is_builtin_namespace_name(name: &str) -> bool {
+    matches!(
+        name.trim(),
+        "Main"
+            | "Talk"
+            | "User"
+            | "User talk"
+            | "Project"
+            | "Project talk"
+            | "File"
+            | "File talk"
+            | "MediaWiki"
+            | "MediaWiki talk"
+            | "Template"
+            | "Template talk"
+            | "Help"
+            | "Help talk"
+            | "Category"
+            | "Category talk"
+            | "Module"
+            | "Module talk"
+    )
 }
 
 fn is_retryable_status(status: StatusCode) -> bool {
@@ -1953,6 +2119,32 @@ struct SearchQueryItem {
 }
 
 #[derive(Debug, Deserialize, Default)]
+struct SiteInfoResponse {
+    #[serde(default)]
+    query: SiteInfoQueryPayload,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct SiteInfoQueryPayload {
+    #[serde(default)]
+    namespaces: BTreeMap<String, SiteInfoNamespace>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct SiteInfoNamespace {
+    #[serde(default)]
+    id: i32,
+    #[serde(default, rename = "*")]
+    star_name: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    canonical: Option<String>,
+    #[serde(default)]
+    content: Option<Value>,
+}
+
+#[derive(Debug, Deserialize, Default)]
 struct TokenQueryResponse {
     #[serde(default)]
     query: TokenQueryPayload,
@@ -1997,12 +2189,14 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
+    use serde_json::json;
     use tempfile::tempdir;
 
     use super::{
         DiffChangeType, DiffOptions, ExternalSearchHit, NS_MAIN, PageTimestampInfo, PullOptions,
-        PushOptions, RemotePage, WikiReadApi, WikiWriteApi, diff_local_against_sync,
-        pull_from_remote_with_api, push_to_remote_with_api,
+        PushOptions, RemotePage, SiteInfoNamespace, WikiReadApi, WikiWriteApi,
+        diff_local_against_sync, namespace_display_name, pull_from_remote_with_api,
+        push_to_remote_with_api, should_include_discovered_namespace,
     };
     use crate::runtime::{ResolvedPaths, ValueSource};
 
@@ -2154,7 +2348,9 @@ mod tests {
                 .join("data")
                 .join("wikitool.db"),
             config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root.join(".wikitool").join(crate::runtime::PARSER_CONFIG_FILENAME),
+            parser_config_path: project_root
+                .join(".wikitool")
+                .join(crate::runtime::PARSER_CONFIG_FILENAME),
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,
             config_source: ValueSource::Default,
@@ -2170,6 +2366,53 @@ mod tests {
             timestamp: "2026-02-19T00:00:00Z".to_string(),
             content: content.to_string(),
         }
+    }
+
+    #[test]
+    fn namespace_discovery_filters_builtin_and_talk_namespaces() {
+        let builtin = SiteInfoNamespace {
+            id: 14,
+            canonical: Some("Category".to_string()),
+            name: Some("Category".to_string()),
+            star_name: Some("Category".to_string()),
+            content: Some(json!(true)),
+        };
+        let talk = SiteInfoNamespace {
+            id: 3001,
+            canonical: Some("Lore talk".to_string()),
+            name: Some("Lore talk".to_string()),
+            star_name: Some("Lore talk".to_string()),
+            content: Some(json!(false)),
+        };
+        assert!(!should_include_discovered_namespace(&builtin));
+        assert!(!should_include_discovered_namespace(&talk));
+    }
+
+    #[test]
+    fn namespace_discovery_includes_custom_content_namespace() {
+        let custom = SiteInfoNamespace {
+            id: 3000,
+            canonical: Some("Lore".to_string()),
+            name: Some("Lore".to_string()),
+            star_name: Some("Lore".to_string()),
+            content: Some(json!(true)),
+        };
+        assert!(should_include_discovered_namespace(&custom));
+    }
+
+    #[test]
+    fn namespace_display_name_prefers_canonical_and_normalizes_underscores() {
+        let namespace = SiteInfoNamespace {
+            id: 3000,
+            canonical: Some("Lore_Namespace".to_string()),
+            name: Some("Ignored".to_string()),
+            star_name: Some("Ignored".to_string()),
+            content: Some(json!(true)),
+        };
+        assert_eq!(
+            namespace_display_name(&namespace).as_deref(),
+            Some("Lore Namespace")
+        );
     }
 
     #[test]

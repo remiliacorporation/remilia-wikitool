@@ -337,14 +337,11 @@ pub fn render_materialized_config(paths: &ResolvedPaths, include_templates: bool
     let parser_config_path = normalize_for_display(&paths.parser_config_path);
 
     format!(
-        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Run `wikitool db migrate` to apply pending schema migrations.\n\n[wiki]\nurl = \"https://wiki.remilia.org\"\napi_url = \"https://wiki.remilia.org/api.php\"\narticle_path = \"/$1\"\n# user_agent = \"wikitool/0.1\"\n\n[[wiki.custom_namespaces]]\nname = \"Goldenlight\"\nid = 3000\nfolder = \"Goldenlight\"\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n\n[database]\nmigrations = \"enabled\"\nstrategy = \"sequential\"\n",
+        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Run `wikitool db migrate` to apply pending schema migrations.\n\n[wiki]\n# url = \"https://your-wiki.example.org\"\n# api_url = \"https://your-wiki.example.org/api.php\"\narticle_path = \"/$1\"\n# user_agent = \"wikitool/0.1\"\n\n# Populated by `wikitool init` namespace discovery when API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n\n[database]\nmigrations = \"enabled\"\nstrategy = \"sequential\"\n",
     )
 }
 
-pub fn lsp_settings_json(
-    paths: &ResolvedPaths,
-    config: &crate::config::WikiConfig,
-) -> String {
+pub fn lsp_settings_json(paths: &ResolvedPaths, config: &crate::config::WikiConfig) -> String {
     let parser_path = normalize_for_display(&paths.parser_config_path);
     let article_path = config.article_path_owned();
     let article_url = if let Some(wiki_url) = config.wiki_url() {

@@ -22,7 +22,7 @@ wikitool pull --full --all
 ```bash
 wikitool pull --templates
 wikitool pull --categories
-wikitool pull --category "Category:Remilia"
+wikitool pull --category "Category:Example"
 ```
 
 ## Review local changes
@@ -84,7 +84,7 @@ wikitool import cargo ./data.csv --table Items --mode upsert --write
 wikitool index rebuild
 wikitool index stats
 wikitool index chunks "Main Page" --query "infobox" --limit 6 --token-budget 480
-wikitool index chunks --across-pages --query "network spirituality remilia" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
+wikitool index chunks --across-pages --query "foundational concepts" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
 wikitool index backlinks "Main Page"
 wikitool index orphans
 wikitool index prune-categories
@@ -95,7 +95,7 @@ wikitool index prune-categories
 Generate a token-budgeted local context pack for writing new articles or upgrading stubs:
 
 ```bash
-wikitool workflow authoring-pack "Remilia Corporation" --format json
+wikitool workflow authoring-pack "Example Topic" --format json
 wikitool workflow authoring-pack "Milady Maker" --stub-path wiki_content/Main/Milady_Draft.wiki --format json
 ```
 

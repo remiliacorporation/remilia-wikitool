@@ -535,12 +535,22 @@ impl DocsApi for MediaWikiDocsClient {
 }
 
 pub fn discover_installed_extensions_from_wiki() -> Result<Vec<String>> {
-    let wiki_api = std::env::var("WIKI_API_URL")
-        .or_else(|_| std::env::var("WIKITOOL_INSTALLED_EXTENSIONS_API_URL"))
-        .map_err(|_| {
-            anyhow::anyhow!("WIKI_API_URL must be set to discover installed extensions")
+    discover_installed_extensions_from_wiki_with_config(&crate::config::WikiConfig::default())
+}
+
+pub fn discover_installed_extensions_from_wiki_with_config(
+    config: &crate::config::WikiConfig,
+) -> Result<Vec<String>> {
+    let api_url = env::var("WIKITOOL_INSTALLED_EXTENSIONS_API_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| config.api_url_owned())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "wiki API URL is not configured (set [wiki].api_url, WIKI_API_URL, or WIKITOOL_INSTALLED_EXTENSIONS_API_URL)"
+            )
         })?;
-    let api_url = env_value("WIKITOOL_INSTALLED_EXTENSIONS_API_URL", wiki_api.trim());
     let user_agent = env_value("WIKITOOL_DOCS_USER_AGENT", DEFAULT_USER_AGENT);
     let timeout_ms = env_value_u64("WIKITOOL_DOCS_TIMEOUT_MS", 30_000);
     let max_retries = env_value_usize("WIKITOOL_DOCS_RETRIES", 2);
@@ -2007,7 +2017,11 @@ fn unix_timestamp() -> Result<u64> {
 }
 
 fn env_value(key: &str, default: &str) -> String {
-    env::var(key).unwrap_or_else(|_| default.to_string())
+    env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default.to_string())
 }
 
 fn env_value_u64(key: &str, default: u64) -> u64 {
@@ -2403,7 +2417,7 @@ mod tests {
             technical: vec![DocsBundleTechnical {
                 doc_type: "manual".to_string(),
                 pages: vec![DocsBundlePage {
-                    page_title: "Manual:Remilia AI/Writing Guide".to_string(),
+                    page_title: "Manual:AI/Writing Guide".to_string(),
                     content: "Precomposed writing guidance".to_string(),
                     local_path: None,
                 }],

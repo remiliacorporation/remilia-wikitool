@@ -54,15 +54,15 @@ WIKI_BOT_USER=Username@BotName
 WIKI_BOT_PASS=your-bot-password
 ```
 
-If targeting a wiki other than `wiki.remilia.org`:
+If your API URL is not set in `.wikitool/config.toml`:
 
 ```bash
 WIKI_API_URL=https://your-wiki.example.org/api.php
 ```
 
-Bot password setup (for Remilia Wiki):
+Bot password setup:
 
-1. Open `https://wiki.remilia.org/Special:BotPasswords`
+1. Open `https://<your-wiki>/Special:BotPasswords`
 2. Create a bot password with edit grants
 3. Copy generated username/password into `.env`
 

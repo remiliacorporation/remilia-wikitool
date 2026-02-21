@@ -6,12 +6,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Command, CommandFactory, Parser, Subcommand, error::ErrorKind};
-use wikitool_core::config::{WikiConfig, load_config};
+use wikitool_core::config::{WikiConfig, WikiConfigPatch, load_config, patch_wiki_config};
 use wikitool_core::contracts::{command_surface, generate_fixture_snapshot};
 use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
 use wikitool_core::docs::{
     DocsImportOptions, DocsImportTechnicalOptions, DocsListOptions, DocsRemoveKind,
-    TechnicalDocType, TechnicalImportTask, discover_installed_extensions_from_wiki,
+    TechnicalDocType, TechnicalImportTask, discover_installed_extensions_from_wiki_with_config,
     format_expiration, import_docs_bundle, import_extension_docs, import_technical_docs, list_docs,
     remove_docs, search_docs, update_outdated_docs,
 };
@@ -45,8 +45,9 @@ use wikitool_core::runtime::{
 };
 use wikitool_core::sync::{
     DiffChangeType, DiffOptions, ExternalSearchHit, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
-    NS_TEMPLATE, PullOptions, PushOptions, RemoteDeleteStatus, delete_remote_page,
-    diff_local_against_sync, pull_from_remote, push_to_remote, search_external_wiki,
+    NS_TEMPLATE, PullOptions, PushOptions, RemoteDeleteStatus, delete_remote_page_with_config,
+    diff_local_against_sync, discover_custom_namespaces, pull_from_remote_with_config,
+    push_to_remote_with_config, search_external_wiki_with_config,
 };
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -56,11 +57,7 @@ const LICENSE_SSL: &str = include_str!("../../../LICENSE-SSL");
 const LICENSE_VPL: &str = include_str!("../../../LICENSE-VPL");
 
 #[derive(Debug, Parser)]
-#[command(
-    name = "wikitool",
-    version,
-    about = "Remilia Wiki management CLI"
-)]
+#[command(name = "wikitool", version, about = "Wiki management CLI")]
 struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
     project_root: Option<PathBuf>,
@@ -1077,6 +1074,56 @@ fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
             force: args.force,
         },
     )?;
+    let mut wrote_namespace_config = false;
+    let mut discovered_namespaces = 0usize;
+    let mut created_namespace_dirs = 0usize;
+    let mut namespace_discovery_status = "skipped (--no-config)".to_string();
+    let mut persisted_api_url = false;
+    let mut persisted_wiki_url = false;
+
+    if !args.no_config {
+        let config = load_config(&paths.config_path)
+            .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
+        let resolved_api_url = config.api_url_owned();
+        let resolved_wiki_url = config.wiki_url();
+        let discovered = match discover_custom_namespaces(&config) {
+            Ok(ns) => ns,
+            Err(_) if config.api_url_owned().is_none() => {
+                namespace_discovery_status = "skipped (no API URL configured)".to_string();
+                Vec::new()
+            }
+            Err(err) => {
+                namespace_discovery_status = format!("failed: {err:#}");
+                Vec::new()
+            }
+        };
+        let mut patch = WikiConfigPatch {
+            set_url: None,
+            set_api_url: None,
+            set_custom_namespaces: Some(discovered.clone()),
+        };
+        if config.wiki.api_url.is_none() {
+            patch.set_api_url = resolved_api_url;
+            persisted_api_url = patch.set_api_url.is_some();
+        }
+        if config.wiki.url.is_none() {
+            patch.set_url = resolved_wiki_url;
+            persisted_wiki_url = patch.set_url.is_some();
+        }
+        wrote_namespace_config = patch_wiki_config(&paths.config_path, &patch)
+            .with_context(|| format!("failed to update {}", normalize_path(&paths.config_path)))?;
+
+        let refreshed = load_config(&paths.config_path)
+            .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
+        let created = materialize_custom_namespace_dirs(&paths, &refreshed)?;
+        created_namespace_dirs = created.len();
+        discovered_namespaces = discovered.len();
+        if namespace_discovery_status.starts_with("skipped") || namespace_discovery_status.starts_with("failed") {
+            // Keep the status set by the error handler above.
+        } else {
+            namespace_discovery_status = "ok".to_string();
+        }
+    }
 
     println!("Initialized wikitool runtime layout");
     println!("project_root: {}", normalize_path(&paths.project_root));
@@ -1093,6 +1140,12 @@ fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     println!("created_dirs: {}", report.created_dirs.len());
     println!("wrote_config: {}", report.wrote_config);
     println!("wrote_parser_config: {}", report.wrote_parser_config);
+    println!("namespace_discovery: {namespace_discovery_status}");
+    println!("discovered_custom_namespaces: {discovered_namespaces}");
+    println!("wrote_namespace_config: {wrote_namespace_config}");
+    println!("created_namespace_dirs: {created_namespace_dirs}");
+    println!("persisted_wiki_api_url: {persisted_api_url}");
+    println!("persisted_wiki_url: {persisted_wiki_url}");
     println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -1101,13 +1154,39 @@ fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     Ok(())
 }
 
+fn materialize_custom_namespace_dirs(
+    paths: &wikitool_core::runtime::ResolvedPaths,
+    config: &WikiConfig,
+) -> Result<Vec<PathBuf>> {
+    let mut created = Vec::new();
+    for namespace in &config.wiki.custom_namespaces {
+        let folder = namespace.folder().trim();
+        if folder.is_empty() {
+            continue;
+        }
+        let namespace_dir = paths.wiki_content_dir.join(folder);
+        if !namespace_dir.exists() {
+            fs::create_dir_all(&namespace_dir)
+                .with_context(|| format!("failed to create {}", normalize_path(&namespace_dir)))?;
+            created.push(namespace_dir.clone());
+        }
+        let redirects = namespace_dir.join("_redirects");
+        if !redirects.exists() {
+            fs::create_dir_all(&redirects)
+                .with_context(|| format!("failed to create {}", normalize_path(&redirects)))?;
+            created.push(redirects);
+        }
+    }
+    Ok(created)
+}
+
 fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
 
     let namespaces = pull_namespaces_from_args(&args, &config);
-    let report = pull_from_remote(
+    let report = pull_from_remote_with_config(
         &paths,
         &PullOptions {
             namespaces: namespaces.clone(),
@@ -1115,6 +1194,7 @@ fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
             full: args.full,
             overwrite_local: args.overwrite_local,
         },
+        &config,
     )?;
 
     println!("pull");
@@ -1180,7 +1260,7 @@ fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
 }
 
 fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
 
@@ -1192,7 +1272,7 @@ fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
         .map(ToString::to_string)
         .unwrap_or_else(|| "wikitool rust push".to_string());
 
-    let report = push_to_remote(
+    let report = push_to_remote_with_config(
         &paths,
         &PushOptions {
             summary: summary.clone(),
@@ -1202,6 +1282,7 @@ fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
             include_templates: args.templates,
             categories_only: args.categories,
         },
+        &config,
     )?;
 
     println!("push");
@@ -1322,14 +1403,14 @@ fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
 }
 
 fn run_search_external(runtime: &RuntimeOptions, query: &str) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
     let query = normalize_title_query(query);
     if query.is_empty() {
         bail!("search-external requires a non-empty query");
     }
 
     let namespaces = [NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
-    let hits = search_external_wiki(&query, &namespaces, 20)?;
+    let hits = search_external_wiki_with_config(&query, &namespaces, 20, &config)?;
 
     println!("search-external");
     println!("project_root: {}", normalize_path(&paths.project_root));
@@ -1353,8 +1434,12 @@ fn pull_namespaces_from_args(args: &PullArgs, config: &WikiConfig) -> Vec<i32> {
     if args.all {
         let mut ns = vec![NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
         for custom in &config.wiki.custom_namespaces {
-            ns.push(custom.id);
+            if custom.id >= 0 {
+                ns.push(custom.id);
+            }
         }
+        ns.sort_unstable();
+        ns.dedup();
         return ns;
     }
     vec![NS_MAIN]
@@ -1867,7 +1952,7 @@ fn now_timestamp_string() -> String {
 }
 
 fn run_delete(runtime: &RuntimeOptions, args: DeleteArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
 
@@ -1897,7 +1982,7 @@ fn run_delete(runtime: &RuntimeOptions, args: DeleteArgs) -> Result<()> {
     if args.dry_run {
         println!("remote_delete: dry_run");
     } else {
-        let remote = delete_remote_page(&args.title, &args.reason)?;
+        let remote = delete_remote_page_with_config(&args.title, &args.reason, &config)?;
         match remote.status {
             RemoteDeleteStatus::Deleted => {
                 println!("remote_delete: deleted");
@@ -2387,8 +2472,13 @@ fn run_seo_inspect(
     json: bool,
     override_url: Option<&str>,
 ) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let result = seo_inspect(target, override_url)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let result = seo_inspect(
+        target,
+        override_url,
+        config.wiki_url().as_deref(),
+        Some(config.article_path()),
+    )?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -2437,8 +2527,14 @@ fn run_net_inspect(
     override_url: Option<&str>,
     options: &NetInspectOptions,
 ) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let result = net_inspect(target, override_url, options)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let result = net_inspect(
+        target,
+        override_url,
+        config.wiki_url().as_deref(),
+        Some(config.article_path()),
+        options,
+    )?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -2496,7 +2592,7 @@ fn run_perf_lighthouse(
     json: bool,
     override_url: Option<&str>,
 ) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
     let Some(lighthouse_path) = find_lighthouse_binary(&paths.project_root) else {
         bail!("lighthouse not found on PATH. Install with: npm install -g lighthouse");
     };
@@ -2531,6 +2627,8 @@ fn run_perf_lighthouse(
         &LighthouseRunOptions {
             target,
             target_url_override: override_url.map(ToString::to_string),
+            default_wiki_url: config.wiki_url(),
+            article_path: Some(config.article_path_owned()),
             output_format,
             output_path_override: out.map(Path::to_path_buf),
             categories: parse_csv_list(categories),
@@ -2659,7 +2757,7 @@ fn run_import_cargo(
 }
 
 fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
 
     if let Some(bundle_path) = args.bundle.as_deref() {
         if args.installed || !args.extensions.is_empty() || args.no_subpages {
@@ -2697,7 +2795,7 @@ fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()>
 
     let mut extensions = args.extensions;
     if args.installed {
-        let discovered = discover_installed_extensions_from_wiki()
+        let discovered = discover_installed_extensions_from_wiki_with_config(&config)
             .context("failed to discover installed extensions from live wiki API")?;
         extensions.extend(discovered);
     }
@@ -3713,7 +3811,13 @@ fn build_ai_pack(
     let ai_pack_root = repo_root.join("ai-pack");
     reset_directory(output_dir)?;
 
-    for file in ["SETUP.md", "README.md", "LICENSE", "LICENSE-SSL", "LICENSE-VPL"] {
+    for file in [
+        "SETUP.md",
+        "README.md",
+        "LICENSE",
+        "LICENSE-SSL",
+        "LICENSE-VPL",
+    ] {
         let src = repo_root.join(file);
         if !src.is_file() {
             bail!("missing required AI pack file: {}", normalize_path(&src));
@@ -4682,7 +4786,8 @@ fn resolve_runtime_with_config(
     runtime: &RuntimeOptions,
 ) -> Result<(wikitool_core::runtime::ResolvedPaths, WikiConfig)> {
     let paths = resolve_runtime_paths(runtime)?;
-    let config = load_config(&paths.config_path);
+    let config = load_config(&paths.config_path)
+        .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
     Ok((paths, config))
 }
 

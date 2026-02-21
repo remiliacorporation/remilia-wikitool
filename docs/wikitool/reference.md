@@ -11,7 +11,7 @@ wikitool docs generate-reference
 ## Global
 
 ```text
-Remilia Wiki management CLI
+Wiki management CLI
 
 Usage: wikitool [OPTIONS] [COMMAND]
 
@@ -50,6 +50,7 @@ Options:
       --data-dir <PATH>      
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
+      --license              Print license information and exit
   -h, --help                 Print help
   -V, --version              Print version
 ```
@@ -67,7 +68,7 @@ Options:
       --config <PATH>        
       --no-config            Skip writing .wikitool/config.toml
       --diagnostics          Print resolved runtime diagnostics
-      --no-parser-config     Skip writing .wikitool/remilia-parser.json
+      --no-parser-config     Skip writing parser config
   -h, --help                 Print help
 ```
 

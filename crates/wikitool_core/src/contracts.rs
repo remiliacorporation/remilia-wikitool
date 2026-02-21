@@ -291,10 +291,7 @@ mod tests {
             "Category:Test"
         );
         assert_eq!(
-            filepath_to_title_content(
-                "wiki_content/Main/_redirects/Old_Name.wiki",
-                "wiki_content"
-            ),
+            filepath_to_title_content("wiki_content/Main/_redirects/Old_Name.wiki", "wiki_content"),
             "Old Name"
         );
     }
@@ -337,10 +334,7 @@ mod tests {
         }
 
         // Custom namespaces work for filepath → title parsing via folder name
-        let title = filepath_to_title_content(
-            "wiki_content/Goldenlight/Page.wiki",
-            "wiki_content",
-        );
+        let title = filepath_to_title_content("wiki_content/Goldenlight/Page.wiki", "wiki_content");
         assert_eq!(title, "Goldenlight:Page");
         // But namespace_from_title returns Main (custom ns not in enum)
         assert_eq!(namespace_from_title(&title), Namespace::Main);
