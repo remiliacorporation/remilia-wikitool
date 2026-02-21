@@ -10,7 +10,6 @@ on:
 
 jobs:
   release-artifacts:
-    if: ${{ hashFiles('Cargo.toml') != '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
