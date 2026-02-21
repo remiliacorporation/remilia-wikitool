@@ -71,29 +71,10 @@ jobs:
           if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}/manifest.json)) { throw "manifest.json missing" }
           if (!(Test-Path dist/release-matrix/wikitool-${{ matrix.target }}.zip)) { throw "zip artifact missing" }
 
-      - name: Generate checksums (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p dist/release-checksums
-          cd dist/release-matrix && shasum -a 256 wikitool-${{ matrix.target }}.zip > ../release-checksums/wikitool-${{ matrix.target }}.zip.sha256
-
-      - name: Generate checksums (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          New-Item -ItemType Directory -Path dist/release-checksums -Force | Out-Null
-          $zipHash = (Get-FileHash -Path dist/release-matrix/wikitool-${{ matrix.target }}.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$zipHash  wikitool-${{ matrix.target }}.zip" | Set-Content -Encoding utf8 dist/release-checksums/wikitool-${{ matrix.target }}.zip.sha256
-
       - uses: actions/upload-artifact@v4
         with:
           name: wikitool-release-${{ matrix.target }}
           path: dist/release-matrix/wikitool-${{ matrix.target }}
-          if-no-files-found: error
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wikitool-checksums-${{ matrix.target }}
-          path: dist/release-checksums/wikitool-${{ matrix.target }}.zip.sha256
           if-no-files-found: error
 
   rust-nightly-lint:
