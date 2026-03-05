@@ -4,7 +4,7 @@
 #   TIER=offline bash testbench/cli_tests.sh   # offline-only (default)
 #   TIER=live   bash testbench/cli_tests.sh   # offline + live (read-only API)
 #
-# Run from: custom/wikitool/
+# Run from: tools/wikitool/
 set -euo pipefail
 
 TIER="${TIER:-offline}"

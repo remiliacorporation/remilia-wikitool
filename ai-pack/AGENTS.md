@@ -4,7 +4,7 @@ Canonical guidance for AI-assisted Remilia Wiki editing.
 
 This file is designed for two contexts:
 
-1. Source context: `custom/wikitool/ai-pack/`
+1. Source context: `tools/wikitool/ai-pack/`
 2. Packaged context: unzipped release bundle root
 
 `AGENTS.md` must remain byte-identical to this file.
@@ -41,14 +41,14 @@ Out of scope by default:
 
 ### Source repository layout
 
-1. `custom/wikitool/ai-pack/CLAUDE.md`
-2. `custom/wikitool/ai-pack/AGENTS.md`
-3. `custom/wikitool/ai-pack/llm_instructions/*.md`
-4. `custom/wikitool/ai-pack/.claude/rules/*`
-5. `custom/wikitool/ai-pack/.claude/skills/*`
-6. `custom/wikitool/ai-pack/codex_skills/*`
-7. `custom/wikitool/docs/wikitool/*.md`
-8. optional `custom/wikitool/ai-pack/docs-bundle-v1.json`
+1. `tools/wikitool/ai-pack/CLAUDE.md`
+2. `tools/wikitool/ai-pack/AGENTS.md`
+3. `tools/wikitool/ai-pack/llm_instructions/*.md`
+4. `tools/wikitool/ai-pack/.claude/rules/*`
+5. `tools/wikitool/ai-pack/.claude/skills/*`
+6. `tools/wikitool/ai-pack/codex_skills/*`
+7. `tools/wikitool/docs/wikitool/*.md`
+8. optional `tools/wikitool/ai-pack/docs-bundle-v1.json`
 
 ### Packaged release layout
 

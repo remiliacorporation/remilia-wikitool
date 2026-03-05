@@ -385,7 +385,7 @@ fn detect_project_root_heuristic(cwd: &Path, executable_dir: Option<&Path>) -> P
         if !seen.insert(key) {
             continue;
         }
-        if candidate.join("wiki_content").exists() {
+        if candidate.join("wiki_content").exists() || candidate.join(".wikitool").exists() {
             return candidate;
         }
     }

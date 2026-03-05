@@ -52,7 +52,7 @@ Schema versions are independent from SemVer and must be bumped only when their s
 Experimental / top-level steered:
 
 1. Top-level repo can build and run latest submodule state directly:
-   `cargo run --manifest-path custom/wikitool/Cargo.toml --package wikitool -- <command>`
+   `cargo run --manifest-path tools/wikitool/Cargo.toml --package wikitool -- <command>`
 2. This channel may include unreleased changes.
 
 Packaged / distributable:
