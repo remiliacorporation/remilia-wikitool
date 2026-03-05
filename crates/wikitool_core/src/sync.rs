@@ -1321,7 +1321,7 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
     }
     let mut ledger_by_title = load_sync_ledger_map(&connection, true)?;
 
-    let mut wrote_files = false;
+    let mut files_changed = false;
     let mut max_timestamp: Option<String> = None;
     let namespace_mapper = NamespaceMapper::load(paths)?;
 
@@ -1341,13 +1341,6 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
             }
         };
 
-        if max_timestamp
-            .as_ref()
-            .is_none_or(|current| page.timestamp > *current)
-        {
-            max_timestamp = Some(page.timestamp.clone());
-        }
-
         let (is_redirect, redirect_target) = parse_redirect(&page.content);
         let relative_path =
             namespace_mapper.title_to_relative_path(paths, &page.title, is_redirect);
@@ -1357,7 +1350,7 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
 
         let remote_hash = compute_hash(&page.content);
         let ledger_entry = ledger_by_title.get(&key).cloned();
-        remove_stale_synced_path_if_safe(
+        let stale_synced_path = stale_synced_path_for_removal(
             paths,
             &ledger_entry,
             &relative_path,
@@ -1376,6 +1369,9 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
         if let Some(local_hash) = &local_hash
             && local_hash == &remote_hash
         {
+            if remove_stale_synced_path(stale_synced_path.as_deref())? {
+                files_changed = true;
+            }
             upsert_sync_ledger(
                 &connection,
                 page,
@@ -1394,6 +1390,7 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
                     wiki_modified_at: Some(page.timestamp.clone()),
                 },
             );
+            note_pull_checkpoint(&mut max_timestamp, &page.timestamp);
             report.skipped += 1;
             report.pulled += 1;
             report.pages.push(PullPageResult {
@@ -1417,7 +1414,8 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
         let existed_before = absolute_path.exists();
         fs::write(&absolute_path, &page.content)
             .with_context(|| format!("failed to write {}", absolute_path.display()))?;
-        wrote_files = true;
+        files_changed = true;
+        remove_stale_synced_path(stale_synced_path.as_deref())?;
         upsert_sync_ledger(
             &connection,
             page,
@@ -1436,6 +1434,7 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
                 wiki_modified_at: Some(page.timestamp.clone()),
             },
         );
+        note_pull_checkpoint(&mut max_timestamp, &page.timestamp);
 
         report.pulled += 1;
         if existed_before {
@@ -1461,7 +1460,7 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
         set_sync_config(&connection, &config_key, &timestamp)?;
     }
 
-    if wrote_files {
+    if files_changed {
         report.reindex = Some(rebuild_index(paths, &ScanOptions::default())?);
     }
 
@@ -1516,22 +1515,31 @@ fn resolve_pages_to_pull<A: WikiReadApi>(
     Ok(titles.into_iter().collect())
 }
 
-fn remove_stale_synced_path_if_safe(
+fn note_pull_checkpoint(max_timestamp: &mut Option<String>, timestamp: &str) {
+    if max_timestamp
+        .as_ref()
+        .is_none_or(|current| timestamp > current.as_str())
+    {
+        *max_timestamp = Some(timestamp.to_string());
+    }
+}
+
+fn stale_synced_path_for_removal(
     paths: &ResolvedPaths,
     existing: &Option<SyncLedgerEntry>,
     target_relative_path: &str,
     overwrite_local: bool,
-) -> Result<()> {
+) -> Result<Option<PathBuf>> {
     let Some(existing) = existing else {
-        return Ok(());
+        return Ok(None);
     };
     if existing.relative_path == target_relative_path {
-        return Ok(());
+        return Ok(None);
     }
 
     let old_absolute = absolute_path_from_relative(paths, &existing.relative_path);
     if !old_absolute.exists() {
-        return Ok(());
+        return Ok(None);
     }
     validate_scoped_path(paths, &old_absolute)?;
 
@@ -1551,13 +1559,21 @@ fn remove_stale_synced_path_if_safe(
         );
     }
 
-    fs::remove_file(&old_absolute).with_context(|| {
+    Ok(Some(old_absolute))
+}
+
+fn remove_stale_synced_path(stale_path: Option<&Path>) -> Result<bool> {
+    let Some(stale_path) = stale_path else {
+        return Ok(false);
+    };
+
+    fs::remove_file(stale_path).with_context(|| {
         format!(
             "failed to remove stale synced file {}",
-            old_absolute.display()
+            stale_path.display()
         )
     })?;
-    Ok(())
+    Ok(true)
 }
 
 fn pull_config_key(options: &PullOptions) -> Option<String> {
@@ -2424,6 +2440,114 @@ mod tests {
         let current = fs::read_to_string(paths.wiki_content_dir.join("Main").join("Alpha.wiki"))
             .expect("read local file");
         assert_eq!(current, "local edited");
+    }
+
+    #[test]
+    fn incremental_pull_does_not_advance_checkpoint_when_page_is_skipped() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+        fs::create_dir_all(&paths.state_dir).expect("create state");
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "local edited",
+        );
+
+        let connection = super::open_sync_connection(&paths).expect("open sync db");
+        super::initialize_sync_schema(&connection).expect("initialize sync schema");
+        super::set_sync_config(&connection, "last_pull_ns_0", "2026-02-01T00:00:00Z")
+            .expect("seed pull cursor");
+
+        let mut api = MockApi {
+            recent_changes: vec!["Alpha".to_string()],
+            ..Default::default()
+        };
+        let mut remote = base_page("Alpha", "remote version");
+        remote.timestamp = "2026-02-20T00:00:00Z".to_string();
+        api.page_contents.insert("Alpha".to_string(), remote);
+
+        let report = pull_from_remote_with_api(
+            &paths,
+            &PullOptions {
+                namespaces: vec![NS_MAIN],
+                category: None,
+                full: false,
+                overwrite_local: false,
+            },
+            &mut api,
+        )
+        .expect("incremental pull");
+
+        assert_eq!(report.skipped, 1);
+        let connection = super::open_sync_connection(&paths).expect("reopen sync db");
+        let checkpoint = super::get_sync_config(&connection, "last_pull_ns_0")
+            .expect("load pull cursor")
+            .expect("pull cursor");
+        assert_eq!(checkpoint, "2026-02-01T00:00:00Z");
+    }
+
+    #[test]
+    fn pull_preserves_old_path_when_redirect_target_has_local_conflict() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+        fs::create_dir_all(&paths.state_dir).expect("create state");
+
+        let mut api = MockApi::default();
+        api.all_pages_by_namespace
+            .insert(NS_MAIN, vec!["Alpha".to_string()]);
+        api.page_contents
+            .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+        pull_from_remote_with_api(
+            &paths,
+            &PullOptions {
+                namespaces: vec![NS_MAIN],
+                category: None,
+                full: true,
+                overwrite_local: false,
+            },
+            &mut api,
+        )
+        .expect("seed pull");
+
+        let redirect_path = paths
+            .wiki_content_dir
+            .join("Main")
+            .join("_redirects")
+            .join("Alpha.wiki");
+        write_file(&redirect_path, "conflicting local redirect");
+
+        let mut redirected = base_page("Alpha", "#REDIRECT [[Beta]]");
+        redirected.timestamp = "2026-02-20T00:00:00Z".to_string();
+        api.page_contents.insert("Alpha".to_string(), redirected);
+
+        let report = pull_from_remote_with_api(
+            &paths,
+            &PullOptions {
+                namespaces: vec![NS_MAIN],
+                category: None,
+                full: true,
+                overwrite_local: false,
+            },
+            &mut api,
+        )
+        .expect("pull with redirect conflict");
+
+        assert_eq!(report.skipped, 1);
+        assert!(
+            paths
+                .wiki_content_dir
+                .join("Main")
+                .join("Alpha.wiki")
+                .exists()
+        );
+        let redirect_content = fs::read_to_string(&redirect_path).expect("read redirect path");
+        assert_eq!(redirect_content, "conflicting local redirect");
     }
 
     #[test]

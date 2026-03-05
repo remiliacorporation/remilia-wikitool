@@ -167,10 +167,19 @@ pub fn fetch_mediawiki_page(
     parsed: &ParsedWikiUrl,
     options: &ExternalFetchOptions,
 ) -> Result<Option<ExternalFetchResult>> {
-    let client = external_client()?;
+    let mut client = external_client()?;
+    fetch_mediawiki_page_with_client(&mut client, title, parsed, options)
+}
+
+fn fetch_mediawiki_page_with_client(
+    client: &mut ExternalClient,
+    title: &str,
+    parsed: &ParsedWikiUrl,
+    options: &ExternalFetchOptions,
+) -> Result<Option<ExternalFetchResult>> {
     let mut candidate_errors = Vec::new();
     for api_url in &parsed.api_candidates {
-        let response = mediawiki_query_content(&client, api_url, title, options.format);
+        let response = mediawiki_query_content(client, api_url, title, options.format);
         match response {
             Ok(Some(result)) => {
                 return Ok(Some(ExternalFetchResult {
@@ -199,11 +208,11 @@ pub fn list_subpages(
     parsed: &ParsedWikiUrl,
     limit: usize,
 ) -> Result<Vec<String>> {
-    let client = external_client()?;
+    let mut client = external_client()?;
     let prefix = format!("{}/", parent_title.trim_end_matches('/'));
     let mut candidate_errors = Vec::new();
     for api_url in &parsed.api_candidates {
-        let response = mediawiki_query_allpages(&client, api_url, &prefix, limit.max(1));
+        let response = mediawiki_query_allpages(&mut client, api_url, &prefix, limit.max(1));
         match response {
             Ok(value) => return Ok(value),
             Err(error) => candidate_errors.push(format!("{api_url}: {error:#}")),
@@ -224,16 +233,17 @@ pub fn fetch_pages_by_titles(
     parsed: &ParsedWikiUrl,
     options: &ExternalFetchOptions,
 ) -> Result<Vec<ExternalFetchResult>> {
+    let mut client = external_client()?;
     let mut output = Vec::new();
     let mut failures = Vec::new();
     for title in titles {
-        match fetch_mediawiki_page(title, parsed, options) {
+        match fetch_mediawiki_page_with_client(&mut client, title, parsed, options) {
             Ok(Some(page)) => output.push(page),
             Ok(None) => {}
             Err(error) => failures.push(format!("{title}: {error:#}")),
         }
     }
-    if !failures.is_empty() {
+    if output.is_empty() && !failures.is_empty() {
         bail!(
             "failed to fetch {} page(s) from {}:\n  - {}",
             failures.len(),
@@ -317,7 +327,7 @@ pub fn default_export_path(
 }
 
 fn mediawiki_query_content(
-    client: &ExternalClient,
+    client: &mut ExternalClient,
     api_url: &str,
     title: &str,
     format: ExternalFetchFormat,
@@ -396,7 +406,7 @@ fn mediawiki_query_content(
 }
 
 fn mediawiki_query_allpages(
-    client: &ExternalClient,
+    client: &mut ExternalClient,
     api_url: &str,
     prefix: &str,
     limit: usize,
@@ -590,7 +600,7 @@ struct ExternalClient {
 }
 
 impl ExternalClient {
-    fn request_json(&self, api_url: &str, params: &[(&str, String)]) -> Result<Value> {
+    fn request_json(&mut self, api_url: &str, params: &[(&str, String)]) -> Result<Value> {
         let mut pairs = Vec::with_capacity(params.len() + 2);
         pairs.push(("format".to_string(), "json".to_string()));
         pairs.push(("formatversion".to_string(), "2".to_string()));
@@ -601,9 +611,8 @@ impl ExternalClient {
         }
 
         let mut last_error = None::<String>;
-        let mut state = self.last_request_at;
         for attempt in 0..=self.retries {
-            if let Some(last) = state {
+            if let Some(last) = self.last_request_at {
                 let elapsed = last.elapsed();
                 let min_delay = Duration::from_millis(100);
                 if elapsed < min_delay {
@@ -617,7 +626,7 @@ impl ExternalClient {
                 .header("User-Agent", self.user_agent.clone())
                 .query(&pairs)
                 .send();
-            state = Some(Instant::now());
+            self.last_request_at = Some(Instant::now());
 
             match response {
                 Ok(response) => {

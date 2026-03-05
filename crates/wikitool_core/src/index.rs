@@ -7,7 +7,9 @@ use anyhow::{Context, Result};
 use rusqlite::{Connection, params, params_from_iter};
 use serde::Serialize;
 
-use crate::filesystem::{Namespace, ScanOptions, ScanStats, ScannedFile, scan_files};
+use crate::filesystem::{
+    Namespace, ScanOptions, ScanStats, ScannedFile, scan_files, validate_scoped_path,
+};
 use crate::runtime::ResolvedPaths;
 use crate::support::{ensure_db_parent, normalize_path, table_exists, unix_timestamp};
 
@@ -592,6 +594,7 @@ pub fn build_local_context(
         None => return Ok(None),
     };
     let absolute = absolute_path_from_relative(paths, &page.relative_path);
+    validate_scoped_path(paths, &absolute)?;
     let content = fs::read_to_string(&absolute)
         .with_context(|| format!("failed to read indexed source file {}", absolute.display()))?;
 
@@ -1199,8 +1202,10 @@ fn load_chunks_for_query(
         return Ok((hits, "ordered".to_string()));
     }
 
-    let content = fs::read_to_string(absolute_path_from_relative(paths, source_relative_path))
-        .with_context(|| format!("failed to read indexed source file {source_relative_path}"))?;
+    let absolute = absolute_path_from_relative(paths, source_relative_path);
+    validate_scoped_path(paths, &absolute)?;
+    let content = fs::read_to_string(&absolute)
+        .with_context(|| format!("failed to read indexed source file {}", absolute.display()))?;
     let mut chunks = chunk_article_context(&content)
         .into_iter()
         .map(|row| LocalContextChunk {
@@ -3083,6 +3088,43 @@ mod tests {
         assert_eq!(
             beta_context.backlinks,
             vec!["Alpha".to_string(), "Gamma".to_string()]
+        );
+    }
+
+    #[test]
+    fn build_local_context_rejects_indexed_path_escape() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+        fs::create_dir_all(&paths.state_dir).expect("create state");
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "Alpha body",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let connection = super::open_connection(&paths.db_path).expect("open db");
+        connection
+            .execute_batch("PRAGMA foreign_keys = OFF;")
+            .expect("disable foreign keys");
+        connection
+            .execute(
+                "UPDATE indexed_pages SET relative_path = ?1 WHERE title = 'Alpha'",
+                ["../outside.txt"],
+            )
+            .expect("tamper indexed path");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+
+        let error = build_local_context(&paths, "Alpha").expect_err("must reject escaped path");
+        assert!(
+            error
+                .to_string()
+                .contains("path escapes scoped runtime directories")
         );
     }
 
