@@ -431,7 +431,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         .context("failed to commit index rebuild transaction")?;
 
     // Rebuild FTS5 index if the virtual table exists (created by migration v003)
-    rebuild_fts_index(&connection);
+    rebuild_fts_index(&connection)?;
 
     Ok(RebuildReport {
         db_path: normalize_path(&paths.db_path),
@@ -2861,16 +2861,20 @@ fn fts_table_exists(connection: &Connection, table_name: &str) -> bool {
     table_exists(connection, table_name).unwrap_or(false)
 }
 
-fn rebuild_fts_index(connection: &Connection) {
+fn rebuild_fts_index(connection: &Connection) -> Result<()> {
     if fts_table_exists(connection, "indexed_pages_fts") {
-        let _ = connection
-            .execute_batch("INSERT INTO indexed_pages_fts(indexed_pages_fts) VALUES('rebuild')");
+        connection
+            .execute_batch("INSERT INTO indexed_pages_fts(indexed_pages_fts) VALUES('rebuild')")
+            .context("failed to rebuild indexed_pages_fts")?;
     }
     if fts_table_exists(connection, "indexed_page_chunks_fts") {
-        let _ = connection.execute_batch(
-            "INSERT INTO indexed_page_chunks_fts(indexed_page_chunks_fts) VALUES('rebuild')",
-        );
+        connection
+            .execute_batch(
+                "INSERT INTO indexed_page_chunks_fts(indexed_page_chunks_fts) VALUES('rebuild')",
+            )
+            .context("failed to rebuild indexed_page_chunks_fts")?;
     }
+    Ok(())
 }
 
 fn normalize_path(path: &Path) -> String {

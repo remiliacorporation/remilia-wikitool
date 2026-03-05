@@ -363,7 +363,22 @@ cat > "$STUB_PATH" << 'WIKIEOF'
 '''Alpha Draft''' references [[Alpha]] and [[Missing Page]].
 WIKIEOF
 OUTPUT=$(wt "$PROJ" workflow authoring-pack "Alpha" --stub-path "$STUB_PATH" --related-limit 6 --chunk-limit 4 --token-budget 220 --max-pages 2 --template-limit 6 --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"Found"' && echo "$OUTPUT" | grep -q '"suggested_templates"' && echo "$OUTPUT" | grep -q '"template_baseline"' && echo "$OUTPUT" | grep -q '"stub_missing_links"'; then
+AUTHORING_PACK_JSON="$TMPDIR_ROOT/authoring-pack.json"
+printf '%s' "$OUTPUT" > "$AUTHORING_PACK_JSON"
+if python3 - "$AUTHORING_PACK_JSON" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+report = payload.get("Found")
+if not isinstance(report, dict):
+    raise SystemExit(1)
+required = ("suggested_templates", "template_baseline", "stub_missing_links")
+if any(key not in report for key in required):
+    raise SystemExit(1)
+PY
+then
     pass "workflow authoring-pack emits authoring knowledge pack"
 else
     fail "workflow authoring-pack emits authoring knowledge pack (got: $OUTPUT)"

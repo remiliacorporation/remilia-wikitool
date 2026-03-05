@@ -20,7 +20,9 @@ use wikitool_core::external::{
     fetch_page_by_url, fetch_pages_by_titles, generate_frontmatter, list_subpages, parse_wiki_url,
     sanitize_filename, wikitext_to_markdown,
 };
-use wikitool_core::filesystem::{ScanOptions, ScanStats, scan_files, scan_stats};
+use wikitool_core::filesystem::{
+    ScanOptions, ScanStats, scan_files, scan_stats, validate_scoped_path,
+};
 use wikitool_core::import_cargo::{
     CargoImportOptions, ImportSourceType, ImportUpdateMode, import_to_cargo,
 };
@@ -39,7 +41,7 @@ use wikitool_core::inspect::{
 use wikitool_core::lint::lint_modules;
 use wikitool_core::migrate::pending_migration_count;
 use wikitool_core::runtime::{
-    InitOptions, MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext,
+    InitOptions, MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext, ResolvedPaths,
     embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
     lsp_settings_json, materialize_parser_config, resolve_paths,
 };
@@ -1118,7 +1120,9 @@ fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
         let created = materialize_custom_namespace_dirs(&paths, &refreshed)?;
         created_namespace_dirs = created.len();
         discovered_namespaces = discovered.len();
-        if namespace_discovery_status.starts_with("skipped") || namespace_discovery_status.starts_with("failed") {
+        if namespace_discovery_status.starts_with("skipped")
+            || namespace_discovery_status.starts_with("failed")
+        {
             // Keep the status set by the error handler above.
         } else {
             namespace_discovery_status = "ok".to_string();
@@ -3356,19 +3360,7 @@ fn run_workflow_authoring_pack(
     let paths = resolve_runtime_paths(runtime)?;
     let topic = normalize_option(args.topic.as_deref())
         .or_else(|| derive_topic_from_stub_path(args.stub_path.as_deref()));
-    let stub_content = if let Some(path) = args.stub_path.as_deref() {
-        let absolute = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            paths.project_root.join(path)
-        };
-        Some(
-            fs::read_to_string(&absolute)
-                .with_context(|| format!("failed to read {}", normalize_path(&absolute)))?,
-        )
-    } else {
-        None
-    };
+    let stub_content = load_workflow_stub_content(&paths, args.stub_path.as_deref())?;
 
     let options = AuthoringKnowledgePackOptions {
         related_page_limit: args.related_limit,
@@ -3390,10 +3382,6 @@ fn run_workflow_authoring_pack(
 
     if format == "json" {
         println!("{}", serde_json::to_string_pretty(&pack)?);
-        println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-        if runtime.diagnostics {
-            println!("\n[diagnostics]\n{}", paths.diagnostics());
-        }
         return Ok(());
     }
 
@@ -3544,6 +3532,24 @@ fn run_workflow_authoring_pack(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+fn load_workflow_stub_content(
+    paths: &ResolvedPaths,
+    stub_path: Option<&Path>,
+) -> Result<Option<String>> {
+    let Some(path) = stub_path else {
+        return Ok(None);
+    };
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        paths.project_root.join(path)
+    };
+    validate_scoped_path(paths, &absolute)?;
+    let content = fs::read_to_string(&absolute)
+        .with_context(|| format!("failed to read {}", normalize_path(&absolute)))?;
+    Ok(Some(content))
 }
 
 fn run_release(args: ReleaseArgs) -> Result<()> {

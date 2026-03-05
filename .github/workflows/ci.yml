@@ -77,6 +77,20 @@ jobs:
           path: dist/release-matrix/wikitool-${{ matrix.target }}
           if-no-files-found: error
 
+  rust-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Cargo tests
+        working-directory: tools/wikitool
+        run: cargo test --workspace
+      - name: Offline CLI regression testbench
+        working-directory: tools/wikitool
+        run: bash testbench/cli_tests.sh
+
   rust-nightly-lint:
     runs-on: ubuntu-latest
 
