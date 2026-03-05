@@ -153,10 +153,13 @@ pub fn fetch_page_by_url(
     url: &str,
     options: &ExternalFetchOptions,
 ) -> Result<Option<ExternalFetchResult>> {
-    if let Some(parsed) = parse_wiki_url(url)
-        && let Some(result) = fetch_mediawiki_page(&parsed.title, &parsed, options)?
-    {
-        return Ok(Some(result));
+    if let Some(parsed) = parse_wiki_url(url) {
+        let mut client = external_client()?;
+        match fetch_mediawiki_page_with_client(&mut client, &parsed.title, &parsed, options)? {
+            MediaWikiFetchOutcome::Found(result) => return Ok(Some(result)),
+            MediaWikiFetchOutcome::Missing => return Ok(None),
+            MediaWikiFetchOutcome::NotExportable => {}
+        }
     }
 
     fetch_web_url(url, options.max_bytes).map(Some)
@@ -168,7 +171,10 @@ pub fn fetch_mediawiki_page(
     options: &ExternalFetchOptions,
 ) -> Result<Option<ExternalFetchResult>> {
     let mut client = external_client()?;
-    fetch_mediawiki_page_with_client(&mut client, title, parsed, options)
+    match fetch_mediawiki_page_with_client(&mut client, title, parsed, options)? {
+        MediaWikiFetchOutcome::Found(result) => Ok(Some(result)),
+        MediaWikiFetchOutcome::Missing | MediaWikiFetchOutcome::NotExportable => Ok(None),
+    }
 }
 
 fn fetch_mediawiki_page_with_client(
@@ -176,22 +182,27 @@ fn fetch_mediawiki_page_with_client(
     title: &str,
     parsed: &ParsedWikiUrl,
     options: &ExternalFetchOptions,
-) -> Result<Option<ExternalFetchResult>> {
+) -> Result<MediaWikiFetchOutcome> {
     let mut candidate_errors = Vec::new();
+    let mut saw_not_exportable = false;
     for api_url in &parsed.api_candidates {
-        let response = mediawiki_query_content(client, api_url, title, options.format);
+        let response = mediawiki_query_content(client, api_url, title, options);
         match response {
-            Ok(Some(result)) => {
-                return Ok(Some(ExternalFetchResult {
+            Ok(MediaWikiFetchOutcome::Found(result)) => {
+                return Ok(MediaWikiFetchOutcome::Found(ExternalFetchResult {
                     source_wiki: "mediawiki".to_string(),
                     source_domain: parsed.domain.clone(),
                     url: format!("{}{}", parsed.base_url, encode_title(&result.title)),
                     ..result
                 }));
             }
-            Ok(None) => return Ok(None),
+            Ok(MediaWikiFetchOutcome::Missing) => return Ok(MediaWikiFetchOutcome::Missing),
+            Ok(MediaWikiFetchOutcome::NotExportable) => saw_not_exportable = true,
             Err(error) => candidate_errors.push(format!("{api_url}: {error:#}")),
         }
+    }
+    if saw_not_exportable {
+        return Ok(MediaWikiFetchOutcome::NotExportable);
     }
     if !candidate_errors.is_empty() {
         bail!(
@@ -200,7 +211,7 @@ fn fetch_mediawiki_page_with_client(
             candidate_errors.join("\n  - ")
         );
     }
-    Ok(None)
+    Ok(MediaWikiFetchOutcome::NotExportable)
 }
 
 pub fn list_subpages(
@@ -238,8 +249,8 @@ pub fn fetch_pages_by_titles(
     let mut failures = Vec::new();
     for title in titles {
         match fetch_mediawiki_page_with_client(&mut client, title, parsed, options) {
-            Ok(Some(page)) => output.push(page),
-            Ok(None) => {}
+            Ok(MediaWikiFetchOutcome::Found(page)) => output.push(page),
+            Ok(MediaWikiFetchOutcome::Missing | MediaWikiFetchOutcome::NotExportable) => {}
             Err(error) => failures.push(format!("{title}: {error:#}")),
         }
     }
@@ -330,8 +341,8 @@ fn mediawiki_query_content(
     client: &mut ExternalClient,
     api_url: &str,
     title: &str,
-    format: ExternalFetchFormat,
-) -> Result<Option<ExternalFetchResult>> {
+    options: &ExternalFetchOptions,
+) -> Result<MediaWikiFetchOutcome> {
     let mut params = vec![
         ("action", "query".to_string()),
         ("titles", title.to_string()),
@@ -341,11 +352,19 @@ fn mediawiki_query_content(
         ("exintro", "1".to_string()),
         ("explaintext", "1".to_string()),
     ];
-    if format == ExternalFetchFormat::Html {
+    if options.format == ExternalFetchFormat::Html {
         params.push(("rvparse", "1".to_string()));
     }
 
     let payload = client.request_json(api_url, &params)?;
+    parse_mediawiki_content_payload(&payload, title, options)
+}
+
+fn parse_mediawiki_content_payload(
+    payload: &Value,
+    requested_title: &str,
+    options: &ExternalFetchOptions,
+) -> Result<MediaWikiFetchOutcome> {
     let page = payload
         .get("query")
         .and_then(|value| value.get("pages"))
@@ -354,18 +373,18 @@ fn mediawiki_query_content(
         .ok_or_else(|| anyhow::anyhow!("invalid MediaWiki response shape"))?;
 
     if page.get("missing").is_some() {
-        return Ok(None);
+        return Ok(MediaWikiFetchOutcome::Missing);
     }
 
     let title = page
         .get("title")
         .and_then(Value::as_str)
-        .unwrap_or(title)
+        .unwrap_or(requested_title)
         .to_string();
     let extract = page
         .get("extract")
         .and_then(Value::as_str)
-        .map(ToString::to_string);
+        .map(|value| truncate_to_byte_limit(value, options.max_bytes));
 
     let revision = match page
         .get("revisions")
@@ -373,7 +392,7 @@ fn mediawiki_query_content(
         .and_then(|revisions| revisions.first())
     {
         Some(revision) => revision,
-        None => return Ok(None),
+        None => return Ok(MediaWikiFetchOutcome::NotExportable),
     };
     let content = match revision
         .get("slots")
@@ -381,8 +400,8 @@ fn mediawiki_query_content(
         .and_then(|value| value.get("content"))
         .and_then(Value::as_str)
     {
-        Some(content) => content.to_string(),
-        None => return Ok(None),
+        Some(content) => truncate_to_byte_limit(content, options.max_bytes),
+        None => return Ok(MediaWikiFetchOutcome::NotExportable),
     };
     let timestamp = revision
         .get("timestamp")
@@ -390,7 +409,7 @@ fn mediawiki_query_content(
         .map(ToString::to_string)
         .unwrap_or_else(now_timestamp_string);
 
-    Ok(Some(ExternalFetchResult {
+    Ok(MediaWikiFetchOutcome::Found(ExternalFetchResult {
         title,
         content,
         timestamp,
@@ -398,7 +417,7 @@ fn mediawiki_query_content(
         url: String::new(),
         source_wiki: String::new(),
         source_domain: String::new(),
-        content_format: match format {
+        content_format: match options.format {
             ExternalFetchFormat::Wikitext => "wikitext".to_string(),
             ExternalFetchFormat::Html => "html".to_string(),
         },
@@ -464,11 +483,7 @@ fn fetch_web_url(url: &str, max_bytes: usize) -> Result<ExternalFetchResult> {
         bail!("unsupported content-type: {content_type}");
     }
     let text = response.text().context("failed to read response body")?;
-    let content = if text.len() > max_bytes {
-        text.chars().take(max_bytes).collect::<String>()
-    } else {
-        text
-    };
+    let content = truncate_to_byte_limit(&text, max_bytes);
 
     let parsed_url = Url::parse(&final_url).ok();
     let title = parsed_url
@@ -599,6 +614,12 @@ struct ExternalClient {
     last_request_at: Option<Instant>,
 }
 
+enum MediaWikiFetchOutcome {
+    Found(ExternalFetchResult),
+    Missing,
+    NotExportable,
+}
+
 impl ExternalClient {
     fn request_json(&mut self, api_url: &str, params: &[(&str, String)]) -> Result<Value> {
         let mut pairs = Vec::with_capacity(params.len() + 2);
@@ -699,12 +720,27 @@ fn external_client() -> Result<ExternalClient> {
     })
 }
 
+fn truncate_to_byte_limit(value: &str, max_bytes: usize) -> String {
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+
+    let mut end = max_bytes.min(value.len());
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        ExportFormat, convert_heading, convert_internal_links, default_export_path, parse_wiki_url,
-        sanitize_filename, wikitext_to_markdown,
+        ExportFormat, ExternalFetchFormat, ExternalFetchOptions, MediaWikiFetchOutcome,
+        convert_heading, convert_internal_links, default_export_path,
+        parse_mediawiki_content_payload, parse_wiki_url, sanitize_filename, truncate_to_byte_limit,
+        wikitext_to_markdown,
     };
+    use serde_json::json;
 
     #[test]
     fn parse_wiki_url_supports_wiki_and_index_forms() {
@@ -746,5 +782,77 @@ mod tests {
         let root = std::path::Path::new("/tmp/wiki");
         let file = default_export_path(root, "Alpha", false, ExportFormat::Markdown).expect("path");
         assert!(file.ends_with("wikitool_exports/Alpha.md"));
+    }
+
+    #[test]
+    fn truncate_to_byte_limit_preserves_char_boundaries() {
+        assert_eq!(truncate_to_byte_limit("abcd", 3), "abc");
+        assert_eq!(truncate_to_byte_limit("éclair", 1), "");
+        assert_eq!(truncate_to_byte_limit("éclair", 2), "é");
+    }
+
+    #[test]
+    fn mediawiki_payload_distinguishes_missing_from_not_exportable() {
+        let options = ExternalFetchOptions {
+            format: ExternalFetchFormat::Wikitext,
+            max_bytes: 8,
+        };
+        let missing = json!({
+            "query": {
+                "pages": [{
+                    "title": "Missing",
+                    "missing": true
+                }]
+            }
+        });
+        assert!(matches!(
+            parse_mediawiki_content_payload(&missing, "Missing", &options).expect("missing"),
+            MediaWikiFetchOutcome::Missing
+        ));
+
+        let not_exportable = json!({
+            "query": {
+                "pages": [{
+                    "title": "Special:Page"
+                }]
+            }
+        });
+        assert!(matches!(
+            parse_mediawiki_content_payload(&not_exportable, "Special:Page", &options)
+                .expect("not exportable"),
+            MediaWikiFetchOutcome::NotExportable
+        ));
+    }
+
+    #[test]
+    fn mediawiki_payload_applies_byte_limit_to_content_and_extract() {
+        let options = ExternalFetchOptions {
+            format: ExternalFetchFormat::Wikitext,
+            max_bytes: 5,
+        };
+        let payload = json!({
+            "query": {
+                "pages": [{
+                    "title": "Alpha",
+                    "extract": "123456789",
+                    "revisions": [{
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "slots": {
+                            "main": {
+                                "content": "abcdefghi"
+                            }
+                        }
+                    }]
+                }]
+            }
+        });
+
+        let MediaWikiFetchOutcome::Found(result) =
+            parse_mediawiki_content_payload(&payload, "Alpha", &options).expect("payload")
+        else {
+            panic!("expected found result");
+        };
+        assert_eq!(result.content, "abcde");
+        assert_eq!(result.extract.as_deref(), Some("12345"));
     }
 }

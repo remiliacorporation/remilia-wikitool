@@ -789,13 +789,18 @@ pub fn import_extension_docs_with_api<A: DocsApi>(
     for extension in normalize_extensions(&options.extensions) {
         let main_page = format!("Extension:{extension}");
         let mut pages_to_fetch = vec![main_page.clone()];
+        let mut unit_failures = Vec::new();
         if options.include_subpages {
-            let mut subpages = api.get_subpages(
+            match api.get_subpages(
                 &format!("Extension:{extension}/"),
                 DOCS_NAMESPACE_MAIN,
                 usize::MAX,
-            )?;
-            pages_to_fetch.append(&mut subpages);
+            ) {
+                Ok(mut subpages) => pages_to_fetch.append(&mut subpages),
+                Err(error) => {
+                    unit_failures.push(format!("{extension}: failed to list subpages: {error}"));
+                }
+            }
         }
         dedupe_titles_in_order(&mut pages_to_fetch);
 
@@ -809,11 +814,19 @@ pub fn import_extension_docs_with_api<A: DocsApi>(
                         content: page.content,
                     });
                 }
-                Ok(None) => {}
+                Ok(None) => {
+                    unit_failures
+                        .push(format!("{extension}: page missing during refresh: {title}"));
+                }
                 Err(error) => {
-                    failures.push(format!("{extension}: failed to fetch {title}: {error}"));
+                    unit_failures.push(format!("{extension}: failed to fetch {title}: {error}"));
                 }
             }
+        }
+
+        if !unit_failures.is_empty() {
+            failures.extend(unit_failures);
+            continue;
         }
 
         if fetched_pages.is_empty() {
@@ -878,28 +891,43 @@ pub fn import_technical_docs_with_api<A: DocsApi>(
 
     for task in &options.tasks {
         let mut pages_to_fetch = Vec::new();
+        let mut unit_failures = Vec::new();
         if let Some(page_title) = task.page_title.as_deref() {
             let normalized = normalize_title(page_title);
             if !normalized.is_empty() {
                 pages_to_fetch.push(normalized.clone());
                 if task.include_subpages {
-                    let mut subpages = api.get_subpages(
+                    match api.get_subpages(
                         &format!("{normalized}/"),
                         DOCS_NAMESPACE_MAIN,
                         options.limit.max(1),
-                    )?;
-                    pages_to_fetch.append(&mut subpages);
+                    ) {
+                        Ok(mut subpages) => pages_to_fetch.append(&mut subpages),
+                        Err(error) => {
+                            unit_failures.push(format!(
+                                "{}: failed to list subpages for {normalized}: {error}",
+                                task.doc_type.as_str()
+                            ));
+                        }
+                    }
                 }
             }
         } else {
             pages_to_fetch.push(task.doc_type.main_page().to_string());
             if task.include_subpages {
-                let mut subpages = api.get_subpages(
+                match api.get_subpages(
                     task.doc_type.subpage_prefix(),
                     DOCS_NAMESPACE_MAIN,
                     options.limit.max(1),
-                )?;
-                pages_to_fetch.append(&mut subpages);
+                ) {
+                    Ok(mut subpages) => pages_to_fetch.append(&mut subpages),
+                    Err(error) => {
+                        unit_failures.push(format!(
+                            "{}: failed to list subpages: {error}",
+                            task.doc_type.as_str()
+                        ));
+                    }
+                }
             }
         }
         dedupe_titles_in_order(&mut pages_to_fetch);
@@ -914,14 +942,24 @@ pub fn import_technical_docs_with_api<A: DocsApi>(
                         content: page.content,
                     });
                 }
-                Ok(None) => {}
+                Ok(None) => {
+                    unit_failures.push(format!(
+                        "{}: page missing during refresh: {title}",
+                        task.doc_type.as_str()
+                    ));
+                }
                 Err(error) => {
-                    failures.push(format!(
+                    unit_failures.push(format!(
                         "{}: failed to fetch {title}: {error}",
                         task.doc_type.as_str()
                     ));
                 }
             }
+        }
+
+        if !unit_failures.is_empty() {
+            failures.extend(unit_failures);
+            continue;
         }
 
         if fetched_pages.is_empty() {
@@ -2133,6 +2171,8 @@ mod tests {
     struct MockDocsApi {
         pages: BTreeMap<String, String>,
         prefixes: BTreeMap<String, Vec<String>>,
+        page_errors: BTreeMap<String, String>,
+        prefix_errors: BTreeMap<String, String>,
         request_count: usize,
     }
 
@@ -2141,6 +2181,8 @@ mod tests {
             Self {
                 pages: BTreeMap::new(),
                 prefixes: BTreeMap::new(),
+                page_errors: BTreeMap::new(),
+                prefix_errors: BTreeMap::new(),
                 request_count: 0,
             }
         }
@@ -2157,6 +2199,12 @@ mod tests {
             );
             self
         }
+
+        fn with_page_error(mut self, title: &str, error: &str) -> Self {
+            self.page_errors
+                .insert(title.to_string(), error.to_string());
+            self
+        }
     }
 
     impl DocsApi for MockDocsApi {
@@ -2167,6 +2215,9 @@ mod tests {
             limit: usize,
         ) -> anyhow::Result<Vec<String>> {
             self.request_count += 1;
+            if let Some(error) = self.prefix_errors.get(prefix) {
+                anyhow::bail!("{error}");
+            }
             let mut out = self.prefixes.get(prefix).cloned().unwrap_or_default();
             out.truncate(limit);
             Ok(out)
@@ -2174,6 +2225,9 @@ mod tests {
 
         fn get_page(&mut self, title: &str) -> anyhow::Result<Option<RemoteDocsPage>> {
             self.request_count += 1;
+            if let Some(error) = self.page_errors.get(title) {
+                anyhow::bail!("{error}");
+            }
             Ok(self.pages.get(title).map(|content| RemoteDocsPage {
                 title: title.to_string(),
                 timestamp: "2026-01-01T00:00:00Z".to_string(),
@@ -2296,6 +2350,132 @@ mod tests {
         let report = update_outdated_docs_with_api(&runtime.paths, &mut api).expect("update docs");
         assert!(report.updated_extensions >= 1);
         assert!(report.updated_technical_types >= 1);
+    }
+
+    #[test]
+    fn update_outdated_docs_keeps_extension_rows_on_partial_refresh_failure() {
+        let runtime = TestRuntime::new().expect("runtime");
+        let mut seed_api = MockDocsApi::new()
+            .with_page("Extension:Echo", "{{Extension|version=1.0}}")
+            .with_page("Extension:Echo/Config", "old config")
+            .with_prefix("Extension:Echo/", vec!["Extension:Echo/Config"]);
+
+        import_extension_docs_with_api(
+            &runtime.paths,
+            &DocsImportOptions {
+                extensions: vec!["Echo".to_string()],
+                include_subpages: true,
+            },
+            &mut seed_api,
+        )
+        .expect("seed extension docs");
+
+        let connection = open_docs_connection(&runtime.paths).expect("open docs connection");
+        connection
+            .execute("UPDATE extension_docs SET expires_at_unix = 1", [])
+            .expect("expire extension docs");
+
+        let mut failing_api = MockDocsApi::new()
+            .with_page("Extension:Echo", "{{Extension|version=2.0}}")
+            .with_prefix("Extension:Echo/", vec!["Extension:Echo/Config"])
+            .with_page_error("Extension:Echo/Config", "transient failure");
+
+        let report = update_outdated_docs_with_api(&runtime.paths, &mut failing_api)
+            .expect("update outdated docs");
+        assert_eq!(report.updated_extensions, 0);
+        assert!(
+            report
+                .failures
+                .iter()
+                .any(|failure| failure.contains("Extension:Echo/Config"))
+        );
+
+        let connection = open_docs_connection(&runtime.paths).expect("open docs connection");
+        let main_page_content: String = connection
+            .query_row(
+                "SELECT content FROM extension_doc_pages WHERE extension_name = 'Echo' AND page_title = 'Extension:Echo'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load extension main page content");
+        assert_eq!(main_page_content, "{{Extension|version=1.0}}");
+        let page_content: String = connection
+            .query_row(
+                "SELECT content FROM extension_doc_pages WHERE extension_name = 'Echo' AND page_title = 'Extension:Echo/Config'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load extension page content");
+        assert_eq!(page_content, "old config");
+        let expires_at_unix: i64 = connection
+            .query_row(
+                "SELECT expires_at_unix FROM extension_docs WHERE extension_name = 'Echo'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load extension expiry");
+        assert_eq!(expires_at_unix, 1);
+    }
+
+    #[test]
+    fn update_outdated_docs_keeps_technical_rows_on_partial_refresh_failure() {
+        let runtime = TestRuntime::new().expect("runtime");
+        let mut seed_api = MockDocsApi::new()
+            .with_page("Manual:Hooks", "old hooks")
+            .with_page("Manual:Hooks/PageSave", "old subpage")
+            .with_prefix("Manual:Hooks/", vec!["Manual:Hooks/PageSave"]);
+
+        import_technical_docs_with_api(
+            &runtime.paths,
+            &DocsImportTechnicalOptions {
+                tasks: vec![TechnicalImportTask {
+                    doc_type: TechnicalDocType::Hooks,
+                    page_title: None,
+                    include_subpages: true,
+                }],
+                limit: 20,
+            },
+            &mut seed_api,
+        )
+        .expect("seed technical docs");
+
+        let connection = open_docs_connection(&runtime.paths).expect("open docs connection");
+        connection
+            .execute("UPDATE technical_docs SET expires_at_unix = 1", [])
+            .expect("expire technical docs");
+
+        let mut failing_api = MockDocsApi::new()
+            .with_page("Manual:Hooks", "new hooks")
+            .with_prefix("Manual:Hooks/", vec!["Manual:Hooks/PageSave"])
+            .with_page_error("Manual:Hooks/PageSave", "transient failure");
+
+        let report = update_outdated_docs_with_api(&runtime.paths, &mut failing_api)
+            .expect("update outdated docs");
+        assert_eq!(report.updated_technical_types, 0);
+        assert!(
+            report
+                .failures
+                .iter()
+                .any(|failure| failure.contains("Manual:Hooks/PageSave"))
+        );
+
+        let connection = open_docs_connection(&runtime.paths).expect("open docs connection");
+        let page_content: String = connection
+            .query_row(
+                "SELECT content FROM technical_docs WHERE doc_type = 'hooks' AND page_title = 'Manual:Hooks/PageSave'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load technical page content");
+        assert_eq!(page_content, "old subpage");
+        let expires_at_unix: i64 = connection
+            .query_row(
+                "SELECT expires_at_unix FROM technical_docs WHERE doc_type = 'hooks' AND page_title = 'Manual:Hooks'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("load technical expiry");
+        assert_eq!(expires_at_unix, 1);
     }
 
     #[test]
