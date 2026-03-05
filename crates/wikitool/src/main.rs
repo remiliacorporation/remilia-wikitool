@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -7,11 +6,6 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use wikitool_core::config::{WikiConfig, WikiConfigPatch, load_config, patch_wiki_config};
 use wikitool_core::contracts::{command_surface, generate_fixture_snapshot};
 use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
-use wikitool_core::external::{
-    ExportFormat, ExternalFetchFormat, ExternalFetchOptions, default_export_path,
-    fetch_page_by_url, fetch_pages_by_titles, generate_frontmatter, list_subpages, parse_wiki_url,
-    sanitize_filename, wikitext_to_markdown,
-};
 use wikitool_core::filesystem::{
     ScanOptions, ScanStats, scan_files, scan_stats, validate_scoped_path,
 };
@@ -33,9 +27,9 @@ use wikitool_core::inspect::{
 use wikitool_core::lint::lint_modules;
 use wikitool_core::migrate::pending_migration_count;
 use wikitool_core::runtime::{
-    InitOptions, MIGRATIONS_POLICY_MESSAGE, PathOverrides, ResolutionContext, ResolvedPaths,
-    embedded_parser_config, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
-    lsp_settings_json, materialize_parser_config, resolve_paths,
+    InitOptions, MIGRATIONS_POLICY_MESSAGE, ResolvedPaths, embedded_parser_config,
+    ensure_runtime_ready_for_sync, init_layout, inspect_runtime, lsp_settings_json,
+    materialize_parser_config,
 };
 use wikitool_core::sync::{
     DiffChangeType, DiffOptions, ExternalSearchHit, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
@@ -44,8 +38,12 @@ use wikitool_core::sync::{
     push_to_remote_with_config, search_external_wiki_with_config,
 };
 
+mod cli_support;
 mod docs_cli;
+mod export_cli;
 mod release;
+
+use crate::cli_support::*;
 
 const LICENSE_AGPL: &str = include_str!("../../../LICENSE");
 const LICENSE_SSL: &str = include_str!("../../../LICENSE-SSL");
@@ -922,8 +920,8 @@ fn main() -> Result<()> {
         }
         Some(Commands::Validate) => run_validate(&runtime),
         Some(Commands::Lint(args)) => run_lint(&runtime, args),
-        Some(Commands::Fetch(args)) => run_fetch(&runtime, args),
-        Some(Commands::Export(args)) => run_export(&runtime, args),
+        Some(Commands::Fetch(args)) => export_cli::run_fetch(&runtime, args),
+        Some(Commands::Export(args)) => export_cli::run_export(&runtime, args),
         Some(Commands::Delete(args)) => run_delete(&runtime, args),
         Some(Commands::Db(DbArgs { command })) => match command {
             DbSubcommand::Stats => run_db_stats(&runtime),
@@ -1611,331 +1609,6 @@ fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
         println!("validate.status: failed");
         bail!("validation detected {issue_count} issue(s)")
     }
-}
-
-fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let format = ExternalFetchFormat::parse(&args.format)?;
-    let result = fetch_page_by_url(
-        &args.url,
-        &ExternalFetchOptions {
-            format,
-            max_bytes: 1_000_000,
-        },
-    )?
-    .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
-
-    println!("fetch");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("source_url: {}", args.url);
-    println!("resolved_url: {}", result.url);
-    println!("title: {}", result.title);
-    println!("source_wiki: {}", result.source_wiki);
-    println!("source_domain: {}", result.source_domain);
-    println!("content_format: {}", result.content_format);
-    println!("content_length: {}", result.content.len());
-
-    if args.save {
-        let safe_name = args
-            .name
-            .as_deref()
-            .map(sanitize_filename)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| {
-                let fallback = sanitize_filename(&result.title);
-                if fallback.is_empty() {
-                    "external-page".to_string()
-                } else {
-                    fallback
-                }
-            });
-        let relative_path = format!("reference/{}/{}.wiki", result.source_wiki, safe_name);
-        let absolute_path = paths.project_root.join(relative_path.replace('/', "\\"));
-        if let Some(parent) = absolute_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
-        }
-        std::fs::write(&absolute_path, result.content.as_bytes())
-            .with_context(|| format!("failed to write {}", normalize_path(&absolute_path)))?;
-        println!("saved: yes");
-        println!("saved_path: {}", normalize_path(&absolute_path));
-    } else {
-        println!("saved: no");
-        println!("content:");
-        println!("{}", result.content);
-    }
-
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
-fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let export_format = ExportFormat::parse(&args.format)?;
-    let fetch_options = ExternalFetchOptions {
-        format: ExternalFetchFormat::Wikitext,
-        max_bytes: 1_000_000,
-    };
-
-    if args.subpages {
-        let parsed = parse_wiki_url(&args.url).ok_or_else(|| {
-            anyhow::anyhow!("subpages export requires a recognizable MediaWiki URL")
-        })?;
-        let parent_title = parsed.title.trim_end_matches('/').to_string();
-        let mut all_pages = Vec::new();
-
-        if let Some(main_page) =
-            fetch_mediawiki_export_page(&parent_title, &parsed, &fetch_options)?
-        {
-            all_pages.push(main_page);
-        }
-
-        let subpage_titles = list_subpages(&parent_title, &parsed, 500)?;
-        let subpages = fetch_pages_by_titles(&subpage_titles, &parsed, &fetch_options)?;
-        all_pages.extend(subpages);
-        if all_pages.is_empty() {
-            bail!("no pages found for export target: {}", args.url);
-        }
-
-        if args.combined {
-            let combined = render_combined_export(
-                &all_pages,
-                export_format,
-                !args.no_frontmatter,
-                args.code_language.as_deref(),
-                &parsed.domain,
-                &args.url,
-                &parent_title,
-            );
-            let output_path = args.output.clone().or_else(|| {
-                default_export_path(&paths.project_root, &parent_title, false, export_format)
-            });
-            write_or_print_export(&combined, output_path.as_deref())?;
-
-            println!("export");
-            println!("mode: subpages_combined");
-            println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("source_url: {}", args.url);
-            println!("pages_exported: {}", all_pages.len());
-            println!("format: {}", args.format.to_ascii_lowercase());
-            if let Some(path) = output_path {
-                println!("output_path: {}", normalize_path(&path));
-            } else {
-                println!("output_path: <stdout>");
-            }
-        } else {
-            let output_dir = args
-                .output
-                .clone()
-                .or_else(|| {
-                    default_export_path(&paths.project_root, &parent_title, true, export_format)
-                })
-                .ok_or_else(|| {
-                    anyhow::anyhow!("output directory is required for subpage export")
-                })?;
-            std::fs::create_dir_all(&output_dir)
-                .with_context(|| format!("failed to create {}", normalize_path(&output_dir)))?;
-
-            for page in &all_pages {
-                let rendered = render_export_page(
-                    page,
-                    export_format,
-                    !args.no_frontmatter,
-                    args.code_language.as_deref(),
-                    &parsed.domain,
-                );
-                let filename = format!(
-                    "{}.{}",
-                    sanitize_filename(&page.title),
-                    export_format.file_extension()
-                );
-                let output_file = output_dir.join(filename);
-                std::fs::write(&output_file, rendered.as_bytes())
-                    .with_context(|| format!("failed to write {}", normalize_path(&output_file)))?;
-            }
-
-            let index_content = build_subpage_index(
-                &all_pages,
-                &parsed.domain,
-                &args.url,
-                &parent_title,
-                export_format,
-            );
-            let index_path = output_dir.join("_index.md");
-            std::fs::write(&index_path, index_content.as_bytes())
-                .with_context(|| format!("failed to write {}", normalize_path(&index_path)))?;
-
-            println!("export");
-            println!("mode: subpages_separate");
-            println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("source_url: {}", args.url);
-            println!("pages_exported: {}", all_pages.len());
-            println!("format: {}", args.format.to_ascii_lowercase());
-            println!("output_dir: {}", normalize_path(&output_dir));
-            println!("index_path: {}", normalize_path(&index_path));
-        }
-    } else {
-        let page = fetch_page_by_url(&args.url, &fetch_options)?
-            .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
-        let rendered = render_export_page(
-            &page,
-            export_format,
-            !args.no_frontmatter,
-            args.code_language.as_deref(),
-            &page.source_domain,
-        );
-        let output_path = args.output.clone().or_else(|| {
-            default_export_path(&paths.project_root, &page.title, false, export_format)
-        });
-        write_or_print_export(&rendered, output_path.as_deref())?;
-
-        println!("export");
-        println!("mode: single");
-        println!("project_root: {}", normalize_path(&paths.project_root));
-        println!("source_url: {}", args.url);
-        println!("resolved_url: {}", page.url);
-        println!("title: {}", page.title);
-        println!("format: {}", args.format.to_ascii_lowercase());
-        println!("source_domain: {}", page.source_domain);
-        println!("content_length: {}", page.content.len());
-        if let Some(path) = output_path {
-            println!("output_path: {}", normalize_path(&path));
-        } else {
-            println!("output_path: <stdout>");
-        }
-    }
-
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
-fn fetch_mediawiki_export_page(
-    title: &str,
-    parsed: &wikitool_core::external::ParsedWikiUrl,
-    options: &ExternalFetchOptions,
-) -> Result<Option<wikitool_core::external::ExternalFetchResult>> {
-    wikitool_core::external::fetch_mediawiki_page(title, parsed, options)
-}
-
-fn render_export_page(
-    page: &wikitool_core::external::ExternalFetchResult,
-    export_format: ExportFormat,
-    include_frontmatter: bool,
-    code_language: Option<&str>,
-    domain: &str,
-) -> String {
-    let converted = match export_format {
-        ExportFormat::Wikitext => page.content.clone(),
-        ExportFormat::Markdown => wikitext_to_markdown(&page.content, code_language),
-    };
-    if !include_frontmatter {
-        return converted;
-    }
-    let frontmatter = generate_frontmatter(
-        &page.title,
-        &page.url,
-        domain,
-        &page.timestamp,
-        &[(
-            "format".to_string(),
-            export_format.file_extension().to_string(),
-        )],
-    );
-    format!("{frontmatter}\n{converted}")
-}
-
-fn render_combined_export(
-    pages: &[wikitool_core::external::ExternalFetchResult],
-    export_format: ExportFormat,
-    include_frontmatter: bool,
-    code_language: Option<&str>,
-    domain: &str,
-    source_url: &str,
-    title: &str,
-) -> String {
-    let mut sections = Vec::new();
-    for page in pages {
-        let converted = match export_format {
-            ExportFormat::Wikitext => page.content.clone(),
-            ExportFormat::Markdown => wikitext_to_markdown(&page.content, code_language),
-        };
-        let heading = match export_format {
-            ExportFormat::Markdown => format!("# {}", page.title),
-            ExportFormat::Wikitext => format!("== {} ==", page.title),
-        };
-        sections.push(format!("{heading}\n\n{converted}"));
-    }
-    let combined = sections.join("\n\n---\n\n");
-    if !include_frontmatter {
-        return combined;
-    }
-    let frontmatter = generate_frontmatter(
-        title,
-        source_url,
-        domain,
-        &now_timestamp_string(),
-        &[("pages".to_string(), pages.len().to_string())],
-    );
-    format!("{frontmatter}\n{combined}")
-}
-
-fn build_subpage_index(
-    pages: &[wikitool_core::external::ExternalFetchResult],
-    domain: &str,
-    source_url: &str,
-    title: &str,
-    export_format: ExportFormat,
-) -> String {
-    let mut lines = vec![
-        "---".to_string(),
-        format!("title: \"{} - Index\"", title.replace('"', "\\\"")),
-        format!("source: {source_url}"),
-        format!("wiki: {domain}"),
-        format!("fetched: {}", now_timestamp_string()),
-        format!("pages: {}", pages.len()),
-        "---".to_string(),
-        String::new(),
-        format!("# {title}"),
-        String::new(),
-        "## Pages".to_string(),
-        String::new(),
-    ];
-    for page in pages {
-        let filename = format!(
-            "{}.{}",
-            sanitize_filename(&page.title),
-            export_format.file_extension()
-        );
-        lines.push(format!("- [{}](./{})", page.title, filename));
-    }
-    lines.join("\n")
-}
-
-fn write_or_print_export(content: &str, output_path: Option<&Path>) -> Result<()> {
-    if let Some(path) = output_path {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
-        }
-        std::fs::write(path, content.as_bytes())
-            .with_context(|| format!("failed to write {}", normalize_path(path)))?;
-    } else {
-        println!("{content}");
-    }
-    Ok(())
-}
-
-fn now_timestamp_string() -> String {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|value| value.as_secs().to_string())
-        .unwrap_or_else(|_| "0".to_string())
 }
 
 fn run_delete(runtime: &RuntimeOptions, args: DeleteArgs) -> Result<()> {
@@ -3139,170 +2812,6 @@ fn run_dev_install_git_hooks(args: InstallGitHooksArgs) -> Result<()> {
     Ok(())
 }
 
-fn resolve_default_true_flag(enabled: bool, disabled: bool, label: &str) -> Result<bool> {
-    if enabled && disabled {
-        bail!("invalid options for {label}: enable and disable flags both set");
-    }
-    if disabled {
-        return Ok(false);
-    }
-    Ok(true)
-}
-
-fn prompt_yes_no(prompt: &str) -> Result<bool> {
-    print!("{prompt}");
-    io::stdout().flush().context("failed to flush stdout")?;
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("failed to read confirmation input")?;
-    let normalized = input.trim().to_ascii_lowercase();
-    Ok(matches!(normalized.as_str(), "y" | "yes"))
-}
-
-fn detect_host_context_root(repo_root: &Path, explicit: Option<&Path>) -> Result<Option<PathBuf>> {
-    let _ = repo_root;
-    let Some(path) = explicit else {
-        return Ok(None);
-    };
-
-    let root = fs::canonicalize(path)
-        .with_context(|| format!("failed to canonicalize {}", normalize_path(path)))?;
-    if !root.join("CLAUDE.md").is_file()
-        || !root.join(".claude/rules").is_dir()
-        || !root.join(".claude/skills").is_dir()
-    {
-        bail!(
-            "invalid host project root {}: expected CLAUDE.md and .claude/{{rules,skills}}",
-            normalize_path(&root)
-        );
-    }
-    Ok(Some(root))
-}
-
-fn ensure_files_identical(left: &Path, right: &Path, label: &str) -> Result<()> {
-    let left_bytes =
-        fs::read(left).with_context(|| format!("failed to read {}", normalize_path(left)))?;
-    let right_bytes =
-        fs::read(right).with_context(|| format!("failed to read {}", normalize_path(right)))?;
-    if left_bytes != right_bytes {
-        bail!(
-            "{label}: {} and {} must match",
-            normalize_path(left),
-            normalize_path(right)
-        );
-    }
-    Ok(())
-}
-
-fn reset_directory(path: &Path) -> Result<()> {
-    if path.exists() {
-        fs::remove_dir_all(path)
-            .with_context(|| format!("failed to remove {}", normalize_path(path)))?;
-    }
-    fs::create_dir_all(path).with_context(|| format!("failed to create {}", normalize_path(path)))
-}
-
-fn copy_file(source: &Path, destination: &Path) -> Result<()> {
-    if !source.is_file() {
-        bail!("file not found: {}", normalize_path(source));
-    }
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
-    }
-    fs::copy(source, destination).with_context(|| {
-        format!(
-            "failed to copy {} -> {}",
-            normalize_path(source),
-            normalize_path(destination)
-        )
-    })?;
-    Ok(())
-}
-
-fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
-    if !source.is_dir() {
-        bail!("directory not found: {}", normalize_path(source));
-    }
-    fs::create_dir_all(destination)
-        .with_context(|| format!("failed to create {}", normalize_path(destination)))?;
-
-    for entry in fs::read_dir(source)
-        .with_context(|| format!("failed to read {}", normalize_path(source)))?
-    {
-        let entry = entry?;
-        let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
-        let metadata = entry
-            .metadata()
-            .with_context(|| format!("failed to read metadata {}", normalize_path(&source_path)))?;
-        if metadata.is_dir() {
-            copy_dir_recursive(&source_path, &destination_path)?;
-        } else if metadata.is_file() {
-            copy_file(&source_path, &destination_path)?;
-        }
-    }
-    Ok(())
-}
-
-fn copy_dir_contents(source: &Path, destination: &Path) -> Result<()> {
-    if !source.is_dir() {
-        bail!("directory not found: {}", normalize_path(source));
-    }
-    fs::create_dir_all(destination)
-        .with_context(|| format!("failed to create {}", normalize_path(destination)))?;
-
-    for entry in fs::read_dir(source)
-        .with_context(|| format!("failed to read {}", normalize_path(source)))?
-    {
-        let entry = entry?;
-        let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
-        let metadata = entry
-            .metadata()
-            .with_context(|| format!("failed to read metadata {}", normalize_path(&source_path)))?;
-        if metadata.is_dir() {
-            copy_dir_recursive(&source_path, &destination_path)?;
-        } else if metadata.is_file() {
-            copy_file(&source_path, &destination_path)?;
-        }
-    }
-    Ok(())
-}
-
-fn paths_equivalent(left: &Path, right: &Path) -> Result<bool> {
-    let left = fs::canonicalize(left)
-        .with_context(|| format!("failed to canonicalize {}", normalize_path(left)))?;
-    let right = fs::canonicalize(right)
-        .with_context(|| format!("failed to canonicalize {}", normalize_path(right)))?;
-    Ok(left == right)
-}
-
-fn is_markdown_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("md"))
-        .unwrap_or(false)
-}
-
-#[cfg(unix)]
-fn set_executable_if_unix(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let metadata = fs::metadata(path)
-        .with_context(|| format!("failed to read metadata {}", normalize_path(path)))?;
-    let mut permissions = metadata.permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions)
-        .with_context(|| format!("failed to set permissions {}", normalize_path(path)))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_executable_if_unix(_path: &Path) -> Result<()> {
-    Ok(())
-}
-
 fn print_scan_stats(prefix: &str, stats: &ScanStats) {
     println!("{prefix}.total_files: {}", stats.total_files);
     println!("{prefix}.content_files: {}", stats.content_files);
@@ -3559,13 +3068,6 @@ fn parse_import_mode(value: &str) -> Result<ImportUpdateMode> {
     }
 }
 
-fn normalize_option(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-}
-
 fn derive_topic_from_stub_path(path: Option<&Path>) -> Option<String> {
     let path = path?;
     let stem = path.file_stem()?.to_string_lossy();
@@ -3675,69 +3177,6 @@ fn run_contracts(args: ContractsArgs) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn resolve_runtime_paths(
-    runtime: &RuntimeOptions,
-) -> Result<wikitool_core::runtime::ResolvedPaths> {
-    dotenvy::dotenv().ok();
-
-    let context = ResolutionContext::from_process()?;
-    let overrides = PathOverrides {
-        project_root: runtime.project_root.clone(),
-        data_dir: runtime.data_dir.clone(),
-        config: runtime.config.clone(),
-    };
-
-    let initial = resolve_paths(&context, &overrides)?;
-    let project_env = initial.project_root.join(".env");
-    if project_env.exists() {
-        let _ = dotenvy::from_path_override(&project_env);
-    }
-
-    resolve_paths(&context, &overrides)
-}
-
-fn resolve_runtime_with_config(
-    runtime: &RuntimeOptions,
-) -> Result<(wikitool_core::runtime::ResolvedPaths, WikiConfig)> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let config = load_config(&paths.config_path)
-        .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
-    Ok((paths, config))
-}
-
-fn normalize_title_query(value: &str) -> String {
-    value.replace('_', " ").trim().to_string()
-}
-
-fn collapse_whitespace(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut previous_was_space = false;
-    for ch in value.chars() {
-        if ch.is_whitespace() {
-            if !previous_was_space {
-                output.push(' ');
-                previous_was_space = true;
-            }
-        } else {
-            output.push(ch);
-            previous_was_space = false;
-        }
-    }
-    output.trim().to_string()
-}
-
-fn normalize_path(path: &Path) -> String {
-    let mut value = path.to_string_lossy().replace('\\', "/");
-    if let Some(stripped) = value.strip_prefix("//?/") {
-        value = stripped.to_string();
-    }
-    value
-}
-
-fn format_flag(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
 }
 
 fn format_diff_change_type(value: &DiffChangeType) -> &'static str {

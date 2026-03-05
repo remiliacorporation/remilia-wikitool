@@ -430,15 +430,44 @@ fn mediawiki_query_allpages(
     prefix: &str,
     limit: usize,
 ) -> Result<Vec<String>> {
-    let payload = client.request_json(
-        api_url,
-        &[
+    let target = limit.max(1);
+    let mut titles = Vec::new();
+    let mut continuation = None::<String>;
+
+    while titles.len() < target {
+        let mut params = vec![
             ("action", "query".to_string()),
             ("list", "allpages".to_string()),
             ("apprefix", prefix.to_string()),
-            ("aplimit", limit.to_string()),
-        ],
-    )?;
+            (
+                "aplimit",
+                target.saturating_sub(titles.len()).min(500).to_string(),
+            ),
+        ];
+        if let Some(token) = &continuation {
+            params.push(("apcontinue", token.clone()));
+        }
+
+        let payload = client.request_json(api_url, &params)?;
+        let (batch_titles, next_continuation) = parse_allpages_payload(&payload);
+        titles.extend(batch_titles);
+
+        let Some(token) = next_continuation else {
+            break;
+        };
+        if token.trim().is_empty() {
+            break;
+        }
+        continuation = Some(token);
+    }
+
+    if titles.len() > target {
+        titles.truncate(target);
+    }
+    Ok(titles)
+}
+
+fn parse_allpages_payload(payload: &Value) -> (Vec<String>, Option<String>) {
     let mut titles = Vec::new();
     if let Some(allpages) = payload
         .get("query")
@@ -453,7 +482,14 @@ fn mediawiki_query_allpages(
             }
         }
     }
-    Ok(titles)
+
+    let continuation = payload
+        .get("continue")
+        .and_then(|value| value.get("apcontinue"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    (titles, continuation)
 }
 
 fn fetch_web_url(url: &str, max_bytes: usize) -> Result<ExternalFetchResult> {
@@ -736,7 +772,7 @@ fn truncate_to_byte_limit(value: &str, max_bytes: usize) -> String {
 mod tests {
     use super::{
         ExportFormat, ExternalFetchFormat, ExternalFetchOptions, MediaWikiFetchOutcome,
-        convert_heading, convert_internal_links, default_export_path,
+        convert_heading, convert_internal_links, default_export_path, parse_allpages_payload,
         parse_mediawiki_content_payload, parse_wiki_url, sanitize_filename, truncate_to_byte_limit,
         wikitext_to_markdown,
     };
@@ -854,5 +890,32 @@ mod tests {
         };
         assert_eq!(result.content, "abcde");
         assert_eq!(result.extract.as_deref(), Some("12345"));
+    }
+
+    #[test]
+    fn allpages_payload_extracts_titles_and_continuation() {
+        let payload = json!({
+            "continue": {
+                "continue": "-||",
+                "apcontinue": "Parent/Subpage 3"
+            },
+            "query": {
+                "allpages": [
+                    { "title": "Parent/Subpage 1" },
+                    { "title": "Parent/Subpage 2" },
+                    { "title": "" }
+                ]
+            }
+        });
+
+        let (titles, continuation) = parse_allpages_payload(&payload);
+        assert_eq!(
+            titles,
+            vec![
+                "Parent/Subpage 1".to_string(),
+                "Parent/Subpage 2".to_string()
+            ]
+        );
+        assert_eq!(continuation.as_deref(), Some("Parent/Subpage 3"));
     }
 }

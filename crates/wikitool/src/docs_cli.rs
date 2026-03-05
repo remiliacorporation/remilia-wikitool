@@ -12,8 +12,11 @@ use wikitool_core::docs::{
 
 use crate::{
     Cli, DocsGenerateReferenceArgs, DocsImportArgs, DocsImportTechnicalArgs, DocsListArgs,
-    DocsSubcommand, MIGRATIONS_POLICY_MESSAGE, RuntimeOptions, collapse_whitespace, format_flag,
-    normalize_path, normalize_title_query, resolve_runtime_paths, resolve_runtime_with_config,
+    DocsSubcommand, MIGRATIONS_POLICY_MESSAGE, RuntimeOptions,
+    cli_support::{
+        collapse_whitespace, format_flag, normalize_path, normalize_title_query,
+        resolve_runtime_paths, resolve_runtime_with_config,
+    },
 };
 
 pub(crate) fn run_docs(runtime: &RuntimeOptions, command: DocsSubcommand) -> Result<()> {
