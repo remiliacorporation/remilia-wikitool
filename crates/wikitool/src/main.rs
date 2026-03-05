@@ -6,16 +6,13 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use wikitool_core::config::{WikiConfig, WikiConfigPatch, load_config, patch_wiki_config};
 use wikitool_core::contracts::{command_surface, generate_fixture_snapshot};
 use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
-use wikitool_core::filesystem::{
-    ScanOptions, ScanStats, scan_files, scan_stats, validate_scoped_path,
-};
+use wikitool_core::filesystem::{ScanOptions, ScanStats, scan_files, scan_stats};
 use wikitool_core::import_cargo::{
     CargoImportOptions, ImportSourceType, ImportUpdateMode, import_to_cargo,
 };
 use wikitool_core::index::{
-    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, LocalChunkAcrossRetrieval,
-    LocalChunkRetrieval, LocalContextBundle, LocalSearchHit, StoredIndexStats,
-    build_authoring_knowledge_pack, build_local_context, load_stored_index_stats, query_backlinks,
+    LocalChunkAcrossRetrieval, LocalChunkRetrieval, LocalContextBundle, LocalSearchHit,
+    StoredIndexStats, build_local_context, load_stored_index_stats, query_backlinks,
     query_empty_categories, query_orphans, query_search_local, rebuild_index,
     retrieve_local_context_chunks_across_pages, retrieve_local_context_chunks_with_options,
     run_validation_checks,
@@ -27,9 +24,8 @@ use wikitool_core::inspect::{
 use wikitool_core::lint::lint_modules;
 use wikitool_core::migrate::pending_migration_count;
 use wikitool_core::runtime::{
-    InitOptions, MIGRATIONS_POLICY_MESSAGE, ResolvedPaths, embedded_parser_config,
-    ensure_runtime_ready_for_sync, init_layout, inspect_runtime, lsp_settings_json,
-    materialize_parser_config,
+    InitOptions, MIGRATIONS_POLICY_MESSAGE, ensure_runtime_ready_for_sync, init_layout,
+    inspect_runtime,
 };
 use wikitool_core::sync::{
     DiffChangeType, DiffOptions, ExternalSearchHit, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
@@ -39,9 +35,12 @@ use wikitool_core::sync::{
 };
 
 mod cli_support;
+mod dev_cli;
 mod docs_cli;
 mod export_cli;
+mod lsp_cli;
 mod release;
+mod workflow_cli;
 
 use crate::cli_support::*;
 
@@ -114,7 +113,7 @@ enum Commands {
     LspStatus,
     #[command(name = "lsp:info")]
     LspInfo,
-    Workflow(WorkflowArgs),
+    Workflow(workflow_cli::WorkflowArgs),
     Release(ReleaseArgs),
     Dev(DevArgs),
     #[command(
@@ -586,128 +585,6 @@ struct LspGenerateConfigArgs {
 }
 
 #[derive(Debug, Args)]
-struct WorkflowArgs {
-    #[command(subcommand)]
-    command: WorkflowSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum WorkflowSubcommand {
-    Bootstrap(WorkflowBootstrapArgs),
-    #[command(name = "full-refresh")]
-    FullRefresh(WorkflowFullRefreshArgs),
-    /// Generate a token-budgeted knowledge pack for article authoring
-    #[command(name = "authoring-pack")]
-    AuthoringPack(WorkflowAuthoringPackArgs),
-}
-
-#[derive(Debug, Args)]
-struct WorkflowBootstrapArgs {
-    #[arg(long, help = "Create templates/ during initialization (default: true)")]
-    templates: bool,
-    #[arg(long, help = "Do not create templates/ during initialization")]
-    no_templates: bool,
-    #[arg(long, help = "Pull content after initialization (default: true)")]
-    pull: bool,
-    #[arg(long, help = "Skip content pull after initialization")]
-    no_pull: bool,
-    #[arg(long, help = "Skip docs reference generation")]
-    skip_reference: bool,
-    #[arg(long, help = "Skip commit-msg hook installation")]
-    skip_git_hooks: bool,
-}
-
-#[derive(Debug, Args)]
-struct WorkflowFullRefreshArgs {
-    #[arg(long, help = "Assume yes; do not prompt for confirmation")]
-    yes: bool,
-    #[arg(long, help = "Create templates/ during initialization (default: true)")]
-    templates: bool,
-    #[arg(long, help = "Do not create templates/ during initialization")]
-    no_templates: bool,
-    #[arg(long, help = "Skip docs reference generation")]
-    skip_reference: bool,
-}
-
-#[derive(Debug, Args)]
-struct WorkflowAuthoringPackArgs {
-    #[arg(
-        value_name = "TOPIC",
-        help = "Primary article topic/title for retrieval"
-    )]
-    topic: Option<String>,
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Optional stub wikitext file used for link/template hint extraction"
-    )]
-    stub_path: Option<PathBuf>,
-    #[arg(
-        long,
-        default_value_t = 18,
-        value_name = "N",
-        help = "Maximum related pages in the pack"
-    )]
-    related_limit: usize,
-    #[arg(
-        long,
-        default_value_t = 10,
-        value_name = "N",
-        help = "Maximum retrieved context chunks"
-    )]
-    chunk_limit: usize,
-    #[arg(
-        long,
-        default_value_t = 1200,
-        value_name = "TOKENS",
-        help = "Token budget across retrieved chunks"
-    )]
-    token_budget: usize,
-    #[arg(
-        long,
-        default_value_t = 8,
-        value_name = "N",
-        help = "Maximum distinct source pages in chunk retrieval"
-    )]
-    max_pages: usize,
-    #[arg(
-        long,
-        default_value_t = 18,
-        value_name = "N",
-        help = "Maximum internal link suggestions"
-    )]
-    link_limit: usize,
-    #[arg(
-        long,
-        default_value_t = 8,
-        value_name = "N",
-        help = "Maximum category suggestions"
-    )]
-    category_limit: usize,
-    #[arg(
-        long,
-        default_value_t = 16,
-        value_name = "N",
-        help = "Maximum template summaries"
-    )]
-    template_limit: usize,
-    #[arg(
-        long,
-        default_value = "json",
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: String,
-    #[arg(long, help = "Enable lexical chunk de-duplication and diversification")]
-    diversify: bool,
-    #[arg(
-        long,
-        help = "Disable lexical chunk de-duplication and diversification"
-    )]
-    no_diversify: bool,
-}
-
-#[derive(Debug, Args)]
 struct ReleaseArgs {
     #[command(subcommand)]
     command: ReleaseSubcommand,
@@ -899,12 +776,12 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Init(args)) => run_init(&runtime, args),
-        Some(Commands::LspGenerateConfig(args)) => run_lsp_generate_config(&runtime, args),
-        Some(Commands::LspStatus) => run_lsp_status(&runtime),
-        Some(Commands::LspInfo) => run_lsp_info(),
-        Some(Commands::Workflow(args)) => run_workflow(&runtime, args),
+        Some(Commands::LspGenerateConfig(args)) => lsp_cli::run_lsp_generate_config(&runtime, args),
+        Some(Commands::LspStatus) => lsp_cli::run_lsp_status(&runtime),
+        Some(Commands::LspInfo) => lsp_cli::run_lsp_info(),
+        Some(Commands::Workflow(args)) => workflow_cli::run_workflow(&runtime, args),
         Some(Commands::Release(args)) => release::run_release(args),
-        Some(Commands::Dev(args)) => run_dev(args),
+        Some(Commands::Dev(args)) => dev_cli::run_dev(args),
         Some(Commands::Db(DbArgs {
             command: DbSubcommand::Migrate,
         })) => run_db_migrate(&runtime),
@@ -1046,7 +923,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
+pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let report = init_layout(
         &paths,
@@ -1165,7 +1042,7 @@ fn materialize_custom_namespace_dirs(
     Ok(created)
 }
 
-fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
+pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
@@ -1430,7 +1307,7 @@ fn pull_namespaces_from_args(args: &PullArgs, config: &WikiConfig) -> Vec<i32> {
     vec![NS_MAIN]
 }
 
-fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
+pub(crate) fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     let custom_folders: Vec<String> = config
@@ -1575,7 +1452,7 @@ fn run_context(runtime: &RuntimeOptions, title: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
+pub(crate) fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
 
     println!("validate");
@@ -2416,402 +2293,6 @@ fn run_import_cargo(
     Ok(())
 }
 
-fn run_workflow(runtime: &RuntimeOptions, args: WorkflowArgs) -> Result<()> {
-    match args.command {
-        WorkflowSubcommand::Bootstrap(options) => run_workflow_bootstrap(runtime, options),
-        WorkflowSubcommand::FullRefresh(options) => run_workflow_full_refresh(runtime, options),
-        WorkflowSubcommand::AuthoringPack(options) => run_workflow_authoring_pack(runtime, options),
-    }
-}
-
-fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs) -> Result<()> {
-    let include_templates = resolve_default_true_flag(
-        args.templates,
-        args.no_templates,
-        "workflow bootstrap templates",
-    )?;
-    let should_pull =
-        resolve_default_true_flag(args.pull, args.no_pull, "workflow bootstrap pull")?;
-
-    run_init(
-        runtime,
-        InitArgs {
-            templates: include_templates,
-            force: false,
-            no_config: false,
-            no_parser_config: false,
-        },
-    )?;
-
-    let paths = resolve_runtime_paths(runtime)?;
-
-    if !args.skip_reference {
-        docs_cli::run_docs_generate_reference(DocsGenerateReferenceArgs {
-            output: Some(paths.project_root.join("docs/wikitool/reference.md")),
-        })?;
-    }
-
-    if !args.skip_git_hooks {
-        run_dev_install_git_hooks(InstallGitHooksArgs {
-            repo_root: Some(paths.project_root.clone()),
-            source: None,
-            allow_missing_git: true,
-        })?;
-    }
-
-    if should_pull {
-        run_pull(
-            runtime,
-            PullArgs {
-                full: true,
-                overwrite_local: false,
-                category: None,
-                templates: false,
-                categories: false,
-                all: true,
-            },
-        )?;
-    } else {
-        println!("workflow bootstrap: pull skipped (--no-pull)");
-    }
-
-    Ok(())
-}
-
-fn run_workflow_full_refresh(
-    runtime: &RuntimeOptions,
-    args: WorkflowFullRefreshArgs,
-) -> Result<()> {
-    let include_templates = resolve_default_true_flag(
-        args.templates,
-        args.no_templates,
-        "workflow full-refresh templates",
-    )?;
-    if !args.yes
-        && !prompt_yes_no(
-            "This will reset .wikitool/data/wikitool.db and re-download content/templates. Continue? (y/N) ",
-        )?
-    {
-        println!("Aborted.");
-        return Ok(());
-    }
-
-    let paths = resolve_runtime_paths(runtime)?;
-    if paths.db_path.exists() {
-        fs::remove_file(&paths.db_path)
-            .with_context(|| format!("failed to delete {}", normalize_path(&paths.db_path)))?;
-        println!("Removed {}", normalize_path(&paths.db_path));
-    }
-
-    run_init(
-        runtime,
-        InitArgs {
-            templates: include_templates,
-            force: false,
-            no_config: false,
-            no_parser_config: false,
-        },
-    )?;
-
-    if !args.skip_reference {
-        docs_cli::run_docs_generate_reference(DocsGenerateReferenceArgs {
-            output: Some(paths.project_root.join("docs/wikitool/reference.md")),
-        })?;
-    }
-
-    run_pull(
-        runtime,
-        PullArgs {
-            full: true,
-            overwrite_local: false,
-            category: None,
-            templates: false,
-            categories: false,
-            all: true,
-        },
-    )?;
-    run_validate(runtime)?;
-    run_status(
-        runtime,
-        StatusArgs {
-            modified: false,
-            conflicts: false,
-            templates: true,
-        },
-    )?;
-    Ok(())
-}
-
-fn run_workflow_authoring_pack(
-    runtime: &RuntimeOptions,
-    args: WorkflowAuthoringPackArgs,
-) -> Result<()> {
-    if args.related_limit == 0 {
-        bail!("workflow authoring-pack requires --related-limit >= 1");
-    }
-    if args.chunk_limit == 0 {
-        bail!("workflow authoring-pack requires --chunk-limit >= 1");
-    }
-    if args.token_budget == 0 {
-        bail!("workflow authoring-pack requires --token-budget >= 1");
-    }
-    if args.max_pages == 0 {
-        bail!("workflow authoring-pack requires --max-pages >= 1");
-    }
-    if args.link_limit == 0 {
-        bail!("workflow authoring-pack requires --link-limit >= 1");
-    }
-    if args.category_limit == 0 {
-        bail!("workflow authoring-pack requires --category-limit >= 1");
-    }
-    if args.template_limit == 0 {
-        bail!("workflow authoring-pack requires --template-limit >= 1");
-    }
-    if args.diversify && args.no_diversify {
-        bail!("cannot use --diversify and --no-diversify together");
-    }
-
-    let format = args.format.trim().to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!("unsupported format: {} (expected text|json)", args.format);
-    }
-    let use_diversify = !args.no_diversify;
-
-    let paths = resolve_runtime_paths(runtime)?;
-    let topic = normalize_option(args.topic.as_deref())
-        .or_else(|| derive_topic_from_stub_path(args.stub_path.as_deref()));
-    let stub_content = load_workflow_stub_content(&paths, args.stub_path.as_deref())?;
-
-    let options = AuthoringKnowledgePackOptions {
-        related_page_limit: args.related_limit,
-        chunk_limit: args.chunk_limit,
-        token_budget: args.token_budget,
-        max_pages: args.max_pages,
-        link_limit: args.link_limit,
-        category_limit: args.category_limit,
-        template_limit: args.template_limit,
-        diversify: use_diversify,
-    };
-
-    let pack = build_authoring_knowledge_pack(
-        &paths,
-        topic.as_deref(),
-        stub_content.as_deref(),
-        &options,
-    )?;
-
-    if format == "json" {
-        println!("{}", serde_json::to_string_pretty(&pack)?);
-        return Ok(());
-    }
-
-    println!("workflow authoring-pack");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!(
-        "topic: {}",
-        topic.as_deref().unwrap_or("<derived-from-stub>")
-    );
-    if let Some(path) = args.stub_path.as_deref() {
-        println!("stub_path: {}", normalize_path(path));
-    } else {
-        println!("stub_path: <none>");
-    }
-    println!("related_limit: {}", args.related_limit);
-    println!("chunk_limit: {}", args.chunk_limit);
-    println!("token_budget: {}", args.token_budget);
-    println!("max_pages: {}", args.max_pages);
-    println!("diversify: {use_diversify}");
-
-    match pack {
-        AuthoringKnowledgePack::IndexMissing => {
-            println!("index.storage: <not built> (run `wikitool index rebuild`)");
-        }
-        AuthoringKnowledgePack::QueryMissing => {
-            bail!(
-                "workflow authoring-pack requires a topic or a stub with at least one resolvable wikilink"
-            );
-        }
-        AuthoringKnowledgePack::Found(boxed_report) => {
-            let report = *boxed_report;
-            println!("pack.query: {}", report.query);
-            println!(
-                "inventory.pages.total: {}",
-                report.inventory.indexed_pages_total
-            );
-            println!("inventory.pages.main: {}", report.inventory.main_pages);
-            println!(
-                "inventory.pages.templates: {}",
-                report.inventory.template_pages
-            );
-            println!(
-                "inventory.links.total: {}",
-                report.inventory.indexed_links_total
-            );
-            println!(
-                "inventory.templates.invocation_rows: {}",
-                report.inventory.template_invocation_rows
-            );
-            println!(
-                "inventory.templates.distinct: {}",
-                report.inventory.distinct_templates_invoked
-            );
-            println!("related_pages.count: {}", report.related_pages.len());
-            for page in &report.related_pages {
-                println!(
-                    "related_page: {} (namespace={} redirect={} source={})",
-                    page.title,
-                    page.namespace,
-                    format_flag(page.is_redirect),
-                    page.source
-                );
-            }
-            println!("suggested_links.count: {}", report.suggested_links.len());
-            for link in &report.suggested_links {
-                println!("suggested_link: {link}");
-            }
-            println!(
-                "suggested_categories.count: {}",
-                report.suggested_categories.len()
-            );
-            for category in &report.suggested_categories {
-                println!("suggested_category: {category}");
-            }
-            println!(
-                "suggested_templates.count: {}",
-                report.suggested_templates.len()
-            );
-            for template in &report.suggested_templates {
-                println!(
-                    "suggested_template: {} (usage={} keys={})",
-                    template.template_title,
-                    template.usage_count,
-                    if template.parameter_keys.is_empty() {
-                        "<none>".to_string()
-                    } else {
-                        template.parameter_keys.join(", ")
-                    }
-                );
-            }
-            println!(
-                "template_baseline.count: {}",
-                report.template_baseline.len()
-            );
-            for template in &report.template_baseline {
-                println!(
-                    "template_baseline: {} (usage={} keys={})",
-                    template.template_title,
-                    template.usage_count,
-                    if template.parameter_keys.is_empty() {
-                        "<none>".to_string()
-                    } else {
-                        template.parameter_keys.join(", ")
-                    }
-                );
-            }
-            println!(
-                "stub.existing_links.count: {}",
-                report.stub_existing_links.len()
-            );
-            for link in &report.stub_existing_links {
-                println!("stub.existing_link: {link}");
-            }
-            println!(
-                "stub.missing_links.count: {}",
-                report.stub_missing_links.len()
-            );
-            for link in &report.stub_missing_links {
-                println!("stub.missing_link: {link}");
-            }
-            println!(
-                "stub.detected_templates.count: {}",
-                report.stub_detected_templates.len()
-            );
-            for template in &report.stub_detected_templates {
-                println!("stub.detected_template: {template}");
-            }
-            println!("chunks.retrieval_mode: {}", report.retrieval_mode);
-            println!("chunks.count: {}", report.chunks.len());
-            println!(
-                "chunks.tokens_estimate_total: {}",
-                report.token_estimate_total
-            );
-            for chunk in &report.chunks {
-                println!(
-                    "chunk: source={} section={} tokens={} text={}",
-                    chunk.source_title,
-                    chunk.section_heading.as_deref().unwrap_or("<lead>"),
-                    chunk.token_estimate,
-                    chunk.chunk_text
-                );
-            }
-        }
-    }
-
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
-fn load_workflow_stub_content(
-    paths: &ResolvedPaths,
-    stub_path: Option<&Path>,
-) -> Result<Option<String>> {
-    let Some(path) = stub_path else {
-        return Ok(None);
-    };
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        paths.project_root.join(path)
-    };
-    validate_scoped_path(paths, &absolute)?;
-    let content = fs::read_to_string(&absolute)
-        .with_context(|| format!("failed to read {}", normalize_path(&absolute)))?;
-    Ok(Some(content))
-}
-
-fn run_dev(args: DevArgs) -> Result<()> {
-    match args.command {
-        DevSubcommand::InstallGitHooks(options) => run_dev_install_git_hooks(options),
-    }
-}
-
-fn run_dev_install_git_hooks(args: InstallGitHooksArgs) -> Result<()> {
-    let repo_root = release::resolve_repo_root(args.repo_root)?;
-    let hooks_dir = repo_root.join(".git/hooks");
-    if !hooks_dir.is_dir() {
-        if args.allow_missing_git {
-            println!(
-                "No .git/hooks directory found at {}. Skipping hook install.",
-                normalize_path(&hooks_dir)
-            );
-            return Ok(());
-        }
-        bail!(
-            "no .git/hooks directory found at {}",
-            normalize_path(&hooks_dir)
-        );
-    }
-
-    let source = args
-        .source
-        .unwrap_or_else(|| repo_root.join("scripts/git-hooks/commit-msg"));
-    if !source.is_file() {
-        bail!("hook source not found: {}", normalize_path(&source));
-    }
-    let destination = hooks_dir.join("commit-msg");
-    copy_file(&source, &destination)?;
-    set_executable_if_unix(&destination)?;
-
-    println!(
-        "Installed commit-msg hook: {}",
-        normalize_path(&destination)
-    );
-    Ok(())
-}
-
 fn print_scan_stats(prefix: &str, stats: &ScanStats) {
     println!("{prefix}.total_files: {}", stats.total_files);
     println!("{prefix}.content_files: {}", stats.content_files);
@@ -3066,78 +2547,6 @@ fn parse_import_mode(value: &str) -> Result<ImportUpdateMode> {
         "upsert" => Ok(ImportUpdateMode::Upsert),
         _ => bail!("unsupported import mode: {value} (expected create|update|upsert)"),
     }
-}
-
-fn derive_topic_from_stub_path(path: Option<&Path>) -> Option<String> {
-    let path = path?;
-    let stem = path.file_stem()?.to_string_lossy();
-    let normalized = collapse_whitespace(&stem.replace('_', " "));
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized)
-    }
-}
-
-fn run_lsp_generate_config(runtime: &RuntimeOptions, args: LspGenerateConfigArgs) -> Result<()> {
-    let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let wrote = materialize_parser_config(&paths, args.force)?;
-    if wrote {
-        println!(
-            "Wrote parser config: {}",
-            normalize_path(&paths.parser_config_path)
-        );
-    } else {
-        println!(
-            "Parser config already exists: {} (use --force to overwrite)",
-            normalize_path(&paths.parser_config_path)
-        );
-    }
-    println!();
-    println!("{}", lsp_settings_json(&paths, &config));
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
-fn run_lsp_status(runtime: &RuntimeOptions) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    println!(
-        "parser config: {} ({})",
-        normalize_path(&paths.parser_config_path),
-        if paths.parser_config_path.exists() {
-            "found"
-        } else {
-            "missing"
-        }
-    );
-    println!(
-        "runtime config: {} ({})",
-        normalize_path(&paths.config_path),
-        if paths.config_path.exists() {
-            "found"
-        } else {
-            "missing"
-        }
-    );
-    println!(
-        "embedded parser baseline bytes: {}",
-        embedded_parser_config().len()
-    );
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
-fn run_lsp_info() -> Result<()> {
-    println!("wikitext LSP integration");
-    println!("  command: wikitool lsp:generate-config");
-    println!("  output parser config: <project-root>/.wikitool/parser-config.json");
-    println!("  policy: {MIGRATIONS_POLICY_MESSAGE}");
-    Ok(())
 }
 
 fn run_db_migrate(runtime: &RuntimeOptions) -> Result<()> {
