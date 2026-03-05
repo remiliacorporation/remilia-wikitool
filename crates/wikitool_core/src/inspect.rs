@@ -185,8 +185,7 @@ pub fn net_inspect(
     article_path: Option<&str>,
     options: &NetInspectOptions,
 ) -> Result<NetInspectResult> {
-    let requested_url =
-        resolve_target_url(target, override_url, default_wiki_url, article_path)?;
+    let requested_url = resolve_target_url(target, override_url, default_wiki_url, article_path)?;
     let client = build_http_client()?;
     let response = client
         .get(&requested_url)
@@ -1197,13 +1196,8 @@ mod tests {
 
     #[test]
     fn resolve_target_url_uses_default_article_path() {
-        let url = resolve_target_url(
-            "Alpha Beta",
-            None,
-            Some("https://wiki.example.org"),
-            None,
-        )
-        .expect("url");
+        let url = resolve_target_url("Alpha Beta", None, Some("https://wiki.example.org"), None)
+            .expect("url");
         assert_eq!(url, "https://wiki.example.org/Alpha_Beta");
     }
 

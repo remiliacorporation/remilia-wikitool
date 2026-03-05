@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use reqwest::blocking::Client;
@@ -13,6 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::runtime::ResolvedPaths;
+use crate::support::{
+    compute_hash, ensure_db_parent, env_value, env_value_u64, env_value_usize, unix_timestamp,
+};
 
 const DOCS_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS extension_docs (
@@ -1778,7 +1781,7 @@ fn load_outdated_docs(connection: &Connection, now_unix: u64) -> Result<DocsOutd
 }
 
 fn open_docs_connection(paths: &ResolvedPaths) -> Result<Connection> {
-    ensure_db_parent(paths)?;
+    ensure_db_parent(&paths.db_path)?;
     let connection = Connection::open(&paths.db_path)
         .with_context(|| format!("failed to open {}", paths.db_path.display()))?;
     connection
@@ -1797,19 +1800,6 @@ fn initialize_docs_schema(connection: &Connection) -> Result<()> {
     connection
         .execute_batch(DOCS_SCHEMA_SQL)
         .context("failed to initialize docs schema")
-}
-
-fn ensure_db_parent(paths: &ResolvedPaths) -> Result<()> {
-    let parent = paths
-        .db_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("db path has no parent: {}", paths.db_path.display()))?;
-    fs::create_dir_all(parent).with_context(|| {
-        format!(
-            "failed to create database parent directory {}",
-            parent.display()
-        )
-    })
 }
 
 fn count_query(connection: &Connection, sql: &str) -> Result<usize> {
@@ -1990,52 +1980,12 @@ fn collapse_whitespace(value: &str) -> String {
     output.trim().to_string()
 }
 
-fn compute_hash(content: &str) -> String {
-    use sha2::{Digest, Sha256};
-
-    let digest = Sha256::digest(content.as_bytes());
-    let mut output = String::with_capacity(16);
-    for byte in digest.iter().take(8) {
-        output.push_str(&format!("{byte:02x}"));
-    }
-    output
-}
-
 fn wait_retry_delay(retry_delay_ms: u64, attempt: usize) {
     let exponent = u32::try_from(attempt).unwrap_or(8).min(8);
     let scale = 1u64.checked_shl(exponent).unwrap_or(256);
     let base = retry_delay_ms.saturating_mul(scale);
     let jitter = (u64::try_from(attempt).unwrap_or(0) * 17 + 31) % 97;
     sleep(Duration::from_millis(base.saturating_add(jitter)));
-}
-
-fn unix_timestamp() -> Result<u64> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before UNIX_EPOCH")
-        .map(|duration| duration.as_secs())
-}
-
-fn env_value(key: &str, default: &str) -> String {
-    env::var(key)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| default.to_string())
-}
-
-fn env_value_u64(key: &str, default: u64) -> u64 {
-    env::var(key)
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(default)
-}
-
-fn env_value_usize(key: &str, default: usize) -> usize {
-    env::var(key)
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .unwrap_or(default)
 }
 
 fn is_retryable_status(status: StatusCode) -> bool {

@@ -3,12 +3,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::filesystem::{
     content_path_to_title, namespace_from_title, normalize_separators, template_path_to_title,
 };
+use crate::support::{compute_hash, normalize_path, parse_redirect};
 
 const CONTENT_EXTENSIONS: [&str; 1] = [".wiki"];
 const TEMPLATE_EXTENSIONS: [&str; 5] = [".wiki", ".wikitext", ".lua", ".css", ".js"];
@@ -187,33 +187,6 @@ fn relative_path_to_os_path(path: &str) -> PathBuf {
     }
 }
 
-fn parse_redirect(content: &str) -> (bool, Option<String>) {
-    let trimmed = content.trim();
-    if !trimmed.to_ascii_uppercase().starts_with("#REDIRECT") {
-        return (false, None);
-    }
-
-    if let Some(start) = trimmed.find("[[")
-        && let Some(end) = trimmed[start + 2..].find("]]")
-    {
-        let target = trimmed[start + 2..start + 2 + end].trim().to_string();
-        if !target.is_empty() {
-            return (true, Some(target));
-        }
-    }
-
-    (true, None)
-}
-
-fn compute_hash(content: &str) -> String {
-    let digest = Sha256::digest(content.as_bytes());
-    let mut output = String::with_capacity(16);
-    for byte in digest.iter().take(8) {
-        output.push_str(&format!("{byte:02x}"));
-    }
-    output
-}
-
 /// Strip the content_dir prefix and delegate to filesystem::content_path_to_title.
 fn filepath_to_title_content(relative_path: &str, content_dir: &str) -> String {
     let normalized_path = normalize_separators(relative_path);
@@ -243,16 +216,6 @@ fn has_allowed_extension(path: &Path, allowed_extensions: &[&str]) -> bool {
         Some(ext) => allowed_extensions.iter().any(|allowed| *allowed == ext),
         None => false,
     }
-}
-
-fn normalize_path(path: impl AsRef<Path>) -> String {
-    let joined = path
-        .as_ref()
-        .components()
-        .map(|component| component.as_os_str().to_string_lossy().to_string())
-        .collect::<Vec<_>>()
-        .join("/");
-    normalize_separators(&joined)
 }
 
 #[cfg(test)]

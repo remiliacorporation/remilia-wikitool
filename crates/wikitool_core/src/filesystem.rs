@@ -1,17 +1,18 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
+use std::ffi::OsString;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::config::load_config;
 use crate::runtime::ResolvedPaths;
+use crate::support::{compute_hash, normalize_pathbuf, parse_redirect};
 
 #[derive(Debug, Clone)]
 struct CachedTemplateCategoryMappings {
@@ -430,11 +431,11 @@ pub fn validate_scoped_path(paths: &ResolvedPaths, candidate: &Path) -> Result<(
     } else {
         paths.project_root.join(candidate)
     };
-    let normalized = normalize_pathbuf(&absolute);
+    let normalized = resolve_scoped_candidate_path(&absolute)?;
     let allowed = [
-        normalize_pathbuf(&paths.wiki_content_dir),
-        normalize_pathbuf(&paths.templates_dir),
-        normalize_pathbuf(&paths.state_dir),
+        resolve_scope_root(&paths.wiki_content_dir)?,
+        resolve_scope_root(&paths.templates_dir)?,
+        resolve_scope_root(&paths.state_dir)?,
     ];
 
     if allowed.iter().any(|prefix| normalized.starts_with(prefix)) {
@@ -448,6 +449,46 @@ pub fn validate_scoped_path(paths: &ResolvedPaths, candidate: &Path) -> Result<(
         display_path(&allowed[1]),
         display_path(&allowed[2])
     )
+}
+
+fn resolve_scope_root(path: &Path) -> Result<PathBuf> {
+    resolve_existing_ancestor(path)
+}
+
+fn resolve_scoped_candidate_path(path: &Path) -> Result<PathBuf> {
+    resolve_existing_ancestor(path)
+}
+
+fn resolve_existing_ancestor(path: &Path) -> Result<PathBuf> {
+    let normalized = normalize_pathbuf(path);
+    if normalized.exists() {
+        return fs::canonicalize(&normalized)
+            .map(|resolved| normalize_pathbuf(&resolved))
+            .with_context(|| format!("failed to canonicalize {}", display_path(&normalized)));
+    }
+
+    let mut cursor = normalized.as_path();
+    let mut suffix = Vec::<OsString>::new();
+    loop {
+        if cursor.exists() {
+            let mut resolved = fs::canonicalize(cursor)
+                .map(|value| normalize_pathbuf(&value))
+                .with_context(|| format!("failed to canonicalize {}", display_path(cursor)))?;
+            for segment in suffix.iter().rev() {
+                resolved.push(segment);
+            }
+            return Ok(normalize_pathbuf(&resolved));
+        }
+
+        let Some(name) = cursor.file_name() else {
+            return Ok(normalized);
+        };
+        suffix.push(name.to_os_string());
+        let Some(parent) = cursor.parent() else {
+            return Ok(normalized);
+        };
+        cursor = parent;
+    }
 }
 
 fn scan_content_files(
@@ -719,31 +760,6 @@ fn rel_from_root(paths: &ResolvedPaths, path: &Path) -> String {
     }
 }
 
-fn compute_hash(content: &str) -> String {
-    let digest = Sha256::digest(content.as_bytes());
-    let mut output = String::with_capacity(16);
-    for byte in digest.iter().take(8) {
-        output.push_str(&format!("{byte:02x}"));
-    }
-    output
-}
-
-fn parse_redirect(content: &str) -> (bool, Option<String>) {
-    let trimmed = content.trim();
-    if !trimmed.to_ascii_uppercase().starts_with("#REDIRECT") {
-        return (false, None);
-    }
-    if let Some(start) = trimmed.find("[[")
-        && let Some(end) = trimmed[start + 2..].find("]]")
-    {
-        let target = trimmed[start + 2..start + 2 + end].trim().to_string();
-        if !target.is_empty() {
-            return (true, Some(target));
-        }
-    }
-    (true, None)
-}
-
 pub fn namespace_from_title(title: &str) -> Namespace {
     if title.starts_with("Category:") {
         Namespace::Category
@@ -956,22 +972,6 @@ fn display_path(path: &Path) -> String {
     normalize_separators(&path.to_string_lossy())
 }
 
-fn normalize_pathbuf(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::Prefix(prefix) => out.push(prefix.as_os_str()),
-            Component::RootDir => out.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::Normal(part) => out.push(part),
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -1134,6 +1134,41 @@ folder = "LorePages"
         let paths = paths("/workspace/project");
         let unsafe_path = PathBuf::from("/workspace/secrets/token.txt");
         let error = validate_scoped_path(&paths, &unsafe_path).expect_err("must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("path escapes scoped runtime directories")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scoped_path_validation_blocks_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let outside_root = temp.path().join("outside");
+        fs::create_dir_all(project_root.join("wiki_content").join("Main")).expect("content dir");
+        fs::create_dir_all(project_root.join("templates")).expect("templates dir");
+        fs::create_dir_all(project_root.join(".wikitool")).expect("state dir");
+        fs::create_dir_all(&outside_root).expect("outside dir");
+        symlink(
+            &outside_root,
+            project_root
+                .join("wiki_content")
+                .join("Main")
+                .join("escape"),
+        )
+        .expect("symlink");
+
+        let paths = paths(project_root.to_str().expect("utf8 root"));
+        let candidate = project_root
+            .join("wiki_content")
+            .join("Main")
+            .join("escape")
+            .join("secret.wiki");
+        let error = validate_scoped_path(&paths, &candidate).expect_err("must fail");
         assert!(
             error
                 .to_string()

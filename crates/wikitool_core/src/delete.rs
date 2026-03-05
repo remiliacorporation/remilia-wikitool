@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use rusqlite::Connection;
@@ -9,6 +8,7 @@ use serde::Serialize;
 
 use crate::filesystem::{ScanOptions, scan_files, validate_scoped_path};
 use crate::runtime::ResolvedPaths;
+use crate::support::{normalize_path, normalize_pathbuf, table_exists, unix_timestamp};
 
 #[derive(Debug, Clone)]
 pub struct DeleteOptions {
@@ -66,7 +66,7 @@ pub fn delete_local_page(
             reason: options.reason.trim().to_string(),
             relative_path: file.relative_path,
             dry_run: true,
-            backup_path: backup_path.as_ref().map(|path| normalize_path(path)),
+            backup_path: backup_path.as_ref().map(normalize_path),
             deleted_local_file: false,
             deleted_index_rows: 0,
         });
@@ -92,7 +92,7 @@ pub fn delete_local_page(
         reason: options.reason.trim().to_string(),
         relative_path: file.relative_path,
         dry_run: false,
-        backup_path: backup_path.as_ref().map(|path| normalize_path(path)),
+        backup_path: backup_path.as_ref().map(normalize_path),
         deleted_local_file: true,
         deleted_index_rows,
     })
@@ -151,17 +151,6 @@ fn delete_from_index(paths: &ResolvedPaths, relative_path: &str) -> Result<usize
     Ok(deleted)
 }
 
-fn table_exists(connection: &Connection, table_name: &str) -> Result<bool> {
-    let exists: i64 = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
-            [table_name],
-            |row| row.get(0),
-        )
-        .with_context(|| format!("failed to inspect sqlite_master for table {table_name}"))?;
-    Ok(exists == 1)
-}
-
 fn absolute_path_from_relative(paths: &ResolvedPaths, relative: &str) -> PathBuf {
     let mut out = paths.project_root.clone();
     for segment in relative.split('/') {
@@ -191,33 +180,6 @@ fn sanitize_title_for_filename(title: &str) -> String {
 
 fn normalize_title(value: &str) -> String {
     value.replace('_', " ").trim().to_string()
-}
-
-fn normalize_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn normalize_pathbuf(path: &Path) -> PathBuf {
-    let mut output = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::Prefix(prefix) => output.push(prefix.as_os_str()),
-            std::path::Component::RootDir => output.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                output.pop();
-            }
-            std::path::Component::Normal(part) => output.push(part),
-        }
-    }
-    output
-}
-
-fn unix_timestamp() -> Result<u64> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before UNIX_EPOCH")
-        .map(|duration| duration.as_secs())
 }
 
 #[cfg(test)]

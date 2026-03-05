@@ -1,9 +1,8 @@
-use std::fs;
-
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 
 use crate::runtime::ResolvedPaths;
+use crate::support::ensure_db_parent;
 
 struct Migration {
     version: u32,
@@ -65,7 +64,7 @@ pub struct AppliedMigration {
 /// Run all pending migrations against the database at `paths.db_path`.
 /// Creates the database and parent directories if they do not exist.
 pub fn run_migrations(paths: &ResolvedPaths) -> Result<MigrateReport> {
-    ensure_db_parent(paths)?;
+    ensure_db_parent(&paths.db_path)?;
     let connection = open_connection(&paths.db_path)?;
     ensure_schema_migrations_table(&connection)?;
 
@@ -185,21 +184,10 @@ fn open_connection(db_path: &std::path::Path) -> Result<Connection> {
     Ok(connection)
 }
 
-fn ensure_db_parent(paths: &ResolvedPaths) -> Result<()> {
-    let parent = paths
-        .db_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("db path has no parent: {}", paths.db_path.display()))?;
-    fs::create_dir_all(parent).with_context(|| {
-        format!(
-            "failed to create database parent directory {}",
-            parent.display()
-        )
-    })
-}
-
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use tempfile::tempdir;
 
     use super::*;

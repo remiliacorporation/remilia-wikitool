@@ -10,4 +10,5 @@ pub mod inspect;
 pub mod lint;
 pub mod migrate;
 pub mod runtime;
+pub mod support;
 pub mod sync;

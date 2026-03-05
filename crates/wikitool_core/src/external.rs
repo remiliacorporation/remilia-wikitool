@@ -2,13 +2,15 @@ use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use reqwest::Url;
 use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::Value;
+
+use crate::support::{env_value, env_value_u64, env_value_usize, unix_timestamp};
 
 const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -166,6 +168,7 @@ pub fn fetch_mediawiki_page(
     options: &ExternalFetchOptions,
 ) -> Result<Option<ExternalFetchResult>> {
     let client = external_client()?;
+    let mut candidate_errors = Vec::new();
     for api_url in &parsed.api_candidates {
         let response = mediawiki_query_content(&client, api_url, title, options.format);
         match response {
@@ -178,8 +181,15 @@ pub fn fetch_mediawiki_page(
                 }));
             }
             Ok(None) => return Ok(None),
-            Err(_) => continue,
+            Err(error) => candidate_errors.push(format!("{api_url}: {error:#}")),
         }
+    }
+    if !candidate_errors.is_empty() {
+        bail!(
+            "all MediaWiki API candidates failed for `{title}` on {}:\n  - {}",
+            parsed.domain,
+            candidate_errors.join("\n  - ")
+        );
     }
     Ok(None)
 }
@@ -191,11 +201,20 @@ pub fn list_subpages(
 ) -> Result<Vec<String>> {
     let client = external_client()?;
     let prefix = format!("{}/", parent_title.trim_end_matches('/'));
+    let mut candidate_errors = Vec::new();
     for api_url in &parsed.api_candidates {
         let response = mediawiki_query_allpages(&client, api_url, &prefix, limit.max(1));
-        if let Ok(value) = response {
-            return Ok(value);
+        match response {
+            Ok(value) => return Ok(value),
+            Err(error) => candidate_errors.push(format!("{api_url}: {error:#}")),
         }
+    }
+    if !candidate_errors.is_empty() {
+        bail!(
+            "all MediaWiki API candidates failed while listing subpages for `{parent_title}` on {}:\n  - {}",
+            parsed.domain,
+            candidate_errors.join("\n  - ")
+        );
     }
     Ok(Vec::new())
 }
@@ -206,12 +225,21 @@ pub fn fetch_pages_by_titles(
     options: &ExternalFetchOptions,
 ) -> Result<Vec<ExternalFetchResult>> {
     let mut output = Vec::new();
+    let mut failures = Vec::new();
     for title in titles {
         match fetch_mediawiki_page(title, parsed, options) {
             Ok(Some(page)) => output.push(page),
             Ok(None) => {}
-            Err(_) => {}
+            Err(error) => failures.push(format!("{title}: {error:#}")),
         }
+    }
+    if !failures.is_empty() {
+        bail!(
+            "failed to fetch {} page(s) from {}:\n  - {}",
+            failures.len(),
+            parsed.domain,
+            failures.join("\n  - ")
+        );
     }
     Ok(output)
 }
@@ -548,9 +576,8 @@ fn api_candidates_for_domain(scheme: &str, domain: &str) -> Vec<String> {
 }
 
 fn now_timestamp_string() -> String {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|value| value.as_secs().to_string())
+    unix_timestamp()
+        .map(|value| value.to_string())
         .unwrap_or_else(|_| "0".to_string())
 }
 
@@ -646,19 +673,10 @@ impl ExternalClient {
 }
 
 fn external_client() -> Result<ExternalClient> {
-    let timeout_ms = env::var("WIKI_HTTP_TIMEOUT_MS")
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(DEFAULT_TIMEOUT_MS);
-    let retries = env::var("WIKI_HTTP_RETRIES")
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .unwrap_or(DEFAULT_RETRIES);
-    let retry_delay_ms = env::var("WIKI_HTTP_RETRY_DELAY_MS")
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(DEFAULT_RETRY_DELAY_MS);
-    let user_agent = env::var("WIKI_USER_AGENT").unwrap_or_else(|_| DEFAULT_USER_AGENT.to_string());
+    let timeout_ms = env_value_u64("WIKI_HTTP_TIMEOUT_MS", DEFAULT_TIMEOUT_MS);
+    let retries = env_value_usize("WIKI_HTTP_RETRIES", DEFAULT_RETRIES);
+    let retry_delay_ms = env_value_u64("WIKI_HTTP_RETRY_DELAY_MS", DEFAULT_RETRY_DELAY_MS);
+    let user_agent = env_value("WIKI_USER_AGENT", DEFAULT_USER_AGENT);
     let client = Client::builder()
         .timeout(Duration::from_millis(timeout_ms))
         .build()

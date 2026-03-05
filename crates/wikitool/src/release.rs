@@ -1,0 +1,721 @@
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::{Context, Result, bail};
+use zip::write::FileOptions;
+use zip::{CompressionMethod, ZipWriter};
+
+use crate::{
+    ReleaseArgs, ReleaseBuildAiPackArgs, ReleaseBuildMatrixArgs, ReleasePackageArgs,
+    ReleaseSubcommand,
+};
+
+pub(crate) fn run_release(args: ReleaseArgs) -> Result<()> {
+    match args.command {
+        ReleaseSubcommand::BuildAiPack(options) => run_release_build_ai_pack(options),
+        ReleaseSubcommand::Package(options) => run_release_package(options),
+        ReleaseSubcommand::BuildMatrix(options) => run_release_build_matrix(options),
+    }
+}
+
+fn run_release_build_ai_pack(args: ReleaseBuildAiPackArgs) -> Result<()> {
+    let repo_root = resolve_repo_root(args.repo_root)?;
+    let output_dir = args
+        .output_dir
+        .unwrap_or_else(|| repo_root.join("dist/ai-pack"));
+
+    let result = build_ai_pack(&repo_root, &output_dir, args.host_project_root.as_deref())?;
+
+    println!("release build-ai-pack");
+    println!("repo_root: {}", crate::normalize_path(&repo_root));
+    println!("output_dir: {}", crate::normalize_path(&result.output_dir));
+    println!(
+        "host_context_included: {}",
+        crate::format_flag(result.host_context_included)
+    );
+    println!(
+        "claude_rules_included: {}",
+        crate::format_flag(result.claude_rules_included)
+    );
+    println!(
+        "claude_skills_included: {}",
+        crate::format_flag(result.claude_skills_included)
+    );
+    println!(
+        "codex_skills_included: {}",
+        crate::format_flag(result.codex_skills_included)
+    );
+    println!(
+        "docs_bundle_included: {}",
+        crate::format_flag(result.docs_bundle_included)
+    );
+
+    Ok(())
+}
+
+fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
+    let repo_root = resolve_repo_root(args.repo_root)?;
+    let output_dir = args
+        .output_dir
+        .unwrap_or_else(|| repo_root.join("dist/release"));
+    let binary_path = args.binary_path.unwrap_or_else(|| {
+        repo_root
+            .join("target/release")
+            .join(default_release_binary_name())
+    });
+    if !binary_path.is_file() {
+        bail!(
+            "missing release binary: {}",
+            crate::normalize_path(&binary_path)
+        );
+    }
+
+    let staging_dir = repo_root.join("dist/release-ai-pack-staging");
+    let ai_pack_result =
+        build_ai_pack(&repo_root, &staging_dir, args.host_project_root.as_deref())?;
+
+    crate::reset_directory(&output_dir)?;
+    crate::copy_file(
+        &binary_path,
+        &output_dir.join(default_release_binary_name()),
+    )?;
+    crate::copy_dir_contents(&staging_dir, &output_dir)?;
+    if staging_dir.exists() {
+        fs::remove_dir_all(&staging_dir)
+            .with_context(|| format!("failed to remove {}", crate::normalize_path(&staging_dir)))?;
+    }
+
+    println!("release package");
+    println!("repo_root: {}", crate::normalize_path(&repo_root));
+    println!("binary_path: {}", crate::normalize_path(&binary_path));
+    println!("output_dir: {}", crate::normalize_path(&output_dir));
+    println!(
+        "host_context_included: {}",
+        crate::format_flag(ai_pack_result.host_context_included)
+    );
+    println!(
+        "claude_rules_included: {}",
+        crate::format_flag(ai_pack_result.claude_rules_included)
+    );
+    println!(
+        "claude_skills_included: {}",
+        crate::format_flag(ai_pack_result.claude_skills_included)
+    );
+    println!(
+        "codex_skills_included: {}",
+        crate::format_flag(ai_pack_result.codex_skills_included)
+    );
+    println!(
+        "docs_bundle_included: {}",
+        crate::format_flag(ai_pack_result.docs_bundle_included)
+    );
+    Ok(())
+}
+
+#[derive(Debug)]
+struct ReleaseMatrixArtifact {
+    target: String,
+    binary_path: PathBuf,
+    bundle_dir: PathBuf,
+    zip_path: PathBuf,
+}
+
+fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<()> {
+    let repo_root = resolve_repo_root(args.repo_root)?;
+    let output_dir = args
+        .output_dir
+        .unwrap_or_else(|| repo_root.join("dist/release-matrix"));
+    fs::create_dir_all(&output_dir)
+        .with_context(|| format!("failed to create {}", crate::normalize_path(&output_dir)))?;
+
+    let cargo_bin = args.cargo_bin.unwrap_or_else(|| PathBuf::from("cargo"));
+    let use_locked = crate::resolve_default_true_flag(
+        args.locked,
+        args.no_locked,
+        "release build-matrix lockfile flag",
+    )?;
+    let targets = resolve_release_targets(&args.targets);
+    let artifact_version =
+        resolve_release_artifact_version(args.artifact_version.as_deref(), args.unversioned_names)?;
+
+    let ai_pack_dir = output_dir.join("_ai-pack-staging");
+    let ai_pack_result =
+        build_ai_pack(&repo_root, &ai_pack_dir, args.host_project_root.as_deref())?;
+
+    let mut artifacts = Vec::new();
+    for target in &targets {
+        if !args.skip_build {
+            run_cargo_release_build_for_target(&repo_root, &cargo_bin, target, use_locked)?;
+        }
+
+        let binary_path = release_binary_path_for_target(&repo_root, target);
+        if !binary_path.is_file() {
+            bail!(
+                "missing built binary for target {target}: {}",
+                crate::normalize_path(&binary_path)
+            );
+        }
+
+        let bundle_name = release_bundle_name(target, artifact_version.as_deref());
+        let bundle_dir = output_dir.join(&bundle_name);
+        crate::reset_directory(&bundle_dir)?;
+        crate::copy_file(
+            &binary_path,
+            &bundle_dir.join(release_binary_name_for_target(target)),
+        )?;
+        crate::copy_dir_contents(&ai_pack_dir, &bundle_dir)?;
+
+        let zip_path = output_dir.join(format!("{bundle_name}.zip"));
+        zip_release_bundle(&bundle_dir, &zip_path, &bundle_name)?;
+
+        artifacts.push(ReleaseMatrixArtifact {
+            target: target.clone(),
+            binary_path,
+            bundle_dir,
+            zip_path,
+        });
+    }
+
+    if ai_pack_dir.exists() {
+        fs::remove_dir_all(&ai_pack_dir)
+            .with_context(|| format!("failed to remove {}", crate::normalize_path(&ai_pack_dir)))?;
+    }
+
+    println!("release build-matrix");
+    println!("repo_root: {}", crate::normalize_path(&repo_root));
+    println!("output_dir: {}", crate::normalize_path(&output_dir));
+    println!(
+        "artifact_version: {}",
+        artifact_version.as_deref().unwrap_or("<none>")
+    );
+    println!("target_count: {}", artifacts.len());
+    println!(
+        "host_context_included: {}",
+        crate::format_flag(ai_pack_result.host_context_included)
+    );
+    println!(
+        "claude_rules_included: {}",
+        crate::format_flag(ai_pack_result.claude_rules_included)
+    );
+    println!(
+        "claude_skills_included: {}",
+        crate::format_flag(ai_pack_result.claude_skills_included)
+    );
+    println!(
+        "codex_skills_included: {}",
+        crate::format_flag(ai_pack_result.codex_skills_included)
+    );
+    println!(
+        "docs_bundle_included: {}",
+        crate::format_flag(ai_pack_result.docs_bundle_included)
+    );
+    for artifact in &artifacts {
+        println!("artifact.target: {}", artifact.target);
+        println!(
+            "artifact.binary_path: {}",
+            crate::normalize_path(&artifact.binary_path)
+        );
+        println!(
+            "artifact.bundle_dir: {}",
+            crate::normalize_path(&artifact.bundle_dir)
+        );
+        println!(
+            "artifact.zip_path: {}",
+            crate::normalize_path(&artifact.zip_path)
+        );
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+struct AiPackBuildResult {
+    output_dir: PathBuf,
+    host_context_included: bool,
+    claude_rules_included: bool,
+    claude_skills_included: bool,
+    codex_skills_included: bool,
+    docs_bundle_included: bool,
+}
+
+fn build_ai_pack(
+    repo_root: &Path,
+    output_dir: &Path,
+    host_project_root: Option<&Path>,
+) -> Result<AiPackBuildResult> {
+    let ai_pack_root = repo_root.join("ai-pack");
+    crate::reset_directory(output_dir)?;
+
+    for file in [
+        "SETUP.md",
+        "README.md",
+        "LICENSE",
+        "LICENSE-SSL",
+        "LICENSE-VPL",
+    ] {
+        let src = repo_root.join(file);
+        if !src.is_file() {
+            bail!(
+                "missing required AI pack file: {}",
+                crate::normalize_path(&src)
+            );
+        }
+        crate::copy_file(&src, &output_dir.join(file))?;
+    }
+
+    let ai_pack_agents = ai_pack_root.join("AGENTS.md");
+    let ai_pack_claude = ai_pack_root.join("CLAUDE.md");
+    for file in [&ai_pack_agents, &ai_pack_claude] {
+        if !file.is_file() {
+            bail!(
+                "missing required AI pack source file: {}",
+                crate::normalize_path(file)
+            );
+        }
+    }
+    crate::ensure_files_identical(
+        &ai_pack_agents,
+        &ai_pack_claude,
+        "ai-pack instruction contract violation",
+    )?;
+
+    let claude_rules_source = ai_pack_root.join(".claude/rules");
+    if !claude_rules_source.is_dir() {
+        bail!(
+            "missing required AI pack Claude rules directory: {}",
+            crate::normalize_path(&claude_rules_source)
+        );
+    }
+    crate::copy_dir_recursive(&claude_rules_source, &output_dir.join(".claude/rules"))?;
+    let mut claude_rules_included = true;
+
+    let claude_skills_source = ai_pack_root.join(".claude/skills");
+    if !claude_skills_source.is_dir() {
+        bail!(
+            "missing required AI pack Claude skills directory: {}",
+            crate::normalize_path(&claude_skills_source)
+        );
+    }
+    crate::copy_dir_recursive(&claude_skills_source, &output_dir.join(".claude/skills"))?;
+    let mut claude_skills_included = true;
+
+    let mut effective_claude_source = ai_pack_claude.clone();
+
+    let mut host_context_included = false;
+    if let Some(host_root) = crate::detect_host_context_root(repo_root, host_project_root)?
+        && !crate::paths_equivalent(&host_root, repo_root)?
+    {
+        crate::copy_file(&ai_pack_claude, &output_dir.join("WIKITOOL_CLAUDE.md"))?;
+        effective_claude_source = host_root.join("CLAUDE.md");
+        crate::copy_dir_recursive(
+            &host_root.join(".claude/rules"),
+            &output_dir.join(".claude/rules"),
+        )?;
+        crate::copy_dir_recursive(
+            &host_root.join(".claude/skills"),
+            &output_dir.join(".claude/skills"),
+        )?;
+        claude_rules_included = true;
+        claude_skills_included = true;
+        host_context_included = true;
+    }
+
+    crate::copy_file(&effective_claude_source, &output_dir.join("CLAUDE.md"))?;
+    crate::copy_file(&effective_claude_source, &output_dir.join("AGENTS.md"))?;
+
+    let llm_source = ai_pack_root.join("llm_instructions");
+    if !llm_source.is_dir() {
+        bail!(
+            "missing llm_instructions directory: {}",
+            crate::normalize_path(&llm_source)
+        );
+    }
+    let llm_dest = output_dir.join("llm_instructions");
+    fs::create_dir_all(&llm_dest)
+        .with_context(|| format!("failed to create {}", crate::normalize_path(&llm_dest)))?;
+    let mut llm_count = 0usize;
+    for entry in fs::read_dir(&llm_source)
+        .with_context(|| format!("failed to read {}", crate::normalize_path(&llm_source)))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() && crate::is_markdown_file(&path) {
+            crate::copy_file(&path, &llm_dest.join(entry.file_name()))?;
+            llm_count += 1;
+        }
+    }
+    if llm_count == 0 {
+        bail!("no ai-pack/llm_instructions/*.md files found");
+    }
+
+    let docs_source = repo_root.join("docs/wikitool");
+    if docs_source.is_dir() {
+        let docs_dest = output_dir.join("docs/wikitool");
+        fs::create_dir_all(&docs_dest)
+            .with_context(|| format!("failed to create {}", crate::normalize_path(&docs_dest)))?;
+        for entry in fs::read_dir(&docs_source)
+            .with_context(|| format!("failed to read {}", crate::normalize_path(&docs_source)))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() && crate::is_markdown_file(&path) {
+                crate::copy_file(&path, &docs_dest.join(entry.file_name()))?;
+            }
+        }
+    }
+
+    let codex_skills_source = ai_pack_root.join("codex_skills");
+    let mut codex_skills_included = false;
+    if codex_skills_source.is_dir() {
+        crate::copy_dir_recursive(&codex_skills_source, &output_dir.join("codex_skills"))?;
+        codex_skills_included = true;
+    }
+
+    let docs_bundle_source = ai_pack_root.join("docs-bundle-v1.json");
+    let mut docs_bundle_included = false;
+    if docs_bundle_source.is_file() {
+        crate::copy_file(
+            &docs_bundle_source,
+            &output_dir.join("ai/docs-bundle-v1.json"),
+        )?;
+        docs_bundle_included = true;
+    }
+
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let manifest = serde_json::json!({
+        "schema_version": 1,
+        "generated_at_unix": now_unix,
+        "host_context_included": host_context_included,
+        "claude_rules_included": claude_rules_included,
+        "claude_skills_included": claude_skills_included,
+        "codex_skills_included": codex_skills_included,
+        "docs_bundle_included": docs_bundle_included,
+        "agents_mirrors_claude": true,
+        "notes": "AI companion pack for wikitool; content is intentionally shipped outside the binary."
+    });
+    fs::write(
+        output_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest)?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to write {}",
+            crate::normalize_path(&output_dir.join("manifest.json"))
+        )
+    })?;
+
+    Ok(AiPackBuildResult {
+        output_dir: output_dir.to_path_buf(),
+        host_context_included,
+        claude_rules_included,
+        claude_skills_included,
+        codex_skills_included,
+        docs_bundle_included,
+    })
+}
+
+pub(crate) fn resolve_repo_root(value: Option<PathBuf>) -> Result<PathBuf> {
+    let repo_root = match value {
+        Some(path) => path,
+        None => std::env::current_dir().context("failed to resolve current directory")?,
+    };
+    if !repo_root.exists() {
+        bail!("path does not exist: {}", crate::normalize_path(&repo_root));
+    }
+    fs::canonicalize(&repo_root).with_context(|| {
+        format!(
+            "failed to canonicalize {}",
+            crate::normalize_path(&repo_root)
+        )
+    })
+}
+
+fn default_release_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "wikitool.exe"
+    } else {
+        "wikitool"
+    }
+}
+
+const DEFAULT_RELEASE_MATRIX_TARGETS: [&str; 3] = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+];
+
+fn resolve_release_targets(raw_targets: &[String]) -> Vec<String> {
+    let mut targets = Vec::new();
+    for raw in raw_targets {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !targets.iter().any(|existing| existing == trimmed) {
+            targets.push(trimmed.to_string());
+        }
+    }
+    if targets.is_empty() {
+        return DEFAULT_RELEASE_MATRIX_TARGETS
+            .iter()
+            .map(|target| (*target).to_string())
+            .collect();
+    }
+    targets
+}
+
+fn resolve_release_artifact_version(
+    raw_label: Option<&str>,
+    unversioned_names: bool,
+) -> Result<Option<String>> {
+    if unversioned_names {
+        if raw_label.is_some() {
+            bail!("cannot combine --artifact-version with --unversioned-names");
+        }
+        return Ok(None);
+    }
+
+    let label = raw_label
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("v{}", env!("CARGO_PKG_VERSION")));
+
+    if !label
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'))
+    {
+        bail!("invalid artifact version label `{label}`: allowed characters are [A-Za-z0-9._-]");
+    }
+    Ok(Some(label))
+}
+
+fn release_bundle_name(target: &str, artifact_version: Option<&str>) -> String {
+    match artifact_version {
+        Some(version) => format!("wikitool-{version}-{target}"),
+        None => format!("wikitool-{target}"),
+    }
+}
+
+fn run_cargo_release_build_for_target(
+    repo_root: &Path,
+    cargo_bin: &Path,
+    target: &str,
+    use_locked: bool,
+) -> Result<()> {
+    let mut command = ProcessCommand::new(cargo_bin);
+    command
+        .current_dir(repo_root)
+        .arg("build")
+        .arg("--package")
+        .arg("wikitool")
+        .arg("--release")
+        .arg("--target")
+        .arg(target);
+    if use_locked {
+        command.arg("--locked");
+    }
+    let status = command.status().with_context(|| {
+        format!(
+            "failed to execute {} for target {target}",
+            crate::normalize_path(cargo_bin)
+        )
+    })?;
+    if !status.success() {
+        bail!("cargo build failed for target {target}");
+    }
+    Ok(())
+}
+
+fn release_binary_name_for_target(target: &str) -> &'static str {
+    if target.to_ascii_lowercase().contains("windows") {
+        "wikitool.exe"
+    } else {
+        "wikitool"
+    }
+}
+
+fn release_binary_path_for_target(repo_root: &Path, target: &str) -> PathBuf {
+    repo_root
+        .join("target")
+        .join(target)
+        .join("release")
+        .join(release_binary_name_for_target(target))
+}
+
+fn zip_release_bundle(source_dir: &Path, zip_path: &Path, bundle_name: &str) -> Result<()> {
+    if !source_dir.is_dir() {
+        bail!("directory not found: {}", crate::normalize_path(source_dir));
+    }
+    if let Some(parent) = zip_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", crate::normalize_path(parent)))?;
+    }
+
+    let zip_file = fs::File::create(zip_path)
+        .with_context(|| format!("failed to create {}", crate::normalize_path(zip_path)))?;
+    let mut zip_writer = ZipWriter::new(zip_file);
+    let dir_options = FileOptions::default()
+        .compression_method(CompressionMethod::Stored)
+        .unix_permissions(0o755);
+    zip_writer
+        .add_directory(format!("{bundle_name}/"), dir_options)
+        .with_context(|| {
+            format!(
+                "failed to create zip root in {}",
+                crate::normalize_path(zip_path)
+            )
+        })?;
+
+    for relative_path in collect_relative_file_paths(source_dir)? {
+        let source_path = source_dir.join(&relative_path);
+        let normalized_relative = crate::normalize_path(&relative_path);
+        let entry_name = format!("{bundle_name}/{normalized_relative}");
+        let mode = if is_release_binary_entry(&relative_path) {
+            0o755
+        } else {
+            0o644
+        };
+        let file_options = FileOptions::default()
+            .compression_method(CompressionMethod::Deflated)
+            .unix_permissions(mode);
+        zip_writer
+            .start_file(&entry_name, file_options)
+            .with_context(|| {
+                format!(
+                    "failed to create zip entry {} in {}",
+                    entry_name,
+                    crate::normalize_path(zip_path)
+                )
+            })?;
+        let mut input = fs::File::open(&source_path)
+            .with_context(|| format!("failed to open {}", crate::normalize_path(&source_path)))?;
+        io::copy(&mut input, &mut zip_writer).with_context(|| {
+            format!(
+                "failed to write zip entry {} in {}",
+                entry_name,
+                crate::normalize_path(zip_path)
+            )
+        })?;
+    }
+
+    zip_writer
+        .finish()
+        .with_context(|| format!("failed to finalize {}", crate::normalize_path(zip_path)))?;
+    Ok(())
+}
+
+fn collect_relative_file_paths(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    collect_relative_file_paths_recursive(root, root, &mut files)?;
+    files.sort_by_key(|path| crate::normalize_path(path));
+    Ok(files)
+}
+
+fn collect_relative_file_paths_recursive(
+    root: &Path,
+    current: &Path,
+    output: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(current)
+        .with_context(|| format!("failed to read {}", crate::normalize_path(current)))?
+    {
+        entries.push(entry?);
+    }
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let metadata = entry
+            .metadata()
+            .with_context(|| format!("failed to read metadata {}", crate::normalize_path(&path)))?;
+        if metadata.is_dir() {
+            collect_relative_file_paths_recursive(root, &path, output)?;
+        } else if metadata.is_file() {
+            let relative = path.strip_prefix(root).with_context(|| {
+                format!(
+                    "failed to derive relative path from {} using root {}",
+                    crate::normalize_path(&path),
+                    crate::normalize_path(root)
+                )
+            })?;
+            output.push(relative.to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+fn is_release_binary_entry(relative_path: &Path) -> bool {
+    relative_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value == "wikitool")
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        release_binary_name_for_target, release_bundle_name, resolve_release_artifact_version,
+        resolve_release_targets,
+    };
+
+    #[test]
+    fn release_targets_default_and_deduped() {
+        assert_eq!(
+            resolve_release_targets(&[]),
+            vec![
+                "x86_64-pc-windows-msvc".to_string(),
+                "x86_64-unknown-linux-gnu".to_string(),
+                "x86_64-apple-darwin".to_string()
+            ]
+        );
+        assert_eq!(
+            resolve_release_targets(&[
+                "x86_64-unknown-linux-gnu".to_string(),
+                " x86_64-unknown-linux-gnu ".to_string(),
+                "aarch64-apple-darwin".to_string(),
+            ]),
+            vec![
+                "x86_64-unknown-linux-gnu".to_string(),
+                "aarch64-apple-darwin".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn release_artifact_version_validates_flags_and_characters() {
+        assert_eq!(
+            resolve_release_artifact_version(Some("v1.2.3"), false).expect("version"),
+            Some("v1.2.3".to_string())
+        );
+        assert_eq!(
+            resolve_release_artifact_version(None, true).expect("unversioned"),
+            None
+        );
+        assert!(resolve_release_artifact_version(Some("bad label!"), false).is_err());
+        assert!(resolve_release_artifact_version(Some("v1"), true).is_err());
+    }
+
+    #[test]
+    fn release_bundle_and_binary_names_are_platform_aware() {
+        assert_eq!(
+            release_bundle_name("x86_64-unknown-linux-gnu", Some("v0.1.0")),
+            "wikitool-v0.1.0-x86_64-unknown-linux-gnu"
+        );
+        assert_eq!(
+            release_binary_name_for_target("x86_64-pc-windows-msvc"),
+            "wikitool.exe"
+        );
+        assert_eq!(
+            release_binary_name_for_target("x86_64-unknown-linux-gnu"),
+            "wikitool"
+        );
+    }
+}

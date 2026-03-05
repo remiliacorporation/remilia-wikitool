@@ -11,11 +11,14 @@ use reqwest::{StatusCode, Url};
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 use crate::filesystem::{NamespaceMapper, ScanOptions, scan_files, validate_scoped_path};
 use crate::index::{RebuildReport, rebuild_index};
 use crate::runtime::ResolvedPaths;
+use crate::support::{
+    compute_hash, ensure_db_parent, env_value, env_value_u64, env_value_usize, normalize_path,
+    parse_redirect, table_exists, unix_timestamp,
+};
 
 const SYNC_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS sync_ledger_pages (
@@ -1816,7 +1819,7 @@ fn set_sync_config(connection: &Connection, key: &str, value: &str) -> Result<()
 }
 
 fn open_sync_connection(paths: &ResolvedPaths) -> Result<Connection> {
-    ensure_db_parent(paths)?;
+    ensure_db_parent(&paths.db_path)?;
     let connection = Connection::open(&paths.db_path)
         .with_context(|| format!("failed to open {}", paths.db_path.display()))?;
     connection
@@ -1837,30 +1840,6 @@ fn initialize_sync_schema(connection: &Connection) -> Result<()> {
         .context("failed to initialize sync schema")
 }
 
-fn table_exists(connection: &Connection, table_name: &str) -> Result<bool> {
-    let exists: i64 = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
-            [table_name],
-            |row| row.get(0),
-        )
-        .with_context(|| format!("failed to inspect sqlite_master for table {table_name}"))?;
-    Ok(exists == 1)
-}
-
-fn ensure_db_parent(paths: &ResolvedPaths) -> Result<()> {
-    let parent = paths
-        .db_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("db path has no parent: {}", paths.db_path.display()))?;
-    fs::create_dir_all(parent).with_context(|| {
-        format!(
-            "failed to create database parent directory {}",
-            parent.display()
-        )
-    })
-}
-
 fn ensure_parent_dir(path: &Path) -> Result<()> {
     let parent = path
         .parent()
@@ -1879,70 +1858,12 @@ fn absolute_path_from_relative(paths: &ResolvedPaths, relative: &str) -> PathBuf
     output
 }
 
-fn parse_redirect(content: &str) -> (bool, Option<String>) {
-    let trimmed = content.trim();
-    if !trimmed.to_ascii_uppercase().starts_with("#REDIRECT") {
-        return (false, None);
-    }
-    if let Some(start) = trimmed.find("[[")
-        && let Some(end) = trimmed[start + 2..].find("]]")
-    {
-        let target = trimmed[start + 2..start + 2 + end].trim().to_string();
-        if !target.is_empty() {
-            return (true, Some(target));
-        }
-    }
-    (true, None)
-}
-
-fn compute_hash(content: &str) -> String {
-    let digest = Sha256::digest(content.as_bytes());
-    let mut output = String::with_capacity(16);
-    for byte in digest.iter().take(8) {
-        output.push_str(&format!("{byte:02x}"));
-    }
-    output
-}
-
 fn normalized_title_key(title: &str) -> String {
     normalize_title_for_storage(title).to_ascii_lowercase()
 }
 
 fn normalize_title_for_storage(title: &str) -> String {
     title.replace('_', " ").trim().to_string()
-}
-
-fn normalize_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn unix_timestamp() -> Result<u64> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before UNIX_EPOCH")
-        .map(|duration| duration.as_secs())
-}
-
-fn env_value(key: &str, default: &str) -> String {
-    env::var(key)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| default.to_string())
-}
-
-fn env_value_u64(key: &str, default: u64) -> u64 {
-    env::var(key)
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(default)
-}
-
-fn env_value_usize(key: &str, default: usize) -> usize {
-    env::var(key)
-        .ok()
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .unwrap_or(default)
 }
 
 fn is_template_namespace_id(namespace: i32) -> bool {

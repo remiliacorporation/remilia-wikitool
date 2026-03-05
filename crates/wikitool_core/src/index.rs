@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params, params_from_iter};
@@ -10,6 +9,7 @@ use serde::Serialize;
 
 use crate::filesystem::{Namespace, ScanOptions, ScanStats, ScannedFile, scan_files};
 use crate::runtime::ResolvedPaths;
+use crate::support::{ensure_db_parent, normalize_path, table_exists, unix_timestamp};
 
 const INDEX_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS indexed_pages (
@@ -282,7 +282,7 @@ pub struct ValidationReport {
 pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<RebuildReport> {
     let files = scan_files(paths, options)?;
     let scan = summarize_files(&files);
-    ensure_db_parent(paths)?;
+    ensure_db_parent(&paths.db_path)?;
     let mut connection = open_connection(&paths.db_path)?;
     initialize_schema(&connection)?;
     let indexed_at_unix = unix_timestamp()?;
@@ -2799,30 +2799,6 @@ fn initialize_schema(connection: &Connection) -> Result<()> {
         .context("failed to initialize index schema")
 }
 
-fn ensure_db_parent(paths: &ResolvedPaths) -> Result<()> {
-    let parent = paths
-        .db_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("db path has no parent: {}", paths.db_path.display()))?;
-    fs::create_dir_all(parent).with_context(|| {
-        format!(
-            "failed to create database parent directory {}",
-            parent.display()
-        )
-    })
-}
-
-fn table_exists(connection: &Connection, table_name: &str) -> Result<bool> {
-    let exists: i64 = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
-            [table_name],
-            |row| row.get(0),
-        )
-        .with_context(|| format!("failed to check sqlite_master for table {table_name}"))?;
-    Ok(exists == 1)
-}
-
 fn count_query(connection: &Connection, sql: &str) -> Result<usize> {
     let count: i64 = connection
         .query_row(sql, [], |row| row.get(0))
@@ -2875,17 +2851,6 @@ fn rebuild_fts_index(connection: &Connection) -> Result<()> {
             .context("failed to rebuild indexed_page_chunks_fts")?;
     }
     Ok(())
-}
-
-fn normalize_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn unix_timestamp() -> Result<u64> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before UNIX_EPOCH")
-        .map(|duration| duration.as_secs())
 }
 
 #[cfg(test)]
