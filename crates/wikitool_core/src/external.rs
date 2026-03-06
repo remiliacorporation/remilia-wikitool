@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::env;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -646,8 +647,7 @@ fn fetch_web_url(url: &str, max_bytes: usize) -> Result<ExternalFetchResult> {
     if !is_text {
         bail!("unsupported content-type: {content_type}");
     }
-    let text = response.text().context("failed to read response body")?;
-    let content = truncate_to_byte_limit(&text, max_bytes);
+    let content = read_text_body_limited(response, max_bytes)?;
 
     let parsed_url = Url::parse(&final_url).ok();
     let title = parsed_url
@@ -679,6 +679,28 @@ fn fetch_web_url(url: &str, max_bytes: usize) -> Result<ExternalFetchResult> {
             "text".to_string()
         },
     })
+}
+
+fn read_text_body_limited<R: Read>(reader: R, max_bytes: usize) -> Result<String> {
+    if max_bytes == 0 {
+        return Ok(String::new());
+    }
+
+    let mut body = Vec::with_capacity(max_bytes.min(8192));
+    let mut limited = reader.take(max_bytes as u64);
+    limited
+        .read_to_end(&mut body)
+        .context("failed to read response body")?;
+
+    let body = strip_utf8_bom(&body);
+    let text = String::from_utf8_lossy(body);
+    Ok(truncate_to_byte_limit(&text, max_bytes))
+}
+
+fn strip_utf8_bom(bytes: &[u8]) -> &[u8] {
+    const UTF8_BOM: &[u8; 3] = b"\xEF\xBB\xBF";
+
+    bytes.strip_prefix(UTF8_BOM).unwrap_or(bytes)
 }
 
 fn convert_heading(line: &str) -> Option<String> {
@@ -903,9 +925,33 @@ mod tests {
         ExportFormat, ExternalFetchFormat, ExternalFetchOptions, MediaWikiFetchOutcome,
         convert_heading, convert_internal_links, default_export_path, parse_allpages_payload,
         parse_mediawiki_batch_content_payload, parse_mediawiki_content_payload, parse_wiki_url,
-        sanitize_filename, truncate_to_byte_limit, wikitext_to_markdown,
+        read_text_body_limited, sanitize_filename, truncate_to_byte_limit, wikitext_to_markdown,
     };
     use serde_json::json;
+    use std::cell::Cell;
+    use std::io::{self, Read};
+    use std::rc::Rc;
+
+    struct CountingReader {
+        bytes_read: Rc<Cell<usize>>,
+        chunk_size: usize,
+        data: Vec<u8>,
+        offset: usize,
+    }
+
+    impl Read for CountingReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.offset >= self.data.len() {
+                return Ok(0);
+            }
+            let available = self.data.len() - self.offset;
+            let count = available.min(self.chunk_size).min(buf.len());
+            buf[..count].copy_from_slice(&self.data[self.offset..self.offset + count]);
+            self.offset += count;
+            self.bytes_read.set(self.bytes_read.get() + count);
+            Ok(count)
+        }
+    }
 
     #[test]
     fn parse_wiki_url_supports_wiki_and_index_forms() {
@@ -954,6 +1000,41 @@ mod tests {
         assert_eq!(truncate_to_byte_limit("abcd", 3), "abc");
         assert_eq!(truncate_to_byte_limit("éclair", 1), "");
         assert_eq!(truncate_to_byte_limit("éclair", 2), "é");
+    }
+
+    #[test]
+    fn read_text_body_limited_stops_reading_at_cap() {
+        let bytes_read = Rc::new(Cell::new(0usize));
+        let reader = CountingReader {
+            bytes_read: bytes_read.clone(),
+            chunk_size: 2,
+            data: b"abcdefghij".to_vec(),
+            offset: 0,
+        };
+
+        let text = read_text_body_limited(reader, 5).expect("read");
+
+        assert_eq!(text, "abcde");
+        assert_eq!(bytes_read.get(), 5);
+    }
+
+    #[test]
+    fn read_text_body_limited_preserves_utf8_boundaries() {
+        assert_eq!(
+            read_text_body_limited(io::Cursor::new("éclair".as_bytes()), 1).expect("read"),
+            ""
+        );
+        assert_eq!(
+            read_text_body_limited(io::Cursor::new("éclair".as_bytes()), 2).expect("read"),
+            "é"
+        );
+    }
+
+    #[test]
+    fn read_text_body_limited_strips_utf8_bom() {
+        let text = read_text_body_limited(io::Cursor::new(b"\xEF\xBB\xBFAlpha"), 16)
+            .expect("read with bom");
+        assert_eq!(text, "Alpha");
     }
 
     #[test]
