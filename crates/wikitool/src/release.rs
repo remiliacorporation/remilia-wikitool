@@ -37,26 +37,7 @@ fn run_release_build_ai_pack(args: ReleaseBuildAiPackArgs) -> Result<()> {
     println!("release build-ai-pack");
     println!("repo_root: {}", normalize_path(&repo_root));
     println!("output_dir: {}", normalize_path(&result.output_dir));
-    println!(
-        "host_context_included: {}",
-        format_flag(result.host_context_included)
-    );
-    println!(
-        "claude_rules_included: {}",
-        format_flag(result.claude_rules_included)
-    );
-    println!(
-        "claude_skills_included: {}",
-        format_flag(result.claude_skills_included)
-    );
-    println!(
-        "codex_skills_included: {}",
-        format_flag(result.codex_skills_included)
-    );
-    println!(
-        "docs_bundle_included: {}",
-        format_flag(result.docs_bundle_included)
-    );
+    print_ai_pack_build_flags(&result);
 
     Ok(())
 }
@@ -94,26 +75,7 @@ fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
     println!("repo_root: {}", normalize_path(&repo_root));
     println!("binary_path: {}", normalize_path(&binary_path));
     println!("output_dir: {}", normalize_path(&output_dir));
-    println!(
-        "host_context_included: {}",
-        format_flag(ai_pack_result.host_context_included)
-    );
-    println!(
-        "claude_rules_included: {}",
-        format_flag(ai_pack_result.claude_rules_included)
-    );
-    println!(
-        "claude_skills_included: {}",
-        format_flag(ai_pack_result.claude_skills_included)
-    );
-    println!(
-        "codex_skills_included: {}",
-        format_flag(ai_pack_result.codex_skills_included)
-    );
-    println!(
-        "docs_bundle_included: {}",
-        format_flag(ai_pack_result.docs_bundle_included)
-    );
+    print_ai_pack_build_flags(&ai_pack_result);
     Ok(())
 }
 
@@ -194,26 +156,7 @@ fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<()> {
         artifact_version.as_deref().unwrap_or("<none>")
     );
     println!("target_count: {}", artifacts.len());
-    println!(
-        "host_context_included: {}",
-        format_flag(ai_pack_result.host_context_included)
-    );
-    println!(
-        "claude_rules_included: {}",
-        format_flag(ai_pack_result.claude_rules_included)
-    );
-    println!(
-        "claude_skills_included: {}",
-        format_flag(ai_pack_result.claude_skills_included)
-    );
-    println!(
-        "codex_skills_included: {}",
-        format_flag(ai_pack_result.codex_skills_included)
-    );
-    println!(
-        "docs_bundle_included: {}",
-        format_flag(ai_pack_result.docs_bundle_included)
-    );
+    print_ai_pack_build_flags(&ai_pack_result);
     for artifact in &artifacts {
         println!("artifact.target: {}", artifact.target);
         println!(
@@ -239,6 +182,29 @@ struct AiPackBuildResult {
     docs_bundle_included: bool,
 }
 
+fn print_ai_pack_build_flags(result: &AiPackBuildResult) {
+    println!(
+        "host_context_included: {}",
+        format_flag(result.host_context_included)
+    );
+    println!(
+        "claude_rules_included: {}",
+        format_flag(result.claude_rules_included)
+    );
+    println!(
+        "claude_skills_included: {}",
+        format_flag(result.claude_skills_included)
+    );
+    println!(
+        "codex_skills_included: {}",
+        format_flag(result.codex_skills_included)
+    );
+    println!(
+        "docs_bundle_included: {}",
+        format_flag(result.docs_bundle_included)
+    );
+}
+
 fn build_ai_pack(
     repo_root: &Path,
     output_dir: &Path,
@@ -246,7 +212,53 @@ fn build_ai_pack(
 ) -> Result<AiPackBuildResult> {
     let ai_pack_root = repo_root.join("ai-pack");
     reset_directory(output_dir)?;
+    copy_required_ai_pack_top_level_files(repo_root, output_dir)?;
 
+    let mut result = AiPackBuildResult {
+        output_dir: output_dir.to_path_buf(),
+        host_context_included: false,
+        claude_rules_included: false,
+        claude_skills_included: false,
+        codex_skills_included: false,
+        docs_bundle_included: false,
+    };
+
+    let effective_claude_source = prepare_ai_pack_claude_context(
+        repo_root,
+        &ai_pack_root,
+        output_dir,
+        host_project_root,
+        &mut result,
+    )?;
+    copy_file(&effective_claude_source, &output_dir.join("CLAUDE.md"))?;
+    copy_file(&effective_claude_source, &output_dir.join("AGENTS.md"))?;
+
+    let llm_source = ai_pack_root.join("llm_instructions");
+    require_dir(&llm_source, "missing llm_instructions directory")?;
+    let llm_count = copy_markdown_files(&llm_source, &output_dir.join("llm_instructions"))?;
+    if llm_count == 0 {
+        bail!("no ai-pack/llm_instructions/*.md files found");
+    }
+
+    let docs_source = repo_root.join("docs/wikitool");
+    if docs_source.is_dir() {
+        copy_markdown_files(&docs_source, &output_dir.join("docs/wikitool"))?;
+    }
+
+    result.codex_skills_included = copy_optional_directory(
+        &ai_pack_root.join("codex_skills"),
+        &output_dir.join("codex_skills"),
+    )?;
+    result.docs_bundle_included = copy_optional_file(
+        &ai_pack_root.join("docs-bundle-v1.json"),
+        &output_dir.join("ai/docs-bundle-v1.json"),
+    )?;
+
+    write_ai_pack_manifest(&result)?;
+    Ok(result)
+}
+
+fn copy_required_ai_pack_top_level_files(repo_root: &Path, output_dir: &Path) -> Result<()> {
     for file in [
         "SETUP.md",
         "README.md",
@@ -254,23 +266,24 @@ fn build_ai_pack(
         "LICENSE-SSL",
         "LICENSE-VPL",
     ] {
-        let src = repo_root.join(file);
-        if !src.is_file() {
-            bail!("missing required AI pack file: {}", normalize_path(&src));
-        }
-        copy_file(&src, &output_dir.join(file))?;
+        let source = repo_root.join(file);
+        require_file(&source, "missing required AI pack file")?;
+        copy_file(&source, &output_dir.join(file))?;
     }
+    Ok(())
+}
 
+fn prepare_ai_pack_claude_context(
+    repo_root: &Path,
+    ai_pack_root: &Path,
+    output_dir: &Path,
+    host_project_root: Option<&Path>,
+    result: &mut AiPackBuildResult,
+) -> Result<PathBuf> {
     let ai_pack_agents = ai_pack_root.join("AGENTS.md");
     let ai_pack_claude = ai_pack_root.join("CLAUDE.md");
-    for file in [&ai_pack_agents, &ai_pack_claude] {
-        if !file.is_file() {
-            bail!(
-                "missing required AI pack source file: {}",
-                normalize_path(file)
-            );
-        }
-    }
+    require_file(&ai_pack_agents, "missing required AI pack source file")?;
+    require_file(&ai_pack_claude, "missing required AI pack source file")?;
     ensure_files_identical(
         &ai_pack_agents,
         &ai_pack_claude,
@@ -278,28 +291,22 @@ fn build_ai_pack(
     )?;
 
     let claude_rules_source = ai_pack_root.join(".claude/rules");
-    if !claude_rules_source.is_dir() {
-        bail!(
-            "missing required AI pack Claude rules directory: {}",
-            normalize_path(&claude_rules_source)
-        );
-    }
+    require_dir(
+        &claude_rules_source,
+        "missing required AI pack Claude rules directory",
+    )?;
     copy_dir_recursive(&claude_rules_source, &output_dir.join(".claude/rules"))?;
-    let mut claude_rules_included = true;
+    result.claude_rules_included = true;
 
     let claude_skills_source = ai_pack_root.join(".claude/skills");
-    if !claude_skills_source.is_dir() {
-        bail!(
-            "missing required AI pack Claude skills directory: {}",
-            normalize_path(&claude_skills_source)
-        );
-    }
+    require_dir(
+        &claude_skills_source,
+        "missing required AI pack Claude skills directory",
+    )?;
     copy_dir_recursive(&claude_skills_source, &output_dir.join(".claude/skills"))?;
-    let mut claude_skills_included = true;
+    result.claude_skills_included = true;
 
     let mut effective_claude_source = ai_pack_claude.clone();
-
-    let mut host_context_included = false;
     if let Some(host_root) = detect_host_context_root(repo_root, host_project_root)?
         && !paths_equivalent(&host_root, repo_root)?
     {
@@ -313,72 +320,47 @@ fn build_ai_pack(
             &host_root.join(".claude/skills"),
             &output_dir.join(".claude/skills"),
         )?;
-        claude_rules_included = true;
-        claude_skills_included = true;
-        host_context_included = true;
+        result.host_context_included = true;
     }
 
-    copy_file(&effective_claude_source, &output_dir.join("CLAUDE.md"))?;
-    copy_file(&effective_claude_source, &output_dir.join("AGENTS.md"))?;
+    Ok(effective_claude_source)
+}
 
-    let llm_source = ai_pack_root.join("llm_instructions");
-    if !llm_source.is_dir() {
-        bail!(
-            "missing llm_instructions directory: {}",
-            normalize_path(&llm_source)
-        );
-    }
-    let llm_dest = output_dir.join("llm_instructions");
-    fs::create_dir_all(&llm_dest)
-        .with_context(|| format!("failed to create {}", normalize_path(&llm_dest)))?;
-    let mut llm_count = 0usize;
-    for entry in fs::read_dir(&llm_source)
-        .with_context(|| format!("failed to read {}", normalize_path(&llm_source)))?
+fn copy_markdown_files(source: &Path, destination: &Path) -> Result<usize> {
+    fs::create_dir_all(destination)
+        .with_context(|| format!("failed to create {}", normalize_path(destination)))?;
+
+    let mut copied = 0usize;
+    for entry in fs::read_dir(source)
+        .with_context(|| format!("failed to read {}", normalize_path(source)))?
     {
         let entry = entry?;
         let path = entry.path();
         if path.is_file() && is_markdown_file(&path) {
-            copy_file(&path, &llm_dest.join(entry.file_name()))?;
-            llm_count += 1;
+            copy_file(&path, &destination.join(entry.file_name()))?;
+            copied += 1;
         }
     }
-    if llm_count == 0 {
-        bail!("no ai-pack/llm_instructions/*.md files found");
-    }
+    Ok(copied)
+}
 
-    let docs_source = repo_root.join("docs/wikitool");
-    if docs_source.is_dir() {
-        let docs_dest = output_dir.join("docs/wikitool");
-        fs::create_dir_all(&docs_dest)
-            .with_context(|| format!("failed to create {}", normalize_path(&docs_dest)))?;
-        for entry in fs::read_dir(&docs_source)
-            .with_context(|| format!("failed to read {}", normalize_path(&docs_source)))?
-        {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() && is_markdown_file(&path) {
-                copy_file(&path, &docs_dest.join(entry.file_name()))?;
-            }
-        }
+fn copy_optional_directory(source: &Path, destination: &Path) -> Result<bool> {
+    if !source.is_dir() {
+        return Ok(false);
     }
+    copy_dir_recursive(source, destination)?;
+    Ok(true)
+}
 
-    let codex_skills_source = ai_pack_root.join("codex_skills");
-    let mut codex_skills_included = false;
-    if codex_skills_source.is_dir() {
-        copy_dir_recursive(&codex_skills_source, &output_dir.join("codex_skills"))?;
-        codex_skills_included = true;
+fn copy_optional_file(source: &Path, destination: &Path) -> Result<bool> {
+    if !source.is_file() {
+        return Ok(false);
     }
+    copy_file(source, destination)?;
+    Ok(true)
+}
 
-    let docs_bundle_source = ai_pack_root.join("docs-bundle-v1.json");
-    let mut docs_bundle_included = false;
-    if docs_bundle_source.is_file() {
-        copy_file(
-            &docs_bundle_source,
-            &output_dir.join("ai/docs-bundle-v1.json"),
-        )?;
-        docs_bundle_included = true;
-    }
-
+fn write_ai_pack_manifest(result: &AiPackBuildResult) -> Result<()> {
     let now_unix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -386,33 +368,33 @@ fn build_ai_pack(
     let manifest = serde_json::json!({
         "schema_version": 1,
         "generated_at_unix": now_unix,
-        "host_context_included": host_context_included,
-        "claude_rules_included": claude_rules_included,
-        "claude_skills_included": claude_skills_included,
-        "codex_skills_included": codex_skills_included,
-        "docs_bundle_included": docs_bundle_included,
+        "host_context_included": result.host_context_included,
+        "claude_rules_included": result.claude_rules_included,
+        "claude_skills_included": result.claude_skills_included,
+        "codex_skills_included": result.codex_skills_included,
+        "docs_bundle_included": result.docs_bundle_included,
         "agents_mirrors_claude": true,
         "notes": "AI companion pack for wikitool; content is intentionally shipped outside the binary."
     });
-    fs::write(
-        output_dir.join("manifest.json"),
-        serde_json::to_string_pretty(&manifest)?,
-    )
-    .with_context(|| {
-        format!(
-            "failed to write {}",
-            normalize_path(output_dir.join("manifest.json"))
-        )
-    })?;
 
-    Ok(AiPackBuildResult {
-        output_dir: output_dir.to_path_buf(),
-        host_context_included,
-        claude_rules_included,
-        claude_skills_included,
-        codex_skills_included,
-        docs_bundle_included,
-    })
+    let manifest_path = result.output_dir.join("manifest.json");
+    fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)
+        .with_context(|| format!("failed to write {}", normalize_path(&manifest_path)))?;
+    Ok(())
+}
+
+fn require_file(path: &Path, message: &str) -> Result<()> {
+    if !path.is_file() {
+        bail!("{message}: {}", normalize_path(path));
+    }
+    Ok(())
+}
+
+fn require_dir(path: &Path, message: &str) -> Result<()> {
+    if !path.is_dir() {
+        bail!("{message}: {}", normalize_path(path));
+    }
+    Ok(())
 }
 
 pub(crate) fn resolve_repo_root(value: Option<PathBuf>) -> Result<PathBuf> {
