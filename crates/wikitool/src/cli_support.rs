@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use wikitool_core::config::{WikiConfig, load_config};
+use wikitool_core::filesystem::ScanStats;
+use wikitool_core::index::StoredIndexStats;
+use wikitool_core::migrate::pending_migration_count;
 use wikitool_core::runtime::{PathOverrides, ResolutionContext, ResolvedPaths, resolve_paths};
 
 use crate::RuntimeOptions;
@@ -234,6 +237,49 @@ pub(crate) fn resolve_runtime_with_config(
     let config = load_config(&paths.config_path)
         .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
     Ok((paths, config))
+}
+
+pub(crate) fn print_scan_stats(prefix: &str, stats: &ScanStats) {
+    println!("{prefix}.total_files: {}", stats.total_files);
+    println!("{prefix}.content_files: {}", stats.content_files);
+    println!("{prefix}.template_files: {}", stats.template_files);
+    println!("{prefix}.redirects: {}", stats.redirects);
+    if stats.by_namespace.is_empty() {
+        println!("{prefix}.by_namespace: <empty>");
+    } else {
+        for (namespace, count) in &stats.by_namespace {
+            println!("{prefix}.namespace.{namespace}: {count}");
+        }
+    }
+}
+
+pub(crate) fn print_migration_status(paths: &ResolvedPaths) {
+    match pending_migration_count(paths) {
+        Ok(0) => {
+            println!("migrations: up_to_date");
+            println!("migrations.pending: 0");
+        }
+        Ok(count) => {
+            println!("migrations: pending");
+            println!("migrations.pending: {count}");
+        }
+        Err(error) => {
+            println!("migrations: unknown");
+            println!("migrations.error: {error}");
+        }
+    }
+}
+
+pub(crate) fn print_stored_index_stats(prefix: &str, stats: &StoredIndexStats) {
+    println!("{prefix}.indexed_rows: {}", stats.indexed_rows);
+    println!("{prefix}.redirects: {}", stats.redirects);
+    if stats.by_namespace.is_empty() {
+        println!("{prefix}.by_namespace: <empty>");
+    } else {
+        for (namespace, count) in &stats.by_namespace {
+            println!("{prefix}.namespace.{namespace}: {count}");
+        }
+    }
 }
 
 pub(crate) fn normalize_path(path: impl AsRef<Path>) -> String {
