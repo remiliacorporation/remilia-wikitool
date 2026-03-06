@@ -30,7 +30,7 @@ Wikitool resolves paths from project root and uses `.wikitool/` for local runtim
 - `.wikitool/config.toml` runtime config
 - `.wikitool/data/wikitool.db` local index/sync database
 
-Schema migrations run automatically on startup (`wikitool db migrate` for manual control). For incompatible binary/schema changes, delete the local DB and repull.
+The local SQLite DB is disposable and is created automatically on first use. If binary/schema changes make it stale, run `wikitool db reset --yes` or delete `.wikitool/data/wikitool.db`, then repull/resync.
 
 ## Core Workflow
 

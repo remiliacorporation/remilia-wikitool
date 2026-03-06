@@ -35,7 +35,7 @@ Canonical behavior is defined by runbooks and live CLI help.
 1. Run `diff` before push/delete workflows.
 2. Run `push --dry-run --summary "..."` before write push.
 3. Do not use `--force` without explicit approval.
-4. Treat `db migrate` as intentionally unsupported during cutover.
+4. Treat the local DB as disposable; use `db reset` or delete `.wikitool/data/wikitool.db` instead of preserving old schema state.
 
 ## Binary-native workflow helpers
 

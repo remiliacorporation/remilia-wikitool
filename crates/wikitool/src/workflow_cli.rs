@@ -19,7 +19,7 @@ use crate::dev_cli::{self, InstallGitHooksArgs};
 use crate::docs_cli::{self, DocsGenerateReferenceArgs};
 use crate::quality_cli;
 use crate::sync_cli::{self, InitArgs, PullArgs, StatusArgs};
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct WorkflowArgs {
@@ -502,7 +502,7 @@ fn run_workflow_authoring_pack(
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -575,10 +575,14 @@ fn print_stub_template_hint(template: &StubTemplateHint) {
 
 fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
     println!(
-        "{label}: {} (usage={} pages={} templates={} links={})",
+        "{label}: {} (family={} type={} origin={} usage={} pages={} avg_quality={} templates={} links={} domains={} identifiers={} flags={})",
         reference.citation_profile,
+        reference.citation_family,
+        reference.source_type,
+        reference.source_origin,
         reference.usage_count,
         reference.distinct_page_count,
+        reference.average_quality_score,
         if reference.common_templates.is_empty() {
             "<none>".to_string()
         } else {
@@ -588,6 +592,21 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
             "<none>".to_string()
         } else {
             reference.common_links.join(", ")
+        },
+        if reference.common_domains.is_empty() {
+            "<none>".to_string()
+        } else {
+            reference.common_domains.join(", ")
+        },
+        if reference.common_identifier_keys.is_empty() {
+            "<none>".to_string()
+        } else {
+            reference.common_identifier_keys.join(", ")
+        },
+        if reference.common_quality_flags.is_empty() {
+            "<none>".to_string()
+        } else {
+            reference.common_quality_flags.join(", ")
         }
     );
     if !reference.example_pages.is_empty() {
@@ -598,13 +617,40 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
     }
     for example in &reference.example_references {
         println!(
-            "{label}.example: profile={} source={} section={} name={} group={} tokens={} summary={} templates={} links={} text={}",
+            "{label}.example: profile={} source={} section={} name={} group={} family={} template={} type={} origin={} quality={} title={} container={} author={} domain={} summary={} templates={} links={} identifiers={} flags={} tokens={} text={}",
             reference.citation_profile,
             example.source_title,
             example.section_heading.as_deref().unwrap_or("<lead>"),
             example.reference_name.as_deref().unwrap_or("<none>"),
             example.reference_group.as_deref().unwrap_or("<none>"),
-            example.token_estimate,
+            example.citation_family,
+            example
+                .primary_template_title
+                .as_deref()
+                .unwrap_or("<none>"),
+            example.source_type,
+            example.source_origin,
+            example.quality_score,
+            if example.reference_title.is_empty() {
+                "<none>"
+            } else {
+                &example.reference_title
+            },
+            if example.source_container.is_empty() {
+                "<none>"
+            } else {
+                &example.source_container
+            },
+            if example.source_author.is_empty() {
+                "<none>"
+            } else {
+                &example.source_author
+            },
+            if example.source_domain.is_empty() {
+                "<none>"
+            } else {
+                &example.source_domain
+            },
             example.summary_text,
             if example.template_titles.is_empty() {
                 "<none>".to_string()
@@ -616,6 +662,17 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
             } else {
                 example.link_titles.join(", ")
             },
+            if example.identifier_keys.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.identifier_keys.join(", ")
+            },
+            if example.quality_flags.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.quality_flags.join(", ")
+            },
+            example.token_estimate,
             example.reference_wikitext
         );
     }

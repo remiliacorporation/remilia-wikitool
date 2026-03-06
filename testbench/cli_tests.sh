@@ -332,22 +332,23 @@ else
     fail "db sync produces output (got: $OUTPUT)"
 fi
 
-# --- db migrate ---
-section "db migrate"
-PROJ_MIG=$(setup_project migrate)
-wt "$PROJ_MIG" init > /dev/null 2>&1
-OUTPUT=$(wt "$PROJ_MIG" db migrate 2>&1)
-if echo "$OUTPUT" | grep -qi "applied\|up to date\|version\|migration"; then
-    pass "db migrate applies or reports up-to-date"
+# --- db reset ---
+section "db reset"
+PROJ_RESET=$(setup_project reset)
+wt "$PROJ_RESET" init > /dev/null 2>&1
+wt "$PROJ_RESET" db sync > /dev/null 2>&1
+OUTPUT=$(wt "$PROJ_RESET" db reset --yes 2>&1)
+if echo "$OUTPUT" | grep -q "db reset" && echo "$OUTPUT" | grep -q "deleted: yes"; then
+    pass "db reset deletes local db"
 else
-    fail "db migrate applies or reports up-to-date (got: $OUTPUT)"
+    fail "db reset deletes local db (got: $OUTPUT)"
 fi
 # Second run should be idempotent
-OUTPUT2=$(wt "$PROJ_MIG" db migrate 2>&1)
-if echo "$OUTPUT2" | grep -qi "up to date"; then
-    pass "db migrate is idempotent"
+OUTPUT2=$(wt "$PROJ_RESET" db reset --yes 2>&1)
+if echo "$OUTPUT2" | grep -q "deleted: no"; then
+    pass "db reset is idempotent"
 else
-    fail "db migrate is idempotent (got: $OUTPUT2)"
+    fail "db reset is idempotent (got: $OUTPUT2)"
 fi
 
 # --- context ---
@@ -537,7 +538,7 @@ else
 fi
 
 # --- FTS continuity: local search substring ---
-section "search substring continuity across migrate"
+section "search substring continuity across disposable db rebuild"
 PROJ_FTS=$(setup_project fts-search)
 wt "$PROJ_FTS" init > /dev/null 2>&1
 mkdir -p "$PROJ_FTS/wiki_content/Main"
@@ -554,26 +555,28 @@ cat > "$PROJ_FTS/wiki_content/Main/AlphaBeta.wiki" << 'WIKIEOF'
 WIKIEOF
 wt "$PROJ_FTS" index rebuild > /dev/null 2>&1
 BEFORE=$(wt "$PROJ_FTS" search "pha" 2>&1)
-wt "$PROJ_FTS" db migrate > /dev/null 2>&1
+wt "$PROJ_FTS" db reset --yes > /dev/null 2>&1
+wt "$PROJ_FTS" index rebuild > /dev/null 2>&1
 AFTER=$(wt "$PROJ_FTS" search "pha" 2>&1)
 if echo "$BEFORE" | grep -q "search.hit: AlphaBeta" && echo "$AFTER" | grep -q "search.hit: AlphaBeta"; then
-    pass "substring search works before and after migrate"
+    pass "substring search works before and after disposable db rebuild"
 else
-    fail "substring search continuity failed (before: $BEFORE | after: $AFTER)"
+    fail "substring search continuity failed across disposable db rebuild (before: $BEFORE | after: $AFTER)"
 fi
 
 # --- FTS continuity: docs search substring ---
-section "docs search substring continuity across migrate"
+section "docs search substring continuity across disposable db rebuild"
 PROJ_DOCS_FTS=$(setup_project fts-docs)
 wt "$PROJ_DOCS_FTS" init > /dev/null 2>&1
 wt "$PROJ_DOCS_FTS" docs import --bundle "$FIXTURES/sample_docs_bundle.json" > /dev/null 2>&1
 BEFORE=$(wt "$PROJ_DOCS_FTS" docs search "BetaToken" 2>&1)
-wt "$PROJ_DOCS_FTS" db migrate > /dev/null 2>&1
+wt "$PROJ_DOCS_FTS" db reset --yes > /dev/null 2>&1
+wt "$PROJ_DOCS_FTS" docs import --bundle "$FIXTURES/sample_docs_bundle.json" > /dev/null 2>&1
 AFTER=$(wt "$PROJ_DOCS_FTS" docs search "BetaToken" 2>&1)
 if echo "$BEFORE" | grep -q "Extension:TestExtension" && echo "$AFTER" | grep -q "Extension:TestExtension"; then
-    pass "docs substring search works before and after migrate"
+    pass "docs substring search works before and after disposable db rebuild"
 else
-    fail "docs substring search continuity failed (before: $BEFORE | after: $AFTER)"
+    fail "docs substring search continuity failed across disposable db rebuild (before: $BEFORE | after: $AFTER)"
 fi
 
 # --- docs remove ---

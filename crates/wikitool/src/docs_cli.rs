@@ -11,7 +11,7 @@ use wikitool_core::docs::{
 };
 
 use crate::{
-    Cli, MIGRATIONS_POLICY_MESSAGE, RuntimeOptions,
+    Cli, LOCAL_DB_POLICY_MESSAGE, RuntimeOptions,
     cli_support::{
         collapse_whitespace, format_flag, normalize_path, normalize_title_query,
         resolve_runtime_paths, resolve_runtime_with_config,
@@ -143,7 +143,7 @@ fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()>
         for failure in &report.failures {
             println!("failure: {failure}");
         }
-        println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+        println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
         if runtime.diagnostics {
             println!("\n[diagnostics]\n{}", paths.diagnostics());
         }
@@ -198,7 +198,7 @@ fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()>
     for failure in &report.failures {
         println!("failure: {failure}");
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -279,7 +279,7 @@ fn run_docs_import_technical(
     for failure in &report.failures {
         println!("failure: {failure}");
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -339,7 +339,7 @@ fn run_docs_list(runtime: &RuntimeOptions, args: DocsListArgs) -> Result<()> {
                 format_expiration(listing.now_unix, doc.expires_at_unix)
             );
         }
-        println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+        println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
         if runtime.diagnostics {
             println!("\n[diagnostics]\n{}", paths.diagnostics());
         }
@@ -366,7 +366,7 @@ fn run_docs_list(runtime: &RuntimeOptions, args: DocsListArgs) -> Result<()> {
             format_expiration(listing.now_unix, doc.expires_at_unix)
         );
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -390,7 +390,7 @@ fn run_docs_update(runtime: &RuntimeOptions) -> Result<()> {
     for failure in &report.failures {
         println!("failure: {failure}");
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -406,7 +406,7 @@ fn run_docs_remove(runtime: &RuntimeOptions, target: &str) -> Result<()> {
     println!("target: {}", report.target);
     println!("kind: {:?}", report.kind);
     println!("removed_rows: {}", report.removed_rows);
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -440,7 +440,7 @@ fn run_docs_search(
             println!("hit.snippet: {}", hit.snippet);
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }

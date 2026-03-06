@@ -30,4 +30,4 @@ wikitool docs list --outdated
 
 1. Never skip dry-run before write push.
 2. Do not use `--force` without explicit user approval.
-3. Treat `db migrate` as intentionally unsupported during cutover.
+3. Treat the local DB as disposable; use `db reset` or delete `.wikitool/data/wikitool.db` instead of preserving old schema state.

@@ -4,7 +4,7 @@ use wikitool_core::index::{ValidationReport, run_validation_checks};
 use wikitool_core::lint::lint_modules;
 
 use crate::cli_support::{normalize_path, print_string_list, resolve_runtime_paths};
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct LintArgs {
@@ -31,7 +31,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
         Some(report) => report,
         None => {
             println!("index.storage: <not built> (run `wikitool index rebuild`)");
-            println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+            println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
             if runtime.diagnostics {
                 println!("\n[diagnostics]\n{}", paths.diagnostics());
             }
@@ -40,7 +40,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
     };
 
     print_validation_issues(&report);
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -112,7 +112,7 @@ pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }

@@ -1,13 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use rusqlite::Connection;
 use serde::Serialize;
 
 use crate::filesystem::{ScanOptions, scan_files, validate_scoped_path};
 use crate::runtime::ResolvedPaths;
+use crate::schema::open_initialized_database_connection;
 use crate::support::{normalize_path, normalize_pathbuf, table_exists, unix_timestamp};
 
 #[derive(Debug, Clone)]
@@ -129,14 +128,7 @@ fn delete_from_index(paths: &ResolvedPaths, relative_path: &str) -> Result<usize
         return Ok(0);
     }
 
-    let connection = Connection::open(&paths.db_path)
-        .with_context(|| format!("failed to open {}", paths.db_path.display()))?;
-    connection
-        .busy_timeout(Duration::from_secs(5))
-        .context("failed to set sqlite busy timeout")?;
-    connection
-        .pragma_update(None, "foreign_keys", "ON")
-        .context("failed to enable foreign_keys pragma")?;
+    let connection = open_initialized_database_connection(&paths.db_path)?;
 
     if !table_exists(&connection, "indexed_pages")? {
         return Ok(0);

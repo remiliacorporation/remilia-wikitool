@@ -10,7 +10,7 @@ use wikitool_core::external::{
 };
 
 use crate::cli_support::{normalize_path, resolve_runtime_paths};
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct FetchArgs {
@@ -115,7 +115,7 @@ pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()>
         println!("{}", result.content);
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -258,7 +258,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }

@@ -26,7 +26,7 @@ pub const COMMAND_SURFACE: &[&str] = &[
     "export",
     "db stats",
     "db sync",
-    "db migrate",
+    "db reset",
     "docs import",
     "docs import-technical",
     "docs list",

@@ -56,4 +56,4 @@ wikitool docs import --installed
 2. Do not use `--force` without explicit user approval.
 3. For delete flows, require `--reason` and prefer `--dry-run` first.
 4. Treat infrastructure/release operations as out of scope unless explicitly requested.
-5. Run `db migrate` to apply pending schema migrations when prompted.
+5. If the local DB is stale or incompatible, run `db reset --yes` and rebuild it with `pull --full --all`, `db sync`, or the relevant import command.

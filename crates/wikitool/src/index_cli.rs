@@ -13,10 +13,10 @@ use wikitool_core::index::{
 use wikitool_core::runtime::{ResolvedPaths, ensure_runtime_ready_for_sync, inspect_runtime};
 
 use crate::cli_support::{
-    collapse_whitespace, normalize_path, normalize_title_query, print_migration_status,
+    collapse_whitespace, normalize_path, normalize_title_query, print_database_schema_status,
     print_scan_stats, print_stored_index_stats, resolve_runtime_paths,
 };
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct IndexArgs {
@@ -215,8 +215,8 @@ fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
     println!("inserted_rows: {}", report.inserted_rows);
     println!("inserted_links: {}", report.inserted_links);
     print_scan_stats("scan", &report.scan);
-    print_migration_status(&paths);
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    print_database_schema_status(&paths);
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -366,7 +366,7 @@ fn run_index_chunks(
             }
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -399,7 +399,7 @@ fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
             println!("index.storage: <not built> (run `wikitool index rebuild`)");
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -505,7 +505,7 @@ fn run_index_templates(
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -532,7 +532,7 @@ fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
             println!("index.storage: <not built> (run `wikitool index rebuild`)");
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -560,7 +560,7 @@ fn run_index_prune_categories(runtime: &RuntimeOptions) -> Result<()> {
             println!("index.storage: <not built> (run `wikitool index rebuild`)");
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -584,7 +584,7 @@ fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
         Some(stored) => print_stored_index_stats("index", &stored),
         None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }

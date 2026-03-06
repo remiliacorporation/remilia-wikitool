@@ -16,39 +16,39 @@ Wiki management CLI
 Usage: wikitool [OPTIONS] [COMMAND]
 
 Commands:
-  init                 
-  pull                 
-  push                 
-  diff                 
-  status               
-  context              
-  search               
-  search-external      
-  validate             
-  lint                 
-  fetch                
-  export               
-  delete               
-  db                   
-  docs                 
-  seo                  
-  net                  
-  perf                 
-  import               
-  index                
-  lsp:generate-config  
-  lsp:status           
-  lsp:info             
-  workflow             
-  release              
-  dev                  
+  init
+  pull
+  push
+  diff
+  status
+  context
+  search
+  search-external
+  validate
+  lint
+  fetch
+  export
+  delete
+  db
+  docs
+  seo
+  net
+  perf
+  import
+  index
+  lsp:generate-config
+  lsp:status
+  lsp:info
+  workflow
+  release
+  dev
   contracts            Contract bootstrap and differential harness helpers
   help                 Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
       --license              Print license information and exit
   -h, --help                 Print help
@@ -61,11 +61,11 @@ Options:
 Usage: wikitool init [OPTIONS]
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --templates            Create templates/ during initialization
-      --data-dir <PATH>      
+      --data-dir <PATH>
       --force                Overwrite existing config/parser files
-      --config <PATH>        
+      --config <PATH>
       --no-config            Skip writing .wikitool/config.toml
       --diagnostics          Print resolved runtime diagnostics
       --no-parser-config     Skip writing parser config
@@ -79,11 +79,11 @@ Usage: wikitool pull [OPTIONS]
 
 Options:
       --full                 Full refresh (ignore last pull timestamp)
-      --project-root <PATH>  
-      --data-dir <PATH>      
+      --project-root <PATH>
+      --data-dir <PATH>
       --overwrite-local      Overwrite locally modified files during pull
   -c, --category <NAME>      Filter by category
-      --config <PATH>        
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
       --templates            Pull templates instead of articles
       --categories           Pull Category: namespace pages
@@ -97,11 +97,11 @@ Options:
 Usage: wikitool push [OPTIONS]
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --summary <TEXT>       Edit summary for pushed changes
-      --data-dir <PATH>      
+      --data-dir <PATH>
       --dry-run              Preview push actions without writing to the wiki
-      --config <PATH>        
+      --config <PATH>
       --force                Force push even when remote timestamps diverge
       --delete               Propagate local deletions to remote wiki pages
       --diagnostics          Print resolved runtime diagnostics
@@ -116,11 +116,11 @@ Options:
 Usage: wikitool diff [OPTIONS]
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --templates            Include template/module/mediawiki namespaces
-      --data-dir <PATH>      
+      --data-dir <PATH>
       --verbose              Show hash-level details for modified entries
-      --config <PATH>        
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -132,10 +132,10 @@ Usage: wikitool status [OPTIONS]
 
 Options:
       --modified             Only show modified
-      --project-root <PATH>  
+      --project-root <PATH>
       --conflicts            Only show conflicts
-      --data-dir <PATH>      
-      --config <PATH>        
+      --data-dir <PATH>
+      --config <PATH>
       --templates            Include templates
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -147,12 +147,12 @@ Options:
 Usage: wikitool context [OPTIONS] <TITLE>
 
 Arguments:
-  <TITLE>  
+  <TITLE>
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -163,12 +163,12 @@ Options:
 Usage: wikitool search [OPTIONS] <QUERY>
 
 Arguments:
-  <QUERY>  
+  <QUERY>
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -179,12 +179,12 @@ Options:
 Usage: wikitool search-external [OPTIONS] <QUERY>
 
 Arguments:
-  <QUERY>  
+  <QUERY>
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -195,9 +195,9 @@ Options:
 Usage: wikitool validate [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -208,14 +208,14 @@ Options:
 Usage: wikitool lint [OPTIONS] [TITLE]
 
 Arguments:
-  [TITLE]  
+  [TITLE]
 
 Options:
       --format <FORMAT>      Output format: text|json [default: text]
-      --project-root <PATH>  
-      --data-dir <PATH>      
+      --project-root <PATH>
+      --data-dir <PATH>
       --strict               Treat warnings as errors
-      --config <PATH>        
+      --config <PATH>
       --no-meta              Omit metadata from JSON output
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -227,14 +227,14 @@ Options:
 Usage: wikitool fetch [OPTIONS] <URL>
 
 Arguments:
-  <URL>  
+  <URL>
 
 Options:
       --format <FORMAT>      Output format: wikitext|html [default: wikitext]
-      --project-root <PATH>  
-      --data-dir <PATH>      
+      --project-root <PATH>
+      --data-dir <PATH>
       --save                 Save output under reference/<source>/ in project root
-      --config <PATH>        
+      --config <PATH>
       --name <NAME>          Custom name for saved reference file
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -246,15 +246,15 @@ Options:
 Usage: wikitool export [OPTIONS] <URL>
 
 Arguments:
-  <URL>  
+  <URL>
 
 Options:
   -o, --output <PATH>         Output file or directory path
-      --project-root <PATH>   
-      --data-dir <PATH>       
+      --project-root <PATH>
+      --data-dir <PATH>
       --format <FORMAT>       Output format: markdown|wikitext [default: markdown]
       --code-language <LANG>  Code language hint (reserved for markdown export)
-      --config <PATH>         
+      --config <PATH>
       --diagnostics           Print resolved runtime diagnostics
       --no-frontmatter        Skip YAML frontmatter
       --subpages              Include subpages for MediaWiki page exports
@@ -268,15 +268,15 @@ Options:
 Usage: wikitool delete [OPTIONS] --reason <TEXT> <TITLE>
 
 Arguments:
-  <TITLE>  
+  <TITLE>
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --reason <TEXT>        Reason for deletion (required)
-      --data-dir <PATH>      
+      --data-dir <PATH>
       --no-backup            Skip backup (not recommended)
       --backup-dir <PATH>    Custom backup directory under .wikitool/
-      --config <PATH>        
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
       --dry-run              Preview deletion without making changes
   -h, --help                 Print help
@@ -288,15 +288,15 @@ Options:
 Usage: wikitool db [OPTIONS] <COMMAND>
 
 Commands:
-  stats    
-  sync     
-  migrate  
-  help     Print this message or the help of the given subcommand(s)
+  stats
+  sync
+  reset
+  help   Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -307,9 +307,9 @@ Options:
 Usage: wikitool db stats [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -320,22 +320,23 @@ Options:
 Usage: wikitool db sync [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
 
-## db migrate
+## db reset
 
 ```text
-Usage: wikitool db migrate [OPTIONS]
+Usage: wikitool db reset [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --yes                  Assume yes and delete the local database without prompting
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -346,19 +347,19 @@ Options:
 Usage: wikitool docs [OPTIONS] <COMMAND>
 
 Commands:
-  import              
-  import-technical    
-  generate-reference  
-  list                
-  update              
-  remove              
-  search              
+  import
+  import-technical
+  generate-reference
+  list
+  update
+  remove
+  search
   help                Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -369,14 +370,14 @@ Options:
 Usage: wikitool docs import [OPTIONS] [EXTENSION]...
 
 Arguments:
-  [EXTENSION]...  
+  [EXTENSION]...
 
 Options:
       --bundle <PATH>        Import docs from precomposed bundle JSON
-      --project-root <PATH>  
-      --data-dir <PATH>      
+      --project-root <PATH>
+      --data-dir <PATH>
       --installed            Discover installed extensions from live wiki API
-      --config <PATH>        
+      --config <PATH>
       --no-subpages          Skip extension subpages
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -388,12 +389,12 @@ Options:
 Usage: wikitool docs import-technical [OPTIONS] [PAGE]...
 
 Arguments:
-  [PAGE]...  
+  [PAGE]...
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --subpages             Include subpages for selected pages/types
-      --data-dir <PATH>      
+      --data-dir <PATH>
       --hooks                Import all hook documentation
       --config               Import configuration variable docs
       --api                  Import API documentation
@@ -409,9 +410,9 @@ Usage: wikitool docs generate-reference [OPTIONS]
 
 Options:
       --output <PATH>        Output markdown path (default: docs/wikitool/reference.md in current directory)
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -423,10 +424,10 @@ Usage: wikitool docs list [OPTIONS]
 
 Options:
       --outdated             Show only outdated docs
-      --project-root <PATH>  
-      --data-dir <PATH>      
+      --project-root <PATH>
+      --data-dir <PATH>
       --type <TYPE>          Filter technical docs by type
-      --config <PATH>        
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -437,9 +438,9 @@ Options:
 Usage: wikitool docs update [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -450,12 +451,12 @@ Options:
 Usage: wikitool docs remove [OPTIONS] <TARGET>
 
 Arguments:
-  <TARGET>  
+  <TARGET>
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -466,14 +467,14 @@ Options:
 Usage: wikitool docs search [OPTIONS] <QUERY>
 
 Arguments:
-  <QUERY>  
+  <QUERY>
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --tier <TIER>          Search tier (extension, technical)
-      --data-dir <PATH>      
+      --data-dir <PATH>
   -l, --limit <LIMIT>        Limit result count [default: 20]
-      --config <PATH>        
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -484,13 +485,13 @@ Options:
 Usage: wikitool seo [OPTIONS] <COMMAND>
 
 Commands:
-  inspect  
+  inspect
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -501,14 +502,14 @@ Options:
 Usage: wikitool seo inspect [OPTIONS] <TARGET>
 
 Arguments:
-  <TARGET>  
+  <TARGET>
 
 Options:
       --json                 Output JSON for AI consumption
-      --project-root <PATH>  
-      --data-dir <PATH>      
+      --project-root <PATH>
+      --data-dir <PATH>
       --no-meta              Omit metadata from JSON output
-      --config <PATH>        
+      --config <PATH>
       --url <URL>            Override target URL
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -520,13 +521,13 @@ Options:
 Usage: wikitool net [OPTIONS] <COMMAND>
 
 Commands:
-  inspect  
+  inspect
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -537,14 +538,14 @@ Options:
 Usage: wikitool net inspect [OPTIONS] <TARGET>
 
 Arguments:
-  <TARGET>  
+  <TARGET>
 
 Options:
       --limit <N>            Limit number of resources to probe [default: 25]
-      --project-root <PATH>  
-      --data-dir <PATH>      
+      --project-root <PATH>
+      --data-dir <PATH>
       --no-probe             Skip HEAD probes (faster, no size/cache info)
-      --config <PATH>        
+      --config <PATH>
       --json                 Output JSON for AI consumption
       --diagnostics          Print resolved runtime diagnostics
       --no-meta              Omit metadata from JSON output
@@ -558,13 +559,13 @@ Options:
 Usage: wikitool perf [OPTIONS] <COMMAND>
 
 Commands:
-  lighthouse  
+  lighthouse
   help        Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -575,15 +576,15 @@ Options:
 Usage: wikitool perf lighthouse [OPTIONS] [TARGET]
 
 Arguments:
-  [TARGET]  
+  [TARGET]
 
 Options:
       --output <FORMAT>       Output format: html|json [default: html]
-      --project-root <PATH>   
-      --data-dir <PATH>       
+      --project-root <PATH>
+      --data-dir <PATH>
       --out <PATH>            Report output path
       --categories <LIST>     Comma-separated categories
-      --config <PATH>         
+      --config <PATH>
       --chrome-flags <FLAGS>  Pass Chrome flags to Lighthouse
       --diagnostics           Print resolved runtime diagnostics
       --show-version          Print resolved Lighthouse binary + version and exit
@@ -599,13 +600,13 @@ Options:
 Usage: wikitool import [OPTIONS] <COMMAND>
 
 Commands:
-  cargo  
+  cargo
   help   Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -616,14 +617,14 @@ Options:
 Usage: wikitool import cargo [OPTIONS] --table <NAME> <PATH>
 
 Arguments:
-  <PATH>  
+  <PATH>
 
 Options:
-      --project-root <PATH>    
+      --project-root <PATH>
       --table <NAME>           Cargo table name
-      --data-dir <PATH>        
+      --data-dir <PATH>
       --type <TYPE>            Input type: csv|json
-      --config <PATH>          
+      --config <PATH>
       --template <NAME>        Template wrapper name
       --diagnostics            Print resolved runtime diagnostics
       --title-field <FIELD>    Field name to use as page title
@@ -646,15 +647,16 @@ Commands:
   rebuild           Rebuild the local search index from wiki_content and templates
   stats             Show index statistics
   chunks            Retrieve token-budgeted content chunks from indexed pages
-  backlinks         
-  orphans           
-  prune-categories  
+  backlinks
+  templates         Inspect active template usage and implementation references
+  orphans
+  prune-categories
   help              Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -667,9 +669,9 @@ Rebuild the local search index from wiki_content and templates
 Usage: wikitool index rebuild [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -682,9 +684,9 @@ Show index statistics
 Usage: wikitool index stats [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -697,14 +699,14 @@ Retrieve token-budgeted content chunks from indexed pages
 Usage: wikitool index chunks [OPTIONS] [TITLE]
 
 Arguments:
-  [TITLE]  
+  [TITLE]
 
 Options:
-      --project-root <PATH>    
+      --project-root <PATH>
       --query <QUERY>          Optional relevance query applied to chunk retrieval
       --across-pages           Retrieve chunks across indexed pages (query required, omit TITLE)
-      --data-dir <PATH>        
-      --config <PATH>          
+      --data-dir <PATH>
+      --config <PATH>
       --limit <N>              Maximum number of chunks to return [default: 8]
       --diagnostics            Print resolved runtime diagnostics
       --token-budget <TOKENS>  Token budget across returned chunks [default: 720]
@@ -721,12 +723,33 @@ Options:
 Usage: wikitool index backlinks [OPTIONS] <TITLE>
 
 Arguments:
-  <TITLE>  
+  <TITLE>
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## index templates
+
+```text
+Inspect active template usage and implementation references
+
+Usage: wikitool index templates [OPTIONS] [TEMPLATE]
+
+Arguments:
+  [TEMPLATE]  Optional specific template title
+
+Options:
+      --limit <N>            Maximum templates to return in catalog mode [default: 40]
+      --project-root <PATH>
+      --all                  Return the full active template catalog
+      --data-dir <PATH>
+      --config <PATH>
+      --format <FORMAT>      Output format: text|json [default: text]
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -737,9 +760,9 @@ Options:
 Usage: wikitool index orphans [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -750,9 +773,9 @@ Options:
 Usage: wikitool index prune-categories [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -764,9 +787,9 @@ Usage: wikitool lsp:generate-config [OPTIONS]
 
 Options:
       --force                Overwrite parser config if it already exists
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -777,9 +800,9 @@ Options:
 Usage: wikitool lsp:status [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -790,9 +813,9 @@ Options:
 Usage: wikitool lsp:info [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -803,15 +826,15 @@ Options:
 Usage: wikitool workflow [OPTIONS] <COMMAND>
 
 Commands:
-  bootstrap       
-  full-refresh    
+  bootstrap
+  full-refresh
   authoring-pack  Generate a token-budgeted knowledge pack for article authoring
   help            Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -822,11 +845,11 @@ Options:
 Usage: wikitool workflow bootstrap [OPTIONS]
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --templates            Create templates/ during initialization (default: true)
-      --data-dir <PATH>      
+      --data-dir <PATH>
       --no-templates         Do not create templates/ during initialization
-      --config <PATH>        
+      --config <PATH>
       --pull                 Pull content after initialization (default: true)
       --diagnostics          Print resolved runtime diagnostics
       --no-pull              Skip content pull after initialization
@@ -841,11 +864,11 @@ Options:
 Usage: wikitool workflow full-refresh [OPTIONS]
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --yes                  Assume yes; do not prompt for confirmation
-      --data-dir <PATH>      
+      --data-dir <PATH>
       --templates            Create templates/ during initialization (default: true)
-      --config <PATH>        
+      --config <PATH>
       --no-templates         Do not create templates/ during initialization
       --diagnostics          Print resolved runtime diagnostics
       --skip-reference       Skip docs reference generation
@@ -863,12 +886,12 @@ Arguments:
   [TOPIC]  Primary article topic/title for retrieval
 
 Options:
-      --project-root <PATH>    
+      --project-root <PATH>
       --stub-path <PATH>       Optional stub wikitext file used for link/template hint extraction
-      --data-dir <PATH>        
+      --data-dir <PATH>
       --related-limit <N>      Maximum related pages in the pack [default: 18]
       --chunk-limit <N>        Maximum retrieved context chunks [default: 10]
-      --config <PATH>          
+      --config <PATH>
       --diagnostics            Print resolved runtime diagnostics
       --token-budget <TOKENS>  Token budget across retrieved chunks [default: 1200]
       --max-pages <N>          Maximum distinct source pages in chunk retrieval [default: 8]
@@ -887,15 +910,15 @@ Options:
 Usage: wikitool release [OPTIONS] <COMMAND>
 
 Commands:
-  build-ai-pack  
-  package        
-  build-matrix   
+  build-ai-pack
+  package
+  build-matrix
   help           Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -906,11 +929,11 @@ Options:
 Usage: wikitool release build-ai-pack [OPTIONS]
 
 Options:
-      --project-root <PATH>       
+      --project-root <PATH>
       --repo-root <PATH>          Wikitool repository root (default: current directory)
-      --data-dir <PATH>           
+      --data-dir <PATH>
       --output-dir <PATH>         Output directory (default: <repo>/dist/ai-pack)
-      --config <PATH>             
+      --config <PATH>
       --host-project-root <PATH>  Optional host project root containing CLAUDE.md + .claude/{rules,skills}
       --diagnostics               Print resolved runtime diagnostics
   -h, --help                      Print help
@@ -922,11 +945,11 @@ Options:
 Usage: wikitool release package [OPTIONS]
 
 Options:
-      --project-root <PATH>       
+      --project-root <PATH>
       --repo-root <PATH>          Wikitool repository root (default: current directory)
       --binary-path <PATH>        Release binary path (default: <repo>/target/release/wikitool[.exe])
-      --data-dir <PATH>           
-      --config <PATH>             
+      --data-dir <PATH>
+      --config <PATH>
       --output-dir <PATH>         Output directory (default: <repo>/dist/release)
       --diagnostics               Print resolved runtime diagnostics
       --host-project-root <PATH>  Optional host project root containing CLAUDE.md + .claude/{rules,skills}
@@ -939,11 +962,11 @@ Options:
 Usage: wikitool release build-matrix [OPTIONS]
 
 Options:
-      --project-root <PATH>       
+      --project-root <PATH>
       --repo-root <PATH>          Wikitool repository root (default: current directory)
-      --data-dir <PATH>           
+      --data-dir <PATH>
       --targets <TRIPLE>          Target triples to build (repeat or use comma-separated list). Defaults to windows/linux/macos x86_64 targets.
-      --config <PATH>             
+      --config <PATH>
       --output-dir <PATH>         Output directory for staged folders and zip artifacts (default: <repo>/dist/release-matrix)
       --artifact-version <LABEL>  Version label used in bundle names (default: v<CARGO_PKG_VERSION>)
       --diagnostics               Print resolved runtime diagnostics
@@ -962,13 +985,13 @@ Options:
 Usage: wikitool dev [OPTIONS] <COMMAND>
 
 Commands:
-  install-git-hooks  
+  install-git-hooks
   help               Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -979,12 +1002,12 @@ Options:
 Usage: wikitool dev install-git-hooks [OPTIONS]
 
 Options:
-      --project-root <PATH>  
+      --project-root <PATH>
       --repo-root <PATH>     Repository root containing .git/hooks (default: current directory)
-      --data-dir <PATH>      
+      --data-dir <PATH>
       --source <PATH>        Hook source file (default: scripts/git-hooks/commit-msg under repo root)
       --allow-missing-git    Do not fail when .git/hooks is missing (useful for zip-distributed binaries)
-      --config <PATH>        
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -1002,9 +1025,9 @@ Commands:
   help             Print this message or the help of the given subcommand(s)
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -1019,8 +1042,8 @@ Usage: wikitool contracts snapshot [OPTIONS]
 Options:
       --project-root <PROJECT_ROOT>    [default: .]
       --content-dir <CONTENT_DIR>      [default: wiki_content]
-      --data-dir <PATH>                
-      --config <PATH>                  
+      --data-dir <PATH>
+      --config <PATH>
       --templates-dir <TEMPLATES_DIR>  [default: templates]
       --diagnostics                    Print resolved runtime diagnostics
   -h, --help                           Print help
@@ -1034,9 +1057,9 @@ Print frozen command-surface contract as JSON
 Usage: wikitool contracts command-surface [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```

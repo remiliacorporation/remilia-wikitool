@@ -13,47 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::runtime::ResolvedPaths;
-use crate::support::{
-    compute_hash, ensure_db_parent, env_value, env_value_u64, env_value_usize, unix_timestamp,
-};
-
-const DOCS_SCHEMA_SQL: &str = r#"
-CREATE TABLE IF NOT EXISTS extension_docs (
-    extension_name TEXT PRIMARY KEY,
-    source_wiki TEXT NOT NULL,
-    version TEXT,
-    pages_count INTEGER NOT NULL,
-    fetched_at_unix INTEGER NOT NULL,
-    expires_at_unix INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS extension_doc_pages (
-    extension_name TEXT NOT NULL,
-    page_title TEXT NOT NULL,
-    local_path TEXT NOT NULL,
-    content TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    fetched_at_unix INTEGER NOT NULL,
-    PRIMARY KEY (extension_name, page_title),
-    FOREIGN KEY (extension_name) REFERENCES extension_docs(extension_name) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_extension_doc_pages_title ON extension_doc_pages(page_title);
-
-CREATE TABLE IF NOT EXISTS technical_docs (
-    doc_type TEXT NOT NULL,
-    page_title TEXT NOT NULL,
-    local_path TEXT NOT NULL,
-    content TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    fetched_at_unix INTEGER NOT NULL,
-    expires_at_unix INTEGER NOT NULL,
-    PRIMARY KEY (doc_type, page_title)
-);
-
-CREATE INDEX IF NOT EXISTS idx_technical_docs_type ON technical_docs(doc_type);
-CREATE INDEX IF NOT EXISTS idx_technical_docs_title ON technical_docs(page_title);
-"#;
+use crate::schema::open_initialized_database_connection;
+use crate::support::{compute_hash, env_value, env_value_u64, env_value_usize, unix_timestamp};
 
 const DEFAULT_DOCS_API_URL: &str = "https://www.mediawiki.org/w/api.php";
 const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
@@ -1000,7 +961,6 @@ pub fn import_technical_docs_with_api<A: DocsApi>(
 
 pub fn list_docs(paths: &ResolvedPaths, options: &DocsListOptions) -> Result<DocsListReport> {
     let connection = open_docs_connection(paths)?;
-    initialize_docs_schema(&connection)?;
     let now_unix = unix_timestamp()?;
     let stats = load_docs_stats(&connection)?;
     let extensions = load_extension_docs(&connection, now_unix)?;
@@ -1026,7 +986,6 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
     api: &mut A,
 ) -> Result<DocsUpdateReport> {
     let connection = open_docs_connection(paths)?;
-    initialize_docs_schema(&connection)?;
     let now_unix = unix_timestamp()?;
     let outdated = load_outdated_docs(&connection, now_unix)?;
 
@@ -1104,7 +1063,6 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
 
 pub fn remove_docs(paths: &ResolvedPaths, target: &str) -> Result<DocsRemoveReport> {
     let mut connection = open_docs_connection(paths)?;
-    initialize_docs_schema(&connection)?;
 
     let normalized_target = normalize_title(target);
     if normalized_target.is_empty() {
@@ -1187,7 +1145,6 @@ pub fn search_docs(
     limit: usize,
 ) -> Result<Vec<DocsSearchHit>> {
     let connection = open_docs_connection(paths)?;
-    initialize_docs_schema(&connection)?;
 
     let normalized_query = collapse_whitespace(query).to_ascii_lowercase();
     if normalized_query.is_empty() || limit == 0 {
@@ -1271,7 +1228,6 @@ fn rebuild_docs_fts_indexes(
         return Ok(());
     }
     let connection = open_docs_connection(paths)?;
-    initialize_docs_schema(&connection)?;
 
     if rebuild_extension_docs && fts_table_exists(&connection, "extension_doc_pages_fts") {
         connection
@@ -1467,7 +1423,6 @@ fn persist_extension_docs(
     rebuild_fts_after_commit: bool,
 ) -> Result<()> {
     let mut connection = open_docs_connection(paths)?;
-    initialize_docs_schema(&connection)?;
     let transaction = connection
         .transaction()
         .context("failed to start extension docs transaction")?;
@@ -1561,7 +1516,6 @@ fn persist_technical_docs(
     rebuild_fts_after_commit: bool,
 ) -> Result<()> {
     let mut connection = open_docs_connection(paths)?;
-    initialize_docs_schema(&connection)?;
     let transaction = connection
         .transaction()
         .context("failed to start technical docs transaction")?;
@@ -1819,25 +1773,7 @@ fn load_outdated_docs(connection: &Connection, now_unix: u64) -> Result<DocsOutd
 }
 
 fn open_docs_connection(paths: &ResolvedPaths) -> Result<Connection> {
-    ensure_db_parent(&paths.db_path)?;
-    let connection = Connection::open(&paths.db_path)
-        .with_context(|| format!("failed to open {}", paths.db_path.display()))?;
-    connection
-        .busy_timeout(Duration::from_secs(5))
-        .context("failed to set sqlite busy timeout")?;
-    connection
-        .pragma_update(None, "foreign_keys", "ON")
-        .context("failed to enable foreign_keys pragma")?;
-    connection
-        .pragma_update(None, "journal_mode", "WAL")
-        .context("failed to enable WAL journal mode")?;
-    Ok(connection)
-}
-
-fn initialize_docs_schema(connection: &Connection) -> Result<()> {
-    connection
-        .execute_batch(DOCS_SCHEMA_SQL)
-        .context("failed to initialize docs schema")
+    open_initialized_database_connection(&paths.db_path)
 }
 
 fn count_query(connection: &Connection, sql: &str) -> Result<usize> {

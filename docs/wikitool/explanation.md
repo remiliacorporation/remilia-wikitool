@@ -22,7 +22,7 @@ Wikitool is a Rust CLI that synchronizes MediaWiki content with local files and 
 
 ## Cutover policy
 
-Rust CLI is the primary runtime. No migration path is provided during current cutover; operators are expected to delete local DB state and repull when needed.
+Rust CLI is the primary runtime. Local DB state is disposable; operators are expected to delete/reset it and repull or resync when needed.
 
 ## Related docs
 

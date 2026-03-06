@@ -15,32 +15,11 @@ use serde_json::Value;
 use crate::filesystem::{NamespaceMapper, ScanOptions, scan_files, validate_scoped_path};
 use crate::index::{RebuildReport, rebuild_index};
 use crate::runtime::ResolvedPaths;
+use crate::schema::{ensure_database_schema_connection, open_initialized_database_connection};
 use crate::support::{
-    compute_hash, ensure_db_parent, env_value, env_value_u64, env_value_usize, normalize_path,
-    parse_redirect, table_exists, unix_timestamp,
+    compute_hash, env_value, env_value_u64, env_value_usize, normalize_path, parse_redirect,
+    table_exists, unix_timestamp,
 };
-
-const SYNC_SCHEMA_SQL: &str = r#"
-CREATE TABLE IF NOT EXISTS sync_ledger_pages (
-    title TEXT PRIMARY KEY,
-    namespace INTEGER NOT NULL,
-    relative_path TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    wiki_modified_at TEXT,
-    revision_id INTEGER,
-    page_id INTEGER,
-    is_redirect INTEGER NOT NULL,
-    redirect_target TEXT,
-    last_synced_at_unix INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_sync_ledger_pages_namespace ON sync_ledger_pages(namespace);
-CREATE INDEX IF NOT EXISTS idx_sync_ledger_pages_relative_path ON sync_ledger_pages(relative_path);
-
-CREATE TABLE IF NOT EXISTS sync_config (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-"#;
 
 pub const NS_MAIN: i32 = 0;
 pub const NS_CATEGORY: i32 = 14;
@@ -1835,25 +1814,11 @@ fn set_sync_config(connection: &Connection, key: &str, value: &str) -> Result<()
 }
 
 fn open_sync_connection(paths: &ResolvedPaths) -> Result<Connection> {
-    ensure_db_parent(&paths.db_path)?;
-    let connection = Connection::open(&paths.db_path)
-        .with_context(|| format!("failed to open {}", paths.db_path.display()))?;
-    connection
-        .busy_timeout(Duration::from_secs(5))
-        .context("failed to set sqlite busy timeout")?;
-    connection
-        .pragma_update(None, "foreign_keys", "ON")
-        .context("failed to enable foreign_keys pragma")?;
-    connection
-        .pragma_update(None, "journal_mode", "WAL")
-        .context("failed to enable WAL journal mode")?;
-    Ok(connection)
+    open_initialized_database_connection(&paths.db_path)
 }
 
 fn initialize_sync_schema(connection: &Connection) -> Result<()> {
-    connection
-        .execute_batch(SYNC_SCHEMA_SQL)
-        .context("failed to initialize sync schema")
+    ensure_database_schema_connection(connection)
 }
 
 fn ensure_parent_dir(path: &Path) -> Result<()> {

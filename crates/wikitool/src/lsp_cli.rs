@@ -5,7 +5,7 @@ use wikitool_core::runtime::{
 };
 
 use crate::cli_support::{normalize_path, resolve_runtime_paths, resolve_runtime_with_config};
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct LspGenerateConfigArgs {
@@ -62,7 +62,7 @@ pub(crate) fn run_lsp_status(runtime: &RuntimeOptions) -> Result<()> {
         "embedded parser baseline bytes: {}",
         embedded_parser_config().len()
     );
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -73,6 +73,6 @@ pub(crate) fn run_lsp_info() -> Result<()> {
     println!("wikitext LSP integration");
     println!("  command: wikitool lsp:generate-config");
     println!("  output parser config: <project-root>/.wikitool/parser-config.json");
-    println!("  policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("  policy: {LOCAL_DB_POLICY_MESSAGE}");
     Ok(())
 }

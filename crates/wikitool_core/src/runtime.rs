@@ -5,8 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-pub const MIGRATIONS_POLICY_MESSAGE: &str =
-    "Run `wikitool db migrate` to apply pending schema migrations.";
+use crate::schema::LOCAL_DB_POLICY_MESSAGE;
 
 const EMBEDDED_PARSER_CONFIG: &str = include_str!("../../../config/default-parser.json");
 
@@ -100,7 +99,7 @@ impl ResolvedPaths {
             normalize_for_display(&self.config_path),
             self.config_source.as_str(),
             normalize_for_display(&self.parser_config_path),
-            MIGRATIONS_POLICY_MESSAGE
+            LOCAL_DB_POLICY_MESSAGE
         )
     }
 }
@@ -337,7 +336,7 @@ pub fn render_materialized_config(paths: &ResolvedPaths, include_templates: bool
     let parser_config_path = normalize_for_display(&paths.parser_config_path);
 
     format!(
-        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Run `wikitool db migrate` to apply pending schema migrations.\n\n[wiki]\n# url = \"https://your-wiki.example.org\"\n# api_url = \"https://your-wiki.example.org/api.php\"\narticle_path = \"/$1\"\n# user_agent = \"wikitool/0.1\"\n\n# Populated by `wikitool init` namespace discovery when API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n\n[database]\nmigrations = \"enabled\"\nstrategy = \"sequential\"\n",
+        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Local DB policy: derived + disposable; delete `.wikitool/data/wikitool.db` if you need a clean rebuild.\n\n[wiki]\n# url = \"https://your-wiki.example.org\"\n# api_url = \"https://your-wiki.example.org/api.php\"\narticle_path = \"/$1\"\n# user_agent = \"wikitool/0.1\"\n\n# Populated by `wikitool init` namespace discovery when API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n",
     )
 }
 
@@ -463,7 +462,7 @@ fn reject_legacy_layout(project_root: &Path) -> Result<()> {
         .join("\n");
 
     bail!(
-        "Legacy runtime layout detected under custom/*:\n{found_lines}\nOnly project-root runtime layout is supported (wiki_content/, templates/, .wikitool/).\nRecommended migration:\n  1) Initialize a clean project root: wikitool init --project-root <new-root> --templates\n  2) Pull fresh state from live wiki: wikitool pull --full --all\n  3) Apply schema migrations: wikitool db migrate"
+        "Legacy runtime layout detected under custom/*:\n{found_lines}\nOnly project-root runtime layout is supported (wiki_content/, templates/, .wikitool/).\nRecommended recovery steps:\n  1) Initialize a clean project root: wikitool init --project-root <new-root> --templates\n  2) Pull fresh state from live wiki: wikitool pull --full --all\n  3) Rebuild derived local data when needed: wikitool db sync"
     );
 }
 

@@ -8,7 +8,7 @@ use wikitool_core::inspect::{
 };
 
 use crate::cli_support::resolve_runtime_with_config;
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct SeoArgs {
@@ -197,7 +197,7 @@ fn run_seo_inspect(
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -257,7 +257,7 @@ fn run_net_inspect(
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -294,7 +294,7 @@ fn run_perf_lighthouse(
                 println!("stderr: {}", info.stderr.trim());
             }
         }
-        println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+        println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
         if runtime.diagnostics {
             println!("\n[diagnostics]\n{}", paths.diagnostics());
         }
@@ -346,7 +346,7 @@ fn run_perf_lighthouse(
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }

@@ -20,7 +20,7 @@ use crate::cli_support::{
     format_flag, normalize_path, print_scan_stats, resolve_runtime_paths,
     resolve_runtime_with_config,
 };
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct InitArgs {
@@ -186,7 +186,7 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     println!("created_namespace_dirs: {created_namespace_dirs}");
     println!("persisted_wiki_api_url: {persisted_api_url}");
     println!("persisted_wiki_url: {persisted_wiki_url}");
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -261,7 +261,7 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
             println!("  - {warning}");
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -333,7 +333,7 @@ pub(crate) fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
     for error in &report.errors {
         println!("push.error: {error}");
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -372,7 +372,7 @@ pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
                 "diff.sync_ledger: <not built> (run `wikitool pull --full{}`)",
                 if args.templates { " --templates" } else { "" }
             );
-            println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+            println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
             if runtime.diagnostics {
                 println!("\n[diagnostics]\n{}", paths.diagnostics());
             }
@@ -409,7 +409,7 @@ pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -470,7 +470,7 @@ pub(crate) fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<(
             println!("  - {warning}");
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -526,7 +526,7 @@ pub(crate) fn run_delete(runtime: &RuntimeOptions, args: DeleteArgs) -> Result<(
             remote.detail.as_deref().unwrap_or("<none>")
         );
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }

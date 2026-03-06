@@ -112,11 +112,11 @@ Codex skill templates are also included under `codex_skills/` and can be copied 
 
 ## 8) Troubleshooting
 
-Schema migrations run automatically on startup. To run manually: `wikitool db migrate`.
+The local SQLite DB is disposable and recreated automatically on first use.
 
 If runtime/schema changes break local state:
 
 1. Delete `.wikitool/data/wikitool.db`
-2. Run `wikitool pull --full --all`
+2. Run `wikitool pull --full --all` or `wikitool db sync`
 
 If push fails with auth errors, verify `WIKI_BOT_USER` and `WIKI_BOT_PASS` in project root `.env`.

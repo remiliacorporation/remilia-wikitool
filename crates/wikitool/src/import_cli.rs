@@ -8,7 +8,7 @@ use wikitool_core::import_cargo::{
 };
 
 use crate::cli_support::{format_flag, normalize_option, normalize_path, resolve_runtime_paths};
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct ImportArgs {
@@ -164,7 +164,7 @@ fn run_import_cargo(
         }
     }
 
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }

@@ -6,8 +6,8 @@ use anyhow::{Context, Result, bail};
 use wikitool_core::config::{WikiConfig, load_config};
 use wikitool_core::filesystem::ScanStats;
 use wikitool_core::index::StoredIndexStats;
-use wikitool_core::migrate::pending_migration_count;
 use wikitool_core::runtime::{PathOverrides, ResolutionContext, ResolvedPaths, resolve_paths};
+use wikitool_core::schema::{DatabaseSchemaState, schema_state};
 
 use crate::RuntimeOptions;
 
@@ -265,19 +265,21 @@ pub(crate) fn print_scan_stats(prefix: &str, stats: &ScanStats) {
     }
 }
 
-pub(crate) fn print_migration_status(paths: &ResolvedPaths) {
-    match pending_migration_count(paths) {
-        Ok(0) => {
-            println!("migrations: up_to_date");
-            println!("migrations.pending: 0");
+pub(crate) fn print_database_schema_status(paths: &ResolvedPaths) {
+    match schema_state(paths) {
+        Ok(DatabaseSchemaState::Missing) => {
+            println!("database.schema: absent");
         }
-        Ok(count) => {
-            println!("migrations: pending");
-            println!("migrations.pending: {count}");
+        Ok(DatabaseSchemaState::Ready) => {
+            println!("database.schema: ready");
+        }
+        Ok(DatabaseSchemaState::Incompatible { reason }) => {
+            println!("database.schema: incompatible");
+            println!("database.schema_error: {reason}");
         }
         Err(error) => {
-            println!("migrations: unknown");
-            println!("migrations.error: {error}");
+            println!("database.schema: unknown");
+            println!("database.schema_error: {error}");
         }
     }
 }

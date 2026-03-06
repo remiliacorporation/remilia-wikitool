@@ -1028,7 +1028,7 @@ mod tests {
             data_source: ValueSource::Default,
             config_source: ValueSource::Default,
         };
-        crate::migrate::run_migrations(&paths).expect("migrations");
+        crate::schema::ensure_database_schema(&paths).expect("schema");
         paths
     }
 

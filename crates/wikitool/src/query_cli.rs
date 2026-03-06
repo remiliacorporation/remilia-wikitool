@@ -14,7 +14,7 @@ use crate::cli_support::{
     normalize_path, normalize_title_query, print_string_list, resolve_runtime_paths,
     resolve_runtime_with_config,
 };
-use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions, index_cli};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions, index_cli};
 
 #[derive(Debug, Args)]
 pub(crate) struct ContextArgs {
@@ -62,7 +62,7 @@ pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result
             );
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -106,7 +106,7 @@ pub(crate) fn run_search(runtime: &RuntimeOptions, args: SearchArgs) -> Result<(
             print_search_hits("search", &results);
         }
     }
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -131,7 +131,7 @@ pub(crate) fn run_search_external(
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("query: {query}");
     print_external_search_hits("search_external", &hits);
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
@@ -268,11 +268,39 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     println!("{prefix}.references.count: {}", bundle.references.len());
     for reference in &bundle.references {
         println!(
-            "{prefix}.reference: section={} name={} group={} tokens={} summary={} templates={} links={}",
+            "{prefix}.reference: section={} name={} group={} profile={} family={} template={} type={} origin={} quality={} title={} container={} author={} domain={} summary={} templates={} links={} identifiers={} flags={} tokens={}",
             reference.section_heading.as_deref().unwrap_or("<lead>"),
             reference.reference_name.as_deref().unwrap_or("<none>"),
             reference.reference_group.as_deref().unwrap_or("<none>"),
-            reference.token_estimate,
+            reference.citation_profile,
+            reference.citation_family,
+            reference
+                .primary_template_title
+                .as_deref()
+                .unwrap_or("<none>"),
+            reference.source_type,
+            reference.source_origin,
+            reference.quality_score,
+            if reference.reference_title.is_empty() {
+                "<none>"
+            } else {
+                &reference.reference_title
+            },
+            if reference.source_container.is_empty() {
+                "<none>"
+            } else {
+                &reference.source_container
+            },
+            if reference.source_author.is_empty() {
+                "<none>"
+            } else {
+                &reference.source_author
+            },
+            if reference.source_domain.is_empty() {
+                "<none>"
+            } else {
+                &reference.source_domain
+            },
             reference.summary_text,
             if reference.template_titles.is_empty() {
                 "<none>".to_string()
@@ -283,7 +311,18 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
                 "<none>".to_string()
             } else {
                 reference.link_titles.join(",")
-            }
+            },
+            if reference.identifier_keys.is_empty() {
+                "<none>".to_string()
+            } else {
+                reference.identifier_keys.join(",")
+            },
+            if reference.quality_flags.is_empty() {
+                "<none>".to_string()
+            } else {
+                reference.quality_flags.join(",")
+            },
+            reference.token_estimate
         );
     }
     println!("{prefix}.media.count: {}", bundle.media.len());

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
 
-pub(crate) use wikitool_core::runtime::MIGRATIONS_POLICY_MESSAGE;
+pub(crate) use wikitool_core::schema::LOCAL_DB_POLICY_MESSAGE;
 
 mod cli_support;
 mod contracts_cli;

@@ -166,7 +166,7 @@ wikitool release build-matrix --targets x86_64-unknown-linux-gnu --artifact-vers
 wikitool status
 wikitool db stats
 wikitool db sync
-wikitool db migrate
+wikitool index stats
 ```
 
 ## Troubleshooting
