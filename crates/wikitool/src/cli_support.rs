@@ -239,6 +239,18 @@ pub(crate) fn resolve_runtime_with_config(
     Ok((paths, config))
 }
 
+pub(crate) fn resolve_repo_root(value: Option<PathBuf>) -> Result<PathBuf> {
+    let repo_root = match value {
+        Some(path) => path,
+        None => std::env::current_dir().context("failed to resolve current directory")?,
+    };
+    if !repo_root.exists() {
+        bail!("path does not exist: {}", normalize_path(&repo_root));
+    }
+    fs::canonicalize(&repo_root)
+        .with_context(|| format!("failed to canonicalize {}", normalize_path(&repo_root)))
+}
+
 pub(crate) fn print_scan_stats(prefix: &str, stats: &ScanStats) {
     println!("{prefix}.total_files: {}", stats.total_files);
     println!("{prefix}.content_files: {}", stats.content_files);

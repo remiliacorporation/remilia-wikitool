@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 
-use crate::cli_support::{copy_file, normalize_path, set_executable_if_unix};
-use crate::release;
+use crate::cli_support::{copy_file, normalize_path, resolve_repo_root, set_executable_if_unix};
 
 #[derive(Debug, Args)]
 pub(crate) struct DevArgs {
@@ -46,7 +45,7 @@ pub(crate) fn run_dev(args: DevArgs) -> Result<()> {
 }
 
 pub(crate) fn run_dev_install_git_hooks(args: InstallGitHooksArgs) -> Result<()> {
-    let repo_root = release::resolve_repo_root(args.repo_root)?;
+    let repo_root = resolve_repo_root(args.repo_root)?;
     let hooks_dir = repo_root.join(".git/hooks");
     if !hooks_dir.is_dir() {
         if args.allow_missing_git {
