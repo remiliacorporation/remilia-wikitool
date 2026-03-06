@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand};
@@ -9,10 +9,6 @@ use wikitool_core::filesystem::{ScanOptions, scan_files, scan_stats};
 use wikitool_core::index::{
     LocalContextBundle, LocalSearchHit, build_local_context, load_stored_index_stats,
     query_search_local, run_validation_checks,
-};
-use wikitool_core::inspect::{
-    LighthouseOutputFormat, LighthouseRunOptions, NetInspectOptions, find_lighthouse_binary,
-    lighthouse_version, net_inspect, run_lighthouse, seo_inspect,
 };
 use wikitool_core::lint::lint_modules;
 use wikitool_core::runtime::{
@@ -34,6 +30,7 @@ mod docs_cli;
 mod export_cli;
 mod import_cli;
 mod index_cli;
+mod inspect_cli;
 mod lsp_cli;
 mod release;
 mod workflow_cli;
@@ -98,9 +95,9 @@ enum Commands {
     Delete(DeleteArgs),
     Db(db_cli::DbArgs),
     Docs(DocsArgs),
-    Seo(SeoArgs),
-    Net(NetArgs),
-    Perf(PerfArgs),
+    Seo(inspect_cli::SeoArgs),
+    Net(inspect_cli::NetArgs),
+    Perf(inspect_cli::PerfArgs),
     Import(import_cli::ImportArgs),
     Index(index_cli::IndexArgs),
     #[command(name = "lsp:generate-config")]
@@ -366,87 +363,6 @@ struct DocsGenerateReferenceArgs {
 }
 
 #[derive(Debug, Args)]
-struct SeoArgs {
-    #[command(subcommand)]
-    command: SeoSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum SeoSubcommand {
-    Inspect {
-        target: String,
-        #[arg(long, help = "Output JSON for AI consumption")]
-        json: bool,
-        #[arg(long, help = "Omit metadata from JSON output")]
-        no_meta: bool,
-        #[arg(long, value_name = "URL", help = "Override target URL")]
-        url: Option<String>,
-    },
-}
-
-#[derive(Debug, Args)]
-struct NetArgs {
-    #[command(subcommand)]
-    command: NetSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum NetSubcommand {
-    Inspect {
-        target: String,
-        #[arg(
-            long,
-            default_value_t = 25,
-            value_name = "N",
-            help = "Limit number of resources to probe"
-        )]
-        limit: usize,
-        #[arg(long, help = "Skip HEAD probes (faster, no size/cache info)")]
-        no_probe: bool,
-        #[arg(long, help = "Output JSON for AI consumption")]
-        json: bool,
-        #[arg(long, help = "Omit metadata from JSON output")]
-        no_meta: bool,
-        #[arg(long, value_name = "URL", help = "Override target URL")]
-        url: Option<String>,
-    },
-}
-
-#[derive(Debug, Args)]
-struct PerfArgs {
-    #[command(subcommand)]
-    command: PerfSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum PerfSubcommand {
-    Lighthouse {
-        target: Option<String>,
-        #[arg(
-            long,
-            default_value = "html",
-            value_name = "FORMAT",
-            help = "Output format: html|json"
-        )]
-        output: String,
-        #[arg(long, value_name = "PATH", help = "Report output path")]
-        out: Option<PathBuf>,
-        #[arg(long, value_name = "LIST", help = "Comma-separated categories")]
-        categories: Option<String>,
-        #[arg(long, value_name = "FLAGS", help = "Pass Chrome flags to Lighthouse")]
-        chrome_flags: Option<String>,
-        #[arg(long, help = "Print resolved Lighthouse binary + version and exit")]
-        show_version: bool,
-        #[arg(long, help = "Output JSON summary")]
-        json: bool,
-        #[arg(long, help = "Omit metadata from JSON output")]
-        no_meta: bool,
-        #[arg(long, value_name = "URL", help = "Override target URL")]
-        url: Option<String>,
-    },
-}
-
-#[derive(Debug, Args)]
 struct LspGenerateConfigArgs {
     #[arg(long, help = "Overwrite parser config if it already exists")]
     force: bool,
@@ -643,56 +559,9 @@ fn main() -> Result<()> {
         Some(Commands::Export(args)) => export_cli::run_export(&runtime, args),
         Some(Commands::Delete(args)) => run_delete(&runtime, args),
         Some(Commands::Docs(DocsArgs { command })) => docs_cli::run_docs(&runtime, command),
-        Some(Commands::Seo(SeoArgs { command })) => match command {
-            SeoSubcommand::Inspect {
-                target,
-                json,
-                no_meta: _,
-                url,
-            } => run_seo_inspect(&runtime, &target, json, url.as_deref()),
-        },
-        Some(Commands::Net(NetArgs { command })) => match command {
-            NetSubcommand::Inspect {
-                target,
-                limit,
-                no_probe,
-                json,
-                no_meta: _,
-                url,
-            } => run_net_inspect(
-                &runtime,
-                &target,
-                json,
-                url.as_deref(),
-                &NetInspectOptions {
-                    limit: limit.max(1),
-                    probe: !no_probe,
-                },
-            ),
-        },
-        Some(Commands::Perf(PerfArgs { command })) => match command {
-            PerfSubcommand::Lighthouse {
-                target,
-                output,
-                out,
-                categories,
-                chrome_flags,
-                show_version,
-                json,
-                no_meta: _,
-                url,
-            } => run_perf_lighthouse(
-                &runtime,
-                target,
-                output.as_str(),
-                out.as_deref(),
-                categories.as_deref(),
-                chrome_flags.as_deref(),
-                show_version,
-                json,
-                url.as_deref(),
-            ),
-        },
+        Some(Commands::Seo(args)) => inspect_cli::run_seo(&runtime, args),
+        Some(Commands::Net(args)) => inspect_cli::run_net(&runtime, args),
+        Some(Commands::Perf(args)) => inspect_cli::run_perf(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
         Some(Commands::Index(args)) => index_cli::run_index(&runtime, args),
         None => {
@@ -1394,209 +1263,6 @@ fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
     Ok(())
 }
 
-fn run_seo_inspect(
-    runtime: &RuntimeOptions,
-    target: &str,
-    json: bool,
-    override_url: Option<&str>,
-) -> Result<()> {
-    let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let result = seo_inspect(
-        target,
-        override_url,
-        config.wiki_url().as_deref(),
-        Some(config.article_path()),
-    )?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("seo inspect");
-        println!("url: {}", result.url);
-        println!("title: {}", result.title.as_deref().unwrap_or("<missing>"));
-        println!(
-            "canonical: {}",
-            result.canonical.as_deref().unwrap_or("<missing>")
-        );
-        print_meta_value("description", result.meta.get("description"));
-        print_meta_value("og:title", result.meta.get("og:title"));
-        print_meta_value("og:description", result.meta.get("og:description"));
-        print_meta_value("og:type", result.meta.get("og:type"));
-        print_meta_value("og:image", result.meta.get("og:image"));
-        print_meta_value("og:url", result.meta.get("og:url"));
-        print_meta_value("twitter:card", result.meta.get("twitter:card"));
-        print_meta_value("twitter:title", result.meta.get("twitter:title"));
-        print_meta_value(
-            "twitter:description",
-            result.meta.get("twitter:description"),
-        );
-        print_meta_value("twitter:image", result.meta.get("twitter:image"));
-        if result.missing.is_empty() {
-            println!("missing: <none>");
-        } else {
-            println!("missing.count: {}", result.missing.len());
-            for item in &result.missing {
-                println!("missing.item: {item}");
-            }
-        }
-    }
-
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
-fn run_net_inspect(
-    runtime: &RuntimeOptions,
-    target: &str,
-    json: bool,
-    override_url: Option<&str>,
-    options: &NetInspectOptions,
-) -> Result<()> {
-    let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let result = net_inspect(
-        target,
-        override_url,
-        config.wiki_url().as_deref(),
-        Some(config.article_path()),
-        options,
-    )?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("net inspect");
-        println!("url: {}", result.url);
-        println!("resources.total: {}", result.total_resources);
-        println!("resources.inspected: {}", result.inspected);
-        println!("known_bytes: {}", result.summary.known_bytes);
-        println!("unknown_sizes: {}", result.summary.unknown_count);
-        if result.summary.largest.is_empty() {
-            println!("largest: <none>");
-        } else {
-            for entry in &result.summary.largest {
-                println!(
-                    "largest.resource: size={} type={} url={}",
-                    entry
-                        .size_bytes
-                        .map(|value| value.to_string())
-                        .unwrap_or_else(|| "unknown".to_string()),
-                    entry.resource_type,
-                    entry.url
-                );
-            }
-        }
-        if result.summary.cache_warnings.is_empty() {
-            println!("cache_warnings: <none>");
-        } else {
-            println!(
-                "cache_warnings.count: {}",
-                result.summary.cache_warnings.len()
-            );
-            for warning in &result.summary.cache_warnings {
-                println!("cache_warning: {warning}");
-            }
-        }
-    }
-
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_perf_lighthouse(
-    runtime: &RuntimeOptions,
-    target: Option<String>,
-    output: &str,
-    out: Option<&Path>,
-    categories: Option<&str>,
-    chrome_flags: Option<&str>,
-    show_version: bool,
-    json: bool,
-    override_url: Option<&str>,
-) -> Result<()> {
-    let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let Some(lighthouse_path) = find_lighthouse_binary(&paths.project_root) else {
-        bail!("lighthouse not found on PATH. Install with: npm install -g lighthouse");
-    };
-
-    if show_version {
-        let info = lighthouse_version(&lighthouse_path)?;
-        if json {
-            println!("{}", serde_json::to_string_pretty(&info)?);
-        } else {
-            println!("perf lighthouse");
-            println!("path: {}", info.path);
-            println!("version: {}", info.version.as_deref().unwrap_or("unknown"));
-            println!("code: {}", info.code);
-            if !info.stderr.trim().is_empty() {
-                println!("stderr: {}", info.stderr.trim());
-            }
-        }
-        println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-        if runtime.diagnostics {
-            println!("\n[diagnostics]\n{}", paths.diagnostics());
-        }
-        if info.code != 0 {
-            bail!("failed to resolve lighthouse version");
-        }
-        return Ok(());
-    }
-
-    let output_format = LighthouseOutputFormat::parse(output)?;
-    let report = run_lighthouse(
-        &paths.project_root,
-        &lighthouse_path,
-        &LighthouseRunOptions {
-            target,
-            target_url_override: override_url.map(ToString::to_string),
-            default_wiki_url: config.wiki_url(),
-            article_path: Some(config.article_path_owned()),
-            output_format,
-            output_path_override: out.map(Path::to_path_buf),
-            categories: parse_csv_list(categories),
-            chrome_flags: chrome_flags.map(ToString::to_string),
-        },
-    )?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        println!("perf lighthouse");
-        println!("url: {}", report.url);
-        println!("format: {}", report.format);
-        println!("report_path: {}", report.report_path);
-        println!(
-            "report_bytes: {}",
-            report
-                .report_bytes
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "<unknown>".to_string())
-        );
-        if report.categories.is_empty() {
-            println!("categories: <default>");
-        } else {
-            println!("categories: {}", report.categories.join(","));
-        }
-        if report.ignored_windows_cleanup_failure {
-            println!(
-                "warning: ignored known Windows chrome-launcher cleanup failure (report generated)"
-            );
-        }
-    }
-
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
 fn print_search_hits(prefix: &str, hits: &[LocalSearchHit]) {
     println!("{prefix}.count: {}", hits.len());
     if hits.is_empty() {
@@ -1772,32 +1438,6 @@ fn print_string_list(prefix: &str, values: &[String]) {
     for value in values {
         println!("{prefix}.item: {value}");
     }
-}
-
-fn print_meta_value(label: &str, values: Option<&Vec<String>>) {
-    match values {
-        Some(values) if !values.is_empty() => {
-            println!("meta.{label}: {}", values[0]);
-            if values.len() > 1 {
-                println!("meta.{label}.extra_count: {}", values.len() - 1);
-            }
-        }
-        _ => println!("meta.{label}: <missing>"),
-    }
-}
-
-fn parse_csv_list(value: Option<&str>) -> Vec<String> {
-    let mut output = Vec::new();
-    let Some(raw) = value else {
-        return output;
-    };
-    for part in raw.split(',') {
-        let trimmed = part.trim();
-        if !trimmed.is_empty() {
-            output.push(trimmed.to_string());
-        }
-    }
-    output
 }
 
 fn format_diff_change_type(value: &DiffChangeType) -> &'static str {
