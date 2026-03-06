@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use clap::{Command, CommandFactory, error::ErrorKind};
+use clap::{Args, Command, CommandFactory, Subcommand, error::ErrorKind};
 use wikitool_core::docs::{
     DocsImportOptions, DocsImportTechnicalOptions, DocsListOptions, DocsRemoveKind,
     TechnicalDocType, TechnicalImportTask, discover_installed_extensions_from_wiki_with_config,
@@ -11,16 +11,100 @@ use wikitool_core::docs::{
 };
 
 use crate::{
-    Cli, DocsGenerateReferenceArgs, DocsImportArgs, DocsImportTechnicalArgs, DocsListArgs,
-    DocsSubcommand, MIGRATIONS_POLICY_MESSAGE, RuntimeOptions,
+    Cli, MIGRATIONS_POLICY_MESSAGE, RuntimeOptions,
     cli_support::{
         collapse_whitespace, format_flag, normalize_path, normalize_title_query,
         resolve_runtime_paths, resolve_runtime_with_config,
     },
 };
 
-pub(crate) fn run_docs(runtime: &RuntimeOptions, command: DocsSubcommand) -> Result<()> {
-    match command {
+#[derive(Debug, Args)]
+pub(crate) struct DocsArgs {
+    #[command(subcommand)]
+    command: DocsSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum DocsSubcommand {
+    Import(DocsImportArgs),
+    #[command(name = "import-technical")]
+    ImportTechnical(DocsImportTechnicalArgs),
+    #[command(name = "generate-reference")]
+    GenerateReference(DocsGenerateReferenceArgs),
+    List(DocsListArgs),
+    Update,
+    Remove {
+        target: String,
+    },
+    Search {
+        query: String,
+        #[arg(long, value_name = "TIER", help = "Search tier (extension, technical)")]
+        tier: Option<String>,
+        #[arg(short = 'l', long, default_value_t = 20, help = "Limit result count")]
+        limit: usize,
+    },
+}
+
+#[derive(Debug, Args)]
+struct DocsImportArgs {
+    #[arg(value_name = "EXTENSION")]
+    extensions: Vec<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Import docs from precomposed bundle JSON"
+    )]
+    bundle: Option<PathBuf>,
+    #[arg(
+        long = "installed",
+        help = "Discover installed extensions from live wiki API"
+    )]
+    installed: bool,
+    #[arg(long = "no-subpages", help = "Skip extension subpages")]
+    no_subpages: bool,
+}
+
+#[derive(Debug, Args)]
+struct DocsImportTechnicalArgs {
+    #[arg(value_name = "PAGE")]
+    pages: Vec<String>,
+    #[arg(long, help = "Include subpages for selected pages/types")]
+    subpages: bool,
+    #[arg(long, help = "Import all hook documentation")]
+    hooks: bool,
+    #[arg(long, help = "Import configuration variable docs")]
+    config: bool,
+    #[arg(long, help = "Import API documentation")]
+    api: bool,
+    #[arg(
+        short = 'l',
+        long,
+        default_value_t = 100,
+        help = "Limit subpage imports per task"
+    )]
+    limit: usize,
+}
+
+#[derive(Debug, Args)]
+struct DocsListArgs {
+    #[arg(long, help = "Show only outdated docs")]
+    outdated: bool,
+    #[arg(long, value_name = "TYPE", help = "Filter technical docs by type")]
+    r#type: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DocsGenerateReferenceArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Output markdown path (default: docs/wikitool/reference.md in current directory)"
+    )]
+    pub(crate) output: Option<PathBuf>,
+}
+
+pub(crate) fn run_docs(runtime: &RuntimeOptions, args: DocsArgs) -> Result<()> {
+    match args.command {
         DocsSubcommand::Import(args) => run_docs_import(runtime, args),
         DocsSubcommand::ImportTechnical(args) => run_docs_import_technical(runtime, args),
         DocsSubcommand::GenerateReference(args) => run_docs_generate_reference(args),

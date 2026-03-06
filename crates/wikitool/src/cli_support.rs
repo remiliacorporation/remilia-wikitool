@@ -282,6 +282,17 @@ pub(crate) fn print_stored_index_stats(prefix: &str, stats: &StoredIndexStats) {
     }
 }
 
+pub(crate) fn print_string_list(prefix: &str, values: &[String]) {
+    println!("{prefix}.count: {}", values.len());
+    if values.is_empty() {
+        println!("{prefix}: <none>");
+        return;
+    }
+    for value in values {
+        println!("{prefix}.item: {value}");
+    }
+}
+
 pub(crate) fn normalize_path(path: impl AsRef<Path>) -> String {
     let mut value = path.as_ref().to_string_lossy().replace('\\', "/");
     if let Some(stripped) = value.strip_prefix("//?/") {

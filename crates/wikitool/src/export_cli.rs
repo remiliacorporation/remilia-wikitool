@@ -1,7 +1,8 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use clap::Args;
 use wikitool_core::external::{
     ExportFormat, ExternalFetchFormat, ExternalFetchOptions, ExternalFetchResult, ParsedWikiUrl,
     default_export_path, fetch_mediawiki_page, fetch_page_by_url, fetch_pages_by_titles,
@@ -9,7 +10,58 @@ use wikitool_core::external::{
 };
 
 use crate::cli_support::{normalize_path, resolve_runtime_paths};
-use crate::{ExportArgs, FetchArgs, MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+
+#[derive(Debug, Args)]
+pub(crate) struct FetchArgs {
+    url: String,
+    #[arg(
+        long,
+        default_value = "wikitext",
+        value_name = "FORMAT",
+        help = "Output format: wikitext|html"
+    )]
+    format: String,
+    #[arg(long, help = "Save output under reference/<source>/ in project root")]
+    save: bool,
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Custom name for saved reference file"
+    )]
+    name: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ExportArgs {
+    url: String,
+    #[arg(
+        short = 'o',
+        long,
+        value_name = "PATH",
+        help = "Output file or directory path"
+    )]
+    output: Option<PathBuf>,
+    #[arg(
+        long,
+        default_value = "markdown",
+        value_name = "FORMAT",
+        help = "Output format: markdown|wikitext"
+    )]
+    format: String,
+    #[arg(
+        long,
+        value_name = "LANG",
+        help = "Code language hint (reserved for markdown export)"
+    )]
+    code_language: Option<String>,
+    #[arg(long, help = "Skip YAML frontmatter")]
+    no_frontmatter: bool,
+    #[arg(long, help = "Include subpages for MediaWiki page exports")]
+    subpages: bool,
+    #[arg(long, help = "With --subpages, combine all pages into one output")]
+    combined: bool,
+}
 
 pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;

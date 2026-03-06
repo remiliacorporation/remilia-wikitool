@@ -1,7 +1,43 @@
+use std::path::PathBuf;
+
 use anyhow::{Result, bail};
+use clap::{Args, Subcommand};
 
 use crate::cli_support::{copy_file, normalize_path, set_executable_if_unix};
-use crate::{DevArgs, DevSubcommand, InstallGitHooksArgs, release};
+use crate::release;
+
+#[derive(Debug, Args)]
+pub(crate) struct DevArgs {
+    #[command(subcommand)]
+    command: DevSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum DevSubcommand {
+    #[command(name = "install-git-hooks")]
+    InstallGitHooks(InstallGitHooksArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct InstallGitHooksArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Repository root containing .git/hooks (default: current directory)"
+    )]
+    pub(crate) repo_root: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Hook source file (default: scripts/git-hooks/commit-msg under repo root)"
+    )]
+    pub(crate) source: Option<PathBuf>,
+    #[arg(
+        long,
+        help = "Do not fail when .git/hooks is missing (useful for zip-distributed binaries)"
+    )]
+    pub(crate) allow_missing_git: bool,
+}
 
 pub(crate) fn run_dev(args: DevArgs) -> Result<()> {
     match args.command {

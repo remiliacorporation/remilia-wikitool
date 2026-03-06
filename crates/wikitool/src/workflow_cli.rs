@@ -13,11 +13,11 @@ use crate::cli_support::{
     collapse_whitespace, format_flag, normalize_option, normalize_path, prompt_yes_no,
     resolve_default_true_flag, resolve_runtime_paths,
 };
-use crate::dev_cli;
-use crate::{
-    DocsGenerateReferenceArgs, InitArgs, InstallGitHooksArgs, MIGRATIONS_POLICY_MESSAGE, PullArgs,
-    RuntimeOptions, StatusArgs, docs_cli,
-};
+use crate::dev_cli::{self, InstallGitHooksArgs};
+use crate::docs_cli::{self, DocsGenerateReferenceArgs};
+use crate::quality_cli;
+use crate::sync_cli::{self, InitArgs, PullArgs, StatusArgs};
+use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct WorkflowArgs {
@@ -158,7 +158,7 @@ fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs)
     let should_pull =
         resolve_default_true_flag(args.pull, args.no_pull, "workflow bootstrap pull")?;
 
-    crate::run_init(
+    sync_cli::run_init(
         runtime,
         InitArgs {
             templates: include_templates,
@@ -185,7 +185,7 @@ fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs)
     }
 
     if should_pull {
-        crate::run_pull(
+        sync_cli::run_pull(
             runtime,
             PullArgs {
                 full: true,
@@ -228,7 +228,7 @@ fn run_workflow_full_refresh(
         println!("Removed {}", normalize_path(&paths.db_path));
     }
 
-    crate::run_init(
+    sync_cli::run_init(
         runtime,
         InitArgs {
             templates: include_templates,
@@ -244,7 +244,7 @@ fn run_workflow_full_refresh(
         })?;
     }
 
-    crate::run_pull(
+    sync_cli::run_pull(
         runtime,
         PullArgs {
             full: true,
@@ -255,8 +255,8 @@ fn run_workflow_full_refresh(
             all: true,
         },
     )?;
-    crate::run_validate(runtime)?;
-    crate::run_status(
+    quality_cli::run_validate(runtime)?;
+    sync_cli::run_status(
         runtime,
         StatusArgs {
             modified: false,

@@ -1,10 +1,17 @@
 use anyhow::Result;
+use clap::Args;
 use wikitool_core::runtime::{
     embedded_parser_config, lsp_settings_json, materialize_parser_config,
 };
 
 use crate::cli_support::{normalize_path, resolve_runtime_paths, resolve_runtime_with_config};
-use crate::{LspGenerateConfigArgs, MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+use crate::{MIGRATIONS_POLICY_MESSAGE, RuntimeOptions};
+
+#[derive(Debug, Args)]
+pub(crate) struct LspGenerateConfigArgs {
+    #[arg(long, help = "Overwrite parser config if it already exists")]
+    force: bool,
+}
 
 pub(crate) fn run_lsp_generate_config(
     runtime: &RuntimeOptions,
