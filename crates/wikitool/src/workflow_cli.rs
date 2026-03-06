@@ -378,6 +378,10 @@ fn run_workflow_authoring_pack(
                 "inventory.pages.total: {}",
                 report.inventory.indexed_pages_total
             );
+            println!(
+                "inventory.semantic_profiles.total: {}",
+                report.inventory.semantic_profiles_total
+            );
             println!("inventory.pages.main: {}", report.inventory.main_pages);
             println!(
                 "inventory.pages.templates: {}",
@@ -414,12 +418,12 @@ fn run_workflow_authoring_pack(
             println!("related_pages.count: {}", report.related_pages.len());
             for page in &report.related_pages {
                 println!(
-                    "related_page: {} (namespace={} redirect={} source={} score={} summary={})",
+                    "related_page: {} (namespace={} redirect={} source={} retrieval_weight={} summary={})",
                     page.title,
                     page.namespace,
                     format_flag(page.is_redirect),
                     page.source,
-                    page.score,
+                    page.retrieval_weight,
                     if page.summary.is_empty() {
                         "<none>"
                     } else {
@@ -575,14 +579,13 @@ fn print_stub_template_hint(template: &StubTemplateHint) {
 
 fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
     println!(
-        "{label}: {} (family={} type={} origin={} usage={} pages={} avg_quality={} templates={} links={} domains={} identifiers={} flags={})",
+        "{label}: {} (family={} type={} origin={} usage={} pages={} templates={} links={} domains={} identifiers={} signals={})",
         reference.citation_profile,
         reference.citation_family,
         reference.source_type,
         reference.source_origin,
         reference.usage_count,
         reference.distinct_page_count,
-        reference.average_quality_score,
         if reference.common_templates.is_empty() {
             "<none>".to_string()
         } else {
@@ -603,10 +606,10 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
         } else {
             reference.common_identifier_keys.join(", ")
         },
-        if reference.common_quality_flags.is_empty() {
+        if reference.common_retrieval_signals.is_empty() {
             "<none>".to_string()
         } else {
-            reference.common_quality_flags.join(", ")
+            reference.common_retrieval_signals.join(", ")
         }
     );
     if !reference.example_pages.is_empty() {
@@ -617,7 +620,7 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
     }
     for example in &reference.example_references {
         println!(
-            "{label}.example: profile={} source={} section={} name={} group={} family={} template={} type={} origin={} quality={} title={} container={} author={} domain={} summary={} templates={} links={} identifiers={} flags={} tokens={} text={}",
+            "{label}.example: profile={} source={} section={} name={} group={} family={} template={} type={} origin={} title={} container={} author={} domain={} summary={} templates={} links={} identifiers={} signals={} tokens={} text={}",
             reference.citation_profile,
             example.source_title,
             example.section_heading.as_deref().unwrap_or("<lead>"),
@@ -630,7 +633,6 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
                 .unwrap_or("<none>"),
             example.source_type,
             example.source_origin,
-            example.quality_score,
             if example.reference_title.is_empty() {
                 "<none>"
             } else {
@@ -667,10 +669,10 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
             } else {
                 example.identifier_keys.join(", ")
             },
-            if example.quality_flags.is_empty() {
+            if example.retrieval_signals.is_empty() {
                 "<none>".to_string()
             } else {
-                example.quality_flags.join(", ")
+                example.retrieval_signals.join(", ")
             },
             example.token_estimate,
             example.reference_wikitext

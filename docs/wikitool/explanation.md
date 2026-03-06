@@ -19,6 +19,8 @@ Wikitool is a Rust CLI that synchronizes MediaWiki content with local files and 
 - Local sync/index/docs state is stored in SQLite under `.wikitool/data/wikitool.db`
 - Runtime state/config is kept under `.wikitool/`
 - Delete and push flows include explicit write safeguards and diagnostics
+- Authoring retrieval uses semantic page profiles plus explicit template/link/reference/media signals to narrow context for agents
+- The DB does not assign opaque reference quality scores; it stores source metadata and retrieval signals so ranking stays inspectable
 
 ## Cutover policy
 

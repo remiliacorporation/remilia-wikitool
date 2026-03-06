@@ -96,8 +96,7 @@ pub struct LocalReferenceUsage {
     pub source_author: String,
     pub source_domain: String,
     pub identifier_keys: Vec<String>,
-    pub quality_flags: Vec<String>,
-    pub quality_score: usize,
+    pub retrieval_signals: Vec<String>,
     pub summary_text: String,
     pub template_titles: Vec<String>,
     pub link_titles: Vec<String>,
@@ -194,6 +193,7 @@ pub enum LocalChunkAcrossRetrieval {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AuthoringInventory {
     pub indexed_pages_total: usize,
+    pub semantic_profiles_total: usize,
     pub main_pages: usize,
     pub template_pages: usize,
     pub indexed_links_total: usize,
@@ -211,7 +211,7 @@ pub struct AuthoringPageCandidate {
     pub namespace: String,
     pub is_redirect: bool,
     pub source: String,
-    pub score: usize,
+    pub retrieval_weight: usize,
     pub summary: String,
 }
 
@@ -265,8 +265,7 @@ pub struct ReferenceUsageExample {
     pub source_author: String,
     pub source_domain: String,
     pub identifier_keys: Vec<String>,
-    pub quality_flags: Vec<String>,
-    pub quality_score: usize,
+    pub retrieval_signals: Vec<String>,
     pub summary_text: String,
     pub template_titles: Vec<String>,
     pub link_titles: Vec<String>,
@@ -282,13 +281,12 @@ pub struct ReferenceUsageSummary {
     pub source_origin: String,
     pub usage_count: usize,
     pub distinct_page_count: usize,
-    pub average_quality_score: usize,
     pub example_pages: Vec<String>,
     pub common_templates: Vec<String>,
     pub common_links: Vec<String>,
     pub common_domains: Vec<String>,
     pub common_identifier_keys: Vec<String>,
-    pub common_quality_flags: Vec<String>,
+    pub common_retrieval_signals: Vec<String>,
     pub example_references: Vec<ReferenceUsageExample>,
 }
 
@@ -548,14 +546,13 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 source_author,
                 source_domain,
                 identifier_keys,
-                quality_flags,
-                quality_score,
+                retrieval_signals,
                 summary_text,
                 reference_wikitext,
                 template_titles,
                 link_titles,
                 token_estimate
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
         )
         .context("failed to prepare indexed_page_references insert")?;
 
@@ -576,6 +573,29 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         )
         .context("failed to prepare indexed_page_media insert")?;
 
+    let mut semantic_statement = transaction
+        .prepare(
+            "INSERT OR REPLACE INTO indexed_page_semantics (
+                source_relative_path,
+                source_title,
+                source_namespace,
+                summary_text,
+                section_headings,
+                category_titles,
+                template_titles,
+                template_parameter_keys,
+                link_titles,
+                reference_titles,
+                reference_containers,
+                reference_domains,
+                media_titles,
+                media_captions,
+                semantic_text,
+                token_estimate
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+        )
+        .context("failed to prepare indexed_page_semantics insert")?;
+
     let mut inserted_rows = 0usize;
     let mut inserted_links = 0usize;
     for file in &files {
@@ -594,7 +614,8 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         inserted_rows += 1;
 
         let content = load_scanned_file_content(paths, file)?;
-        for link in extract_wikilinks(&content) {
+        let links = extract_wikilinks(&content);
+        for link in &links {
             let affected = link_statement
                 .execute(params![
                     file.relative_path,
@@ -627,6 +648,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         }
 
         let artifacts = extract_page_artifacts(&content);
+        let semantic_profile = build_page_semantic_profile(file, &links, &artifacts);
         for (section_index, section) in artifacts.section_records.iter().enumerate() {
             section_statement
                 .execute(params![
@@ -685,9 +707,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                     reference.source_author.as_str(),
                     reference.source_domain.as_str(),
                     serialize_string_list(&reference.identifier_keys),
-                    serialize_string_list(&reference.quality_flags),
-                    i64::try_from(reference.quality_score)
-                        .context("reference quality score does not fit into i64")?,
+                    serialize_string_list(&reference.retrieval_signals),
                     reference.summary_text.as_str(),
                     reference.reference_wikitext.as_str(),
                     serialize_string_list(&reference.template_titles),
@@ -719,6 +739,33 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                     format!("failed to insert media rows for {}", file.relative_path)
                 })?;
         }
+
+        semantic_statement
+            .execute(params![
+                file.relative_path,
+                semantic_profile.source_title.as_str(),
+                semantic_profile.source_namespace.as_str(),
+                semantic_profile.summary_text.as_str(),
+                serialize_string_list(&semantic_profile.section_headings),
+                serialize_string_list(&semantic_profile.category_titles),
+                serialize_string_list(&semantic_profile.template_titles),
+                serialize_string_list(&semantic_profile.template_parameter_keys),
+                serialize_string_list(&semantic_profile.link_titles),
+                serialize_string_list(&semantic_profile.reference_titles),
+                serialize_string_list(&semantic_profile.reference_containers),
+                serialize_string_list(&semantic_profile.reference_domains),
+                serialize_string_list(&semantic_profile.media_titles),
+                serialize_string_list(&semantic_profile.media_captions),
+                semantic_profile.semantic_text.as_str(),
+                i64::try_from(semantic_profile.token_estimate)
+                    .context("semantic profile token estimate does not fit into i64")?,
+            ])
+            .with_context(|| {
+                format!(
+                    "failed to insert semantic profile for {}",
+                    file.relative_path
+                )
+            })?;
 
         let mut seen_signatures = BTreeSet::new();
         for (invocation_index, invocation) in artifacts.template_invocations.into_iter().enumerate()
@@ -780,6 +827,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         }
     }
     drop(media_statement);
+    drop(semantic_statement);
     drop(reference_statement);
     drop(template_example_statement);
     drop(section_statement);
@@ -1198,6 +1246,8 @@ pub fn retrieve_local_context_chunks_across_pages(
         return Ok(LocalChunkAcrossRetrieval::QueryMissing);
     }
     let query_terms = expand_retrieval_query_terms(&normalized_query);
+    let semantic_page_hits =
+        load_semantic_page_hits(&connection, &query_terms, max_pages.max(limit).max(1))?;
     let report = retrieve_reranked_chunks_across_pages(
         &connection,
         paths,
@@ -1209,8 +1259,14 @@ pub fn retrieve_local_context_chunks_across_pages(
             max_pages,
             diversify,
         },
-        &[],
-        ChunkRerankSignals::default(),
+        &semantic_page_hits
+            .iter()
+            .map(|hit| hit.title.clone())
+            .collect::<Vec<_>>(),
+        ChunkRerankSignals {
+            semantic_page_weights: build_semantic_page_weight_map(&semantic_page_hits),
+            ..ChunkRerankSignals::default()
+        },
     )?;
     Ok(LocalChunkAcrossRetrieval::Found(report))
 }
@@ -1255,14 +1311,17 @@ pub fn build_authoring_knowledge_pack(
         return Ok(AuthoringKnowledgePack::QueryMissing);
     }
     let query = query_terms[0].clone();
-    let template_page_scores = build_template_match_score_map(&connection, &stub_template_titles)?;
+    let template_page_weights = build_template_match_score_map(&connection, &stub_template_titles)?;
+    let semantic_page_hits = load_semantic_page_hits(&connection, &query_terms, related_limit)?;
+    let semantic_page_weights = build_semantic_page_weight_map(&semantic_page_hits);
 
     let related_pages = collect_related_pages_for_authoring(
         &connection,
         &stub_link_titles,
         &query_terms,
         related_limit,
-        &template_page_scores,
+        &template_page_weights,
+        &semantic_page_hits,
     )?;
 
     let mut stub_existing_links = Vec::new();
@@ -1280,7 +1339,7 @@ pub fn build_authoring_knowledge_pack(
     stub_missing_links.dedup();
 
     let stub_detected_templates = stub_template_titles;
-    let related_page_scores = build_related_page_score_map(&related_pages, &stub_existing_links);
+    let related_page_weights = build_related_page_weight_map(&related_pages, &stub_existing_links);
     let chunk_report = retrieve_reranked_chunks_across_pages(
         &connection,
         paths,
@@ -1297,9 +1356,10 @@ pub fn build_authoring_knowledge_pack(
             .map(|page| page.title.clone())
             .collect::<Vec<_>>(),
         ChunkRerankSignals {
-            related_page_scores,
-            template_page_scores,
-            reference_page_scores: BTreeMap::new(),
+            related_page_weights,
+            template_page_weights,
+            reference_page_weights: BTreeMap::new(),
+            semantic_page_weights,
         },
     )?;
     let retrieval_mode = chunk_report.retrieval_mode;
@@ -1615,12 +1675,30 @@ struct IndexedReferenceRecord {
     source_author: String,
     source_domain: String,
     identifier_keys: Vec<String>,
-    quality_flags: Vec<String>,
-    quality_score: usize,
+    retrieval_signals: Vec<String>,
     summary_text: String,
     reference_wikitext: String,
     template_titles: Vec<String>,
     link_titles: Vec<String>,
+    token_estimate: usize,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedSemanticProfileRecord {
+    source_title: String,
+    source_namespace: String,
+    summary_text: String,
+    section_headings: Vec<String>,
+    category_titles: Vec<String>,
+    template_titles: Vec<String>,
+    template_parameter_keys: Vec<String>,
+    link_titles: Vec<String>,
+    reference_titles: Vec<String>,
+    reference_containers: Vec<String>,
+    reference_domains: Vec<String>,
+    media_titles: Vec<String>,
+    media_captions: Vec<String>,
+    semantic_text: String,
     token_estimate: usize,
 }
 
@@ -1668,9 +1746,16 @@ struct ChunkRetrievalPlan {
 
 #[derive(Debug, Clone, Default)]
 struct ChunkRerankSignals {
-    related_page_scores: BTreeMap<String, usize>,
-    template_page_scores: BTreeMap<String, usize>,
-    reference_page_scores: BTreeMap<String, usize>,
+    related_page_weights: BTreeMap<String, usize>,
+    template_page_weights: BTreeMap<String, usize>,
+    reference_page_weights: BTreeMap<String, usize>,
+    semantic_page_weights: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SemanticPageHit {
+    title: String,
+    retrieval_weight: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -1706,8 +1791,7 @@ struct ReferenceAnalysis {
     source_author: String,
     source_domain: String,
     identifier_keys: Vec<String>,
-    quality_flags: Vec<String>,
-    quality_score: usize,
+    retrieval_signals: Vec<String>,
     summary_hint: String,
 }
 
@@ -2246,13 +2330,16 @@ fn collect_chunk_candidates_across_pages(
     Ok((candidates, retrieval_mode))
 }
 
-fn build_related_page_score_map(
+fn build_related_page_weight_map(
     related_pages: &[AuthoringPageCandidate],
     seed_titles: &[String],
 ) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::<String, usize>::new();
     for page in related_pages {
-        out.insert(page.title.to_ascii_lowercase(), page.score.clamp(1, 240));
+        out.insert(
+            page.title.to_ascii_lowercase(),
+            page.retrieval_weight.clamp(1, 240),
+        );
     }
     for title in seed_titles {
         out.entry(title.to_ascii_lowercase()).or_insert(160);
@@ -2306,7 +2393,7 @@ fn build_template_match_score_map(
     Ok(out)
 }
 
-fn load_reference_page_score_map(
+fn load_reference_page_weight_map(
     connection: &Connection,
     source_titles: &[String],
 ) -> Result<BTreeMap<String, usize>> {
@@ -2318,7 +2405,15 @@ fn load_reference_page_score_map(
         .collect::<Vec<_>>()
         .join(", ");
     let sql = format!(
-        "SELECT source_title, AVG(quality_score), COUNT(*)
+        "SELECT source_title,
+                COUNT(*),
+                SUM(CASE WHEN primary_template_title != '' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN reference_title != '' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN source_author != '' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN source_domain != '' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN source_container != '' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN identifier_keys != ?1 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN retrieval_signals != ?1 THEN 1 ELSE 0 END)
          FROM indexed_page_references
          WHERE source_title IN ({placeholders})
          GROUP BY source_title"
@@ -2330,28 +2425,53 @@ fn load_reference_page_score_map(
         .collect::<Vec<_>>();
     let mut statement = connection
         .prepare(&sql)
-        .context("failed to prepare reference quality score query")?;
+        .context("failed to prepare reference retrieval weight query")?;
     let rows = statement
-        .query_map(params_from_iter(values), |row| {
-            let avg_quality: f64 = row.get(1)?;
-            let count: i64 = row.get(2)?;
-            Ok((
-                row.get::<_, String>(0)?,
-                avg_quality,
-                usize::try_from(count).unwrap_or(0),
-            ))
-        })
-        .context("failed to run reference quality score query")?;
+        .query_map(
+            params_from_iter(
+                std::iter::once(rusqlite::types::Value::from(
+                    NO_STRING_LIST_SENTINEL.to_string(),
+                ))
+                .chain(values),
+            ),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    usize::try_from(row.get::<_, i64>(1)?).unwrap_or(0),
+                    usize::try_from(row.get::<_, i64>(2)?).unwrap_or(0),
+                    usize::try_from(row.get::<_, i64>(3)?).unwrap_or(0),
+                    usize::try_from(row.get::<_, i64>(4)?).unwrap_or(0),
+                    usize::try_from(row.get::<_, i64>(5)?).unwrap_or(0),
+                    usize::try_from(row.get::<_, i64>(6)?).unwrap_or(0),
+                    usize::try_from(row.get::<_, i64>(7)?).unwrap_or(0),
+                    usize::try_from(row.get::<_, i64>(8)?).unwrap_or(0),
+                ))
+            },
+        )
+        .context("failed to run reference retrieval weight query")?;
 
     let mut out = BTreeMap::new();
     for row in rows {
-        let (source_title, avg_quality, count) =
-            row.context("failed to decode reference quality score row")?;
-        let avg_quality = avg_quality.max(0.0).round() as usize;
-        let score = avg_quality
-            .min(100)
-            .saturating_add(count.min(8).saturating_mul(6));
-        out.insert(source_title.to_ascii_lowercase(), score);
+        let (
+            source_title,
+            reference_count,
+            templated_count,
+            titled_count,
+            authored_count,
+            domain_count,
+            container_count,
+            identifier_count,
+            signal_count,
+        ) = row.context("failed to decode reference retrieval weight row")?;
+        let weight = reference_count.min(10).saturating_mul(12)
+            + templated_count.min(6).saturating_mul(8)
+            + titled_count.min(6).saturating_mul(6)
+            + authored_count.min(6).saturating_mul(5)
+            + domain_count.min(6).saturating_mul(5)
+            + container_count.min(6).saturating_mul(4)
+            + identifier_count.min(6).saturating_mul(6)
+            + signal_count.min(6).saturating_mul(4);
+        out.insert(source_title.to_ascii_lowercase(), weight);
     }
     Ok(out)
 }
@@ -2513,7 +2633,7 @@ fn rerank_retrieved_chunks(
             }
             score += i64::try_from(
                 signals
-                    .related_page_scores
+                    .related_page_weights
                     .get(&chunk.source_title.to_ascii_lowercase())
                     .copied()
                     .unwrap_or(0),
@@ -2521,7 +2641,7 @@ fn rerank_retrieved_chunks(
             .unwrap_or(0);
             score += i64::try_from(
                 signals
-                    .template_page_scores
+                    .template_page_weights
                     .get(&chunk.source_title.to_ascii_lowercase())
                     .copied()
                     .unwrap_or(0),
@@ -2529,7 +2649,15 @@ fn rerank_retrieved_chunks(
             .unwrap_or(0);
             score += i64::try_from(
                 signals
-                    .reference_page_scores
+                    .reference_page_weights
+                    .get(&chunk.source_title.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(0),
+            )
+            .unwrap_or(0);
+            score += i64::try_from(
+                signals
+                    .semantic_page_weights
                     .get(&chunk.source_title.to_ascii_lowercase())
                     .copied()
                     .unwrap_or(0),
@@ -2579,9 +2707,9 @@ fn retrieve_reranked_chunks_across_pages(
         .iter()
         .map(|chunk| chunk.source_title.clone())
         .collect::<Vec<_>>();
-    if signals.reference_page_scores.is_empty() {
-        signals.reference_page_scores =
-            load_reference_page_score_map(connection, &candidate_source_titles)?;
+    if signals.reference_page_weights.is_empty() {
+        signals.reference_page_weights =
+            load_reference_page_weight_map(connection, &candidate_source_titles)?;
     }
     let reranked = rerank_retrieved_chunks(candidates, query, query_terms, &signals);
     let chunks = select_retrieved_chunks(
@@ -2601,6 +2729,12 @@ fn retrieve_reranked_chunks_across_pages(
         .iter()
         .map(|chunk| chunk.token_estimate)
         .sum::<usize>();
+
+    let retrieval_mode = if signals.semantic_page_weights.is_empty() {
+        retrieval_mode
+    } else {
+        format!("{retrieval_mode}+semantic")
+    };
 
     Ok(LocalChunkAcrossPagesResult {
         query: query.to_string(),
@@ -2683,6 +2817,7 @@ fn collect_related_pages_for_authoring(
     query_terms: &[String],
     limit: usize,
     template_page_scores: &BTreeMap<String, usize>,
+    semantic_page_hits: &[SemanticPageHit],
 ) -> Result<Vec<AuthoringPageCandidate>> {
     let mut candidates = BTreeMap::<String, AuthoringPageAccumulator>::new();
     let search_limit = candidate_limit(limit.max(1), 2);
@@ -2710,6 +2845,17 @@ fn collect_related_pages_for_authoring(
                 page,
                 "template-match",
                 (*score).clamp(32, 260),
+            );
+        }
+    }
+
+    for semantic_hit in semantic_page_hits {
+        if let Some(page) = load_page_record(connection, &semantic_hit.title)? {
+            add_authoring_page_candidate(
+                &mut candidates,
+                page,
+                "semantic-profile",
+                semantic_hit.retrieval_weight.clamp(24, 260),
             );
         }
     }
@@ -2774,7 +2920,7 @@ fn collect_related_pages_for_authoring(
                 namespace: candidate.namespace,
                 is_redirect: candidate.is_redirect,
                 source: candidate.sources.into_iter().collect::<Vec<_>>().join("+"),
-                score: candidate.score,
+                retrieval_weight: candidate.score,
                 summary: load_page_summary_for_connection(connection, &candidate.relative_path)?,
             })
         })
@@ -2910,6 +3056,130 @@ fn query_page_records_from_sections_for_connection(
         out.push(row.context("failed to decode section LIKE page row")?);
     }
     Ok(out)
+}
+
+fn query_page_records_from_semantics_for_connection(
+    connection: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<IndexedPageRecord>> {
+    if limit == 0 || !table_exists(connection, "indexed_page_semantics")? {
+        return Ok(Vec::new());
+    }
+
+    let limit_i64 = i64::try_from(limit).context("semantic query limit does not fit into i64")?;
+    if fts_table_exists(connection, "indexed_page_semantics_fts") {
+        let fts_query = format!("\"{}\" *", normalize_spaces(&query.replace('_', " ")));
+        let mut statement = connection
+            .prepare(
+                "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
+                 FROM indexed_page_semantics_fts fts
+                 JOIN indexed_page_semantics s ON s.rowid = fts.rowid
+                 JOIN indexed_pages p ON p.relative_path = s.source_relative_path
+                 WHERE indexed_page_semantics_fts MATCH ?1
+                 ORDER BY bm25(indexed_page_semantics_fts) ASC, p.title ASC
+                 LIMIT ?2",
+            )
+            .context("failed to prepare semantic FTS query")?;
+        let rows = statement
+            .query_map(params![fts_query, limit_i64], decode_page_record_row)
+            .context("failed to run semantic FTS query")?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.context("failed to decode semantic FTS row")?);
+        }
+        if !out.is_empty() {
+            return Ok(out);
+        }
+    }
+
+    let wildcard = format!("%{query}%");
+    let prefix = format!("{query}%");
+    let mut statement = connection
+        .prepare(
+            "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
+             FROM indexed_page_semantics s
+             JOIN indexed_pages p ON p.relative_path = s.source_relative_path
+             WHERE lower(s.semantic_text) LIKE lower(?1)
+                OR lower(s.summary_text) LIKE lower(?1)
+                OR lower(s.source_title) LIKE lower(?1)
+             ORDER BY
+               CASE
+                 WHEN lower(s.source_title) = lower(?2) THEN 0
+                 WHEN lower(s.source_title) LIKE lower(?3) THEN 1
+                 ELSE 2
+               END,
+               p.title ASC
+             LIMIT ?4",
+        )
+        .context("failed to prepare semantic LIKE query")?;
+    let rows = statement
+        .query_map(
+            params![wildcard, query, prefix, limit_i64],
+            decode_page_record_row,
+        )
+        .context("failed to run semantic LIKE query")?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode semantic LIKE row")?);
+    }
+    Ok(out)
+}
+
+fn load_semantic_page_hits(
+    connection: &Connection,
+    query_terms: &[String],
+    limit: usize,
+) -> Result<Vec<SemanticPageHit>> {
+    if limit == 0 || query_terms.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let search_limit = candidate_limit(limit.max(1), 2);
+    let mut weights = BTreeMap::<String, usize>::new();
+    let mut titles = BTreeMap::<String, String>::new();
+    for (query_index, term) in query_terms.iter().enumerate() {
+        let base_weight = 220usize
+            .saturating_sub(query_index.saturating_mul(18))
+            .max(40);
+        for (rank, page) in
+            query_page_records_from_semantics_for_connection(connection, term, search_limit)?
+                .into_iter()
+                .enumerate()
+        {
+            let key = page.title.to_ascii_lowercase();
+            titles.entry(key.clone()).or_insert(page.title);
+            let weight = base_weight.saturating_sub(rank.saturating_mul(14)).max(20);
+            let entry = weights.entry(key).or_insert(0);
+            *entry = entry.saturating_add(weight);
+        }
+    }
+
+    let mut hits = weights
+        .into_iter()
+        .filter_map(|(key, retrieval_weight)| {
+            titles.get(&key).map(|title| SemanticPageHit {
+                title: title.clone(),
+                retrieval_weight,
+            })
+        })
+        .collect::<Vec<_>>();
+    hits.sort_by(|left, right| {
+        right
+            .retrieval_weight
+            .cmp(&left.retrieval_weight)
+            .then_with(|| left.title.cmp(&right.title))
+    });
+    hits.truncate(limit);
+    Ok(hits)
+}
+
+fn build_semantic_page_weight_map(semantic_hits: &[SemanticPageHit]) -> BTreeMap<String, usize> {
+    let mut out = BTreeMap::new();
+    for hit in semantic_hits {
+        out.insert(hit.title.to_ascii_lowercase(), hit.retrieval_weight);
+    }
+    out
 }
 
 fn query_page_records_from_aliases_for_connection(
@@ -3411,13 +3681,12 @@ fn load_template_examples_for_connection(
 #[derive(Default)]
 struct ReferenceUsageAccumulator {
     usage_count: usize,
-    total_quality_score: usize,
     source_pages: BTreeSet<String>,
     template_counts: BTreeMap<String, usize>,
     link_counts: BTreeMap<String, usize>,
     domain_counts: BTreeMap<String, usize>,
     identifier_counts: BTreeMap<String, usize>,
-    quality_flag_counts: BTreeMap<String, usize>,
+    retrieval_signal_counts: BTreeMap<String, usize>,
     citation_family: String,
     source_type: String,
     source_origin: String,
@@ -3441,8 +3710,7 @@ struct IndexedReferenceUsageRow {
     source_author: String,
     source_domain: String,
     identifier_keys: Vec<String>,
-    quality_flags: Vec<String>,
-    quality_score: usize,
+    retrieval_signals: Vec<String>,
     summary_text: String,
     reference_wikitext: String,
     template_titles: Vec<String>,
@@ -3480,8 +3748,7 @@ fn summarize_reference_usage_for_sources(
             source_author: row.source_author.clone(),
             source_domain: row.source_domain.clone(),
             identifier_keys: row.identifier_keys.clone(),
-            quality_flags: row.quality_flags.clone(),
-            quality_score: row.quality_score,
+            retrieval_signals: row.retrieval_signals.clone(),
             summary_text: row.summary_text.clone(),
             template_titles: row.template_titles.clone(),
             link_titles: row.link_titles.clone(),
@@ -3499,7 +3766,6 @@ fn summarize_reference_usage_for_sources(
             entry.source_origin = row.source_origin.clone();
         }
         entry.usage_count = entry.usage_count.saturating_add(1);
-        entry.total_quality_score = entry.total_quality_score.saturating_add(row.quality_score);
         entry.source_pages.insert(row.source_title);
         for template_title in row.template_titles {
             let count = entry.template_counts.entry(template_title).or_insert(0);
@@ -3517,8 +3783,11 @@ fn summarize_reference_usage_for_sources(
             let count = entry.identifier_counts.entry(identifier).or_insert(0);
             *count = count.saturating_add(1);
         }
-        for quality_flag in row.quality_flags {
-            let count = entry.quality_flag_counts.entry(quality_flag).or_insert(0);
+        for retrieval_signal in row.retrieval_signals {
+            let count = entry
+                .retrieval_signal_counts
+                .entry(retrieval_signal)
+                .or_insert(0);
             *count = count.saturating_add(1);
         }
         entry.examples.push(example);
@@ -3529,20 +3798,11 @@ fn summarize_reference_usage_for_sources(
         right
             .usage_count
             .cmp(&left.usage_count)
-            .then_with(|| {
-                let left_avg = if left.usage_count == 0 {
-                    0
-                } else {
-                    left.total_quality_score / left.usage_count
-                };
-                let right_avg = if right.usage_count == 0 {
-                    0
-                } else {
-                    right.total_quality_score / right.usage_count
-                };
-                right_avg.cmp(&left_avg)
-            })
             .then_with(|| right.source_pages.len().cmp(&left.source_pages.len()))
+            .then_with(|| {
+                reference_example_rank_key(right.examples.first())
+                    .cmp(&reference_example_rank_key(left.examples.first()))
+            })
             .then_with(|| left_profile.cmp(right_profile))
     });
     ranked.truncate(limit);
@@ -3551,20 +3811,14 @@ fn summarize_reference_usage_for_sources(
         .into_iter()
         .map(|(citation_profile, mut accumulator)| {
             accumulator.examples.sort_by(|left, right| {
-                right
-                    .quality_score
-                    .cmp(&left.quality_score)
+                reference_example_rank_key(Some(right))
+                    .cmp(&reference_example_rank_key(Some(left)))
                     .then_with(|| left.token_estimate.cmp(&right.token_estimate))
                     .then_with(|| left.source_title.cmp(&right.source_title))
             });
             accumulator
                 .examples
                 .truncate(AUTHORING_REFERENCE_EXAMPLE_LIMIT);
-            let average_quality_score = if accumulator.usage_count == 0 {
-                0
-            } else {
-                accumulator.total_quality_score / accumulator.usage_count
-            };
             Ok(ReferenceUsageSummary {
                 citation_profile,
                 citation_family: accumulator.citation_family,
@@ -3572,7 +3826,6 @@ fn summarize_reference_usage_for_sources(
                 source_origin: accumulator.source_origin,
                 usage_count: accumulator.usage_count,
                 distinct_page_count: accumulator.source_pages.len(),
-                average_quality_score,
                 example_pages: accumulator
                     .source_pages
                     .iter()
@@ -3595,8 +3848,8 @@ fn summarize_reference_usage_for_sources(
                     &accumulator.identifier_counts,
                     AUTHORING_REFERENCE_IDENTIFIER_LIMIT,
                 ),
-                common_quality_flags: top_counted_keys(
-                    &accumulator.quality_flag_counts,
+                common_retrieval_signals: top_counted_keys(
+                    &accumulator.retrieval_signal_counts,
                     AUTHORING_REFERENCE_FLAG_LIMIT,
                 ),
                 example_references: accumulator.examples,
@@ -3616,7 +3869,7 @@ fn load_reference_rows_for_sources(
         "SELECT source_title, source_relative_path, section_heading, reference_name, reference_group,
                 citation_profile, citation_family, primary_template_title, source_type, source_origin,
                 reference_title, source_container, source_author, source_domain, identifier_keys,
-                quality_flags, quality_score, summary_text, reference_wikitext, template_titles,
+                retrieval_signals, summary_text, reference_wikitext, template_titles,
                 link_titles, token_estimate
          FROM indexed_page_references
          WHERE source_title IN ({placeholders})"
@@ -3631,8 +3884,7 @@ fn load_reference_rows_for_sources(
         .context("failed to prepare reference summary query")?;
     let rows = statement
         .query_map(params_from_iter(values), |row| {
-            let quality_score_i64: i64 = row.get(16)?;
-            let token_estimate_i64: i64 = row.get(21)?;
+            let token_estimate_i64: i64 = row.get(20)?;
             Ok(IndexedReferenceUsageRow {
                 source_title: row.get(0)?,
                 source_relative_path: row.get(1)?,
@@ -3649,12 +3901,11 @@ fn load_reference_rows_for_sources(
                 source_author: row.get(12)?,
                 source_domain: row.get(13)?,
                 identifier_keys: parse_string_list(&row.get::<_, String>(14)?),
-                quality_flags: parse_string_list(&row.get::<_, String>(15)?),
-                quality_score: usize::try_from(quality_score_i64).unwrap_or(0),
-                summary_text: row.get(17)?,
-                reference_wikitext: row.get(18)?,
-                template_titles: parse_string_list(&row.get::<_, String>(19)?),
-                link_titles: parse_string_list(&row.get::<_, String>(20)?),
+                retrieval_signals: parse_string_list(&row.get::<_, String>(15)?),
+                summary_text: row.get(16)?,
+                reference_wikitext: row.get(17)?,
+                template_titles: parse_string_list(&row.get::<_, String>(18)?),
+                link_titles: parse_string_list(&row.get::<_, String>(19)?),
                 token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
             })
         })
@@ -3815,6 +4066,35 @@ fn top_counted_keys(counts: &BTreeMap<String, usize>, limit: usize) -> Vec<Strin
     ranked.into_iter().take(limit).map(|(key, _)| key).collect()
 }
 
+fn reference_example_rank_key(
+    example: Option<&ReferenceUsageExample>,
+) -> (
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+) {
+    let Some(example) = example else {
+        return (0, 0, 0, 0, 0, 0, 0, 0, 0);
+    };
+    (
+        usize::from(example.primary_template_title.is_some()),
+        usize::from(!example.reference_title.is_empty()),
+        usize::from(!example.source_author.is_empty()),
+        usize::from(!example.source_domain.is_empty()),
+        usize::from(!example.source_container.is_empty()),
+        example.identifier_keys.len(),
+        example.retrieval_signals.len(),
+        example.template_titles.len(),
+        example.link_titles.len(),
+    )
+}
+
 struct AuthoringPackEstimateInputs<'a> {
     related_pages: &'a [AuthoringPageCandidate],
     suggested_links: &'a [AuthoringSuggestion],
@@ -3895,7 +4175,7 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
                     .map(|identifier| estimate_tokens(identifier))
                     .sum::<usize>()
                 + reference
-                    .common_quality_flags
+                    .common_retrieval_signals
                     .iter()
                     .map(|flag| estimate_tokens(flag))
                     .sum::<usize>()
@@ -3949,6 +4229,12 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
 fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventory> {
     let indexed_pages_total = count_query(connection, "SELECT COUNT(*) FROM indexed_pages")
         .context("failed to count indexed pages for authoring inventory")?;
+    let semantic_profiles_total = if table_exists(connection, "indexed_page_semantics")? {
+        count_query(connection, "SELECT COUNT(*) FROM indexed_page_semantics")
+            .context("failed to count semantic profiles for authoring inventory")?
+    } else {
+        0
+    };
     let main_pages = count_query(
         connection,
         "SELECT COUNT(*) FROM indexed_pages WHERE namespace = 'Main'",
@@ -4014,6 +4300,7 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
 
     Ok(AuthoringInventory {
         indexed_pages_total,
+        semantic_profiles_total,
         main_pages,
         template_pages,
         indexed_links_total,
@@ -4189,7 +4476,7 @@ fn load_indexed_reference_rows_for_connection(
         .prepare(
             "SELECT section_heading, reference_name, reference_group, citation_profile, citation_family,
                     primary_template_title, source_type, source_origin, reference_title, source_container,
-                    source_author, source_domain, identifier_keys, quality_flags, quality_score,
+                    source_author, source_domain, identifier_keys, retrieval_signals,
                     summary_text, template_titles, link_titles, token_estimate
              FROM indexed_page_references
              WHERE source_relative_path = ?1
@@ -4199,8 +4486,7 @@ fn load_indexed_reference_rows_for_connection(
         .context("failed to prepare indexed_page_references query")?;
     let rows = statement
         .query_map(params![source_relative_path, limit_i64], |row| {
-            let quality_score_i64: i64 = row.get(14)?;
-            let token_estimate_i64: i64 = row.get(18)?;
+            let token_estimate_i64: i64 = row.get(17)?;
             Ok(LocalReferenceUsage {
                 section_heading: row.get(0)?,
                 reference_name: row.get(1)?,
@@ -4215,11 +4501,10 @@ fn load_indexed_reference_rows_for_connection(
                 source_author: row.get(10)?,
                 source_domain: row.get(11)?,
                 identifier_keys: parse_string_list(&row.get::<_, String>(12)?),
-                quality_flags: parse_string_list(&row.get::<_, String>(13)?),
-                quality_score: usize::try_from(quality_score_i64).unwrap_or(0),
-                summary_text: row.get(15)?,
-                template_titles: parse_string_list(&row.get::<_, String>(16)?),
-                link_titles: parse_string_list(&row.get::<_, String>(17)?),
+                retrieval_signals: parse_string_list(&row.get::<_, String>(13)?),
+                summary_text: row.get(14)?,
+                template_titles: parse_string_list(&row.get::<_, String>(15)?),
+                link_titles: parse_string_list(&row.get::<_, String>(16)?),
                 token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
             })
         })
@@ -4362,6 +4647,167 @@ fn extract_page_artifacts(content: &str) -> ParsedPageArtifacts {
         template_invocations: extract_template_invocations(content),
         references: extract_reference_records_from_sections(&sections),
         media: extract_media_records_from_sections(&sections),
+    }
+}
+
+fn build_page_semantic_profile(
+    file: &ScannedFile,
+    links: &[ParsedLink],
+    artifacts: &ParsedPageArtifacts,
+) -> IndexedSemanticProfileRecord {
+    let summary_text = artifacts
+        .section_records
+        .iter()
+        .find(|section| section.section_heading.is_none())
+        .map(|section| section.summary_text.clone())
+        .filter(|summary| !summary.is_empty())
+        .or_else(|| {
+            artifacts
+                .context_chunks
+                .first()
+                .map(|chunk| summarize_words(&chunk.chunk_text, AUTHORING_PAGE_SUMMARY_WORD_LIMIT))
+                .filter(|summary| !summary.is_empty())
+        })
+        .unwrap_or_default();
+    let section_headings = collect_normalized_string_list(
+        artifacts
+            .section_records
+            .iter()
+            .filter_map(|section| section.section_heading.clone()),
+    );
+    let category_titles = collect_normalized_string_list(
+        links
+            .iter()
+            .filter(|link| link.is_category_membership)
+            .map(|link| link.target_title.clone()),
+    );
+    let link_titles = collect_normalized_string_list(
+        links
+            .iter()
+            .filter(|link| !link.is_category_membership)
+            .map(|link| link.target_title.clone()),
+    );
+    let template_titles = collect_normalized_string_list(
+        artifacts
+            .template_invocations
+            .iter()
+            .map(|invocation| invocation.template_title.clone()),
+    );
+    let template_parameter_keys = collect_normalized_string_list(
+        artifacts
+            .template_invocations
+            .iter()
+            .flat_map(|invocation| invocation.parameter_keys.iter().cloned()),
+    );
+    let reference_titles = collect_normalized_string_list(
+        artifacts
+            .references
+            .iter()
+            .map(|reference| reference.reference_title.clone()),
+    );
+    let reference_containers = collect_normalized_string_list(
+        artifacts
+            .references
+            .iter()
+            .map(|reference| reference.source_container.clone()),
+    );
+    let reference_domains = collect_normalized_string_list(
+        artifacts
+            .references
+            .iter()
+            .map(|reference| reference.source_domain.clone()),
+    );
+    let media_titles = collect_normalized_string_list(
+        artifacts.media.iter().map(|media| media.file_title.clone()),
+    );
+    let media_captions = collect_normalized_string_list(
+        artifacts
+            .media
+            .iter()
+            .map(|media| media.caption_text.clone()),
+    );
+    let mut profile = IndexedSemanticProfileRecord {
+        source_title: file.title.clone(),
+        source_namespace: file.namespace.clone(),
+        summary_text,
+        section_headings,
+        category_titles,
+        template_titles,
+        template_parameter_keys,
+        link_titles,
+        reference_titles,
+        reference_containers,
+        reference_domains,
+        media_titles,
+        media_captions,
+        semantic_text: String::new(),
+        token_estimate: 0,
+    };
+    profile.semantic_text = build_page_semantic_text(file, &profile);
+    profile.token_estimate = estimate_tokens(&profile.semantic_text);
+    profile
+}
+
+fn build_page_semantic_text(file: &ScannedFile, profile: &IndexedSemanticProfileRecord) -> String {
+    let mut terms = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    push_semantic_term(&mut terms, &mut seen, &file.title);
+    push_semantic_term(&mut terms, &mut seen, &profile.summary_text);
+    for values in [
+        &profile.section_headings,
+        &profile.category_titles,
+        &profile.template_titles,
+        &profile.template_parameter_keys,
+        &profile.link_titles,
+        &profile.reference_titles,
+        &profile.reference_containers,
+        &profile.reference_domains,
+        &profile.media_titles,
+        &profile.media_captions,
+    ] {
+        for value in values {
+            push_semantic_term(&mut terms, &mut seen, value);
+        }
+    }
+
+    if terms.is_empty() {
+        push_semantic_term(&mut terms, &mut seen, &file.title);
+    }
+    terms.join("\n")
+}
+
+fn collect_normalized_string_list<I>(values: I) -> Vec<String>
+where
+    I: IntoIterator<Item = String>,
+{
+    values
+        .into_iter()
+        .map(|value| normalize_spaces(&value.replace('_', " ")))
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn push_semantic_term(out: &mut Vec<String>, seen: &mut BTreeSet<String>, value: &str) {
+    let normalized = normalize_spaces(&value.replace('_', " "));
+    if normalized.is_empty() {
+        return;
+    }
+    let key = normalized.to_ascii_lowercase();
+    if seen.insert(key) {
+        out.push(normalized.clone());
+    }
+    if let Some((_, body)) = normalized.split_once(':') {
+        let body = normalize_spaces(body);
+        if body.is_empty() {
+            return;
+        }
+        let body_key = body.to_ascii_lowercase();
+        if seen.insert(body_key) {
+            out.push(body);
+        }
     }
 }
 
@@ -4522,8 +4968,7 @@ fn extract_reference_records(content: &str) -> Vec<LocalReferenceUsage> {
             source_author: record.source_author,
             source_domain: record.source_domain,
             identifier_keys: record.identifier_keys,
-            quality_flags: record.quality_flags,
-            quality_score: record.quality_score,
+            retrieval_signals: record.retrieval_signals,
             summary_text: record.summary_text,
             template_titles: record.template_titles,
             link_titles: record.link_titles,
@@ -4614,8 +5059,7 @@ fn extract_reference_records_for_section(
             source_author: analysis.source_author,
             source_domain: analysis.source_domain,
             identifier_keys: analysis.identifier_keys,
-            quality_flags: analysis.quality_flags,
-            quality_score: analysis.quality_score,
+            retrieval_signals: analysis.retrieval_signals,
             summary_text: summarize_words(&summary_text, AUTHORING_PAGE_SUMMARY_WORD_LIMIT),
             reference_wikitext,
             template_titles,
@@ -5431,7 +5875,7 @@ fn analyze_reference_body(
         url_value.is_some(),
         archive_url.is_some(),
     );
-    let quality_inputs = ReferenceQualityInputs {
+    let signal_inputs = ReferenceSignalInputs {
         primary_template_title: primary_template_title.as_deref(),
         source_type: &source_type,
         source_origin: &source_origin,
@@ -5448,8 +5892,7 @@ fn analyze_reference_body(
         reference_group,
         reference_body,
     };
-    let quality_flags = collect_reference_quality_flags(quality_inputs);
-    let quality_score = score_reference_quality(quality_inputs);
+    let retrieval_signals = collect_reference_signals(signal_inputs);
     let summary_hint = build_reference_summary_hint(
         &reference_title,
         &source_container,
@@ -5476,8 +5919,7 @@ fn analyze_reference_body(
         source_author,
         source_domain,
         identifier_keys,
-        quality_flags,
-        quality_score,
+        retrieval_signals,
         summary_hint,
     }
 }
@@ -5625,7 +6067,7 @@ fn collect_reference_identifier_keys(
 }
 
 #[derive(Clone, Copy)]
-struct ReferenceQualityInputs<'a> {
+struct ReferenceSignalInputs<'a> {
     primary_template_title: Option<&'a str>,
     source_type: &'a str,
     source_origin: &'a str,
@@ -5643,7 +6085,7 @@ struct ReferenceQualityInputs<'a> {
     reference_body: &'a str,
 }
 
-fn collect_reference_quality_flags(input: ReferenceQualityInputs<'_>) -> Vec<String> {
+fn collect_reference_signals(input: ReferenceSignalInputs<'_>) -> Vec<String> {
     let mut flags = BTreeSet::new();
     if input.primary_template_title.is_some() {
         flags.insert("citation-template".to_string());
@@ -5694,50 +6136,6 @@ fn collect_reference_quality_flags(input: ReferenceQualityInputs<'_>) -> Vec<Str
         flags.insert(format!("source-type:{}", input.source_type));
     }
     flags.into_iter().collect()
-}
-
-fn score_reference_quality(input: ReferenceQualityInputs<'_>) -> usize {
-    let mut score = 8i64;
-    if input.primary_template_title.is_some() {
-        score += 18;
-    }
-    if !input.reference_title.is_empty() {
-        score += 18;
-    }
-    if !input.source_container.is_empty() {
-        score += 12;
-    }
-    if !input.source_author.is_empty() {
-        score += 12;
-    }
-    if !input.source_domain.is_empty() {
-        score += 8;
-    }
-    if !input.source_date.is_empty() {
-        score += 8;
-    }
-    if !input.identifier_keys.is_empty() {
-        score += 10;
-    }
-    if input.has_archive {
-        score += 6;
-    }
-    if input.has_quote {
-        score += 4;
-    }
-    if input.reference_body.trim().is_empty() {
-        score -= 10;
-    }
-    if input.primary_template_title.is_none() && !input.source_domain.is_empty() {
-        score -= 8;
-    }
-    if input.source_type == "social" {
-        score -= 4;
-    }
-    if input.source_type == "journal" {
-        score += 4;
-    }
-    score.clamp(0, 100) as usize
 }
 
 fn classify_reference_source_type(
@@ -6599,6 +6997,13 @@ fn rebuild_fts_index(connection: &Connection) -> Result<()> {
             )
             .context("failed to rebuild indexed_page_media_fts")?;
     }
+    if fts_table_exists(connection, "indexed_page_semantics_fts") {
+        connection
+            .execute_batch(
+                "INSERT INTO indexed_page_semantics_fts(indexed_page_semantics_fts) VALUES('rebuild')",
+            )
+            .context("failed to rebuild indexed_page_semantics_fts")?;
+    }
     Ok(())
 }
 
@@ -6948,10 +7353,9 @@ mod tests {
         assert_eq!(references[0].source_domain, "remilia.org");
         assert!(references[0].citation_profile.contains("web"));
         assert!(references[0].citation_profile.contains("remilia.org"));
-        assert!(references[0].quality_score > 0);
         assert!(
             references[0]
-                .quality_flags
+                .retrieval_signals
                 .iter()
                 .any(|flag| flag == "first-party")
         );
@@ -7138,6 +7542,43 @@ mod tests {
     }
 
     #[test]
+    fn retrieve_local_context_chunks_across_pages_uses_semantic_page_profiles() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths
+                .wiki_content_dir
+                .join("Main")
+                .join("Alpha_Beacon.wiki"),
+            "Lead prose without the page title words.\n== History ==\nThe hidden signal stays buried in ordinary text.",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Noise.wiki"),
+            "Noise page with unrelated prose only.",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let retrieval =
+            retrieve_local_context_chunks_across_pages(&paths, "Alpha Beacon", 3, 180, 2, true)
+                .expect("across-pages retrieval");
+        let report = match retrieval {
+            LocalChunkAcrossRetrieval::Found(report) => report,
+            other => panic!("expected found report, got {other:?}"),
+        };
+        assert!(report.retrieval_mode.contains("semantic"));
+        assert!(report.retrieval_mode.contains("seed-pages"));
+        assert!(
+            report
+                .chunks
+                .iter()
+                .any(|chunk| chunk.source_title == "Alpha Beacon")
+        );
+    }
+
+    #[test]
     fn build_authoring_knowledge_pack_requires_topic_or_stub_signal() {
         let temp = tempdir().expect("tempdir");
         let project_root = temp.path().join("project");
@@ -7232,7 +7673,10 @@ mod tests {
         assert!(report.suggested_references.iter().any(|entry| {
             entry.citation_family == "Template:Cite web"
                 && entry.source_type == "web"
-                && entry.average_quality_score > 0
+                && entry
+                    .common_retrieval_signals
+                    .iter()
+                    .any(|signal| signal == "citation-template")
         }));
         assert!(
             report

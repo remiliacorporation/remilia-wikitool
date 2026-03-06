@@ -32,6 +32,12 @@ Wikitool resolves paths from project root and uses `.wikitool/` for local runtim
 
 The local SQLite DB is disposable and is created automatically on first use. If binary/schema changes make it stale, run `wikitool db reset --yes` or delete `.wikitool/data/wikitool.db`, then repull/resync.
 
+For authoring retrieval, the DB is optimized as an AI-facing index rather than a human-facing store:
+
+- local files remain the source of truth for editors
+- SQLite stores semantic page profiles, links, sections, templates, references, and media for fast retrieval
+- reference rows expose explicit retrieval signals and source metadata instead of opaque quality scores
+
 ## Core Workflow
 
 ```bash

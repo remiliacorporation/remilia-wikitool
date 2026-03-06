@@ -22,8 +22,7 @@ const REQUIRED_REFERENCE_COLUMNS: &[&str] = &[
     "source_author",
     "source_domain",
     "identifier_keys",
-    "quality_flags",
-    "quality_score",
+    "retrieval_signals",
 ];
 
 const REQUIRED_ALIAS_COLUMNS: &[&str] = &[
@@ -63,6 +62,24 @@ const REQUIRED_MEDIA_COLUMNS: &[&str] = &[
     "media_kind",
     "caption_text",
     "options_text",
+    "token_estimate",
+];
+
+const REQUIRED_SEMANTIC_COLUMNS: &[&str] = &[
+    "source_title",
+    "source_namespace",
+    "summary_text",
+    "section_headings",
+    "category_titles",
+    "template_titles",
+    "template_parameter_keys",
+    "link_titles",
+    "reference_titles",
+    "reference_containers",
+    "reference_domains",
+    "media_titles",
+    "media_captions",
+    "semantic_text",
     "token_estimate",
 ];
 
@@ -140,7 +157,12 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
         "indexed_page_references",
         REQUIRED_REFERENCE_COLUMNS,
     )?;
-    require_columns(connection, "indexed_page_media", REQUIRED_MEDIA_COLUMNS)
+    require_columns(connection, "indexed_page_media", REQUIRED_MEDIA_COLUMNS)?;
+    require_columns(
+        connection,
+        "indexed_page_semantics",
+        REQUIRED_SEMANTIC_COLUMNS,
+    )
 }
 
 fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()> {
@@ -160,7 +182,12 @@ fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()>
         "indexed_page_references",
         REQUIRED_REFERENCE_COLUMNS,
     )?;
-    require_columns_if_table_exists(connection, "indexed_page_media", REQUIRED_MEDIA_COLUMNS)
+    require_columns_if_table_exists(connection, "indexed_page_media", REQUIRED_MEDIA_COLUMNS)?;
+    require_columns_if_table_exists(
+        connection,
+        "indexed_page_semantics",
+        REQUIRED_SEMANTIC_COLUMNS,
+    )
 }
 
 fn require_columns_if_table_exists(

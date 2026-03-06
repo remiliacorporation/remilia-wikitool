@@ -236,8 +236,7 @@ CREATE TABLE IF NOT EXISTS indexed_page_references (
     source_author TEXT NOT NULL,
     source_domain TEXT NOT NULL,
     identifier_keys TEXT NOT NULL,
-    quality_flags TEXT NOT NULL,
-    quality_score INTEGER NOT NULL,
+    retrieval_signals TEXT NOT NULL,
     summary_text TEXT NOT NULL,
     reference_wikitext TEXT NOT NULL,
     template_titles TEXT NOT NULL,
@@ -256,8 +255,6 @@ CREATE INDEX IF NOT EXISTS idx_indexed_page_references_type
     ON indexed_page_references(source_type);
 CREATE INDEX IF NOT EXISTS idx_indexed_page_references_domain
     ON indexed_page_references(source_domain);
-CREATE INDEX IF NOT EXISTS idx_indexed_page_references_quality
-    ON indexed_page_references(quality_score);
 CREATE INDEX IF NOT EXISTS idx_indexed_page_references_template
     ON indexed_page_references(primary_template_title);
 CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_references_fts USING fts5(
@@ -303,6 +300,47 @@ CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_media_fts USING fts5(
     caption_text,
     options_text,
     content=indexed_page_media,
+    content_rowid=rowid
+);
+
+CREATE TABLE IF NOT EXISTS indexed_page_semantics (
+    source_relative_path TEXT PRIMARY KEY,
+    source_title TEXT NOT NULL,
+    source_namespace TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    section_headings TEXT NOT NULL,
+    category_titles TEXT NOT NULL,
+    template_titles TEXT NOT NULL,
+    template_parameter_keys TEXT NOT NULL,
+    link_titles TEXT NOT NULL,
+    reference_titles TEXT NOT NULL,
+    reference_containers TEXT NOT NULL,
+    reference_domains TEXT NOT NULL,
+    media_titles TEXT NOT NULL,
+    media_captions TEXT NOT NULL,
+    semantic_text TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_page_semantics_title
+    ON indexed_page_semantics(source_title);
+CREATE INDEX IF NOT EXISTS idx_indexed_page_semantics_namespace
+    ON indexed_page_semantics(source_namespace);
+CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_semantics_fts USING fts5(
+    source_title,
+    summary_text,
+    section_headings,
+    category_titles,
+    template_titles,
+    template_parameter_keys,
+    link_titles,
+    reference_titles,
+    reference_containers,
+    reference_domains,
+    media_titles,
+    media_captions,
+    semantic_text,
+    content=indexed_page_semantics,
     content_rowid=rowid
 );
 

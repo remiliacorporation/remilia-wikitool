@@ -45,6 +45,13 @@ wikitool status
 wikitool index stats
 ```
 
+Useful authoring retrieval checks:
+
+```bash
+wikitool index chunks --across-pages --query "network spirituality remilia" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
+wikitool workflow authoring-pack "Remilia Corporation" --format json
+```
+
 ## 5) Optional: configure credentials and API target
 
 Create `.env` in project root (next to `wiki_content/`) and set:
@@ -113,6 +120,8 @@ Codex skill templates are also included under `codex_skills/` and can be copied 
 ## 8) Troubleshooting
 
 The local SQLite DB is disposable and recreated automatically on first use.
+
+Authoring retrieval is DB-first and AI-oriented: semantic page profiles and explicit reference/template/link signals are indexed for retrieval, while local files remain the human editing surface.
 
 If runtime/schema changes break local state:
 

@@ -45,10 +45,18 @@ wikitool docs list --outdated
 ```bash
 wikitool pull --full --all
 wikitool context "Template:Infobox person"
+wikitool workflow authoring-pack "Topic" --format json
+wikitool index chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool search "Category:"
 wikitool docs search "extension feature"
 wikitool docs import --installed
 ```
+
+## Retrieval guidance
+
+1. Treat local files as the human editing surface and SQLite as the AI retrieval layer.
+2. Prefer `workflow authoring-pack` and `index chunks --across-pages` when building article context.
+3. Describe references using their source metadata and retrieval signals; do not imply that wikitool assigns authoritative quality ratings.
 
 ## Safety constraints
 

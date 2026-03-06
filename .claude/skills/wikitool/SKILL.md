@@ -42,9 +42,17 @@ Canonical behavior is defined by runbooks and live CLI help.
 ```bash
 wikitool workflow bootstrap
 wikitool workflow full-refresh --yes
+wikitool workflow authoring-pack "Topic" --format json
+wikitool index chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool docs generate-reference
 wikitool dev install-git-hooks
 wikitool release build-ai-pack
 wikitool release package
 wikitool release build-matrix
 ```
+
+## Retrieval model
+
+1. Treat local files as the editor-facing source of truth.
+2. Treat SQLite as an AI retrieval index: semantic page profiles, sections, templates, references, links, and media.
+3. Do not describe reference rows as “quality scored”; use the stored retrieval signals and source metadata directly.

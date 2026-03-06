@@ -268,7 +268,7 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     println!("{prefix}.references.count: {}", bundle.references.len());
     for reference in &bundle.references {
         println!(
-            "{prefix}.reference: section={} name={} group={} profile={} family={} template={} type={} origin={} quality={} title={} container={} author={} domain={} summary={} templates={} links={} identifiers={} flags={} tokens={}",
+            "{prefix}.reference: section={} name={} group={} profile={} family={} template={} type={} origin={} title={} container={} author={} domain={} summary={} templates={} links={} identifiers={} signals={} tokens={}",
             reference.section_heading.as_deref().unwrap_or("<lead>"),
             reference.reference_name.as_deref().unwrap_or("<none>"),
             reference.reference_group.as_deref().unwrap_or("<none>"),
@@ -280,7 +280,6 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
                 .unwrap_or("<none>"),
             reference.source_type,
             reference.source_origin,
-            reference.quality_score,
             if reference.reference_title.is_empty() {
                 "<none>"
             } else {
@@ -317,10 +316,10 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
             } else {
                 reference.identifier_keys.join(",")
             },
-            if reference.quality_flags.is_empty() {
+            if reference.retrieval_signals.is_empty() {
                 "<none>".to_string()
             } else {
-                reference.quality_flags.join(",")
+                reference.retrieval_signals.join(",")
             },
             reference.token_estimate
         );
