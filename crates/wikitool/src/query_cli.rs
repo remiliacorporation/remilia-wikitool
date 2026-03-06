@@ -265,4 +265,45 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
             }
         );
     }
+    println!("{prefix}.references.count: {}", bundle.references.len());
+    for reference in &bundle.references {
+        println!(
+            "{prefix}.reference: section={} name={} group={} tokens={} summary={} templates={} links={}",
+            reference.section_heading.as_deref().unwrap_or("<lead>"),
+            reference.reference_name.as_deref().unwrap_or("<none>"),
+            reference.reference_group.as_deref().unwrap_or("<none>"),
+            reference.token_estimate,
+            reference.summary_text,
+            if reference.template_titles.is_empty() {
+                "<none>".to_string()
+            } else {
+                reference.template_titles.join(",")
+            },
+            if reference.link_titles.is_empty() {
+                "<none>".to_string()
+            } else {
+                reference.link_titles.join(",")
+            }
+        );
+    }
+    println!("{prefix}.media.count: {}", bundle.media.len());
+    for media in &bundle.media {
+        println!(
+            "{prefix}.media_usage: section={} file={} kind={} tokens={} caption={} options={}",
+            media.section_heading.as_deref().unwrap_or("<lead>"),
+            media.file_title,
+            media.media_kind,
+            media.token_estimate,
+            if media.caption_text.is_empty() {
+                "<none>"
+            } else {
+                &media.caption_text
+            },
+            if media.options.is_empty() {
+                "<none>".to_string()
+            } else {
+                media.options.join(", ")
+            }
+        );
+    }
 }

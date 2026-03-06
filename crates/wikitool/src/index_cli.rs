@@ -197,6 +197,8 @@ pub(crate) fn build_context_from_scan(
         templates: Vec::new(),
         modules: Vec::new(),
         template_invocations: Vec::new(),
+        references: Vec::new(),
+        media: Vec::new(),
     }))
 }
 

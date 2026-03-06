@@ -5,8 +5,9 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::index::{
-    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringSuggestion, StubTemplateHint,
-    TemplateParameterUsage, TemplateUsageSummary, build_authoring_knowledge_pack,
+    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringSuggestion, MediaUsageSummary,
+    ReferenceUsageSummary, StubTemplateHint, TemplateParameterUsage, TemplateUsageSummary,
+    build_authoring_knowledge_pack,
 };
 use wikitool_core::runtime::ResolvedPaths;
 
@@ -394,6 +395,22 @@ fn run_workflow_authoring_pack(
                 "inventory.templates.distinct: {}",
                 report.inventory.distinct_templates_invoked
             );
+            println!(
+                "inventory.references.total: {}",
+                report.inventory.reference_rows_total
+            );
+            println!(
+                "inventory.references.distinct_profiles: {}",
+                report.inventory.distinct_reference_profiles
+            );
+            println!(
+                "inventory.media.total: {}",
+                report.inventory.media_rows_total
+            );
+            println!(
+                "inventory.media.distinct_files: {}",
+                report.inventory.distinct_media_files
+            );
             println!("related_pages.count: {}", report.related_pages.len());
             for page in &report.related_pages {
                 println!(
@@ -427,6 +444,17 @@ fn run_workflow_authoring_pack(
             );
             for template in &report.suggested_templates {
                 print_template_summary("suggested_template", template);
+            }
+            println!(
+                "suggested_references.count: {}",
+                report.suggested_references.len()
+            );
+            for reference in &report.suggested_references {
+                print_reference_summary("suggested_reference", reference);
+            }
+            println!("suggested_media.count: {}", report.suggested_media.len());
+            for media in &report.suggested_media {
+                print_media_summary("suggested_media", media);
             }
             println!(
                 "template_baseline.count: {}",
@@ -543,6 +571,83 @@ fn print_stub_template_hint(template: &StubTemplateHint) {
             template.parameter_keys.join(", ")
         }
     );
+}
+
+fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
+    println!(
+        "{label}: {} (usage={} pages={} templates={} links={})",
+        reference.citation_profile,
+        reference.usage_count,
+        reference.distinct_page_count,
+        if reference.common_templates.is_empty() {
+            "<none>".to_string()
+        } else {
+            reference.common_templates.join(", ")
+        },
+        if reference.common_links.is_empty() {
+            "<none>".to_string()
+        } else {
+            reference.common_links.join(", ")
+        }
+    );
+    if !reference.example_pages.is_empty() {
+        println!(
+            "{label}.example_pages: {}",
+            reference.example_pages.join(", ")
+        );
+    }
+    for example in &reference.example_references {
+        println!(
+            "{label}.example: profile={} source={} section={} name={} group={} tokens={} summary={} templates={} links={} text={}",
+            reference.citation_profile,
+            example.source_title,
+            example.section_heading.as_deref().unwrap_or("<lead>"),
+            example.reference_name.as_deref().unwrap_or("<none>"),
+            example.reference_group.as_deref().unwrap_or("<none>"),
+            example.token_estimate,
+            example.summary_text,
+            if example.template_titles.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.template_titles.join(", ")
+            },
+            if example.link_titles.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.link_titles.join(", ")
+            },
+            example.reference_wikitext
+        );
+    }
+}
+
+fn print_media_summary(label: &str, media: &MediaUsageSummary) {
+    println!(
+        "{label}: {} (kind={} usage={} pages={})",
+        media.file_title, media.media_kind, media.usage_count, media.distinct_page_count
+    );
+    if !media.example_pages.is_empty() {
+        println!("{label}.example_pages: {}", media.example_pages.join(", "));
+    }
+    for example in &media.example_usages {
+        println!(
+            "{label}.example: file={} source={} section={} tokens={} caption={} options={}",
+            media.file_title,
+            example.source_title,
+            example.section_heading.as_deref().unwrap_or("<lead>"),
+            example.token_estimate,
+            if example.caption_text.is_empty() {
+                "<none>"
+            } else {
+                &example.caption_text
+            },
+            if example.options.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.options.join(", ")
+            }
+        );
+    }
 }
 
 fn format_parameter_stats(stats: &[TemplateParameterUsage]) -> String {

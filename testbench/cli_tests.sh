@@ -210,7 +210,9 @@ mkdir -p "$PROJ/wiki_content/Main"
 cat > "$PROJ/wiki_content/Main/Alpha.wiki" << 'WIKIEOF'
 {{SHORTDESC:Alpha article}}
 
-'''Alpha''' is an article.
+'''Alpha''' is an article.<ref>{{Cite web|title=Alpha Source|website=Remilia}}</ref>
+
+[[Image:Alpha.png|thumb|Alpha portrait]]
 
 == References ==
 {{Reflist}}
@@ -220,7 +222,9 @@ WIKIEOF
 cat > "$PROJ/wiki_content/Main/Beta.wiki" << 'WIKIEOF'
 {{SHORTDESC:Beta article}}
 
-'''Beta''' is an article that links to [[Alpha]].
+'''Beta''' is an article that links to [[Alpha]].<ref>{{Cite book|title=Beta Source|publisher=Remilia Press}}</ref>
+
+[[File:Beta.jpg|thumb|Beta portrait]]
 
 == References ==
 {{Reflist}}
@@ -349,7 +353,7 @@ fi
 # --- context ---
 section "context"
 OUTPUT=$(wt "$PROJ" context "Alpha" 2>&1)
-if echo "$OUTPUT" | grep -qi "Alpha\|context\|title"; then
+if echo "$OUTPUT" | grep -q "context.references.count:" && echo "$OUTPUT" | grep -q "context.media.count:"; then
     pass "context returns data for known title"
 else
     fail "context returns data for known title (got: $OUTPUT)"
@@ -375,6 +379,7 @@ report = payload.get("Found")
 if not isinstance(report, dict):
     raise SystemExit(1)
 required = ("suggested_templates", "template_baseline", "stub_missing_links")
+required += ("suggested_references", "suggested_media")
 if any(key not in report for key in required):
     raise SystemExit(1)
 PY

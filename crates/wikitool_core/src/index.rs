@@ -24,10 +24,17 @@ const CHUNK_CANDIDATE_MULTIPLIER_ACROSS: usize = 10;
 const CHUNK_LEXICAL_SIMILARITY_THRESHOLD: f32 = 0.86;
 const AUTHORING_TEMPLATE_KEY_LIMIT: usize = 12;
 const TEMPLATE_REFERENCE_EXAMPLE_LIMIT: usize = 3;
+const AUTHORING_REFERENCE_LIMIT: usize = 8;
+const AUTHORING_REFERENCE_EXAMPLE_LIMIT: usize = 3;
+const AUTHORING_MEDIA_LIMIT: usize = 8;
+const AUTHORING_MEDIA_EXAMPLE_LIMIT: usize = 3;
 const AUTHORING_PAGE_SUMMARY_WORD_LIMIT: usize = 36;
 const AUTHORING_QUERY_EXPANSION_LIMIT: usize = 8;
 const AUTHORING_SECTION_LIMIT: usize = 24;
 const AUTHORING_SUGGESTION_EVIDENCE_LIMIT: usize = 4;
+const CONTEXT_REFERENCE_LIMIT: usize = 12;
+const CONTEXT_MEDIA_LIMIT: usize = 12;
+const NO_STRING_LIST_SENTINEL: &str = "__none__";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RebuildReport {
@@ -71,6 +78,27 @@ pub struct LocalTemplateInvocation {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LocalReferenceUsage {
+    pub section_heading: Option<String>,
+    pub reference_name: Option<String>,
+    pub reference_group: Option<String>,
+    pub summary_text: String,
+    pub template_titles: Vec<String>,
+    pub link_titles: Vec<String>,
+    pub token_estimate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LocalMediaUsage {
+    pub section_heading: Option<String>,
+    pub file_title: String,
+    pub media_kind: String,
+    pub caption_text: String,
+    pub options: Vec<String>,
+    pub token_estimate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LocalSectionSummary {
     pub section_heading: Option<String>,
     pub section_level: u8,
@@ -98,6 +126,8 @@ pub struct LocalContextBundle {
     pub templates: Vec<String>,
     pub modules: Vec<String>,
     pub template_invocations: Vec<LocalTemplateInvocation>,
+    pub references: Vec<LocalReferenceUsage>,
+    pub media: Vec<LocalMediaUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -153,6 +183,10 @@ pub struct AuthoringInventory {
     pub indexed_links_total: usize,
     pub template_invocation_rows: usize,
     pub distinct_templates_invoked: usize,
+    pub reference_rows_total: usize,
+    pub distinct_reference_profiles: usize,
+    pub media_rows_total: usize,
+    pub distinct_media_files: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -200,6 +234,51 @@ pub struct TemplateUsageSummary {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReferenceUsageExample {
+    pub source_title: String,
+    pub source_relative_path: String,
+    pub section_heading: Option<String>,
+    pub reference_name: Option<String>,
+    pub reference_group: Option<String>,
+    pub summary_text: String,
+    pub template_titles: Vec<String>,
+    pub link_titles: Vec<String>,
+    pub reference_wikitext: String,
+    pub token_estimate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReferenceUsageSummary {
+    pub citation_profile: String,
+    pub usage_count: usize,
+    pub distinct_page_count: usize,
+    pub example_pages: Vec<String>,
+    pub common_templates: Vec<String>,
+    pub common_links: Vec<String>,
+    pub example_references: Vec<ReferenceUsageExample>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct MediaUsageExample {
+    pub source_title: String,
+    pub source_relative_path: String,
+    pub section_heading: Option<String>,
+    pub caption_text: String,
+    pub options: Vec<String>,
+    pub token_estimate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct MediaUsageSummary {
+    pub file_title: String,
+    pub media_kind: String,
+    pub usage_count: usize,
+    pub distinct_page_count: usize,
+    pub example_pages: Vec<String>,
+    pub example_usages: Vec<MediaUsageExample>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct TemplateReference {
     pub template: TemplateUsageSummary,
     pub implementation_sections: Vec<LocalSectionSummary>,
@@ -243,6 +322,8 @@ pub struct AuthoringKnowledgePackResult {
     pub suggested_links: Vec<AuthoringSuggestion>,
     pub suggested_categories: Vec<AuthoringSuggestion>,
     pub suggested_templates: Vec<TemplateUsageSummary>,
+    pub suggested_references: Vec<ReferenceUsageSummary>,
+    pub suggested_media: Vec<MediaUsageSummary>,
     pub template_baseline: Vec<TemplateUsageSummary>,
     pub stub_existing_links: Vec<String>,
     pub stub_missing_links: Vec<String>,
@@ -415,6 +496,42 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         )
         .context("failed to prepare indexed_template_examples insert")?;
 
+    let mut reference_statement = transaction
+        .prepare(
+            "INSERT INTO indexed_page_references (
+                source_relative_path,
+                reference_index,
+                source_title,
+                source_namespace,
+                section_heading,
+                reference_name,
+                reference_group,
+                summary_text,
+                reference_wikitext,
+                template_titles,
+                link_titles,
+                token_estimate
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        )
+        .context("failed to prepare indexed_page_references insert")?;
+
+    let mut media_statement = transaction
+        .prepare(
+            "INSERT INTO indexed_page_media (
+                source_relative_path,
+                media_index,
+                source_title,
+                source_namespace,
+                section_heading,
+                file_title,
+                media_kind,
+                caption_text,
+                options_text,
+                token_estimate
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        )
+        .context("failed to prepare indexed_page_media insert")?;
+
     let mut inserted_rows = 0usize;
     let mut inserted_links = 0usize;
     for file in &files {
@@ -465,8 +582,8 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 .with_context(|| format!("failed to insert alias for {}", file.relative_path))?;
         }
 
-        let sections = extract_section_records(&content);
-        for (section_index, section) in sections.iter().enumerate() {
+        let artifacts = extract_page_artifacts(&content);
+        for (section_index, section) in artifacts.section_records.iter().enumerate() {
             section_statement
                 .execute(params![
                     file.relative_path,
@@ -483,8 +600,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 .with_context(|| format!("failed to insert sections for {}", file.relative_path))?;
         }
 
-        let context_chunks = chunk_article_context(&content);
-        for (chunk_index, chunk) in context_chunks.iter().enumerate() {
+        for (chunk_index, chunk) in artifacts.context_chunks.iter().enumerate() {
             chunk_statement
                 .execute(params![
                     file.relative_path,
@@ -501,10 +617,51 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 })?;
         }
 
+        for (reference_index, reference) in artifacts.references.iter().enumerate() {
+            reference_statement
+                .execute(params![
+                    file.relative_path,
+                    i64::try_from(reference_index)
+                        .context("reference index does not fit into i64")?,
+                    file.title,
+                    file.namespace,
+                    reference.section_heading.as_deref(),
+                    reference.reference_name.as_deref(),
+                    reference.reference_group.as_deref(),
+                    reference.summary_text.as_str(),
+                    reference.reference_wikitext.as_str(),
+                    serialize_string_list(&reference.template_titles),
+                    serialize_string_list(&reference.link_titles),
+                    i64::try_from(reference.token_estimate)
+                        .context("reference token estimate does not fit into i64")?,
+                ])
+                .with_context(|| {
+                    format!("failed to insert reference rows for {}", file.relative_path)
+                })?;
+        }
+
+        for (media_index, media) in artifacts.media.iter().enumerate() {
+            media_statement
+                .execute(params![
+                    file.relative_path,
+                    i64::try_from(media_index).context("media index does not fit into i64")?,
+                    file.title,
+                    file.namespace,
+                    media.section_heading.as_deref(),
+                    media.file_title.as_str(),
+                    media.media_kind.as_str(),
+                    media.caption_text.as_str(),
+                    serialize_string_list(&media.options),
+                    i64::try_from(media.token_estimate)
+                        .context("media token estimate does not fit into i64")?,
+                ])
+                .with_context(|| {
+                    format!("failed to insert media rows for {}", file.relative_path)
+                })?;
+        }
+
         let mut seen_signatures = BTreeSet::new();
-        for (invocation_index, invocation) in extract_template_invocations(&content)
-            .into_iter()
-            .enumerate()
+        for (invocation_index, invocation) in artifacts.template_invocations.into_iter().enumerate()
         {
             let parameter_keys = canonical_parameter_key_list(&invocation.parameter_keys);
             let signature = format!("{}|{}", invocation.template_title, parameter_keys);
@@ -562,6 +719,8 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 })?;
         }
     }
+    drop(media_statement);
+    drop(reference_statement);
     drop(template_example_statement);
     drop(section_statement);
     drop(alias_statement);
@@ -811,6 +970,20 @@ pub fn build_local_context(
                 )
             }
         };
+    let references = match load_references_for_bundle(&connection, &page.relative_path)? {
+        Some(references) => references,
+        None => {
+            let loaded = content.get_or_insert(load_page_content(paths, &page.relative_path)?);
+            extract_reference_records(loaded)
+        }
+    };
+    let media = match load_media_for_bundle(&connection, &page.relative_path)? {
+        Some(media) => media,
+        None => {
+            let loaded = content.get_or_insert(load_page_content(paths, &page.relative_path)?);
+            extract_media_records(loaded)
+        }
+    };
 
     let mut outgoing_set = BTreeSet::new();
     let mut category_set = BTreeSet::new();
@@ -851,6 +1024,8 @@ pub fn build_local_context(
         templates: template_set.into_iter().collect(),
         modules: module_set.into_iter().collect(),
         template_invocations,
+        references,
+        media,
     }))
 }
 
@@ -962,76 +1137,21 @@ pub fn retrieve_local_context_chunks_across_pages(
     if normalized_query.is_empty() {
         return Ok(LocalChunkAcrossRetrieval::QueryMissing);
     }
-
-    let max_chunks = limit.max(1);
-    let max_tokens = token_budget.max(1);
-    let max_pages = max_pages.max(1);
-    let candidate_cap = candidate_limit(max_chunks, CHUNK_CANDIDATE_MULTIPLIER_ACROSS);
-
-    let (candidates, retrieval_mode) = if table_exists(&connection, "indexed_page_chunks")? {
-        if fts_table_exists(&connection, "indexed_page_chunks_fts") {
-            let hits = query_chunks_fts_across_pages_for_connection(
-                &connection,
-                &normalized_query,
-                candidate_cap,
-            )?;
-            if !hits.is_empty() {
-                (hits, "fts-across".to_string())
-            } else {
-                (
-                    query_chunks_like_across_pages_for_connection(
-                        &connection,
-                        &normalized_query,
-                        candidate_cap,
-                    )?,
-                    "like-across".to_string(),
-                )
-            }
-        } else {
-            (
-                query_chunks_like_across_pages_for_connection(
-                    &connection,
-                    &normalized_query,
-                    candidate_cap,
-                )?,
-                "like-across".to_string(),
-            )
-        }
-    } else {
-        (
-            query_chunks_scan_across_pages(paths, &normalized_query, candidate_cap)?,
-            "scan-across".to_string(),
-        )
-    };
-
-    let chunks = select_retrieved_chunks(
-        candidates,
-        max_chunks,
-        max_tokens,
-        diversify,
-        Some(max_pages),
-        true,
-    );
-    let source_page_count = chunks
-        .iter()
-        .map(|chunk| chunk.source_relative_path.as_str())
-        .collect::<BTreeSet<_>>()
-        .len();
-    let token_estimate_total = chunks
-        .iter()
-        .map(|chunk| chunk.token_estimate)
-        .sum::<usize>();
-
-    Ok(LocalChunkAcrossRetrieval::Found(
-        LocalChunkAcrossPagesResult {
-            query: normalized_query,
-            retrieval_mode,
+    let query_terms = expand_retrieval_query_terms(&normalized_query);
+    let report = retrieve_reranked_chunks_across_pages(
+        &connection,
+        paths,
+        &normalized_query,
+        &query_terms,
+        ChunkRetrievalPlan {
+            limit,
+            token_budget,
             max_pages,
-            source_page_count,
-            chunks,
-            token_estimate_total,
+            diversify,
         },
-    ))
+        &BTreeMap::new(),
+    )?;
+    Ok(LocalChunkAcrossRetrieval::Found(report))
 }
 
 pub fn build_authoring_knowledge_pack(
@@ -1098,23 +1218,23 @@ pub fn build_authoring_knowledge_pack(
 
     let stub_detected_templates = stub_template_titles;
 
-    let chunk_retrieval = retrieve_local_context_chunks_across_pages(
+    let related_page_scores = build_related_page_score_map(&related_pages, &stub_existing_links);
+    let chunk_report = retrieve_reranked_chunks_across_pages(
+        &connection,
         paths,
         &query,
-        chunk_limit,
-        token_budget,
-        max_pages,
-        options.diversify,
+        &query_terms,
+        ChunkRetrievalPlan {
+            limit: chunk_limit,
+            token_budget,
+            max_pages,
+            diversify: options.diversify,
+        },
+        &related_page_scores,
     )?;
-    let (retrieval_mode, chunks, token_estimate_total) = match chunk_retrieval {
-        LocalChunkAcrossRetrieval::Found(report) => (
-            report.retrieval_mode,
-            report.chunks,
-            report.token_estimate_total,
-        ),
-        LocalChunkAcrossRetrieval::IndexMissing => return Ok(AuthoringKnowledgePack::IndexMissing),
-        LocalChunkAcrossRetrieval::QueryMissing => return Ok(AuthoringKnowledgePack::QueryMissing),
-    };
+    let retrieval_mode = chunk_report.retrieval_mode;
+    let chunks = chunk_report.chunks;
+    let token_estimate_total = chunk_report.token_estimate_total;
 
     let mut source_titles = Vec::new();
     let mut seen_source_titles = BTreeSet::new();
@@ -1176,19 +1296,28 @@ pub fn build_authoring_knowledge_pack(
         query_suggested_categories_for_sources(&connection, &source_titles, category_limit)?;
     let suggested_templates =
         summarize_template_usage_for_sources(&connection, Some(&source_titles), template_limit)?;
+    let suggested_references = summarize_reference_usage_for_sources(
+        &connection,
+        &source_titles,
+        AUTHORING_REFERENCE_LIMIT,
+    )?;
+    let suggested_media =
+        summarize_media_usage_for_sources(&connection, &source_titles, AUTHORING_MEDIA_LIMIT)?;
     let template_baseline =
         summarize_template_usage_for_sources(&connection, None, template_limit)?;
 
     let inventory = load_authoring_inventory(&connection)?;
-    let pack_token_estimate_total = estimate_authoring_pack_total(
-        &related_pages,
-        &suggested_links,
-        &suggested_categories,
-        &suggested_templates,
-        &template_baseline,
-        &stub_detected_templates,
-        &chunks,
-    );
+    let pack_token_estimate_total = estimate_authoring_pack_total(AuthoringPackEstimateInputs {
+        related_pages: &related_pages,
+        suggested_links: &suggested_links,
+        suggested_categories: &suggested_categories,
+        suggested_templates: &suggested_templates,
+        suggested_references: &suggested_references,
+        suggested_media: &suggested_media,
+        template_baseline: &template_baseline,
+        stub_detected_templates: &stub_detected_templates,
+        chunks: &chunks,
+    });
 
     Ok(AuthoringKnowledgePack::Found(Box::new(
         AuthoringKnowledgePackResult {
@@ -1202,6 +1331,8 @@ pub fn build_authoring_knowledge_pack(
             suggested_links,
             suggested_categories,
             suggested_templates,
+            suggested_references,
+            suggested_media,
             template_baseline,
             stub_existing_links,
             stub_missing_links,
@@ -1400,6 +1531,28 @@ struct IndexedSectionRecord {
 }
 
 #[derive(Debug, Clone)]
+struct IndexedReferenceRecord {
+    section_heading: Option<String>,
+    reference_name: Option<String>,
+    reference_group: Option<String>,
+    summary_text: String,
+    reference_wikitext: String,
+    template_titles: Vec<String>,
+    link_titles: Vec<String>,
+    token_estimate: usize,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedMediaRecord {
+    section_heading: Option<String>,
+    file_title: String,
+    media_kind: String,
+    caption_text: String,
+    options: Vec<String>,
+    token_estimate: usize,
+}
+
+#[derive(Debug, Clone)]
 struct RetrievedChunkCandidate {
     chunk: RetrievedChunk,
     lexical_signature: String,
@@ -1412,6 +1565,23 @@ struct ParsedTemplateInvocation {
     parameter_keys: Vec<String>,
     raw_wikitext: String,
     token_estimate: usize,
+}
+
+#[derive(Debug, Clone)]
+struct ParsedPageArtifacts {
+    section_records: Vec<IndexedSectionRecord>,
+    context_chunks: Vec<ArticleContextChunkRow>,
+    template_invocations: Vec<ParsedTemplateInvocation>,
+    references: Vec<IndexedReferenceRecord>,
+    media: Vec<IndexedMediaRecord>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ChunkRetrievalPlan {
+    limit: usize,
+    token_budget: usize,
+    max_pages: usize,
+    diversify: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1462,6 +1632,44 @@ fn load_template_invocations_for_bundle(
         }
     }
     Ok(None)
+}
+
+fn load_references_for_bundle(
+    connection: &Connection,
+    source_relative_path: &str,
+) -> Result<Option<Vec<LocalReferenceUsage>>> {
+    if !table_exists(connection, "indexed_page_references")? {
+        return Ok(None);
+    }
+    let rows = load_indexed_reference_rows_for_connection(
+        connection,
+        source_relative_path,
+        CONTEXT_REFERENCE_LIMIT,
+    )?;
+    if rows.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(rows))
+    }
+}
+
+fn load_media_for_bundle(
+    connection: &Connection,
+    source_relative_path: &str,
+) -> Result<Option<Vec<LocalMediaUsage>>> {
+    if !table_exists(connection, "indexed_page_media")? {
+        return Ok(None);
+    }
+    let rows = load_indexed_media_rows_for_connection(
+        connection,
+        source_relative_path,
+        CONTEXT_MEDIA_LIMIT,
+    )?;
+    if rows.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(rows))
+    }
 }
 
 fn load_section_records_for_bundle(
@@ -1858,6 +2066,230 @@ fn query_chunks_scan_across_pages(
         }
     }
     Ok(out)
+}
+
+fn expand_retrieval_query_terms(query: &str) -> Vec<String> {
+    let normalized = normalize_spaces(&query.replace('_', " "));
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    push_authoring_query_term(&mut out, &mut seen, &normalized);
+    if let Some((_, body)) = normalized.split_once(':') {
+        push_authoring_query_term(&mut out, &mut seen, body);
+    }
+    for token in normalized.split_whitespace() {
+        if token.len() >= 4 {
+            push_authoring_query_term(&mut out, &mut seen, token);
+        }
+    }
+    out
+}
+
+fn collect_chunk_candidates_across_pages(
+    connection: &Connection,
+    paths: &ResolvedPaths,
+    query_terms: &[String],
+    candidate_cap: usize,
+) -> Result<(Vec<RetrievedChunk>, String)> {
+    let mut candidates = Vec::new();
+    let mut modes = BTreeSet::new();
+
+    if table_exists(connection, "indexed_page_chunks")? {
+        let has_fts = fts_table_exists(connection, "indexed_page_chunks_fts");
+        for term in query_terms {
+            if has_fts {
+                let hits =
+                    query_chunks_fts_across_pages_for_connection(connection, term, candidate_cap)?;
+                if !hits.is_empty() {
+                    modes.insert("fts");
+                    candidates.extend(hits);
+                    continue;
+                }
+            }
+            let hits =
+                query_chunks_like_across_pages_for_connection(connection, term, candidate_cap)?;
+            if !hits.is_empty() {
+                modes.insert("like");
+                candidates.extend(hits);
+            }
+        }
+    } else {
+        for term in query_terms {
+            let hits = query_chunks_scan_across_pages(paths, term, candidate_cap)?;
+            if !hits.is_empty() {
+                modes.insert("scan");
+                candidates.extend(hits);
+            }
+        }
+    }
+
+    let retrieval_mode = if modes.is_empty() {
+        "hybrid-rerank-across".to_string()
+    } else {
+        format!(
+            "hybrid-{}-rerank-across",
+            modes.into_iter().collect::<Vec<_>>().join("+")
+        )
+    };
+    Ok((candidates, retrieval_mode))
+}
+
+fn build_related_page_score_map(
+    related_pages: &[AuthoringPageCandidate],
+    seed_titles: &[String],
+) -> BTreeMap<String, usize> {
+    let mut out = BTreeMap::new();
+    for page in related_pages {
+        out.insert(page.title.to_ascii_lowercase(), page.score.clamp(1, 240));
+    }
+    for title in seed_titles {
+        out.entry(title.to_ascii_lowercase()).or_insert(160);
+    }
+    out
+}
+
+fn rerank_retrieved_chunks(
+    candidates: Vec<RetrievedChunk>,
+    query: &str,
+    query_terms: &[String],
+    related_page_scores: &BTreeMap<String, usize>,
+) -> Vec<RetrievedChunk> {
+    let normalized_query = query.to_ascii_lowercase();
+    let mut deduped = BTreeMap::<String, RetrievedChunk>::new();
+    for chunk in candidates {
+        let key = format!(
+            "{}\u{1f}{}\u{1f}{}",
+            chunk.source_relative_path,
+            chunk.section_heading.as_deref().unwrap_or_default(),
+            chunk.chunk_text
+        );
+        deduped.entry(key).or_insert(chunk);
+    }
+
+    let mut scored = deduped
+        .into_values()
+        .map(|chunk| {
+            let mut score = 0usize;
+            let title = chunk.source_title.to_ascii_lowercase();
+            let section = chunk
+                .section_heading
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let text = chunk.chunk_text.to_ascii_lowercase();
+
+            if !normalized_query.is_empty() {
+                if title == normalized_query {
+                    score = score.saturating_add(220);
+                } else if title.contains(&normalized_query) {
+                    score = score.saturating_add(140);
+                }
+                if section.contains(&normalized_query) {
+                    score = score.saturating_add(90);
+                }
+                if text.contains(&normalized_query) {
+                    score = score.saturating_add(120);
+                }
+            }
+
+            let mut coverage = 0usize;
+            for (index, term) in query_terms.iter().enumerate() {
+                let term = term.to_ascii_lowercase();
+                if term.is_empty() {
+                    continue;
+                }
+                let weight = 36usize.saturating_sub(index.saturating_mul(4)).max(8);
+                let mut matched = false;
+                if title == term {
+                    score = score.saturating_add(weight.saturating_mul(4));
+                    matched = true;
+                } else if title.contains(&term) {
+                    score = score.saturating_add(weight.saturating_mul(2));
+                    matched = true;
+                }
+                if section.contains(&term) {
+                    score = score.saturating_add(weight.saturating_add(24));
+                    matched = true;
+                }
+                if text.contains(&term) {
+                    score = score.saturating_add(weight.saturating_add(12));
+                    matched = true;
+                }
+                if matched {
+                    coverage = coverage.saturating_add(1);
+                }
+            }
+            score = score.saturating_add(coverage.saturating_mul(28));
+            if !query_terms.is_empty() && coverage >= query_terms.len().min(3) {
+                score = score.saturating_add(60);
+            }
+            if chunk.source_namespace == Namespace::Main.as_str() {
+                score = score.saturating_add(12);
+            }
+            score = score.saturating_add(
+                related_page_scores
+                    .get(&chunk.source_title.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(0),
+            );
+            score = score.saturating_add(48usize.saturating_sub(chunk.token_estimate.min(48)));
+            (score, chunk)
+        })
+        .collect::<Vec<_>>();
+
+    scored.sort_by(|(left_score, left_chunk), (right_score, right_chunk)| {
+        right_score
+            .cmp(left_score)
+            .then_with(|| left_chunk.source_title.cmp(&right_chunk.source_title))
+            .then_with(|| left_chunk.section_heading.cmp(&right_chunk.section_heading))
+            .then_with(|| left_chunk.chunk_text.cmp(&right_chunk.chunk_text))
+    });
+    scored.into_iter().map(|(_, chunk)| chunk).collect()
+}
+
+fn retrieve_reranked_chunks_across_pages(
+    connection: &Connection,
+    paths: &ResolvedPaths,
+    query: &str,
+    query_terms: &[String],
+    plan: ChunkRetrievalPlan,
+    related_page_scores: &BTreeMap<String, usize>,
+) -> Result<LocalChunkAcrossPagesResult> {
+    let max_chunks = plan.limit.max(1);
+    let max_tokens = plan.token_budget.max(1);
+    let capped_max_pages = plan.max_pages.max(1);
+    let candidate_cap = candidate_limit(
+        max_chunks.saturating_mul(query_terms.len().max(1)),
+        CHUNK_CANDIDATE_MULTIPLIER_ACROSS,
+    );
+    let (candidates, retrieval_mode) =
+        collect_chunk_candidates_across_pages(connection, paths, query_terms, candidate_cap)?;
+    let reranked = rerank_retrieved_chunks(candidates, query, query_terms, related_page_scores);
+    let chunks = select_retrieved_chunks(
+        reranked,
+        max_chunks,
+        max_tokens,
+        plan.diversify,
+        Some(capped_max_pages),
+        true,
+    );
+    let source_page_count = chunks
+        .iter()
+        .map(|chunk| chunk.source_relative_path.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
+    let token_estimate_total = chunks
+        .iter()
+        .map(|chunk| chunk.token_estimate)
+        .sum::<usize>();
+
+    Ok(LocalChunkAcrossPagesResult {
+        query: query.to_string(),
+        retrieval_mode,
+        max_pages: capped_max_pages,
+        source_page_count,
+        chunks,
+        token_estimate_total,
+    })
 }
 
 fn analyze_stub_hints(stub_content: Option<&str>) -> (Vec<String>, Vec<StubTemplateHint>) {
@@ -2579,30 +3011,349 @@ fn load_template_examples_for_connection(
     Ok(out)
 }
 
-fn estimate_authoring_pack_total(
-    related_pages: &[AuthoringPageCandidate],
-    suggested_links: &[AuthoringSuggestion],
-    suggested_categories: &[AuthoringSuggestion],
-    suggested_templates: &[TemplateUsageSummary],
-    template_baseline: &[TemplateUsageSummary],
-    stub_detected_templates: &[StubTemplateHint],
-    chunks: &[RetrievedChunk],
-) -> usize {
-    let page_summary_tokens = related_pages
+#[derive(Default)]
+struct ReferenceUsageAccumulator {
+    usage_count: usize,
+    source_pages: BTreeSet<String>,
+    template_counts: BTreeMap<String, usize>,
+    link_counts: BTreeMap<String, usize>,
+    examples: Vec<ReferenceUsageExample>,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedReferenceUsageRow {
+    source_title: String,
+    source_relative_path: String,
+    section_heading: Option<String>,
+    reference_name: Option<String>,
+    reference_group: Option<String>,
+    summary_text: String,
+    reference_wikitext: String,
+    template_titles: Vec<String>,
+    link_titles: Vec<String>,
+    token_estimate: usize,
+}
+
+fn summarize_reference_usage_for_sources(
+    connection: &Connection,
+    source_titles: &[String],
+    limit: usize,
+) -> Result<Vec<ReferenceUsageSummary>> {
+    if limit == 0
+        || source_titles.is_empty()
+        || !table_exists(connection, "indexed_page_references")?
+    {
+        return Ok(Vec::new());
+    }
+
+    let rows = load_reference_rows_for_sources(connection, source_titles)?;
+    let mut grouped = BTreeMap::<String, ReferenceUsageAccumulator>::new();
+    for row in rows {
+        let citation_profile = reference_profile(&row.template_titles);
+        let example = ReferenceUsageExample {
+            source_title: row.source_title.clone(),
+            source_relative_path: row.source_relative_path.clone(),
+            section_heading: row.section_heading.clone(),
+            reference_name: row.reference_name.clone(),
+            reference_group: row.reference_group.clone(),
+            summary_text: row.summary_text.clone(),
+            template_titles: row.template_titles.clone(),
+            link_titles: row.link_titles.clone(),
+            reference_wikitext: row.reference_wikitext.clone(),
+            token_estimate: row.token_estimate,
+        };
+        let entry = grouped.entry(citation_profile).or_default();
+        entry.usage_count = entry.usage_count.saturating_add(1);
+        entry.source_pages.insert(row.source_title);
+        for template_title in row.template_titles {
+            let count = entry.template_counts.entry(template_title).or_insert(0);
+            *count = count.saturating_add(1);
+        }
+        for link_title in row.link_titles {
+            let count = entry.link_counts.entry(link_title).or_insert(0);
+            *count = count.saturating_add(1);
+        }
+        entry.examples.push(example);
+    }
+
+    let mut ranked = grouped.into_iter().collect::<Vec<_>>();
+    ranked.sort_by(|(left_profile, left), (right_profile, right)| {
+        right
+            .usage_count
+            .cmp(&left.usage_count)
+            .then_with(|| right.source_pages.len().cmp(&left.source_pages.len()))
+            .then_with(|| left_profile.cmp(right_profile))
+    });
+    ranked.truncate(limit);
+
+    ranked
+        .into_iter()
+        .map(|(citation_profile, mut accumulator)| {
+            accumulator.examples.sort_by(|left, right| {
+                left.token_estimate
+                    .cmp(&right.token_estimate)
+                    .then_with(|| left.source_title.cmp(&right.source_title))
+            });
+            accumulator
+                .examples
+                .truncate(AUTHORING_REFERENCE_EXAMPLE_LIMIT);
+            Ok(ReferenceUsageSummary {
+                citation_profile,
+                usage_count: accumulator.usage_count,
+                distinct_page_count: accumulator.source_pages.len(),
+                example_pages: accumulator
+                    .source_pages
+                    .iter()
+                    .take(AUTHORING_REFERENCE_EXAMPLE_LIMIT)
+                    .cloned()
+                    .collect(),
+                common_templates: top_counted_keys(
+                    &accumulator.template_counts,
+                    AUTHORING_TEMPLATE_KEY_LIMIT,
+                ),
+                common_links: top_counted_keys(
+                    &accumulator.link_counts,
+                    AUTHORING_TEMPLATE_KEY_LIMIT,
+                ),
+                example_references: accumulator.examples,
+            })
+        })
+        .collect()
+}
+
+fn load_reference_rows_for_sources(
+    connection: &Connection,
+    source_titles: &[String],
+) -> Result<Vec<IndexedReferenceUsageRow>> {
+    let placeholders = std::iter::repeat_n("?", source_titles.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT source_title, source_relative_path, section_heading, reference_name, reference_group,
+                summary_text, reference_wikitext, template_titles, link_titles, token_estimate
+         FROM indexed_page_references
+         WHERE source_title IN ({placeholders})"
+    );
+    let values = source_titles
+        .iter()
+        .cloned()
+        .map(rusqlite::types::Value::from)
+        .collect::<Vec<_>>();
+    let mut statement = connection
+        .prepare(&sql)
+        .context("failed to prepare reference summary query")?;
+    let rows = statement
+        .query_map(params_from_iter(values), |row| {
+            let token_estimate_i64: i64 = row.get(9)?;
+            Ok(IndexedReferenceUsageRow {
+                source_title: row.get(0)?,
+                source_relative_path: row.get(1)?,
+                section_heading: row.get(2)?,
+                reference_name: row.get(3)?,
+                reference_group: row.get(4)?,
+                summary_text: row.get(5)?,
+                reference_wikitext: row.get(6)?,
+                template_titles: parse_string_list(&row.get::<_, String>(7)?),
+                link_titles: parse_string_list(&row.get::<_, String>(8)?),
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+            })
+        })
+        .context("failed to run reference summary query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode reference summary row")?);
+    }
+    Ok(out)
+}
+
+fn reference_profile(template_titles: &[String]) -> String {
+    template_titles
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "<ref>".to_string())
+}
+
+#[derive(Default)]
+struct MediaUsageAccumulator {
+    usage_count: usize,
+    source_pages: BTreeSet<String>,
+    examples: Vec<MediaUsageExample>,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedMediaUsageRow {
+    source_title: String,
+    source_relative_path: String,
+    section_heading: Option<String>,
+    file_title: String,
+    media_kind: String,
+    caption_text: String,
+    options: Vec<String>,
+    token_estimate: usize,
+}
+
+fn summarize_media_usage_for_sources(
+    connection: &Connection,
+    source_titles: &[String],
+    limit: usize,
+) -> Result<Vec<MediaUsageSummary>> {
+    if limit == 0 || source_titles.is_empty() || !table_exists(connection, "indexed_page_media")? {
+        return Ok(Vec::new());
+    }
+
+    let rows = load_media_rows_for_sources(connection, source_titles)?;
+    let mut grouped = BTreeMap::<String, MediaUsageAccumulator>::new();
+    let mut file_titles = BTreeMap::<String, String>::new();
+    let mut media_kinds = BTreeMap::<String, String>::new();
+    for row in rows {
+        let key = format!("{}\u{1f}{}", row.file_title, row.media_kind);
+        file_titles.insert(key.clone(), row.file_title.clone());
+        media_kinds.insert(key.clone(), row.media_kind.clone());
+        let entry = grouped.entry(key).or_default();
+        entry.usage_count = entry.usage_count.saturating_add(1);
+        entry.source_pages.insert(row.source_title.clone());
+        entry.examples.push(MediaUsageExample {
+            source_title: row.source_title,
+            source_relative_path: row.source_relative_path,
+            section_heading: row.section_heading,
+            caption_text: row.caption_text,
+            options: row.options,
+            token_estimate: row.token_estimate,
+        });
+    }
+
+    let mut ranked = grouped.into_iter().collect::<Vec<_>>();
+    ranked.sort_by(|(left_key, left), (right_key, right)| {
+        right
+            .usage_count
+            .cmp(&left.usage_count)
+            .then_with(|| right.source_pages.len().cmp(&left.source_pages.len()))
+            .then_with(|| left_key.cmp(right_key))
+    });
+    ranked.truncate(limit);
+
+    ranked
+        .into_iter()
+        .map(|(key, mut accumulator)| {
+            accumulator.examples.sort_by(|left, right| {
+                let left_has_caption = !left.caption_text.is_empty();
+                let right_has_caption = !right.caption_text.is_empty();
+                right_has_caption
+                    .cmp(&left_has_caption)
+                    .then_with(|| left.token_estimate.cmp(&right.token_estimate))
+                    .then_with(|| left.source_title.cmp(&right.source_title))
+            });
+            accumulator.examples.truncate(AUTHORING_MEDIA_EXAMPLE_LIMIT);
+            Ok(MediaUsageSummary {
+                file_title: file_titles.get(&key).cloned().unwrap_or_default(),
+                media_kind: media_kinds
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| "inline".to_string()),
+                usage_count: accumulator.usage_count,
+                distinct_page_count: accumulator.source_pages.len(),
+                example_pages: accumulator
+                    .source_pages
+                    .iter()
+                    .take(AUTHORING_MEDIA_EXAMPLE_LIMIT)
+                    .cloned()
+                    .collect(),
+                example_usages: accumulator.examples,
+            })
+        })
+        .collect()
+}
+
+fn load_media_rows_for_sources(
+    connection: &Connection,
+    source_titles: &[String],
+) -> Result<Vec<IndexedMediaUsageRow>> {
+    let placeholders = std::iter::repeat_n("?", source_titles.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT source_title, source_relative_path, section_heading, file_title, media_kind,
+                caption_text, options_text, token_estimate
+         FROM indexed_page_media
+         WHERE source_title IN ({placeholders})"
+    );
+    let values = source_titles
+        .iter()
+        .cloned()
+        .map(rusqlite::types::Value::from)
+        .collect::<Vec<_>>();
+    let mut statement = connection
+        .prepare(&sql)
+        .context("failed to prepare media summary query")?;
+    let rows = statement
+        .query_map(params_from_iter(values), |row| {
+            let token_estimate_i64: i64 = row.get(7)?;
+            Ok(IndexedMediaUsageRow {
+                source_title: row.get(0)?,
+                source_relative_path: row.get(1)?,
+                section_heading: row.get(2)?,
+                file_title: row.get(3)?,
+                media_kind: row.get(4)?,
+                caption_text: row.get(5)?,
+                options: parse_string_list(&row.get::<_, String>(6)?),
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+            })
+        })
+        .context("failed to run media summary query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode media summary row")?);
+    }
+    Ok(out)
+}
+
+fn top_counted_keys(counts: &BTreeMap<String, usize>, limit: usize) -> Vec<String> {
+    let mut ranked = counts
+        .iter()
+        .map(|(key, count)| (key.clone(), *count))
+        .collect::<Vec<_>>();
+    ranked.sort_by(|(left_key, left_count), (right_key, right_count)| {
+        right_count
+            .cmp(left_count)
+            .then_with(|| left_key.cmp(right_key))
+    });
+    ranked.into_iter().take(limit).map(|(key, _)| key).collect()
+}
+
+struct AuthoringPackEstimateInputs<'a> {
+    related_pages: &'a [AuthoringPageCandidate],
+    suggested_links: &'a [AuthoringSuggestion],
+    suggested_categories: &'a [AuthoringSuggestion],
+    suggested_templates: &'a [TemplateUsageSummary],
+    suggested_references: &'a [ReferenceUsageSummary],
+    suggested_media: &'a [MediaUsageSummary],
+    template_baseline: &'a [TemplateUsageSummary],
+    stub_detected_templates: &'a [StubTemplateHint],
+    chunks: &'a [RetrievedChunk],
+}
+
+fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usize {
+    let page_summary_tokens = inputs
+        .related_pages
         .iter()
         .map(|page| estimate_tokens(&page.summary))
         .sum::<usize>();
-    let link_tokens = suggested_links
+    let link_tokens = inputs
+        .suggested_links
         .iter()
         .map(|suggestion| estimate_tokens(&suggestion.title))
         .sum::<usize>();
-    let category_tokens = suggested_categories
+    let category_tokens = inputs
+        .suggested_categories
         .iter()
         .map(|suggestion| estimate_tokens(&suggestion.title))
         .sum::<usize>();
-    let template_tokens = suggested_templates
+    let template_tokens = inputs
+        .suggested_templates
         .iter()
-        .chain(template_baseline.iter())
+        .chain(inputs.template_baseline.iter())
         .map(|template| {
             estimate_tokens(&template.template_title)
                 + template
@@ -2622,7 +3373,42 @@ fn estimate_authoring_pack_total(
                     .sum::<usize>()
         })
         .sum::<usize>();
-    let stub_template_tokens = stub_detected_templates
+    let reference_tokens = inputs
+        .suggested_references
+        .iter()
+        .map(|reference| {
+            estimate_tokens(&reference.citation_profile)
+                + reference
+                    .common_templates
+                    .iter()
+                    .map(|template| estimate_tokens(template))
+                    .sum::<usize>()
+                + reference
+                    .common_links
+                    .iter()
+                    .map(|title| estimate_tokens(title))
+                    .sum::<usize>()
+                + reference
+                    .example_references
+                    .iter()
+                    .map(|example| example.token_estimate)
+                    .sum::<usize>()
+        })
+        .sum::<usize>();
+    let media_tokens = inputs
+        .suggested_media
+        .iter()
+        .map(|media| {
+            estimate_tokens(&media.file_title)
+                + media
+                    .example_usages
+                    .iter()
+                    .map(|example| example.token_estimate)
+                    .sum::<usize>()
+        })
+        .sum::<usize>();
+    let stub_template_tokens = inputs
+        .stub_detected_templates
         .iter()
         .map(|template| {
             estimate_tokens(&template.template_title)
@@ -2633,7 +3419,8 @@ fn estimate_authoring_pack_total(
                     .sum::<usize>()
         })
         .sum::<usize>();
-    let chunk_tokens = chunks
+    let chunk_tokens = inputs
+        .chunks
         .iter()
         .map(|chunk| chunk.token_estimate)
         .sum::<usize>();
@@ -2642,6 +3429,8 @@ fn estimate_authoring_pack_total(
         .saturating_add(link_tokens)
         .saturating_add(category_tokens)
         .saturating_add(template_tokens)
+        .saturating_add(reference_tokens)
+        .saturating_add(media_tokens)
         .saturating_add(stub_template_tokens)
         .saturating_add(chunk_tokens)
 }
@@ -2683,6 +3472,40 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         } else {
             (0, 0)
         };
+    let (reference_rows_total, distinct_reference_profiles) = if table_exists(
+        connection,
+        "indexed_page_references",
+    )? {
+        (
+                count_query(connection, "SELECT COUNT(*) FROM indexed_page_references")
+                    .context("failed to count reference rows for authoring inventory")?,
+                count_query(
+                    connection,
+                    "SELECT COUNT(DISTINCT CASE
+                        WHEN template_titles IS NULL OR template_titles = '' OR template_titles = '__none__'
+                            THEN '<ref>'
+                        ELSE substr(template_titles, 1, instr(template_titles || char(10), char(10)) - 1)
+                    END) FROM indexed_page_references",
+                )
+                .context("failed to count distinct reference profiles for authoring inventory")?,
+            )
+    } else {
+        (0, 0)
+    };
+    let (media_rows_total, distinct_media_files) =
+        if table_exists(connection, "indexed_page_media")? {
+            (
+                count_query(connection, "SELECT COUNT(*) FROM indexed_page_media")
+                    .context("failed to count media rows for authoring inventory")?,
+                count_query(
+                    connection,
+                    "SELECT COUNT(DISTINCT file_title) FROM indexed_page_media",
+                )
+                .context("failed to count distinct media files for authoring inventory")?,
+            )
+        } else {
+            (0, 0)
+        };
 
     Ok(AuthoringInventory {
         indexed_pages_total,
@@ -2691,6 +3514,10 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         indexed_links_total,
         template_invocation_rows,
         distinct_templates_invoked,
+        reference_rows_total,
+        distinct_reference_profiles,
+        media_rows_total,
+        distinct_media_files,
     })
 }
 
@@ -2847,6 +3674,79 @@ fn load_indexed_template_invocations_for_connection(
     Ok(out)
 }
 
+fn load_indexed_reference_rows_for_connection(
+    connection: &Connection,
+    source_relative_path: &str,
+    limit: usize,
+) -> Result<Vec<LocalReferenceUsage>> {
+    let limit_i64 = i64::try_from(limit).context("reference limit does not fit into i64")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT section_heading, reference_name, reference_group, summary_text, template_titles, link_titles, token_estimate
+             FROM indexed_page_references
+             WHERE source_relative_path = ?1
+             ORDER BY reference_index ASC
+             LIMIT ?2",
+        )
+        .context("failed to prepare indexed_page_references query")?;
+    let rows = statement
+        .query_map(params![source_relative_path, limit_i64], |row| {
+            let token_estimate_i64: i64 = row.get(6)?;
+            Ok(LocalReferenceUsage {
+                section_heading: row.get(0)?,
+                reference_name: row.get(1)?,
+                reference_group: row.get(2)?,
+                summary_text: row.get(3)?,
+                template_titles: parse_string_list(&row.get::<_, String>(4)?),
+                link_titles: parse_string_list(&row.get::<_, String>(5)?),
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+            })
+        })
+        .context("failed to run indexed_page_references query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode indexed_page_references row")?);
+    }
+    Ok(out)
+}
+
+fn load_indexed_media_rows_for_connection(
+    connection: &Connection,
+    source_relative_path: &str,
+    limit: usize,
+) -> Result<Vec<LocalMediaUsage>> {
+    let limit_i64 = i64::try_from(limit).context("media limit does not fit into i64")?;
+    let mut statement = connection
+        .prepare(
+            "SELECT section_heading, file_title, media_kind, caption_text, options_text, token_estimate
+             FROM indexed_page_media
+             WHERE source_relative_path = ?1
+             ORDER BY media_index ASC
+             LIMIT ?2",
+        )
+        .context("failed to prepare indexed_page_media query")?;
+    let rows = statement
+        .query_map(params![source_relative_path, limit_i64], |row| {
+            let token_estimate_i64: i64 = row.get(5)?;
+            Ok(LocalMediaUsage {
+                section_heading: row.get(0)?,
+                file_title: row.get(1)?,
+                media_kind: row.get(2)?,
+                caption_text: row.get(3)?,
+                options: parse_string_list(&row.get::<_, String>(4)?),
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+            })
+        })
+        .context("failed to run indexed_page_media query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode indexed_page_media row")?);
+    }
+    Ok(out)
+}
+
 fn parse_parameter_key_list(value: &str) -> Vec<String> {
     if value.trim().is_empty() || value == NO_PARAMETER_KEYS_SENTINEL {
         return Vec::new();
@@ -2856,6 +3756,31 @@ fn parse_parameter_key_list(value: &str) -> Vec<String> {
         .map(str::trim)
         .filter(|item| !item.is_empty())
         .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn serialize_string_list(values: &[String]) -> String {
+    let normalized = values
+        .iter()
+        .map(|value| normalize_spaces(value))
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if normalized.is_empty() {
+        return NO_STRING_LIST_SENTINEL.to_string();
+    }
+    normalized.join("\n")
+}
+
+fn parse_string_list(value: &str) -> Vec<String> {
+    if value.trim().is_empty() || value == NO_STRING_LIST_SENTINEL {
+        return Vec::new();
+    }
+    value
+        .lines()
+        .map(normalize_spaces)
+        .filter(|item| !item.is_empty())
         .collect()
 }
 
@@ -2899,9 +3824,50 @@ fn apply_context_chunk_budget(
     out
 }
 
+fn extract_page_artifacts(content: &str) -> ParsedPageArtifacts {
+    let sections = parse_content_sections(content);
+    ParsedPageArtifacts {
+        section_records: extract_section_records_from_sections(&sections),
+        context_chunks: chunk_article_context_from_sections(&sections),
+        template_invocations: extract_template_invocations(content),
+        references: extract_reference_records_from_sections(&sections),
+        media: extract_media_records_from_sections(&sections),
+    }
+}
+
 fn chunk_article_context(content: &str) -> Vec<ArticleContextChunkRow> {
+    let sections = parse_content_sections(content);
+    chunk_article_context_from_sections(&sections)
+}
+
+fn extract_section_records(content: &str) -> Vec<IndexedSectionRecord> {
+    let sections = parse_content_sections(content);
+    extract_section_records_from_sections(&sections)
+}
+
+fn extract_section_records_from_sections(
+    sections: &[ParsedContentSection],
+) -> Vec<IndexedSectionRecord> {
+    sections
+        .iter()
+        .map(|section| IndexedSectionRecord {
+            section_heading: section.section_heading.clone(),
+            section_level: section.section_level,
+            summary_text: summarize_words(
+                &normalize_multiline_spaces(&section.section_text),
+                AUTHORING_PAGE_SUMMARY_WORD_LIMIT,
+            ),
+            token_estimate: estimate_tokens(&section.section_text),
+            section_text: normalize_multiline_spaces(&section.section_text),
+        })
+        .collect()
+}
+
+fn chunk_article_context_from_sections(
+    sections: &[ParsedContentSection],
+) -> Vec<ArticleContextChunkRow> {
     let mut out = Vec::new();
-    for section in parse_content_sections(content) {
+    for section in sections {
         for chunk_text in chunk_section_text(&section.section_text) {
             out.push(ArticleContextChunkRow {
                 section_heading: section.section_heading.clone(),
@@ -2911,19 +3877,6 @@ fn chunk_article_context(content: &str) -> Vec<ArticleContextChunkRow> {
         }
     }
     out
-}
-
-fn extract_section_records(content: &str) -> Vec<IndexedSectionRecord> {
-    parse_content_sections(content)
-        .into_iter()
-        .map(|section| IndexedSectionRecord {
-            section_heading: section.section_heading,
-            section_level: section.section_level,
-            summary_text: summarize_words(&section.section_text, AUTHORING_PAGE_SUMMARY_WORD_LIMIT),
-            token_estimate: estimate_tokens(&section.section_text),
-            section_text: normalize_multiline_spaces(&section.section_text),
-        })
-        .collect()
 }
 
 fn parse_content_sections(content: &str) -> Vec<ParsedContentSection> {
@@ -2958,7 +3911,7 @@ fn flush_content_section(
     section_level: u8,
     lines: &[&str],
 ) {
-    let text = normalize_multiline_spaces(&lines.join("\n"));
+    let text = lines.join("\n").trim().to_string();
     if text.is_empty() {
         return;
     }
@@ -3007,6 +3960,315 @@ fn chunk_section_text(section_text: &str) -> Vec<String> {
         out.push(current_parts.join(" "));
     }
     out
+}
+
+fn extract_reference_records_from_sections(
+    sections: &[ParsedContentSection],
+) -> Vec<IndexedReferenceRecord> {
+    let mut out = Vec::new();
+    for section in sections {
+        out.extend(extract_reference_records_for_section(
+            section.section_heading.clone(),
+            &section.section_text,
+        ));
+    }
+    out
+}
+
+fn extract_reference_records(content: &str) -> Vec<LocalReferenceUsage> {
+    extract_reference_records_from_sections(&parse_content_sections(content))
+        .into_iter()
+        .map(|record| LocalReferenceUsage {
+            section_heading: record.section_heading,
+            reference_name: record.reference_name,
+            reference_group: record.reference_group,
+            summary_text: record.summary_text,
+            template_titles: record.template_titles,
+            link_titles: record.link_titles,
+            token_estimate: record.token_estimate,
+        })
+        .take(CONTEXT_REFERENCE_LIMIT)
+        .collect()
+}
+
+fn extract_reference_records_for_section(
+    section_heading: Option<String>,
+    content: &str,
+) -> Vec<IndexedReferenceRecord> {
+    let bytes = content.as_bytes();
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+
+    while cursor < bytes.len() {
+        if !starts_with_html_tag(bytes, cursor, "ref") {
+            cursor += 1;
+            continue;
+        }
+        let Some((tag_end, tag_body, self_closing)) = parse_open_tag(content, cursor, "ref") else {
+            cursor += 1;
+            continue;
+        };
+        let attributes = parse_html_attributes(&tag_body);
+        let reference_name = attributes
+            .get("name")
+            .map(|value| normalize_spaces(value))
+            .filter(|value| !value.is_empty());
+        let reference_group = attributes
+            .get("group")
+            .map(|value| normalize_spaces(value))
+            .filter(|value| !value.is_empty());
+
+        let (reference_wikitext, reference_body, next_cursor) = if self_closing {
+            (content[cursor..tag_end].to_string(), String::new(), tag_end)
+        } else if let Some((close_start, close_end)) =
+            find_closing_html_tag(content, tag_end, "ref")
+        {
+            (
+                content[cursor..close_end].to_string(),
+                content[tag_end..close_start].to_string(),
+                close_end,
+            )
+        } else {
+            (content[cursor..tag_end].to_string(), String::new(), tag_end)
+        };
+
+        let template_titles = extract_template_titles(&reference_body);
+        let link_titles = extract_link_titles(&reference_body);
+        let mut summary_text = flatten_markup_excerpt(&reference_body);
+        if summary_text.is_empty() {
+            summary_text = summarize_reference_templates(&reference_body).unwrap_or_default();
+        }
+        if summary_text.is_empty() && !template_titles.is_empty() {
+            summary_text = template_titles.join(", ");
+        }
+        if summary_text.is_empty()
+            && let Some(name) = &reference_name
+        {
+            summary_text = format!("Named reference {name}");
+        }
+        if summary_text.is_empty() {
+            summary_text = "<ref>".to_string();
+        }
+
+        let token_estimate = estimate_tokens(&reference_wikitext);
+        out.push(IndexedReferenceRecord {
+            section_heading: section_heading.clone(),
+            reference_name,
+            reference_group,
+            summary_text: summarize_words(&summary_text, AUTHORING_PAGE_SUMMARY_WORD_LIMIT),
+            reference_wikitext,
+            template_titles,
+            link_titles,
+            token_estimate,
+        });
+        cursor = next_cursor.max(cursor.saturating_add(1));
+    }
+
+    out
+}
+
+fn extract_media_records_from_sections(
+    sections: &[ParsedContentSection],
+) -> Vec<IndexedMediaRecord> {
+    let mut out = Vec::new();
+    for section in sections {
+        out.extend(extract_media_records_for_section(
+            section.section_heading.clone(),
+            &section.section_text,
+        ));
+    }
+    out
+}
+
+fn extract_media_records(content: &str) -> Vec<LocalMediaUsage> {
+    extract_media_records_from_sections(&parse_content_sections(content))
+        .into_iter()
+        .map(|record| LocalMediaUsage {
+            section_heading: record.section_heading,
+            file_title: record.file_title,
+            media_kind: record.media_kind,
+            caption_text: record.caption_text,
+            options: record.options,
+            token_estimate: record.token_estimate,
+        })
+        .take(CONTEXT_MEDIA_LIMIT)
+        .collect()
+}
+
+fn extract_media_records_for_section(
+    section_heading: Option<String>,
+    content: &str,
+) -> Vec<IndexedMediaRecord> {
+    let mut out = extract_inline_media_records(section_heading.clone(), content);
+    out.extend(extract_gallery_media_records(section_heading, content));
+    out
+}
+
+fn extract_inline_media_records(
+    section_heading: Option<String>,
+    content: &str,
+) -> Vec<IndexedMediaRecord> {
+    let bytes = content.as_bytes();
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] == b'[' && bytes[cursor + 1] == b'[' {
+            let start = cursor + 2;
+            let mut end = start;
+            while end + 1 < bytes.len() {
+                if bytes[end] == b']' && bytes[end + 1] == b']' {
+                    break;
+                }
+                end += 1;
+            }
+            if end + 1 >= bytes.len() {
+                break;
+            }
+
+            let inner = &content[start..end];
+            if let Some(record) = parse_inline_media_record(section_heading.clone(), inner) {
+                out.push(record);
+            }
+            cursor = end + 2;
+            continue;
+        }
+        cursor += 1;
+    }
+
+    out
+}
+
+fn extract_gallery_media_records(
+    section_heading: Option<String>,
+    content: &str,
+) -> Vec<IndexedMediaRecord> {
+    let bytes = content.as_bytes();
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+
+    while cursor < bytes.len() {
+        if !starts_with_html_tag(bytes, cursor, "gallery") {
+            cursor += 1;
+            continue;
+        }
+        let Some((tag_end, tag_body, self_closing)) = parse_open_tag(content, cursor, "gallery")
+        else {
+            cursor += 1;
+            continue;
+        };
+        if self_closing {
+            cursor = tag_end;
+            continue;
+        }
+        let Some((close_start, close_end)) = find_closing_html_tag(content, tag_end, "gallery")
+        else {
+            cursor = tag_end;
+            continue;
+        };
+        let gallery_options = parse_html_attributes(&tag_body)
+            .into_iter()
+            .map(|(key, value)| {
+                if value.is_empty() {
+                    key
+                } else {
+                    format!("{key}={value}")
+                }
+            })
+            .collect::<Vec<_>>();
+        let body = &content[tag_end..close_start];
+        for line in body.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some(record) =
+                parse_gallery_media_line(section_heading.clone(), trimmed, &gallery_options)
+            {
+                out.push(record);
+            }
+        }
+        cursor = close_end;
+    }
+
+    out
+}
+
+fn parse_inline_media_record(
+    section_heading: Option<String>,
+    inner: &str,
+) -> Option<IndexedMediaRecord> {
+    let trimmed = inner.trim();
+    if trimmed.starts_with(':') {
+        return None;
+    }
+    let segments = split_template_segments(trimmed);
+    let target = segments.first()?.trim();
+    let (file_title, namespace) =
+        normalize_title_and_namespace(&normalize_spaces(&target.replace('_', " ")))?;
+    if namespace != Namespace::File.as_str() {
+        return None;
+    }
+
+    let options = segments
+        .iter()
+        .skip(1)
+        .map(|segment| normalize_spaces(segment))
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let caption_text = options
+        .iter()
+        .rev()
+        .find(|segment| !is_media_option(segment))
+        .map(|segment| flatten_markup_excerpt(segment))
+        .unwrap_or_default();
+
+    Some(IndexedMediaRecord {
+        section_heading,
+        file_title,
+        media_kind: "inline".to_string(),
+        caption_text: summarize_words(&caption_text, AUTHORING_PAGE_SUMMARY_WORD_LIMIT),
+        options,
+        token_estimate: estimate_tokens(trimmed),
+    })
+}
+
+fn parse_gallery_media_line(
+    section_heading: Option<String>,
+    line: &str,
+    gallery_options: &[String],
+) -> Option<IndexedMediaRecord> {
+    let segments = split_template_segments(line);
+    let target = segments.first()?.trim();
+    let (file_title, namespace) =
+        normalize_title_and_namespace(&normalize_spaces(&target.replace('_', " ")))?;
+    if namespace != Namespace::File.as_str() {
+        return None;
+    }
+
+    let line_options = segments
+        .iter()
+        .skip(1)
+        .map(|segment| normalize_spaces(segment))
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let caption_text = line_options
+        .iter()
+        .rev()
+        .find(|segment| !is_media_option(segment))
+        .map(|segment| flatten_markup_excerpt(segment))
+        .unwrap_or_default();
+    let mut options = gallery_options.to_vec();
+    options.extend(line_options);
+
+    Some(IndexedMediaRecord {
+        section_heading,
+        file_title,
+        media_kind: "gallery".to_string(),
+        caption_text: summarize_words(&caption_text, AUTHORING_PAGE_SUMMARY_WORD_LIMIT),
+        options,
+        token_estimate: estimate_tokens(line),
+    })
 }
 
 fn split_text_by_words(text: &str, word_target: usize) -> Vec<String> {
@@ -3245,6 +4507,355 @@ fn split_once_top_level_equals(value: &str) -> Option<(String, String)> {
     None
 }
 
+fn starts_with_html_tag(bytes: &[u8], cursor: usize, tag_name: &str) -> bool {
+    let tag_bytes = tag_name.as_bytes();
+    if cursor + tag_bytes.len() + 1 >= bytes.len() || bytes[cursor] != b'<' {
+        return false;
+    }
+    let start = cursor + 1;
+    let end = start + tag_bytes.len();
+    if end > bytes.len() || !bytes[start..end].eq_ignore_ascii_case(tag_bytes) {
+        return false;
+    }
+    matches!(
+        bytes.get(end).copied(),
+        Some(b'>') | Some(b'/') | Some(b' ') | Some(b'\t') | Some(b'\r') | Some(b'\n')
+    )
+}
+
+fn parse_open_tag(content: &str, start: usize, tag_name: &str) -> Option<(usize, String, bool)> {
+    let bytes = content.as_bytes();
+    if !starts_with_html_tag(bytes, start, tag_name) {
+        return None;
+    }
+
+    let mut cursor = start + tag_name.len() + 1;
+    let mut quote = None;
+    while cursor < bytes.len() {
+        let byte = bytes[cursor];
+        if let Some(active) = quote {
+            if byte == active {
+                quote = None;
+            }
+            cursor += 1;
+            continue;
+        }
+        if byte == b'\'' || byte == b'"' {
+            quote = Some(byte);
+            cursor += 1;
+            continue;
+        }
+        if byte == b'>' {
+            let raw_body = &content[start + tag_name.len() + 1..cursor];
+            let trimmed = raw_body.trim();
+            let self_closing = trimmed.ends_with('/');
+            let body = if self_closing {
+                trimmed.trim_end_matches('/').trim_end().to_string()
+            } else {
+                trimmed.to_string()
+            };
+            return Some((cursor + 1, body, self_closing));
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn find_closing_html_tag(content: &str, start: usize, tag_name: &str) -> Option<(usize, usize)> {
+    let bytes = content.as_bytes();
+    let needle = format!("</{tag_name}");
+    let needle_bytes = needle.as_bytes();
+    let mut cursor = start;
+
+    while cursor + needle_bytes.len() < bytes.len() {
+        if bytes[cursor] == b'<'
+            && bytes[cursor..cursor + needle_bytes.len()].eq_ignore_ascii_case(needle_bytes)
+        {
+            let boundary = bytes.get(cursor + needle_bytes.len()).copied();
+            if !matches!(
+                boundary,
+                Some(b'>') | Some(b' ') | Some(b'\t') | Some(b'\r') | Some(b'\n')
+            ) {
+                cursor += 1;
+                continue;
+            }
+            let mut end = cursor + needle_bytes.len();
+            while end < bytes.len() && bytes[end] != b'>' {
+                end += 1;
+            }
+            if end < bytes.len() {
+                return Some((cursor, end + 1));
+            }
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn parse_html_attributes(value: &str) -> BTreeMap<String, String> {
+    let chars = value.chars().collect::<Vec<_>>();
+    let mut cursor = 0usize;
+    let mut out = BTreeMap::new();
+
+    while cursor < chars.len() {
+        while cursor < chars.len() && chars[cursor].is_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= chars.len() {
+            break;
+        }
+
+        let key_start = cursor;
+        while cursor < chars.len()
+            && !chars[cursor].is_whitespace()
+            && chars[cursor] != '='
+            && chars[cursor] != '/'
+        {
+            cursor += 1;
+        }
+        let key = chars[key_start..cursor]
+            .iter()
+            .collect::<String>()
+            .trim()
+            .to_ascii_lowercase();
+        if key.is_empty() {
+            cursor += 1;
+            continue;
+        }
+
+        while cursor < chars.len() && chars[cursor].is_whitespace() {
+            cursor += 1;
+        }
+        let mut value_out = String::new();
+        if cursor < chars.len() && chars[cursor] == '=' {
+            cursor += 1;
+            while cursor < chars.len() && chars[cursor].is_whitespace() {
+                cursor += 1;
+            }
+            if cursor < chars.len() && (chars[cursor] == '"' || chars[cursor] == '\'') {
+                let quote = chars[cursor];
+                cursor += 1;
+                let start = cursor;
+                while cursor < chars.len() && chars[cursor] != quote {
+                    cursor += 1;
+                }
+                value_out = chars[start..cursor].iter().collect::<String>();
+                if cursor < chars.len() {
+                    cursor += 1;
+                }
+            } else {
+                let start = cursor;
+                while cursor < chars.len() && !chars[cursor].is_whitespace() && chars[cursor] != '/'
+                {
+                    cursor += 1;
+                }
+                value_out = chars[start..cursor].iter().collect::<String>();
+            }
+        }
+
+        out.insert(key, normalize_spaces(&value_out));
+    }
+
+    out
+}
+
+fn extract_template_titles(content: &str) -> Vec<String> {
+    extract_template_invocations(content)
+        .into_iter()
+        .map(|invocation| invocation.template_title)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn extract_link_titles(content: &str) -> Vec<String> {
+    extract_wikilinks(content)
+        .into_iter()
+        .map(|link| link.target_title)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn flatten_markup_excerpt(value: &str) -> String {
+    let mut output = String::new();
+    let bytes = value.as_bytes();
+    let mut cursor = 0usize;
+
+    while cursor < bytes.len() {
+        if cursor + 1 < bytes.len() && bytes[cursor] == b'[' && bytes[cursor + 1] == b'[' {
+            let start = cursor + 2;
+            let mut end = start;
+            while end + 1 < bytes.len() {
+                if bytes[end] == b']' && bytes[end + 1] == b']' {
+                    break;
+                }
+                end += 1;
+            }
+            if end + 1 >= bytes.len() {
+                break;
+            }
+            if let Some(display) = display_text_for_wikilink(&value[start..end])
+                && !display.is_empty()
+            {
+                if !output.ends_with(' ') && !output.is_empty() {
+                    output.push(' ');
+                }
+                output.push_str(&display);
+                output.push(' ');
+            }
+            cursor = end + 2;
+            continue;
+        }
+
+        if bytes[cursor] == b'<' {
+            let mut end = cursor + 1;
+            while end < bytes.len() && bytes[end] != b'>' {
+                end += 1;
+            }
+            cursor = end.saturating_add(1);
+            continue;
+        }
+
+        if cursor + 1 < bytes.len() && bytes[cursor] == b'{' && bytes[cursor + 1] == b'{' {
+            let mut depth = 1usize;
+            let mut end = cursor + 2;
+            while end + 1 < bytes.len() && depth > 0 {
+                if bytes[end] == b'{' && bytes[end + 1] == b'{' {
+                    depth += 1;
+                    end += 2;
+                    continue;
+                }
+                if bytes[end] == b'}' && bytes[end + 1] == b'}' {
+                    depth = depth.saturating_sub(1);
+                    end += 2;
+                    continue;
+                }
+                end += 1;
+            }
+            cursor = end.min(bytes.len());
+            continue;
+        }
+
+        if bytes[cursor] == b'[' && (cursor + 1 >= bytes.len() || bytes[cursor + 1] != b'[') {
+            let mut end = cursor + 1;
+            while end < bytes.len() && bytes[end] != b']' {
+                end += 1;
+            }
+            let inner = if end < bytes.len() {
+                &value[cursor + 1..end]
+            } else {
+                &value[cursor + 1..]
+            };
+            let label = inner
+                .split_whitespace()
+                .skip(1)
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !label.is_empty() {
+                if !output.ends_with(' ') && !output.is_empty() {
+                    output.push(' ');
+                }
+                output.push_str(&label);
+                output.push(' ');
+            }
+            cursor = end.saturating_add(1);
+            continue;
+        }
+
+        output.push(bytes[cursor] as char);
+        cursor += 1;
+    }
+
+    normalize_spaces(&output)
+}
+
+fn display_text_for_wikilink(inner: &str) -> Option<String> {
+    let segments = split_template_segments(inner);
+    let target = segments.first()?.trim();
+    if target.is_empty() {
+        return None;
+    }
+    let display = segments.last().map(String::as_str).unwrap_or(target).trim();
+    if let Some((_, tail)) = display.rsplit_once(':') {
+        return Some(normalize_spaces(&tail.replace('_', " ")));
+    }
+    Some(normalize_spaces(&display.replace('_', " ")))
+}
+
+fn summarize_reference_templates(reference_body: &str) -> Option<String> {
+    for invocation in extract_template_invocations(reference_body) {
+        let inner = invocation
+            .raw_wikitext
+            .strip_prefix("{{")
+            .and_then(|value| value.strip_suffix("}}"))?;
+        let segments = split_template_segments(inner);
+        for key in [
+            "title",
+            "chapter",
+            "work",
+            "website",
+            "journal",
+            "publisher",
+            "quote",
+        ] {
+            for segment in segments.iter().skip(1) {
+                if let Some((candidate_key, candidate_value)) = split_once_top_level_equals(segment)
+                    && normalize_template_parameter_key(&candidate_key) == key
+                {
+                    let summary = flatten_markup_excerpt(&candidate_value);
+                    if !summary.is_empty() {
+                        return Some(summary);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn is_media_option(value: &str) -> bool {
+    let normalized = normalize_spaces(value).to_ascii_lowercase();
+    if normalized.is_empty() {
+        return true;
+    }
+    if matches!(
+        normalized.as_str(),
+        "thumb"
+            | "thumbnail"
+            | "frame"
+            | "framed"
+            | "frameless"
+            | "border"
+            | "right"
+            | "left"
+            | "center"
+            | "none"
+            | "baseline"
+            | "sub"
+            | "super"
+            | "top"
+            | "text-top"
+            | "middle"
+            | "bottom"
+    ) {
+        return true;
+    }
+    if normalized.ends_with("px")
+        || normalized.starts_with("upright")
+        || normalized.starts_with("alt=")
+        || normalized.starts_with("link=")
+        || normalized.starts_with("page=")
+        || normalized.starts_with("class=")
+        || normalized.starts_with("lang=")
+        || normalized.starts_with("start=")
+        || normalized.starts_with("end=")
+    {
+        return true;
+    }
+    false
+}
+
 fn canonical_template_title(raw: &str) -> Option<String> {
     let mut name = normalize_spaces(&raw.replace('_', " "));
     while let Some(stripped) = name.strip_prefix(':') {
@@ -3379,6 +4990,9 @@ fn canonical_namespace(prefix: &str) -> Option<&'static str> {
         return Some(Namespace::Category.as_str());
     }
     if trimmed.eq_ignore_ascii_case("File") {
+        return Some(Namespace::File.as_str());
+    }
+    if trimmed.eq_ignore_ascii_case("Image") {
         return Some(Namespace::File.as_str());
     }
     if trimmed.eq_ignore_ascii_case("User") {
@@ -3847,6 +5461,20 @@ fn rebuild_fts_index(connection: &Connection) -> Result<()> {
             )
             .context("failed to rebuild indexed_template_examples_fts")?;
     }
+    if fts_table_exists(connection, "indexed_page_references_fts") {
+        connection
+            .execute_batch(
+                "INSERT INTO indexed_page_references_fts(indexed_page_references_fts) VALUES('rebuild')",
+            )
+            .context("failed to rebuild indexed_page_references_fts")?;
+    }
+    if fts_table_exists(connection, "indexed_page_media_fts") {
+        connection
+            .execute_batch(
+                "INSERT INTO indexed_page_media_fts(indexed_page_media_fts) VALUES('rebuild')",
+            )
+            .context("failed to rebuild indexed_page_media_fts")?;
+    }
     Ok(())
 }
 
@@ -3861,8 +5489,9 @@ mod tests {
     use super::{
         ActiveTemplateCatalogLookup, AuthoringKnowledgePack, AuthoringKnowledgePackOptions,
         BrokenLinkIssue, LocalChunkAcrossRetrieval, LocalChunkRetrieval, TemplateReferenceLookup,
-        build_authoring_knowledge_pack, build_local_context, extract_template_invocations,
-        extract_wikilinks, load_stored_index_stats, query_active_template_catalog, query_backlinks,
+        build_authoring_knowledge_pack, build_local_context, extract_media_records,
+        extract_reference_records, extract_template_invocations, extract_wikilinks,
+        load_stored_index_stats, query_active_template_catalog, query_backlinks,
         query_empty_categories, query_orphans, query_search_local, query_template_reference,
         rebuild_index, retrieve_local_context_chunks, retrieve_local_context_chunks_across_pages,
         run_validation_checks,
@@ -4013,7 +5642,7 @@ mod tests {
 
         write_file(
             &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
-            "Lead paragraph\n{{Infobox person|name=Alpha|birth_date={{Birth date|2000|1|1}}}}\n== History ==\n[[Beta]] [[Module:Navbar]] [[Category:People]]",
+            "Lead paragraph <ref name=\"alpha\">{{Cite web|title=Alpha Source|website=Remilia}}</ref>\n{{Infobox person|name=Alpha|birth_date={{Birth date|2000|1|1}}}}\n[[Image:Alpha.png|thumb|Alpha portrait]]\n== History ==\n[[Beta]] [[Module:Navbar]] [[Category:People]]",
         );
         write_file(
             &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
@@ -4062,6 +5691,19 @@ mod tests {
         );
         assert_eq!(context.modules, vec!["Module:Navbar".to_string()]);
         assert_eq!(context.backlinks.len(), 0);
+        assert_eq!(context.references.len(), 1);
+        assert_eq!(
+            context.references[0].reference_name.as_deref(),
+            Some("alpha")
+        );
+        assert!(
+            context.references[0]
+                .template_titles
+                .contains(&"Template:Cite web".to_string())
+        );
+        assert_eq!(context.media.len(), 1);
+        assert_eq!(context.media[0].file_title, "File:Alpha.png");
+        assert_eq!(context.media[0].caption_text, "Alpha portrait");
         let infobox_invocation = context
             .template_invocations
             .iter()
@@ -4154,6 +5796,43 @@ mod tests {
             invocations
                 .iter()
                 .all(|invocation| !invocation.template_title.starts_with("Template:#"))
+        );
+    }
+
+    #[test]
+    fn extract_reference_records_parses_named_refs_and_template_summaries() {
+        let content = "Lead <ref name=\"alpha\">{{Cite web|title=Alpha Source|website=Remilia}}</ref> tail <ref group=\"note\" name=\"reuse\" />";
+        let references = extract_reference_records(content);
+
+        assert_eq!(references.len(), 2);
+        assert_eq!(references[0].reference_name.as_deref(), Some("alpha"));
+        assert_eq!(
+            references[0].template_titles,
+            vec!["Template:Cite web".to_string()]
+        );
+        assert!(references[0].summary_text.contains("Alpha Source"));
+        assert_eq!(references[1].reference_name.as_deref(), Some("reuse"));
+        assert_eq!(references[1].reference_group.as_deref(), Some("note"));
+        assert_eq!(references[1].summary_text, "Named reference reuse");
+    }
+
+    #[test]
+    fn extract_media_records_parses_inline_and_gallery_entries() {
+        let content = "[[Image:Alpha.png|thumb|Alpha portrait]]\n<gallery mode=\"packed\">\nFile:Beta.jpg|Beta gallery caption\n</gallery>";
+        let media = extract_media_records(content);
+
+        assert_eq!(media.len(), 2);
+        assert_eq!(media[0].file_title, "File:Alpha.png");
+        assert_eq!(media[0].media_kind, "inline");
+        assert_eq!(media[0].caption_text, "Alpha portrait");
+        assert_eq!(media[1].file_title, "File:Beta.jpg");
+        assert_eq!(media[1].media_kind, "gallery");
+        assert!(media[1].caption_text.contains("Beta gallery caption"));
+        assert!(
+            media[1]
+                .options
+                .iter()
+                .any(|option| option == "mode=packed")
         );
     }
 
@@ -4265,6 +5944,42 @@ mod tests {
     }
 
     #[test]
+    fn retrieve_local_context_chunks_across_pages_uses_hybrid_term_expansion() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths
+                .wiki_content_dir
+                .join("Main")
+                .join("Alpha_Beacon.wiki"),
+            "Lead alpha marker.\n== History ==\nThe beacon emits a steady signal for retrieval tests.",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Noise.wiki"),
+            "Alpha beacon phrase never appears here, only unrelated noise.",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let retrieval =
+            retrieve_local_context_chunks_across_pages(&paths, "Alpha Beacon", 3, 180, 2, true)
+                .expect("across-pages retrieval");
+        let report = match retrieval {
+            LocalChunkAcrossRetrieval::Found(report) => report,
+            other => panic!("expected found report, got {other:?}"),
+        };
+        assert!(report.retrieval_mode.contains("hybrid"));
+        assert!(
+            report
+                .chunks
+                .iter()
+                .any(|chunk| chunk.source_title == "Alpha Beacon")
+        );
+    }
+
+    #[test]
     fn build_authoring_knowledge_pack_requires_topic_or_stub_signal() {
         let temp = tempdir().expect("tempdir");
         let project_root = temp.path().join("project");
@@ -4295,15 +6010,15 @@ mod tests {
 
         write_file(
             &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
-            "{{Infobox person|name=Alpha|born=2020}}\n'''Alpha''' works with [[Beta]] and [[Gamma]].\n[[Category:People]]",
+            "{{Infobox person|name=Alpha|born=2020}}\n'''Alpha''' works with [[Beta]] and [[Gamma]].<ref>{{Cite web|title=Alpha Source|website=Remilia}}</ref>\n[[Image:Alpha.png|thumb|Alpha portrait]]\n[[Category:People]]",
         );
         write_file(
             &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
-            "{{Infobox organization|name=Beta Org|founder=Alpha}}\n'''Beta''' references [[Alpha]] and [[Gamma]].\n[[Category:Organizations]]",
+            "{{Infobox organization|name=Beta Org|founder=Alpha}}\n'''Beta''' references [[Alpha]] and [[Gamma]].<ref>{{Cite book|title=Beta Book|publisher=Remilia Press}}</ref>\n[[File:Beta.jpg|thumb|Beta portrait]]\n[[Category:Organizations]]",
         );
         write_file(
             &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
-            "{{Navbox|name=Gamma nav|list1=[[Alpha]]}}\n'''Gamma''' is linked with [[Alpha]].\n[[Category:People]]",
+            "{{Navbox|name=Gamma nav|list1=[[Alpha]]}}\n'''Gamma''' is linked with [[Alpha]].<ref name=\"gamma-source\" />\n[[Category:People]]",
         );
         rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
 
@@ -4335,6 +6050,8 @@ mod tests {
         assert_eq!(report.pack_token_budget, 420);
         assert!(report.pack_token_estimate_total >= report.token_estimate_total);
         assert!(report.inventory.indexed_pages_total >= 3);
+        assert!(report.inventory.reference_rows_total >= 3);
+        assert!(report.inventory.media_rows_total >= 2);
         assert!(!report.related_pages.is_empty());
         assert!(
             report
@@ -4354,6 +6071,18 @@ mod tests {
                 .iter()
                 .any(|entry| !entry.example_invocations.is_empty())
         );
+        assert!(
+            report
+                .suggested_references
+                .iter()
+                .any(|entry| entry.citation_profile == "Template:Cite web")
+        );
+        assert!(
+            report
+                .suggested_media
+                .iter()
+                .any(|entry| entry.file_title == "File:Alpha.png")
+        );
         assert!(!report.template_baseline.is_empty());
         assert!(report.stub_existing_links.contains(&"Alpha".to_string()));
         assert!(
@@ -4367,6 +6096,7 @@ mod tests {
                 .iter()
                 .any(|entry| entry.template_title == "Template:Infobox person")
         );
+        assert!(report.retrieval_mode.contains("hybrid"));
         assert!(report.retrieval_mode.contains("across"));
         assert!(report.token_estimate_total <= 420);
     }

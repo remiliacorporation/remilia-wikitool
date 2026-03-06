@@ -51,6 +51,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "authoring_index_v2",
         sql: include_str!("migrations/v008_authoring_index_v2.sql"),
     },
+    Migration {
+        version: 9,
+        name: "authoring_references_media",
+        sql: include_str!("migrations/v009_authoring_references_media.sql"),
+    },
 ];
 
 /// Report returned after running migrations.
@@ -225,7 +230,7 @@ mod tests {
         let (_temp, paths) = test_paths();
         let report = run_migrations(&paths).expect("run_migrations");
         assert_eq!(report.applied.len(), MIGRATIONS.len());
-        assert_eq!(report.current_version, 8);
+        assert_eq!(report.current_version, 9);
     }
 
     #[test]
@@ -236,7 +241,7 @@ mod tests {
 
         let second = run_migrations(&paths).expect("second run");
         assert!(second.applied.is_empty());
-        assert_eq!(second.current_version, 8);
+        assert_eq!(second.current_version, 9);
     }
 
     #[test]
@@ -258,7 +263,7 @@ mod tests {
     fn migrations_create_ai_context_and_template_invocation_tables() {
         let (_temp, paths) = test_paths();
         let report = run_migrations(&paths).expect("run_migrations");
-        assert_eq!(report.current_version, 8);
+        assert_eq!(report.current_version, 9);
 
         let connection = open_connection(&paths.db_path).expect("open migrated db");
         for table in [
@@ -268,6 +273,10 @@ mod tests {
             "indexed_page_aliases",
             "indexed_page_sections",
             "indexed_template_examples",
+            "indexed_page_references",
+            "indexed_page_references_fts",
+            "indexed_page_media",
+            "indexed_page_media_fts",
         ] {
             let exists: i64 = connection
                 .query_row(
