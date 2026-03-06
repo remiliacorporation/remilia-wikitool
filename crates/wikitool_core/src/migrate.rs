@@ -46,6 +46,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "extended_template_categories",
         sql: include_str!("migrations/v007_extended_template_categories.sql"),
     },
+    Migration {
+        version: 8,
+        name: "authoring_index_v2",
+        sql: include_str!("migrations/v008_authoring_index_v2.sql"),
+    },
 ];
 
 /// Report returned after running migrations.
@@ -220,7 +225,7 @@ mod tests {
         let (_temp, paths) = test_paths();
         let report = run_migrations(&paths).expect("run_migrations");
         assert_eq!(report.applied.len(), MIGRATIONS.len());
-        assert_eq!(report.current_version, 7);
+        assert_eq!(report.current_version, 8);
     }
 
     #[test]
@@ -231,7 +236,7 @@ mod tests {
 
         let second = run_migrations(&paths).expect("second run");
         assert!(second.applied.is_empty());
-        assert_eq!(second.current_version, 7);
+        assert_eq!(second.current_version, 8);
     }
 
     #[test]
@@ -253,13 +258,16 @@ mod tests {
     fn migrations_create_ai_context_and_template_invocation_tables() {
         let (_temp, paths) = test_paths();
         let report = run_migrations(&paths).expect("run_migrations");
-        assert_eq!(report.current_version, 7);
+        assert_eq!(report.current_version, 8);
 
         let connection = open_connection(&paths.db_path).expect("open migrated db");
         for table in [
             "indexed_page_chunks",
             "indexed_page_chunks_fts",
             "indexed_template_invocations",
+            "indexed_page_aliases",
+            "indexed_page_sections",
+            "indexed_template_examples",
         ] {
             let exists: i64 = connection
                 .query_row(

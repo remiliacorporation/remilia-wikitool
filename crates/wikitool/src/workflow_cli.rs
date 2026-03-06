@@ -5,7 +5,8 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::index::{
-    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, build_authoring_knowledge_pack,
+    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringSuggestion, StubTemplateHint,
+    TemplateParameterUsage, TemplateUsageSummary, build_authoring_knowledge_pack,
 };
 use wikitool_core::runtime::ResolvedPaths;
 
@@ -360,6 +361,19 @@ fn run_workflow_authoring_pack(
             let report = *boxed_report;
             println!("pack.query: {}", report.query);
             println!(
+                "pack.query_terms: {}",
+                if report.query_terms.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    report.query_terms.join(" | ")
+                }
+            );
+            println!("pack.token_budget: {}", report.pack_token_budget);
+            println!(
+                "pack.token_estimate_total: {}",
+                report.pack_token_estimate_total
+            );
+            println!(
                 "inventory.pages.total: {}",
                 report.inventory.indexed_pages_total
             );
@@ -383,55 +397,43 @@ fn run_workflow_authoring_pack(
             println!("related_pages.count: {}", report.related_pages.len());
             for page in &report.related_pages {
                 println!(
-                    "related_page: {} (namespace={} redirect={} source={})",
+                    "related_page: {} (namespace={} redirect={} source={} score={} summary={})",
                     page.title,
                     page.namespace,
                     format_flag(page.is_redirect),
-                    page.source
+                    page.source,
+                    page.score,
+                    if page.summary.is_empty() {
+                        "<none>"
+                    } else {
+                        &page.summary
+                    }
                 );
             }
             println!("suggested_links.count: {}", report.suggested_links.len());
             for link in &report.suggested_links {
-                println!("suggested_link: {link}");
+                print_authoring_suggestion("suggested_link", link);
             }
             println!(
                 "suggested_categories.count: {}",
                 report.suggested_categories.len()
             );
             for category in &report.suggested_categories {
-                println!("suggested_category: {category}");
+                print_authoring_suggestion("suggested_category", category);
             }
             println!(
                 "suggested_templates.count: {}",
                 report.suggested_templates.len()
             );
             for template in &report.suggested_templates {
-                println!(
-                    "suggested_template: {} (usage={} keys={})",
-                    template.template_title,
-                    template.usage_count,
-                    if template.parameter_keys.is_empty() {
-                        "<none>".to_string()
-                    } else {
-                        template.parameter_keys.join(", ")
-                    }
-                );
+                print_template_summary("suggested_template", template);
             }
             println!(
                 "template_baseline.count: {}",
                 report.template_baseline.len()
             );
             for template in &report.template_baseline {
-                println!(
-                    "template_baseline: {} (usage={} keys={})",
-                    template.template_title,
-                    template.usage_count,
-                    if template.parameter_keys.is_empty() {
-                        "<none>".to_string()
-                    } else {
-                        template.parameter_keys.join(", ")
-                    }
-                );
+                print_template_summary("template_baseline", template);
             }
             println!(
                 "stub.existing_links.count: {}",
@@ -452,7 +454,7 @@ fn run_workflow_authoring_pack(
                 report.stub_detected_templates.len()
             );
             for template in &report.stub_detected_templates {
-                println!("stub.detected_template: {template}");
+                print_stub_template_hint(template);
             }
             println!("chunks.retrieval_mode: {}", report.retrieval_mode);
             println!("chunks.count: {}", report.chunks.len());
@@ -477,6 +479,81 @@ fn run_workflow_authoring_pack(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+fn print_authoring_suggestion(label: &str, suggestion: &AuthoringSuggestion) {
+    println!(
+        "{label}: {} (support={} evidence={})",
+        suggestion.title,
+        suggestion.support_count,
+        if suggestion.evidence_titles.is_empty() {
+            "<none>".to_string()
+        } else {
+            suggestion.evidence_titles.join(", ")
+        }
+    );
+}
+
+fn print_template_summary(label: &str, template: &TemplateUsageSummary) {
+    println!(
+        "{label}: {} (usage={} pages={} aliases={} keys={} preview={})",
+        template.template_title,
+        template.usage_count,
+        template.distinct_page_count,
+        if template.aliases.is_empty() {
+            "<none>".to_string()
+        } else {
+            template.aliases.join(", ")
+        },
+        format_parameter_stats(&template.parameter_stats),
+        template
+            .implementation_preview
+            .as_deref()
+            .unwrap_or("<none>")
+    );
+    if !template.example_pages.is_empty() {
+        println!(
+            "{label}.example_pages: {}",
+            template.example_pages.join(", ")
+        );
+    }
+    for example in &template.example_invocations {
+        println!(
+            "{label}.example: template={} source={} keys={} tokens={} text={}",
+            template.template_title,
+            example.source_title,
+            if example.parameter_keys.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.parameter_keys.join(", ")
+            },
+            example.token_estimate,
+            example.invocation_text
+        );
+    }
+}
+
+fn print_stub_template_hint(template: &StubTemplateHint) {
+    println!(
+        "stub.detected_template: {} (keys={})",
+        template.template_title,
+        if template.parameter_keys.is_empty() {
+            "<none>".to_string()
+        } else {
+            template.parameter_keys.join(", ")
+        }
+    );
+}
+
+fn format_parameter_stats(stats: &[TemplateParameterUsage]) -> String {
+    if stats.is_empty() {
+        return "<none>".to_string();
+    }
+    stats
+        .iter()
+        .map(|stat| format!("{}:{}", stat.key, stat.usage_count))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn load_workflow_stub_content(

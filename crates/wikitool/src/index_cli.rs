@@ -4,8 +4,10 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use wikitool_core::filesystem::{ScanOptions, scan_files, scan_stats};
 use wikitool_core::index::{
-    LocalChunkAcrossRetrieval, LocalChunkRetrieval, LocalContextBundle, load_stored_index_stats,
-    query_backlinks, query_empty_categories, query_orphans, rebuild_index,
+    ActiveTemplateCatalogLookup, LocalChunkAcrossRetrieval, LocalChunkRetrieval,
+    LocalContextBundle, TemplateParameterUsage, TemplateReferenceLookup, TemplateUsageSummary,
+    load_stored_index_stats, query_active_template_catalog, query_backlinks,
+    query_empty_categories, query_orphans, query_template_reference, rebuild_index,
     retrieve_local_context_chunks_across_pages, retrieve_local_context_chunks_with_options,
 };
 use wikitool_core::runtime::{ResolvedPaths, ensure_runtime_ready_for_sync, inspect_runtime};
@@ -78,6 +80,27 @@ enum IndexSubcommand {
     Backlinks {
         title: String,
     },
+    /// Inspect active template usage and implementation references
+    Templates {
+        #[arg(value_name = "TEMPLATE", help = "Optional specific template title")]
+        template: Option<String>,
+        #[arg(
+            long,
+            default_value_t = 40,
+            value_name = "N",
+            help = "Maximum templates to return in catalog mode"
+        )]
+        limit: usize,
+        #[arg(long, help = "Return the full active template catalog")]
+        all: bool,
+        #[arg(
+            long,
+            default_value = "text",
+            value_name = "FORMAT",
+            help = "Output format: text|json"
+        )]
+        format: String,
+    },
     Orphans,
     #[command(name = "prune-categories")]
     PruneCategories,
@@ -110,6 +133,12 @@ pub(crate) fn run_index(runtime: &RuntimeOptions, args: IndexArgs) -> Result<()>
             no_diversify,
         ),
         IndexSubcommand::Backlinks { title } => run_index_backlinks(runtime, &title),
+        IndexSubcommand::Templates {
+            template,
+            limit,
+            all,
+            format,
+        } => run_index_templates(runtime, template.as_deref(), limit, all, &format),
         IndexSubcommand::Orphans => run_index_orphans(runtime),
         IndexSubcommand::PruneCategories => run_index_prune_categories(runtime),
     }
@@ -159,6 +188,7 @@ pub(crate) fn build_context_from_scan(
             format!("{content_preview}...")
         },
         sections: Vec::new(),
+        section_summaries: Vec::new(),
         context_chunks: Vec::new(),
         context_tokens_estimate: 0,
         outgoing_links: Vec::new(),
@@ -374,6 +404,112 @@ fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
     Ok(())
 }
 
+fn run_index_templates(
+    runtime: &RuntimeOptions,
+    template: Option<&str>,
+    limit: usize,
+    all: bool,
+    format: &str,
+) -> Result<()> {
+    if limit == 0 {
+        bail!("index templates requires --limit >= 1");
+    }
+    if all && template.is_some() {
+        bail!("cannot use `index templates TEMPLATE --all`; omit TEMPLATE in catalog mode");
+    }
+
+    let format = format.to_ascii_lowercase();
+    if format != "text" && format != "json" {
+        bail!("unsupported format: {} (expected text|json)", format);
+    }
+
+    let paths = resolve_runtime_paths(runtime)?;
+    let catalog_limit = if all { usize::MAX } else { limit };
+
+    if let Some(template) = template {
+        let lookup = query_template_reference(&paths, template)?;
+        if format == "json" {
+            println!("{}", serde_json::to_string_pretty(&lookup)?);
+        } else {
+            println!("index templates");
+            println!("project_root: {}", normalize_path(&paths.project_root));
+            println!("mode: reference");
+            println!("template: {template}");
+            match lookup {
+                TemplateReferenceLookup::IndexMissing => {
+                    println!("index.storage: <not built> (run `wikitool index rebuild`)");
+                }
+                TemplateReferenceLookup::TemplateMissing { template_title } => {
+                    bail!("template not found in active template index: {template_title}");
+                }
+                TemplateReferenceLookup::Found(reference) => {
+                    print_template_summary("template", &reference.template);
+                    println!(
+                        "template.implementation_sections.count: {}",
+                        reference.implementation_sections.len()
+                    );
+                    for section in &reference.implementation_sections {
+                        println!(
+                            "template.implementation_section: level={} heading={} tokens={} summary={}",
+                            section.section_level,
+                            section.section_heading.as_deref().unwrap_or("<lead>"),
+                            section.token_estimate,
+                            section.summary_text
+                        );
+                    }
+                    println!(
+                        "template.implementation_chunks.count: {}",
+                        reference.implementation_chunks.len()
+                    );
+                    for chunk in &reference.implementation_chunks {
+                        println!(
+                            "template.implementation_chunk: section={} tokens={} text={}",
+                            chunk.section_heading.as_deref().unwrap_or("<lead>"),
+                            chunk.token_estimate,
+                            chunk.chunk_text
+                        );
+                    }
+                }
+            }
+        }
+    } else {
+        let catalog = query_active_template_catalog(&paths, catalog_limit)?;
+        if format == "json" {
+            println!("{}", serde_json::to_string_pretty(&catalog)?);
+        } else {
+            println!("index templates");
+            println!("project_root: {}", normalize_path(&paths.project_root));
+            println!("mode: catalog");
+            println!(
+                "limit: {}",
+                if all {
+                    "<all>".to_string()
+                } else {
+                    limit.to_string()
+                }
+            );
+            match catalog {
+                ActiveTemplateCatalogLookup::IndexMissing => {
+                    println!("index.storage: <not built> (run `wikitool index rebuild`)");
+                }
+                ActiveTemplateCatalogLookup::Found(catalog) => {
+                    println!("templates.active_count: {}", catalog.active_template_count);
+                    println!("templates.returned: {}", catalog.templates.len());
+                    for template in &catalog.templates {
+                        print_template_summary("template", template);
+                    }
+                }
+            }
+        }
+    }
+
+    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
 fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
 
@@ -452,4 +588,54 @@ fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn print_template_summary(label: &str, template: &TemplateUsageSummary) {
+    println!(
+        "{label}: {} (usage={} pages={} aliases={} keys={} preview={})",
+        template.template_title,
+        template.usage_count,
+        template.distinct_page_count,
+        if template.aliases.is_empty() {
+            "<none>".to_string()
+        } else {
+            template.aliases.join(", ")
+        },
+        format_parameter_stats(&template.parameter_stats),
+        template
+            .implementation_preview
+            .as_deref()
+            .unwrap_or("<none>")
+    );
+    if !template.example_pages.is_empty() {
+        println!(
+            "{label}.example_pages: {}",
+            template.example_pages.join(", ")
+        );
+    }
+    for example in &template.example_invocations {
+        println!(
+            "{label}.example: template={} source={} keys={} tokens={} text={}",
+            template.template_title,
+            example.source_title,
+            if example.parameter_keys.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.parameter_keys.join(", ")
+            },
+            example.token_estimate,
+            example.invocation_text
+        );
+    }
+}
+
+fn format_parameter_stats(stats: &[TemplateParameterUsage]) -> String {
+    if stats.is_empty() {
+        return "<none>".to_string();
+    }
+    stats
+        .iter()
+        .map(|stat| format!("{}:{}", stat.key, stat.usage_count))
+        .collect::<Vec<_>>()
+        .join(", ")
 }

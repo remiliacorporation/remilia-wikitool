@@ -384,6 +384,42 @@ else
     fail "workflow authoring-pack emits authoring knowledge pack (got: $OUTPUT)"
 fi
 
+# --- index templates ---
+section "index templates"
+PROJ_TEMPLATES=$(setup_project index-templates)
+wt "$PROJ_TEMPLATES" init --templates > /dev/null 2>&1
+mkdir -p "$PROJ_TEMPLATES/wiki_content/Main"
+mkdir -p "$PROJ_TEMPLATES/templates/infobox/_redirects"
+cat > "$PROJ_TEMPLATES/wiki_content/Main/Alpha.wiki" << 'WIKIEOF'
+{{Infobox person|name=Alpha|occupation=Archivist}}
+'''Alpha''' page.
+WIKIEOF
+cat > "$PROJ_TEMPLATES/wiki_content/Main/Beta.wiki" << 'WIKIEOF'
+{{Infobox person|name=Beta}}
+'''Beta''' page.
+WIKIEOF
+cat > "$PROJ_TEMPLATES/templates/infobox/Template_Infobox_person.wiki" << 'WIKIEOF'
+Template lead text.
+== Parameters ==
+Use |name= and |occupation=.
+WIKIEOF
+cat > "$PROJ_TEMPLATES/templates/infobox/_redirects/Template_Infobox_human.wiki" << 'WIKIEOF'
+#REDIRECT [[Template:Infobox person]]
+WIKIEOF
+wt "$PROJ_TEMPLATES" index rebuild > /dev/null 2>&1
+OUTPUT=$(wt "$PROJ_TEMPLATES" index templates --limit 5 2>&1 || true)
+if echo "$OUTPUT" | grep -q "Template:Infobox person" && echo "$OUTPUT" | grep -q "aliases="; then
+    pass "index templates catalogs active template usage"
+else
+    fail "index templates catalogs active template usage (got: $OUTPUT)"
+fi
+OUTPUT=$(wt "$PROJ_TEMPLATES" index templates "Infobox person" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "template.implementation_sections.count:" && echo "$OUTPUT" | grep -q "Template:Infobox person"; then
+    pass "index templates returns implementation reference for a template"
+else
+    fail "index templates returns implementation reference for a template (got: $OUTPUT)"
+fi
+
 # --- search ---
 section "search"
 OUTPUT=$(wt "$PROJ" search "Alpha" 2>&1)

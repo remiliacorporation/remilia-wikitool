@@ -217,6 +217,19 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
         );
     }
     println!(
+        "{prefix}.section_summaries.count: {}",
+        bundle.section_summaries.len()
+    );
+    for section in &bundle.section_summaries {
+        println!(
+            "{prefix}.section_summary: level={} heading={} tokens={} summary={}",
+            section.section_level,
+            section.section_heading.as_deref().unwrap_or("<lead>"),
+            section.token_estimate,
+            section.summary_text
+        );
+    }
+    println!(
         "{prefix}.context_chunks.count: {}",
         bundle.context_chunks.len()
     );
