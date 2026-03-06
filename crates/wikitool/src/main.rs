@@ -4,15 +4,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use wikitool_core::config::{WikiConfig, WikiConfigPatch, load_config, patch_wiki_config};
-use wikitool_core::contracts::{command_surface, generate_fixture_snapshot};
 use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
 use wikitool_core::filesystem::{ScanOptions, scan_files, scan_stats};
-use wikitool_core::import_cargo::{
-    CargoImportOptions, ImportSourceType, ImportUpdateMode, import_to_cargo,
-};
 use wikitool_core::index::{
     LocalContextBundle, LocalSearchHit, build_local_context, load_stored_index_stats,
-    query_search_local, rebuild_index, run_validation_checks,
+    query_search_local, run_validation_checks,
 };
 use wikitool_core::inspect::{
     LighthouseOutputFormat, LighthouseRunOptions, NetInspectOptions, find_lighthouse_binary,
@@ -31,9 +27,12 @@ use wikitool_core::sync::{
 };
 
 mod cli_support;
+mod contracts_cli;
+mod db_cli;
 mod dev_cli;
 mod docs_cli;
 mod export_cli;
+mod import_cli;
 mod index_cli;
 mod lsp_cli;
 mod release;
@@ -97,12 +96,12 @@ enum Commands {
     Fetch(FetchArgs),
     Export(ExportArgs),
     Delete(DeleteArgs),
-    Db(DbArgs),
+    Db(db_cli::DbArgs),
     Docs(DocsArgs),
     Seo(SeoArgs),
     Net(NetArgs),
     Perf(PerfArgs),
-    Import(ImportArgs),
+    Import(import_cli::ImportArgs),
     Index(index_cli::IndexArgs),
     #[command(name = "lsp:generate-config")]
     LspGenerateConfig(LspGenerateConfigArgs),
@@ -117,7 +116,7 @@ enum Commands {
         name = "contracts",
         about = "Contract bootstrap and differential harness helpers"
     )]
-    Contracts(ContractsArgs),
+    Contracts(contracts_cli::ContractsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -279,19 +278,6 @@ struct DeleteArgs {
     backup_dir: Option<PathBuf>,
     #[arg(long, help = "Preview deletion without making changes")]
     dry_run: bool,
-}
-
-#[derive(Debug, Args)]
-struct DbArgs {
-    #[command(subcommand)]
-    command: DbSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum DbSubcommand {
-    Stats,
-    Sync,
-    Migrate,
 }
 
 #[derive(Debug, Args)]
@@ -461,54 +447,6 @@ enum PerfSubcommand {
 }
 
 #[derive(Debug, Args)]
-struct ImportArgs {
-    #[command(subcommand)]
-    command: ImportSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum ImportSubcommand {
-    Cargo {
-        path: String,
-        #[arg(long, value_name = "NAME", help = "Cargo table name")]
-        table: String,
-        #[arg(long, value_name = "TYPE", help = "Input type: csv|json")]
-        r#type: Option<String>,
-        #[arg(long, value_name = "NAME", help = "Template wrapper name")]
-        template: Option<String>,
-        #[arg(long, value_name = "FIELD", help = "Field name to use as page title")]
-        title_field: Option<String>,
-        #[arg(long, value_name = "PREFIX", help = "Prefix for generated page titles")]
-        title_prefix: Option<String>,
-        #[arg(long, value_name = "NAME", help = "Category to add to generated pages")]
-        category: Option<String>,
-        #[arg(
-            long,
-            default_value = "create",
-            value_name = "MODE",
-            help = "create|update|upsert"
-        )]
-        mode: String,
-        #[arg(long, help = "Write files (default: dry-run)")]
-        write: bool,
-        #[arg(
-            long,
-            default_value = "text",
-            value_name = "FORMAT",
-            help = "Output format: text|json"
-        )]
-        format: String,
-        #[arg(
-            long,
-            help = "Add SHORTDESC + Article quality header in main namespace"
-        )]
-        article_header: bool,
-        #[arg(long, help = "Omit metadata from JSON output")]
-        no_meta: bool,
-    },
-}
-
-#[derive(Debug, Args)]
 struct LspGenerateConfigArgs {
     #[arg(long, help = "Overwrite parser config if it already exists")]
     force: bool,
@@ -664,30 +602,6 @@ struct InstallGitHooksArgs {
     allow_missing_git: bool,
 }
 
-#[derive(Debug, Args)]
-struct ContractsArgs {
-    #[command(subcommand)]
-    command: ContractsCommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum ContractsCommand {
-    #[command(about = "Generate an offline fixture snapshot used by the differential harness")]
-    Snapshot(SnapshotArgs),
-    #[command(about = "Print frozen command-surface contract as JSON")]
-    CommandSurface,
-}
-
-#[derive(Debug, Args)]
-struct SnapshotArgs {
-    #[arg(long, default_value = ".")]
-    project_root: PathBuf,
-    #[arg(long, default_value = "wiki_content")]
-    content_dir: String,
-    #[arg(long, default_value = "templates")]
-    templates_dir: String,
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -712,10 +626,8 @@ fn main() -> Result<()> {
         Some(Commands::Workflow(args)) => workflow_cli::run_workflow(&runtime, args),
         Some(Commands::Release(args)) => release::run_release(args),
         Some(Commands::Dev(args)) => dev_cli::run_dev(args),
-        Some(Commands::Db(DbArgs {
-            command: DbSubcommand::Migrate,
-        })) => run_db_migrate(&runtime),
-        Some(Commands::Contracts(contracts)) => run_contracts(contracts),
+        Some(Commands::Db(args)) => db_cli::run_db(&runtime, args),
+        Some(Commands::Contracts(args)) => contracts_cli::run_contracts(args),
         Some(Commands::Pull(args)) => run_pull(&runtime, args),
         Some(Commands::Push(args)) => run_push(&runtime, args),
         Some(Commands::Diff(args)) => run_diff(&runtime, args),
@@ -730,11 +642,6 @@ fn main() -> Result<()> {
         Some(Commands::Fetch(args)) => export_cli::run_fetch(&runtime, args),
         Some(Commands::Export(args)) => export_cli::run_export(&runtime, args),
         Some(Commands::Delete(args)) => run_delete(&runtime, args),
-        Some(Commands::Db(DbArgs { command })) => match command {
-            DbSubcommand::Stats => run_db_stats(&runtime),
-            DbSubcommand::Sync => run_db_sync(&runtime),
-            DbSubcommand::Migrate => unreachable!(),
-        },
         Some(Commands::Docs(DocsArgs { command })) => docs_cli::run_docs(&runtime, command),
         Some(Commands::Seo(SeoArgs { command })) => match command {
             SeoSubcommand::Inspect {
@@ -786,35 +693,7 @@ fn main() -> Result<()> {
                 url.as_deref(),
             ),
         },
-        Some(Commands::Import(ImportArgs { command })) => match command {
-            ImportSubcommand::Cargo {
-                path,
-                table,
-                r#type,
-                template,
-                title_field,
-                title_prefix,
-                category,
-                mode,
-                write,
-                format,
-                article_header,
-                no_meta: _,
-            } => run_import_cargo(
-                &runtime,
-                &path,
-                &table,
-                r#type.as_deref(),
-                template.as_deref(),
-                title_field.as_deref(),
-                title_prefix.as_deref(),
-                category.as_deref(),
-                &mode,
-                write,
-                &format,
-                article_header,
-            ),
-        },
+        Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
         Some(Commands::Index(args)) => index_cli::run_index(&runtime, args),
         None => {
             let mut command = Cli::command();
@@ -1446,57 +1325,6 @@ fn run_delete(runtime: &RuntimeOptions, args: DeleteArgs) -> Result<()> {
     Ok(())
 }
 
-fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let status = inspect_runtime(&paths)?;
-    let stored = load_stored_index_stats(&paths)?;
-
-    println!("db stats");
-    println!("db_path: {}", normalize_path(&paths.db_path));
-    println!("data_dir: {}", normalize_path(&paths.data_dir));
-    println!("db_exists: {}", format_flag(status.db_exists));
-    println!(
-        "db_size_bytes: {}",
-        status
-            .db_size_bytes
-            .map(|size| size.to_string())
-            .unwrap_or_else(|| "n/a".to_string())
-    );
-    match stored {
-        Some(stored) => print_stored_index_stats("index", &stored),
-        None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
-    }
-    print_migration_status(&paths);
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-
-    Ok(())
-}
-
-fn run_db_sync(runtime: &RuntimeOptions) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let status = inspect_runtime(&paths)?;
-    ensure_runtime_ready_for_sync(&paths, &status)?;
-
-    let report = rebuild_index(&paths, &ScanOptions::default())?;
-
-    println!("db sync");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("db_path: {}", normalize_path(&paths.db_path));
-    println!("synced_rows: {}", report.inserted_rows);
-    println!("synced_links: {}", report.inserted_links);
-    print_scan_stats("scan", &report.scan);
-    print_migration_status(&paths);
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-
-    Ok(())
-}
-
 fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let report = lint_modules(&paths, args.title.as_deref())?;
@@ -1769,93 +1597,6 @@ fn run_perf_lighthouse(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run_import_cargo(
-    runtime: &RuntimeOptions,
-    path: &str,
-    table: &str,
-    source_type: Option<&str>,
-    template: Option<&str>,
-    title_field: Option<&str>,
-    title_prefix: Option<&str>,
-    category: Option<&str>,
-    mode: &str,
-    write: bool,
-    format: &str,
-    article_header: bool,
-) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let Some(source_type) = ImportSourceType::resolve(path, source_type) else {
-        bail!("unable to determine import type (use --type csv|json)");
-    };
-    let update_mode = parse_import_mode(mode)?;
-    let format = format.to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!("unsupported import format: {format} (expected text|json)");
-    }
-
-    let source_path = if Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        std::env::current_dir()
-            .context("failed to resolve current directory")?
-            .join(path)
-    };
-    let result = import_to_cargo(
-        &paths,
-        &source_path,
-        source_type,
-        &CargoImportOptions {
-            table_name: table.to_string(),
-            template_name: normalize_option(template),
-            title_field: normalize_option(title_field),
-            title_prefix: normalize_option(title_prefix),
-            update_mode,
-            category_name: normalize_option(category),
-            article_header,
-            write,
-        },
-    )?;
-
-    if format == "json" {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("import cargo");
-        println!("source_path: {}", normalize_path(&source_path));
-        println!("source_type: {}", source_type.as_str());
-        println!("table: {table}");
-        println!("update_mode: {}", mode.to_ascii_lowercase());
-        println!("write: {}", format_flag(write));
-        println!("created: {}", result.pages_created.len());
-        println!("updated: {}", result.pages_updated.len());
-        println!("skipped: {}", result.pages_skipped.len());
-        println!("errors: {}", result.errors.len());
-        for error in result.errors.iter().take(10) {
-            println!(
-                "error: row={} message={} title={}",
-                error.row,
-                error.message,
-                error.title.as_deref().unwrap_or("<none>")
-            );
-        }
-        for page in result.pages.iter().take(10) {
-            println!(
-                "page: action={:?} title={} path={}",
-                page.action, page.title, page.relative_path
-            );
-        }
-        if !write {
-            println!("warning: dry-run only. Use --write to apply changes.");
-        }
-    }
-
-    println!("policy: {MIGRATIONS_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
 fn print_search_hits(prefix: &str, hits: &[LocalSearchHit]) {
     println!("{prefix}.count: {}", hits.len());
     if hits.is_empty() {
@@ -2057,55 +1798,6 @@ fn parse_csv_list(value: Option<&str>) -> Vec<String> {
         }
     }
     output
-}
-
-fn parse_import_mode(value: &str) -> Result<ImportUpdateMode> {
-    let normalized = value.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "create" => Ok(ImportUpdateMode::Create),
-        "update" => Ok(ImportUpdateMode::Update),
-        "upsert" => Ok(ImportUpdateMode::Upsert),
-        _ => bail!("unsupported import mode: {value} (expected create|update|upsert)"),
-    }
-}
-
-fn run_db_migrate(runtime: &RuntimeOptions) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    let report = wikitool_core::migrate::run_migrations(&paths)?;
-    if report.applied.is_empty() {
-        println!(
-            "database is up to date (version {})",
-            report.current_version
-        );
-    } else {
-        for entry in &report.applied {
-            println!("  applied v{:03}_{}", entry.version, entry.name);
-        }
-        println!(
-            "applied {} migration(s), now at version {}",
-            report.applied.len(),
-            report.current_version
-        );
-    }
-    Ok(())
-}
-
-fn run_contracts(args: ContractsArgs) -> Result<()> {
-    match args.command {
-        ContractsCommand::Snapshot(snapshot) => {
-            let report = generate_fixture_snapshot(
-                &snapshot.project_root,
-                &snapshot.content_dir,
-                &snapshot.templates_dir,
-            )?;
-            println!("{}", serde_json::to_string_pretty(&report)?);
-        }
-        ContractsCommand::CommandSurface => {
-            println!("{}", serde_json::to_string_pretty(&command_surface())?);
-        }
-    }
-    Ok(())
 }
 
 fn format_diff_change_type(value: &DiffChangeType) -> &'static str {
