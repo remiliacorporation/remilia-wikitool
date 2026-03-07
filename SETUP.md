@@ -121,7 +121,7 @@ Codex skill templates are also included under `codex_skills/` and can be copied 
 
 The local SQLite DB is disposable and recreated automatically on first use.
 
-Authoring retrieval is DB-first and AI-oriented: semantic page profiles and explicit reference/template/link signals are indexed for retrieval, while local files remain the human editing surface.
+Authoring retrieval is DB-first and AI-oriented: semantic page profiles, normalized source authorities, identifier rows, template implementation bundles, and explicit reference/template/link signals are indexed for retrieval, while local files remain the human editing surface.
 
 If runtime/schema changes break local state:
 

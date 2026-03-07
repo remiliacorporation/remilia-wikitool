@@ -24,8 +24,11 @@ const CHUNK_CANDIDATE_MULTIPLIER_ACROSS: usize = 10;
 const CHUNK_LEXICAL_SIMILARITY_THRESHOLD: f32 = 0.86;
 const AUTHORING_TEMPLATE_KEY_LIMIT: usize = 12;
 const TEMPLATE_REFERENCE_EXAMPLE_LIMIT: usize = 3;
+const TEMPLATE_IMPLEMENTATION_PAGE_LIMIT: usize = 6;
+const TEMPLATE_PARAMETER_VALUE_LIMIT: usize = 3;
 const AUTHORING_REFERENCE_LIMIT: usize = 8;
 const AUTHORING_REFERENCE_EXAMPLE_LIMIT: usize = 3;
+const AUTHORING_REFERENCE_AUTHORITY_LIMIT: usize = 8;
 const AUTHORING_REFERENCE_DOMAIN_LIMIT: usize = 6;
 const AUTHORING_REFERENCE_FLAG_LIMIT: usize = 8;
 const AUTHORING_REFERENCE_IDENTIFIER_LIMIT: usize = 8;
@@ -91,11 +94,18 @@ pub struct LocalReferenceUsage {
     pub primary_template_title: Option<String>,
     pub source_type: String,
     pub source_origin: String,
+    pub source_family: String,
+    pub authority_kind: String,
+    pub source_authority: String,
     pub reference_title: String,
     pub source_container: String,
     pub source_author: String,
     pub source_domain: String,
+    pub source_date: String,
+    pub canonical_url: String,
     pub identifier_keys: Vec<String>,
+    pub identifier_entries: Vec<String>,
+    pub source_urls: Vec<String>,
     pub retrieval_signals: Vec<String>,
     pub summary_text: String,
     pub template_titles: Vec<String>,
@@ -200,9 +210,12 @@ pub struct AuthoringInventory {
     pub template_invocation_rows: usize,
     pub distinct_templates_invoked: usize,
     pub reference_rows_total: usize,
+    pub reference_authority_rows_total: usize,
+    pub reference_identifier_rows_total: usize,
     pub distinct_reference_profiles: usize,
     pub media_rows_total: usize,
     pub distinct_media_files: usize,
+    pub template_implementation_rows_total: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -226,6 +239,7 @@ pub struct AuthoringSuggestion {
 pub struct TemplateParameterUsage {
     pub key: String,
     pub usage_count: usize,
+    pub example_values: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -245,8 +259,19 @@ pub struct TemplateUsageSummary {
     pub distinct_page_count: usize,
     pub parameter_stats: Vec<TemplateParameterUsage>,
     pub example_pages: Vec<String>,
+    pub implementation_titles: Vec<String>,
     pub implementation_preview: Option<String>,
     pub example_invocations: Vec<TemplateInvocationExample>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TemplateImplementationPage {
+    pub page_title: String,
+    pub namespace: String,
+    pub role: String,
+    pub summary_text: String,
+    pub section_summaries: Vec<LocalSectionSummary>,
+    pub context_chunks: Vec<LocalContextChunk>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -260,11 +285,18 @@ pub struct ReferenceUsageExample {
     pub primary_template_title: Option<String>,
     pub source_type: String,
     pub source_origin: String,
+    pub source_family: String,
+    pub authority_kind: String,
+    pub source_authority: String,
     pub reference_title: String,
     pub source_container: String,
     pub source_author: String,
     pub source_domain: String,
+    pub source_date: String,
+    pub canonical_url: String,
     pub identifier_keys: Vec<String>,
+    pub identifier_entries: Vec<String>,
+    pub source_urls: Vec<String>,
     pub retrieval_signals: Vec<String>,
     pub summary_text: String,
     pub template_titles: Vec<String>,
@@ -279,13 +311,16 @@ pub struct ReferenceUsageSummary {
     pub citation_family: String,
     pub source_type: String,
     pub source_origin: String,
+    pub source_family: String,
     pub usage_count: usize,
     pub distinct_page_count: usize,
     pub example_pages: Vec<String>,
     pub common_templates: Vec<String>,
     pub common_links: Vec<String>,
     pub common_domains: Vec<String>,
+    pub common_authorities: Vec<String>,
     pub common_identifier_keys: Vec<String>,
+    pub common_identifier_entries: Vec<String>,
     pub common_retrieval_signals: Vec<String>,
     pub example_references: Vec<ReferenceUsageExample>,
 }
@@ -313,6 +348,7 @@ pub struct MediaUsageSummary {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct TemplateReference {
     pub template: TemplateUsageSummary,
+    pub implementation_pages: Vec<TemplateImplementationPage>,
     pub implementation_sections: Vec<LocalSectionSummary>,
     pub implementation_chunks: Vec<LocalContextChunk>,
 }
@@ -541,20 +577,77 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 primary_template_title,
                 source_type,
                 source_origin,
+                source_family,
+                authority_kind,
+                source_authority,
                 reference_title,
                 source_container,
                 source_author,
                 source_domain,
+                source_date,
+                canonical_url,
                 identifier_keys,
+                identifier_entries,
+                source_urls,
                 retrieval_signals,
                 summary_text,
                 reference_wikitext,
                 template_titles,
                 link_titles,
                 token_estimate
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30)",
         )
         .context("failed to prepare indexed_page_references insert")?;
+
+    let mut reference_authority_statement = transaction
+        .prepare(
+            "INSERT OR REPLACE INTO indexed_reference_authorities (
+                source_relative_path,
+                reference_index,
+                source_title,
+                source_namespace,
+                section_heading,
+                citation_profile,
+                citation_family,
+                source_type,
+                source_origin,
+                source_family,
+                authority_kind,
+                authority_key,
+                authority_label,
+                primary_template_title,
+                source_domain,
+                source_container,
+                source_author,
+                identifier_keys,
+                summary_text,
+                retrieval_text
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+        )
+        .context("failed to prepare indexed_reference_authorities insert")?;
+
+    let mut reference_identifier_statement = transaction
+        .prepare(
+            "INSERT OR REPLACE INTO indexed_reference_identifiers (
+                source_relative_path,
+                reference_index,
+                source_title,
+                source_namespace,
+                section_heading,
+                citation_profile,
+                citation_family,
+                source_type,
+                source_origin,
+                source_family,
+                authority_key,
+                authority_label,
+                identifier_key,
+                identifier_value,
+                normalized_value,
+                summary_text
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+        )
+        .context("failed to prepare indexed_reference_identifiers insert")?;
 
     let mut media_statement = transaction
         .prepare(
@@ -588,16 +681,33 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 reference_titles,
                 reference_containers,
                 reference_domains,
+                reference_source_families,
+                reference_authorities,
+                reference_identifiers,
                 media_titles,
                 media_captions,
+                template_implementation_titles,
                 semantic_text,
                 token_estimate
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         )
         .context("failed to prepare indexed_page_semantics insert")?;
 
+    let mut template_implementation_statement = transaction
+        .prepare(
+            "INSERT OR REPLACE INTO indexed_template_implementation_pages (
+                template_title,
+                implementation_page_title,
+                implementation_namespace,
+                source_relative_path,
+                role
+            ) VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .context("failed to prepare indexed_template_implementation_pages insert")?;
+
     let mut inserted_rows = 0usize;
     let mut inserted_links = 0usize;
+    let mut template_implementation_seeds = BTreeMap::<String, TemplateImplementationSeed>::new();
     for file in &files {
         page_statement
             .execute(params![
@@ -648,6 +758,11 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         }
 
         let artifacts = extract_page_artifacts(&content);
+        maybe_record_template_implementation_seed(
+            &mut template_implementation_seeds,
+            file,
+            &artifacts,
+        );
         let semantic_profile = build_page_semantic_profile(file, &links, &artifacts);
         for (section_index, section) in artifacts.section_records.iter().enumerate() {
             section_statement
@@ -702,11 +817,18 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                         .unwrap_or_default(),
                     reference.source_type.as_str(),
                     reference.source_origin.as_str(),
+                    reference.source_family.as_str(),
+                    reference.authority_kind.as_str(),
+                    reference.source_authority.as_str(),
                     reference.reference_title.as_str(),
                     reference.source_container.as_str(),
                     reference.source_author.as_str(),
                     reference.source_domain.as_str(),
+                    reference.source_date.as_str(),
+                    reference.canonical_url.as_str(),
                     serialize_string_list(&reference.identifier_keys),
+                    serialize_string_list(&reference.identifier_entries),
+                    serialize_string_list(&reference.source_urls),
                     serialize_string_list(&reference.retrieval_signals),
                     reference.summary_text.as_str(),
                     reference.reference_wikitext.as_str(),
@@ -718,6 +840,76 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 .with_context(|| {
                     format!("failed to insert reference rows for {}", file.relative_path)
                 })?;
+
+            let authority_key = build_reference_authority_key(
+                &reference.authority_kind,
+                &reference.source_authority,
+            );
+            let authority_label = normalize_spaces(&reference.source_authority);
+            let authority_identifier_keys = serialize_string_list(&reference.identifier_keys);
+            let authority_retrieval_text = build_reference_authority_retrieval_text(reference);
+            reference_authority_statement
+                .execute(params![
+                    file.relative_path,
+                    i64::try_from(reference_index)
+                        .context("reference index does not fit into i64")?,
+                    file.title,
+                    file.namespace,
+                    reference.section_heading.as_deref(),
+                    reference.citation_profile.as_str(),
+                    reference.citation_family.as_str(),
+                    reference.source_type.as_str(),
+                    reference.source_origin.as_str(),
+                    reference.source_family.as_str(),
+                    reference.authority_kind.as_str(),
+                    authority_key.as_str(),
+                    authority_label.as_str(),
+                    reference
+                        .primary_template_title
+                        .as_deref()
+                        .unwrap_or_default(),
+                    reference.source_domain.as_str(),
+                    reference.source_container.as_str(),
+                    reference.source_author.as_str(),
+                    authority_identifier_keys.as_str(),
+                    reference.summary_text.as_str(),
+                    authority_retrieval_text.as_str(),
+                ])
+                .with_context(|| {
+                    format!(
+                        "failed to insert reference authority row for {}",
+                        file.relative_path
+                    )
+                })?;
+
+            for entry in parse_identifier_entries(&reference.identifier_entries) {
+                reference_identifier_statement
+                    .execute(params![
+                        file.relative_path,
+                        i64::try_from(reference_index)
+                            .context("reference index does not fit into i64")?,
+                        file.title,
+                        file.namespace,
+                        reference.section_heading.as_deref(),
+                        reference.citation_profile.as_str(),
+                        reference.citation_family.as_str(),
+                        reference.source_type.as_str(),
+                        reference.source_origin.as_str(),
+                        reference.source_family.as_str(),
+                        authority_key.as_str(),
+                        authority_label.as_str(),
+                        entry.key.as_str(),
+                        entry.value.as_str(),
+                        entry.normalized_value.as_str(),
+                        reference.summary_text.as_str(),
+                    ])
+                    .with_context(|| {
+                        format!(
+                            "failed to insert reference identifier row for {}",
+                            file.relative_path
+                        )
+                    })?;
+            }
         }
 
         for (media_index, media) in artifacts.media.iter().enumerate() {
@@ -754,8 +946,12 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 serialize_string_list(&semantic_profile.reference_titles),
                 serialize_string_list(&semantic_profile.reference_containers),
                 serialize_string_list(&semantic_profile.reference_domains),
+                serialize_string_list(&semantic_profile.reference_source_families),
+                serialize_string_list(&semantic_profile.reference_authorities),
+                serialize_string_list(&semantic_profile.reference_identifiers),
                 serialize_string_list(&semantic_profile.media_titles),
                 serialize_string_list(&semantic_profile.media_captions),
+                serialize_string_list(&semantic_profile.template_implementation_titles),
                 semantic_profile.semantic_text.as_str(),
                 i64::try_from(semantic_profile.token_estimate)
                     .context("semantic profile token estimate does not fit into i64")?,
@@ -826,8 +1022,16 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 })?;
         }
     }
+    persist_template_implementation_pages(
+        &mut template_implementation_statement,
+        &files,
+        &template_implementation_seeds,
+    )?;
+    drop(template_implementation_statement);
     drop(media_statement);
     drop(semantic_statement);
+    drop(reference_identifier_statement);
+    drop(reference_authority_statement);
     drop(reference_statement);
     drop(template_example_statement);
     drop(section_statement);
@@ -1248,6 +1452,25 @@ pub fn retrieve_local_context_chunks_across_pages(
     let query_terms = expand_retrieval_query_terms(&normalized_query);
     let semantic_page_hits =
         load_semantic_page_hits(&connection, &query_terms, max_pages.max(limit).max(1))?;
+    let authority_page_hits =
+        load_reference_authority_page_hits(&connection, &query_terms, max_pages.max(limit).max(1))?;
+    let identifier_page_hits = load_reference_identifier_page_hits(
+        &connection,
+        &query_terms,
+        max_pages.max(limit).max(1),
+    )?;
+    let mut seed_pages = BTreeSet::new();
+    let mut related_page_titles = Vec::new();
+    for title in semantic_page_hits
+        .iter()
+        .chain(authority_page_hits.iter())
+        .chain(identifier_page_hits.iter())
+        .map(|hit| hit.title.clone())
+    {
+        if seed_pages.insert(title.to_ascii_lowercase()) {
+            related_page_titles.push(title);
+        }
+    }
     let report = retrieve_reranked_chunks_across_pages(
         &connection,
         paths,
@@ -1259,12 +1482,11 @@ pub fn retrieve_local_context_chunks_across_pages(
             max_pages,
             diversify,
         },
-        &semantic_page_hits
-            .iter()
-            .map(|hit| hit.title.clone())
-            .collect::<Vec<_>>(),
+        &related_page_titles,
         ChunkRerankSignals {
             semantic_page_weights: build_semantic_page_weight_map(&semantic_page_hits),
+            authority_page_weights: build_authority_page_weight_map(&authority_page_hits),
+            identifier_page_weights: build_identifier_page_weight_map(&identifier_page_hits),
             ..ChunkRerankSignals::default()
         },
     )?;
@@ -1313,15 +1535,25 @@ pub fn build_authoring_knowledge_pack(
     let query = query_terms[0].clone();
     let template_page_weights = build_template_match_score_map(&connection, &stub_template_titles)?;
     let semantic_page_hits = load_semantic_page_hits(&connection, &query_terms, related_limit)?;
+    let authority_page_hits =
+        load_reference_authority_page_hits(&connection, &query_terms, related_limit)?;
+    let identifier_page_hits =
+        load_reference_identifier_page_hits(&connection, &query_terms, related_limit)?;
     let semantic_page_weights = build_semantic_page_weight_map(&semantic_page_hits);
+    let authority_page_weights = build_authority_page_weight_map(&authority_page_hits);
+    let identifier_page_weights = build_identifier_page_weight_map(&identifier_page_hits);
 
     let related_pages = collect_related_pages_for_authoring(
         &connection,
-        &stub_link_titles,
-        &query_terms,
-        related_limit,
-        &template_page_weights,
-        &semantic_page_hits,
+        AuthoringRelatedPageInputs {
+            stub_link_titles: &stub_link_titles,
+            query_terms: &query_terms,
+            limit: related_limit,
+            template_page_scores: &template_page_weights,
+            semantic_page_hits: &semantic_page_hits,
+            authority_page_hits: &authority_page_hits,
+            identifier_page_hits: &identifier_page_hits,
+        },
     )?;
 
     let mut stub_existing_links = Vec::new();
@@ -1358,8 +1590,9 @@ pub fn build_authoring_knowledge_pack(
         ChunkRerankSignals {
             related_page_weights,
             template_page_weights,
-            reference_page_weights: BTreeMap::new(),
             semantic_page_weights,
+            authority_page_weights,
+            identifier_page_weights,
         },
     )?;
     let retrieval_mode = chunk_report.retrieval_mode;
@@ -1522,9 +1755,16 @@ pub fn query_template_reference(
         });
     };
 
-    let implementation_page = load_page_record(&connection, &normalized_template)?;
-    let implementation_sections = if let Some(page) = &implementation_page {
-        load_section_records_for_bundle(&connection, &page.relative_path)?
+    let implementation_records =
+        load_template_implementation_pages_for_connection(&connection, &normalized_template)?;
+    let mut implementation_pages = Vec::new();
+    let mut implementation_sections = Vec::new();
+    let mut implementation_chunks = Vec::new();
+    for page in implementation_records
+        .into_iter()
+        .take(TEMPLATE_IMPLEMENTATION_PAGE_LIMIT)
+    {
+        let section_summaries = load_section_records_for_bundle(&connection, &page.relative_path)?
             .unwrap_or_default()
             .into_iter()
             .map(|section| LocalSectionSummary {
@@ -1533,19 +1773,26 @@ pub fn query_template_reference(
                 summary_text: section.summary_text,
                 token_estimate: section.token_estimate,
             })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let implementation_chunks = if let Some(page) = &implementation_page {
-        load_context_chunks_for_bundle(&connection, &page.relative_path, None)?.unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+            .collect::<Vec<_>>();
+        let context_chunks =
+            load_context_chunks_for_bundle(&connection, &page.relative_path, None)?
+                .unwrap_or_default();
+        implementation_sections.extend(section_summaries.iter().cloned());
+        implementation_chunks.extend(context_chunks.iter().cloned());
+        implementation_pages.push(TemplateImplementationPage {
+            page_title: page.title.clone(),
+            namespace: page.namespace.clone(),
+            role: page.role,
+            summary_text: load_page_summary_for_connection(&connection, &page.relative_path)?,
+            section_summaries,
+            context_chunks,
+        });
+    }
 
     Ok(TemplateReferenceLookup::Found(Box::new(
         TemplateReference {
             template,
+            implementation_pages,
             implementation_sections,
             implementation_chunks,
         },
@@ -1670,11 +1917,18 @@ struct IndexedReferenceRecord {
     primary_template_title: Option<String>,
     source_type: String,
     source_origin: String,
+    source_family: String,
+    authority_kind: String,
+    source_authority: String,
     reference_title: String,
     source_container: String,
     source_author: String,
     source_domain: String,
+    source_date: String,
+    canonical_url: String,
     identifier_keys: Vec<String>,
+    identifier_entries: Vec<String>,
+    source_urls: Vec<String>,
     retrieval_signals: Vec<String>,
     summary_text: String,
     reference_wikitext: String,
@@ -1696,8 +1950,12 @@ struct IndexedSemanticProfileRecord {
     reference_titles: Vec<String>,
     reference_containers: Vec<String>,
     reference_domains: Vec<String>,
+    reference_source_families: Vec<String>,
+    reference_authorities: Vec<String>,
+    reference_identifiers: Vec<String>,
     media_titles: Vec<String>,
     media_captions: Vec<String>,
+    template_implementation_titles: Vec<String>,
     semantic_text: String,
     token_estimate: usize,
 }
@@ -1732,8 +1990,22 @@ struct ParsedPageArtifacts {
     section_records: Vec<IndexedSectionRecord>,
     context_chunks: Vec<ArticleContextChunkRow>,
     template_invocations: Vec<ParsedTemplateInvocation>,
+    module_invocations: Vec<String>,
     references: Vec<IndexedReferenceRecord>,
     media: Vec<IndexedMediaRecord>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TemplateImplementationSeed {
+    template_dependencies: Vec<String>,
+    module_dependencies: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedIdentifierEntry {
+    key: String,
+    value: String,
+    normalized_value: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1748,8 +2020,9 @@ struct ChunkRetrievalPlan {
 struct ChunkRerankSignals {
     related_page_weights: BTreeMap<String, usize>,
     template_page_weights: BTreeMap<String, usize>,
-    reference_page_weights: BTreeMap<String, usize>,
     semantic_page_weights: BTreeMap<String, usize>,
+    authority_page_weights: BTreeMap<String, usize>,
+    identifier_page_weights: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1786,11 +2059,18 @@ struct ReferenceAnalysis {
     primary_template_title: Option<String>,
     source_type: String,
     source_origin: String,
+    source_family: String,
+    authority_kind: String,
+    source_authority: String,
     reference_title: String,
     source_container: String,
     source_author: String,
     source_domain: String,
+    source_date: String,
+    canonical_url: String,
     identifier_keys: Vec<String>,
+    identifier_entries: Vec<String>,
+    source_urls: Vec<String>,
     retrieval_signals: Vec<String>,
     summary_hint: String,
 }
@@ -2393,87 +2673,221 @@ fn build_template_match_score_map(
     Ok(out)
 }
 
-fn load_reference_page_weight_map(
+fn query_page_records_from_reference_authorities_for_connection(
     connection: &Connection,
-    source_titles: &[String],
-) -> Result<BTreeMap<String, usize>> {
-    if source_titles.is_empty() || !table_exists(connection, "indexed_page_references")? {
-        return Ok(BTreeMap::new());
+    query: &str,
+    limit: usize,
+) -> Result<Vec<IndexedPageRecord>> {
+    if limit == 0 || !table_exists(connection, "indexed_reference_authorities")? {
+        return Ok(Vec::new());
     }
 
-    let placeholders = std::iter::repeat_n("?", source_titles.len())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "SELECT source_title,
-                COUNT(*),
-                SUM(CASE WHEN primary_template_title != '' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN reference_title != '' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN source_author != '' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN source_domain != '' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN source_container != '' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN identifier_keys != ?1 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN retrieval_signals != ?1 THEN 1 ELSE 0 END)
-         FROM indexed_page_references
-         WHERE source_title IN ({placeholders})
-         GROUP BY source_title"
-    );
-    let values = source_titles
-        .iter()
-        .cloned()
-        .map(rusqlite::types::Value::from)
-        .collect::<Vec<_>>();
+    let normalized = normalize_spaces(&query.replace('_', " "));
+    if normalized.is_empty() {
+        return Ok(Vec::new());
+    }
+    let limit_i64 =
+        i64::try_from(limit).context("reference authority query limit does not fit into i64")?;
+    if fts_table_exists(connection, "indexed_reference_authorities_fts") {
+        let fts_query = format!("\"{}\" *", normalized);
+        let mut statement = connection
+            .prepare(
+                "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
+                 FROM indexed_reference_authorities_fts fts
+                 JOIN indexed_reference_authorities a ON a.rowid = fts.rowid
+                 JOIN indexed_pages p ON p.relative_path = a.source_relative_path
+                 WHERE indexed_reference_authorities_fts MATCH ?1
+                 GROUP BY p.relative_path
+                 ORDER BY COUNT(*) DESC, p.title ASC
+                 LIMIT ?2",
+            )
+            .context("failed to prepare reference authority FTS query")?;
+        let rows = statement
+            .query_map(params![fts_query, limit_i64], decode_page_record_row)
+            .context("failed to run reference authority FTS query")?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.context("failed to decode reference authority FTS row")?);
+        }
+        if !out.is_empty() {
+            return Ok(out);
+        }
+    }
+
+    let wildcard = format!("%{normalized}%");
+    let prefix = format!("{normalized}%");
     let mut statement = connection
-        .prepare(&sql)
-        .context("failed to prepare reference retrieval weight query")?;
+        .prepare(
+            "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
+             FROM indexed_reference_authorities a
+             JOIN indexed_pages p ON p.relative_path = a.source_relative_path
+             WHERE lower(a.authority_label) LIKE lower(?1)
+                OR lower(a.retrieval_text) LIKE lower(?1)
+                OR lower(a.source_family) LIKE lower(?1)
+                OR lower(a.source_domain) LIKE lower(?1)
+                OR lower(a.source_container) LIKE lower(?1)
+                OR lower(a.source_author) LIKE lower(?1)
+             GROUP BY p.relative_path
+             ORDER BY
+               CASE
+                 WHEN lower(a.authority_label) = lower(?2) THEN 0
+                 WHEN lower(a.authority_label) LIKE lower(?3) THEN 1
+                 ELSE 2
+               END,
+               COUNT(*) DESC,
+               p.title ASC
+             LIMIT ?4",
+        )
+        .context("failed to prepare reference authority LIKE query")?;
     let rows = statement
         .query_map(
-            params_from_iter(
-                std::iter::once(rusqlite::types::Value::from(
-                    NO_STRING_LIST_SENTINEL.to_string(),
-                ))
-                .chain(values),
-            ),
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    usize::try_from(row.get::<_, i64>(1)?).unwrap_or(0),
-                    usize::try_from(row.get::<_, i64>(2)?).unwrap_or(0),
-                    usize::try_from(row.get::<_, i64>(3)?).unwrap_or(0),
-                    usize::try_from(row.get::<_, i64>(4)?).unwrap_or(0),
-                    usize::try_from(row.get::<_, i64>(5)?).unwrap_or(0),
-                    usize::try_from(row.get::<_, i64>(6)?).unwrap_or(0),
-                    usize::try_from(row.get::<_, i64>(7)?).unwrap_or(0),
-                    usize::try_from(row.get::<_, i64>(8)?).unwrap_or(0),
-                ))
-            },
+            params![wildcard, normalized, prefix, limit_i64],
+            decode_page_record_row,
         )
-        .context("failed to run reference retrieval weight query")?;
-
-    let mut out = BTreeMap::new();
+        .context("failed to run reference authority LIKE query")?;
+    let mut out = Vec::new();
     for row in rows {
-        let (
-            source_title,
-            reference_count,
-            templated_count,
-            titled_count,
-            authored_count,
-            domain_count,
-            container_count,
-            identifier_count,
-            signal_count,
-        ) = row.context("failed to decode reference retrieval weight row")?;
-        let weight = reference_count.min(10).saturating_mul(12)
-            + templated_count.min(6).saturating_mul(8)
-            + titled_count.min(6).saturating_mul(6)
-            + authored_count.min(6).saturating_mul(5)
-            + domain_count.min(6).saturating_mul(5)
-            + container_count.min(6).saturating_mul(4)
-            + identifier_count.min(6).saturating_mul(6)
-            + signal_count.min(6).saturating_mul(4);
-        out.insert(source_title.to_ascii_lowercase(), weight);
+        out.push(row.context("failed to decode reference authority LIKE row")?);
     }
     Ok(out)
+}
+
+fn load_reference_authority_page_hits(
+    connection: &Connection,
+    query_terms: &[String],
+    limit: usize,
+) -> Result<Vec<SemanticPageHit>> {
+    if limit == 0 || query_terms.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let search_limit = candidate_limit(limit.max(1), 2);
+    let mut weights = BTreeMap::<String, usize>::new();
+    let mut titles = BTreeMap::<String, String>::new();
+    for (query_index, term) in query_terms.iter().enumerate() {
+        let base_weight = 200usize
+            .saturating_sub(query_index.saturating_mul(16))
+            .max(36);
+        for (rank, page) in query_page_records_from_reference_authorities_for_connection(
+            connection,
+            term,
+            search_limit,
+        )?
+        .into_iter()
+        .enumerate()
+        {
+            let key = page.title.to_ascii_lowercase();
+            titles.entry(key.clone()).or_insert(page.title);
+            let weight = base_weight.saturating_sub(rank.saturating_mul(12)).max(18);
+            let entry = weights.entry(key).or_insert(0);
+            *entry = entry.saturating_add(weight);
+        }
+    }
+
+    materialize_page_hits(weights, titles, limit)
+}
+
+fn query_page_records_from_reference_identifiers_for_connection(
+    connection: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<IndexedPageRecord>> {
+    if limit == 0 || !table_exists(connection, "indexed_reference_identifiers")? {
+        return Ok(Vec::new());
+    }
+
+    let normalized_query = normalize_reference_identifier_search_term(query);
+    if normalized_query.is_empty() {
+        return Ok(Vec::new());
+    }
+    let limit_i64 =
+        i64::try_from(limit).context("reference identifier query limit does not fit into i64")?;
+    let wildcard = format!("%{normalized_query}%");
+    let prefix = format!("{normalized_query}%");
+    let mut statement = connection
+        .prepare(
+            "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
+             FROM indexed_reference_identifiers i
+             JOIN indexed_pages p ON p.relative_path = i.source_relative_path
+             WHERE lower(i.normalized_value) = lower(?1)
+                OR lower(i.normalized_value) LIKE lower(?2)
+                OR lower(i.identifier_value) LIKE lower(?2)
+             GROUP BY p.relative_path
+             ORDER BY
+               CASE
+                 WHEN lower(i.normalized_value) = lower(?1) THEN 0
+                 WHEN lower(i.normalized_value) LIKE lower(?3) THEN 1
+                 ELSE 2
+               END,
+               COUNT(*) DESC,
+               p.title ASC
+             LIMIT ?4",
+        )
+        .context("failed to prepare reference identifier query")?;
+    let rows = statement
+        .query_map(
+            params![normalized_query, wildcard, prefix, limit_i64],
+            decode_page_record_row,
+        )
+        .context("failed to run reference identifier query")?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode reference identifier row")?);
+    }
+    Ok(out)
+}
+
+fn load_reference_identifier_page_hits(
+    connection: &Connection,
+    query_terms: &[String],
+    limit: usize,
+) -> Result<Vec<SemanticPageHit>> {
+    if limit == 0 || query_terms.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let search_limit = candidate_limit(limit.max(1), 2);
+    let mut weights = BTreeMap::<String, usize>::new();
+    let mut titles = BTreeMap::<String, String>::new();
+    for (query_index, term) in query_terms.iter().enumerate() {
+        let base_weight = 240usize
+            .saturating_sub(query_index.saturating_mul(20))
+            .max(48);
+        for (rank, page) in query_page_records_from_reference_identifiers_for_connection(
+            connection,
+            term,
+            search_limit,
+        )?
+        .into_iter()
+        .enumerate()
+        {
+            let key = page.title.to_ascii_lowercase();
+            titles.entry(key.clone()).or_insert(page.title);
+            let weight = base_weight.saturating_sub(rank.saturating_mul(16)).max(24);
+            let entry = weights.entry(key).or_insert(0);
+            *entry = entry.saturating_add(weight);
+        }
+    }
+
+    materialize_page_hits(weights, titles, limit)
+}
+
+fn normalize_reference_identifier_search_term(query: &str) -> String {
+    let normalized = normalize_spaces(&query.replace('_', " "));
+    if normalized.is_empty() {
+        return String::new();
+    }
+    if let Some((key, value)) = normalized.split_once(':') {
+        let key = normalize_template_parameter_key(key);
+        if !key.is_empty() {
+            let normalized_value = normalize_reference_identifier_value(&key, value);
+            if !normalized_value.is_empty() {
+                return normalized_value;
+            }
+        }
+    }
+
+    normalize_reference_identifier_token(&normalized, true)
 }
 
 fn load_seed_chunks_for_related_pages(
@@ -2649,7 +3063,15 @@ fn rerank_retrieved_chunks(
             .unwrap_or(0);
             score += i64::try_from(
                 signals
-                    .reference_page_weights
+                    .authority_page_weights
+                    .get(&chunk.source_title.to_ascii_lowercase())
+                    .copied()
+                    .unwrap_or(0),
+            )
+            .unwrap_or(0);
+            score += i64::try_from(
+                signals
+                    .identifier_page_weights
                     .get(&chunk.source_title.to_ascii_lowercase())
                     .copied()
                     .unwrap_or(0),
@@ -2687,7 +3109,7 @@ fn retrieve_reranked_chunks_across_pages(
     query_terms: &[String],
     plan: ChunkRetrievalPlan,
     related_page_titles: &[String],
-    mut signals: ChunkRerankSignals,
+    signals: ChunkRerankSignals,
 ) -> Result<LocalChunkAcrossPagesResult> {
     let max_chunks = plan.limit.max(1);
     let max_tokens = plan.token_budget.max(1);
@@ -2703,14 +3125,6 @@ fn retrieve_reranked_chunks_across_pages(
         related_page_titles,
         AUTHORING_SEED_CHUNKS_PER_PAGE,
     )?);
-    let candidate_source_titles = candidates
-        .iter()
-        .map(|chunk| chunk.source_title.clone())
-        .collect::<Vec<_>>();
-    if signals.reference_page_weights.is_empty() {
-        signals.reference_page_weights =
-            load_reference_page_weight_map(connection, &candidate_source_titles)?;
-    }
     let reranked = rerank_retrieved_chunks(candidates, query, query_terms, &signals);
     let chunks = select_retrieved_chunks(
         reranked,
@@ -2730,11 +3144,16 @@ fn retrieve_reranked_chunks_across_pages(
         .map(|chunk| chunk.token_estimate)
         .sum::<usize>();
 
-    let retrieval_mode = if signals.semantic_page_weights.is_empty() {
-        retrieval_mode
-    } else {
-        format!("{retrieval_mode}+semantic")
-    };
+    let mut retrieval_mode = retrieval_mode;
+    if !signals.semantic_page_weights.is_empty() {
+        retrieval_mode = format!("{retrieval_mode}+semantic");
+    }
+    if !signals.authority_page_weights.is_empty() {
+        retrieval_mode = format!("{retrieval_mode}+authority");
+    }
+    if !signals.identifier_page_weights.is_empty() {
+        retrieval_mode = format!("{retrieval_mode}+identifier");
+    }
 
     Ok(LocalChunkAcrossPagesResult {
         query: query.to_string(),
@@ -2811,18 +3230,24 @@ struct AuthoringPageAccumulator {
     sources: BTreeSet<String>,
 }
 
+struct AuthoringRelatedPageInputs<'a> {
+    stub_link_titles: &'a [String],
+    query_terms: &'a [String],
+    limit: usize,
+    template_page_scores: &'a BTreeMap<String, usize>,
+    semantic_page_hits: &'a [SemanticPageHit],
+    authority_page_hits: &'a [SemanticPageHit],
+    identifier_page_hits: &'a [SemanticPageHit],
+}
+
 fn collect_related_pages_for_authoring(
     connection: &Connection,
-    stub_link_titles: &[String],
-    query_terms: &[String],
-    limit: usize,
-    template_page_scores: &BTreeMap<String, usize>,
-    semantic_page_hits: &[SemanticPageHit],
+    inputs: AuthoringRelatedPageInputs<'_>,
 ) -> Result<Vec<AuthoringPageCandidate>> {
     let mut candidates = BTreeMap::<String, AuthoringPageAccumulator>::new();
-    let search_limit = candidate_limit(limit.max(1), 2);
+    let search_limit = candidate_limit(inputs.limit.max(1), 2);
 
-    for title in stub_link_titles {
+    for title in inputs.stub_link_titles {
         let normalized = normalize_query_title(title);
         if normalized.is_empty() {
             continue;
@@ -2832,7 +3257,7 @@ fn collect_related_pages_for_authoring(
         }
     }
 
-    let mut ranked_template_matches = template_page_scores.iter().collect::<Vec<_>>();
+    let mut ranked_template_matches = inputs.template_page_scores.iter().collect::<Vec<_>>();
     ranked_template_matches.sort_by(|(left_title, left_score), (right_title, right_score)| {
         right_score
             .cmp(left_score)
@@ -2849,7 +3274,7 @@ fn collect_related_pages_for_authoring(
         }
     }
 
-    for semantic_hit in semantic_page_hits {
+    for semantic_hit in inputs.semantic_page_hits {
         if let Some(page) = load_page_record(connection, &semantic_hit.title)? {
             add_authoring_page_candidate(
                 &mut candidates,
@@ -2860,7 +3285,29 @@ fn collect_related_pages_for_authoring(
         }
     }
 
-    for (query_index, term) in query_terms.iter().enumerate() {
+    for authority_hit in inputs.authority_page_hits {
+        if let Some(page) = load_page_record(connection, &authority_hit.title)? {
+            add_authoring_page_candidate(
+                &mut candidates,
+                page,
+                "source-authority",
+                authority_hit.retrieval_weight.clamp(20, 240),
+            );
+        }
+    }
+
+    for identifier_hit in inputs.identifier_page_hits {
+        if let Some(page) = load_page_record(connection, &identifier_hit.title)? {
+            add_authoring_page_candidate(
+                &mut candidates,
+                page,
+                "source-identifier",
+                identifier_hit.retrieval_weight.clamp(24, 280),
+            );
+        }
+    }
+
+    for (query_index, term) in inputs.query_terms.iter().enumerate() {
         let title_search_score = 240usize.saturating_sub(query_index.saturating_mul(20));
         for (rank, hit) in query_local_search_for_connection(connection, term, search_limit)?
             .into_iter()
@@ -2910,7 +3357,7 @@ fn collect_related_pages_for_authoring(
             .cmp(&left.score)
             .then_with(|| left.title.cmp(&right.title))
     });
-    ranked.truncate(limit);
+    ranked.truncate(inputs.limit);
 
     ranked
         .into_iter()
@@ -3155,6 +3602,14 @@ fn load_semantic_page_hits(
         }
     }
 
+    materialize_page_hits(weights, titles, limit)
+}
+
+fn materialize_page_hits(
+    weights: BTreeMap<String, usize>,
+    titles: BTreeMap<String, String>,
+    limit: usize,
+) -> Result<Vec<SemanticPageHit>> {
     let mut hits = weights
         .into_iter()
         .filter_map(|(key, retrieval_weight)| {
@@ -3177,6 +3632,22 @@ fn load_semantic_page_hits(
 fn build_semantic_page_weight_map(semantic_hits: &[SemanticPageHit]) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for hit in semantic_hits {
+        out.insert(hit.title.to_ascii_lowercase(), hit.retrieval_weight);
+    }
+    out
+}
+
+fn build_authority_page_weight_map(hits: &[SemanticPageHit]) -> BTreeMap<String, usize> {
+    let mut out = BTreeMap::new();
+    for hit in hits {
+        out.insert(hit.title.to_ascii_lowercase(), hit.retrieval_weight);
+    }
+    out
+}
+
+fn build_identifier_page_weight_map(hits: &[SemanticPageHit]) -> BTreeMap<String, usize> {
+    let mut out = BTreeMap::new();
+    for hit in hits {
         out.insert(hit.title.to_ascii_lowercase(), hit.retrieval_weight);
     }
     out
@@ -3506,10 +3977,23 @@ fn materialize_template_usage_summary(
     template_title: String,
     accumulator: TemplateUsageAccumulator,
 ) -> Result<TemplateUsageSummary> {
+    let example_invocations = load_template_examples_for_connection(
+        connection,
+        &template_title,
+        TEMPLATE_REFERENCE_EXAMPLE_LIMIT,
+    )?;
+    let parameter_examples = collect_template_parameter_value_examples(
+        &example_invocations,
+        TEMPLATE_PARAMETER_VALUE_LIMIT,
+    );
     let mut parameter_stats = accumulator
         .parameter_key_counts
         .into_iter()
-        .map(|(key, usage_count)| TemplateParameterUsage { key, usage_count })
+        .map(|(key, usage_count)| TemplateParameterUsage {
+            example_values: parameter_examples.get(&key).cloned().unwrap_or_default(),
+            key,
+            usage_count,
+        })
         .collect::<Vec<_>>();
     parameter_stats.sort_by(|left, right| {
         right
@@ -3530,12 +4014,9 @@ fn materialize_template_usage_summary(
             .take(TEMPLATE_REFERENCE_EXAMPLE_LIMIT)
             .cloned()
             .collect(),
+        implementation_titles: load_template_implementation_titles(connection, &template_title)?,
         implementation_preview: load_template_implementation_preview(connection, &template_title)?,
-        example_invocations: load_template_examples_for_connection(
-            connection,
-            &template_title,
-            TEMPLATE_REFERENCE_EXAMPLE_LIMIT,
-        )?,
+        example_invocations,
         template_title,
     })
 }
@@ -3639,6 +4120,76 @@ fn load_template_implementation_preview(
     }
 }
 
+#[derive(Debug, Clone)]
+struct TemplateImplementationRecord {
+    title: String,
+    namespace: String,
+    relative_path: String,
+    role: String,
+}
+
+fn load_template_implementation_titles(
+    connection: &Connection,
+    template_title: &str,
+) -> Result<Vec<String>> {
+    Ok(
+        load_template_implementation_pages_for_connection(connection, template_title)?
+            .into_iter()
+            .map(|page| page.title)
+            .collect(),
+    )
+}
+
+fn load_template_implementation_pages_for_connection(
+    connection: &Connection,
+    template_title: &str,
+) -> Result<Vec<TemplateImplementationRecord>> {
+    if table_exists(connection, "indexed_template_implementation_pages")? {
+        let mut statement = connection
+            .prepare(
+                "SELECT implementation_page_title, implementation_namespace, source_relative_path, role
+                 FROM indexed_template_implementation_pages
+                 WHERE lower(template_title) = lower(?1)
+                 ORDER BY
+                   CASE role
+                     WHEN 'template' THEN 0
+                     WHEN 'documentation' THEN 1
+                     WHEN 'module' THEN 2
+                     ELSE 3
+                   END,
+                   implementation_page_title ASC",
+            )
+            .context("failed to prepare template implementation page query")?;
+        let rows = statement
+            .query_map([template_title], |row| {
+                Ok(TemplateImplementationRecord {
+                    title: row.get(0)?,
+                    namespace: row.get(1)?,
+                    relative_path: row.get(2)?,
+                    role: row.get(3)?,
+                })
+            })
+            .context("failed to run template implementation page query")?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.context("failed to decode template implementation page row")?);
+        }
+        if !out.is_empty() {
+            return Ok(out);
+        }
+    }
+
+    let Some(page) = load_page_record(connection, template_title)? else {
+        return Ok(Vec::new());
+    };
+    Ok(vec![TemplateImplementationRecord {
+        title: page.title,
+        namespace: page.namespace,
+        relative_path: page.relative_path,
+        role: "template".to_string(),
+    }])
+}
+
 fn load_template_examples_for_connection(
     connection: &Connection,
     template_title: &str,
@@ -3678,6 +4229,62 @@ fn load_template_examples_for_connection(
     Ok(out)
 }
 
+fn collect_template_parameter_value_examples(
+    examples: &[TemplateInvocationExample],
+    per_key_limit: usize,
+) -> BTreeMap<String, Vec<String>> {
+    let mut out = BTreeMap::<String, Vec<String>>::new();
+    let mut seen = BTreeMap::<String, BTreeSet<String>>::new();
+    for example in examples {
+        for (key, value) in parse_template_parameter_examples(&example.invocation_text) {
+            let set = seen.entry(key.clone()).or_default();
+            if !set.insert(value.clone()) {
+                continue;
+            }
+            let entry = out.entry(key).or_default();
+            if entry.len() < per_key_limit {
+                entry.push(value);
+            }
+        }
+    }
+    out
+}
+
+fn parse_template_parameter_examples(invocation_text: &str) -> Vec<(String, String)> {
+    let Some(inner) = invocation_text
+        .strip_prefix("{{")
+        .and_then(|value| value.strip_suffix("}}"))
+    else {
+        return Vec::new();
+    };
+    let segments = split_template_segments(inner);
+    let mut out = Vec::new();
+    let mut positional_index = 1usize;
+    for segment in segments.into_iter().skip(1) {
+        let value = segment.trim();
+        if value.is_empty() {
+            continue;
+        }
+        let (key, raw_value) = if let Some((key, value)) = split_once_top_level_equals(value) {
+            let key = normalize_template_parameter_key(&key);
+            if key.is_empty() {
+                continue;
+            }
+            (key, value)
+        } else {
+            let key = format!("${positional_index}");
+            positional_index += 1;
+            (key, value.to_string())
+        };
+        let sample_value = summarize_words(&flatten_markup_excerpt(&raw_value), 8);
+        if sample_value.is_empty() {
+            continue;
+        }
+        out.push((key, sample_value));
+    }
+    out
+}
+
 #[derive(Default)]
 struct ReferenceUsageAccumulator {
     usage_count: usize,
@@ -3685,11 +4292,14 @@ struct ReferenceUsageAccumulator {
     template_counts: BTreeMap<String, usize>,
     link_counts: BTreeMap<String, usize>,
     domain_counts: BTreeMap<String, usize>,
+    authority_counts: BTreeMap<String, usize>,
     identifier_counts: BTreeMap<String, usize>,
+    identifier_entry_counts: BTreeMap<String, usize>,
     retrieval_signal_counts: BTreeMap<String, usize>,
     citation_family: String,
     source_type: String,
     source_origin: String,
+    source_family: String,
     examples: Vec<ReferenceUsageExample>,
 }
 
@@ -3705,11 +4315,18 @@ struct IndexedReferenceUsageRow {
     primary_template_title: Option<String>,
     source_type: String,
     source_origin: String,
+    source_family: String,
+    authority_kind: String,
+    source_authority: String,
     reference_title: String,
     source_container: String,
     source_author: String,
     source_domain: String,
+    source_date: String,
+    canonical_url: String,
     identifier_keys: Vec<String>,
+    identifier_entries: Vec<String>,
+    source_urls: Vec<String>,
     retrieval_signals: Vec<String>,
     summary_text: String,
     reference_wikitext: String,
@@ -3743,11 +4360,18 @@ fn summarize_reference_usage_for_sources(
             primary_template_title: row.primary_template_title.clone(),
             source_type: row.source_type.clone(),
             source_origin: row.source_origin.clone(),
+            source_family: row.source_family.clone(),
+            authority_kind: row.authority_kind.clone(),
+            source_authority: row.source_authority.clone(),
             reference_title: row.reference_title.clone(),
             source_container: row.source_container.clone(),
             source_author: row.source_author.clone(),
             source_domain: row.source_domain.clone(),
+            source_date: row.source_date.clone(),
+            canonical_url: row.canonical_url.clone(),
             identifier_keys: row.identifier_keys.clone(),
+            identifier_entries: row.identifier_entries.clone(),
+            source_urls: row.source_urls.clone(),
             retrieval_signals: row.retrieval_signals.clone(),
             summary_text: row.summary_text.clone(),
             template_titles: row.template_titles.clone(),
@@ -3765,6 +4389,9 @@ fn summarize_reference_usage_for_sources(
         if entry.source_origin.is_empty() {
             entry.source_origin = row.source_origin.clone();
         }
+        if entry.source_family.is_empty() {
+            entry.source_family = row.source_family.clone();
+        }
         entry.usage_count = entry.usage_count.saturating_add(1);
         entry.source_pages.insert(row.source_title);
         for template_title in row.template_titles {
@@ -3779,8 +4406,22 @@ fn summarize_reference_usage_for_sources(
             let count = entry.domain_counts.entry(row.source_domain).or_insert(0);
             *count = count.saturating_add(1);
         }
+        if !row.source_authority.is_empty() {
+            let count = entry
+                .authority_counts
+                .entry(row.source_authority)
+                .or_insert(0);
+            *count = count.saturating_add(1);
+        }
         for identifier in row.identifier_keys {
             let count = entry.identifier_counts.entry(identifier).or_insert(0);
+            *count = count.saturating_add(1);
+        }
+        for identifier_entry in row.identifier_entries {
+            let count = entry
+                .identifier_entry_counts
+                .entry(identifier_entry)
+                .or_insert(0);
             *count = count.saturating_add(1);
         }
         for retrieval_signal in row.retrieval_signals {
@@ -3824,6 +4465,7 @@ fn summarize_reference_usage_for_sources(
                 citation_family: accumulator.citation_family,
                 source_type: accumulator.source_type,
                 source_origin: accumulator.source_origin,
+                source_family: accumulator.source_family,
                 usage_count: accumulator.usage_count,
                 distinct_page_count: accumulator.source_pages.len(),
                 example_pages: accumulator
@@ -3844,8 +4486,16 @@ fn summarize_reference_usage_for_sources(
                     &accumulator.domain_counts,
                     AUTHORING_REFERENCE_DOMAIN_LIMIT,
                 ),
+                common_authorities: top_counted_keys(
+                    &accumulator.authority_counts,
+                    AUTHORING_REFERENCE_AUTHORITY_LIMIT,
+                ),
                 common_identifier_keys: top_counted_keys(
                     &accumulator.identifier_counts,
+                    AUTHORING_REFERENCE_IDENTIFIER_LIMIT,
+                ),
+                common_identifier_entries: top_counted_keys(
+                    &accumulator.identifier_entry_counts,
                     AUTHORING_REFERENCE_IDENTIFIER_LIMIT,
                 ),
                 common_retrieval_signals: top_counted_keys(
@@ -3868,9 +4518,10 @@ fn load_reference_rows_for_sources(
     let sql = format!(
         "SELECT source_title, source_relative_path, section_heading, reference_name, reference_group,
                 citation_profile, citation_family, primary_template_title, source_type, source_origin,
-                reference_title, source_container, source_author, source_domain, identifier_keys,
-                retrieval_signals, summary_text, reference_wikitext, template_titles,
-                link_titles, token_estimate
+                source_family, authority_kind, source_authority, reference_title, source_container,
+                source_author, source_domain, source_date, canonical_url, identifier_keys,
+                identifier_entries, source_urls, retrieval_signals, summary_text, reference_wikitext,
+                template_titles, link_titles, token_estimate
          FROM indexed_page_references
          WHERE source_title IN ({placeholders})"
     );
@@ -3884,7 +4535,7 @@ fn load_reference_rows_for_sources(
         .context("failed to prepare reference summary query")?;
     let rows = statement
         .query_map(params_from_iter(values), |row| {
-            let token_estimate_i64: i64 = row.get(20)?;
+            let token_estimate_i64: i64 = row.get(27)?;
             Ok(IndexedReferenceUsageRow {
                 source_title: row.get(0)?,
                 source_relative_path: row.get(1)?,
@@ -3896,16 +4547,23 @@ fn load_reference_rows_for_sources(
                 primary_template_title: normalize_non_empty_string(row.get::<_, String>(7)?),
                 source_type: row.get(8)?,
                 source_origin: row.get(9)?,
-                reference_title: row.get(10)?,
-                source_container: row.get(11)?,
-                source_author: row.get(12)?,
-                source_domain: row.get(13)?,
-                identifier_keys: parse_string_list(&row.get::<_, String>(14)?),
-                retrieval_signals: parse_string_list(&row.get::<_, String>(15)?),
-                summary_text: row.get(16)?,
-                reference_wikitext: row.get(17)?,
-                template_titles: parse_string_list(&row.get::<_, String>(18)?),
-                link_titles: parse_string_list(&row.get::<_, String>(19)?),
+                source_family: row.get(10)?,
+                authority_kind: row.get(11)?,
+                source_authority: row.get(12)?,
+                reference_title: row.get(13)?,
+                source_container: row.get(14)?,
+                source_author: row.get(15)?,
+                source_domain: row.get(16)?,
+                source_date: row.get(17)?,
+                canonical_url: row.get(18)?,
+                identifier_keys: parse_string_list(&row.get::<_, String>(19)?),
+                identifier_entries: parse_string_list(&row.get::<_, String>(20)?),
+                source_urls: parse_string_list(&row.get::<_, String>(21)?),
+                retrieval_signals: parse_string_list(&row.get::<_, String>(22)?),
+                summary_text: row.get(23)?,
+                reference_wikitext: row.get(24)?,
+                template_titles: parse_string_list(&row.get::<_, String>(25)?),
+                link_titles: parse_string_list(&row.get::<_, String>(26)?),
                 token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
             })
         })
@@ -4087,8 +4745,11 @@ fn reference_example_rank_key(
         usize::from(!example.reference_title.is_empty()),
         usize::from(!example.source_author.is_empty()),
         usize::from(!example.source_domain.is_empty()),
-        usize::from(!example.source_container.is_empty()),
-        example.identifier_keys.len(),
+        usize::from(!example.source_container.is_empty() || !example.source_authority.is_empty()),
+        example
+            .identifier_entries
+            .len()
+            .max(example.identifier_keys.len()),
         example.retrieval_signals.len(),
         example.template_titles.len(),
         example.link_titles.len(),
@@ -4132,7 +4793,19 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
                 + template
                     .parameter_stats
                     .iter()
-                    .map(|stat| estimate_tokens(&stat.key))
+                    .map(|stat| {
+                        estimate_tokens(&stat.key)
+                            + stat
+                                .example_values
+                                .iter()
+                                .map(|value| estimate_tokens(value))
+                                .sum::<usize>()
+                    })
+                    .sum::<usize>()
+                + template
+                    .implementation_titles
+                    .iter()
+                    .map(|title| estimate_tokens(title))
                     .sum::<usize>()
                 + template
                     .implementation_preview
@@ -4154,6 +4827,7 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
                 + estimate_tokens(&reference.citation_family)
                 + estimate_tokens(&reference.source_type)
                 + estimate_tokens(&reference.source_origin)
+                + estimate_tokens(&reference.source_family)
                 + reference
                     .common_templates
                     .iter()
@@ -4170,7 +4844,17 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
                     .map(|domain| estimate_tokens(domain))
                     .sum::<usize>()
                 + reference
+                    .common_authorities
+                    .iter()
+                    .map(|authority| estimate_tokens(authority))
+                    .sum::<usize>()
+                + reference
                     .common_identifier_keys
+                    .iter()
+                    .map(|identifier| estimate_tokens(identifier))
+                    .sum::<usize>()
+                + reference
+                    .common_identifier_entries
                     .iter()
                     .map(|identifier| estimate_tokens(identifier))
                     .sum::<usize>()
@@ -4283,6 +4967,26 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         } else {
             (0, 0)
         };
+    let reference_authority_rows_total =
+        if table_exists(connection, "indexed_reference_authorities")? {
+            count_query(
+                connection,
+                "SELECT COUNT(*) FROM indexed_reference_authorities",
+            )
+            .context("failed to count reference authority rows for authoring inventory")?
+        } else {
+            0
+        };
+    let reference_identifier_rows_total =
+        if table_exists(connection, "indexed_reference_identifiers")? {
+            count_query(
+                connection,
+                "SELECT COUNT(*) FROM indexed_reference_identifiers",
+            )
+            .context("failed to count reference identifier rows for authoring inventory")?
+        } else {
+            0
+        };
     let (media_rows_total, distinct_media_files) =
         if table_exists(connection, "indexed_page_media")? {
             (
@@ -4297,6 +5001,16 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         } else {
             (0, 0)
         };
+    let template_implementation_rows_total =
+        if table_exists(connection, "indexed_template_implementation_pages")? {
+            count_query(
+                connection,
+                "SELECT COUNT(*) FROM indexed_template_implementation_pages",
+            )
+            .context("failed to count template implementation rows for authoring inventory")?
+        } else {
+            0
+        };
 
     Ok(AuthoringInventory {
         indexed_pages_total,
@@ -4307,9 +5021,12 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         template_invocation_rows,
         distinct_templates_invoked,
         reference_rows_total,
+        reference_authority_rows_total,
+        reference_identifier_rows_total,
         distinct_reference_profiles,
         media_rows_total,
         distinct_media_files,
+        template_implementation_rows_total,
     })
 }
 
@@ -4475,9 +5192,10 @@ fn load_indexed_reference_rows_for_connection(
     let mut statement = connection
         .prepare(
             "SELECT section_heading, reference_name, reference_group, citation_profile, citation_family,
-                    primary_template_title, source_type, source_origin, reference_title, source_container,
-                    source_author, source_domain, identifier_keys, retrieval_signals,
-                    summary_text, template_titles, link_titles, token_estimate
+                    primary_template_title, source_type, source_origin, source_family, authority_kind,
+                    source_authority, reference_title, source_container, source_author, source_domain,
+                    source_date, canonical_url, identifier_keys, identifier_entries, source_urls,
+                    retrieval_signals, summary_text, template_titles, link_titles, token_estimate
              FROM indexed_page_references
              WHERE source_relative_path = ?1
              ORDER BY reference_index ASC
@@ -4486,7 +5204,7 @@ fn load_indexed_reference_rows_for_connection(
         .context("failed to prepare indexed_page_references query")?;
     let rows = statement
         .query_map(params![source_relative_path, limit_i64], |row| {
-            let token_estimate_i64: i64 = row.get(17)?;
+            let token_estimate_i64: i64 = row.get(24)?;
             Ok(LocalReferenceUsage {
                 section_heading: row.get(0)?,
                 reference_name: row.get(1)?,
@@ -4496,15 +5214,22 @@ fn load_indexed_reference_rows_for_connection(
                 primary_template_title: normalize_non_empty_string(row.get::<_, String>(5)?),
                 source_type: row.get(6)?,
                 source_origin: row.get(7)?,
-                reference_title: row.get(8)?,
-                source_container: row.get(9)?,
-                source_author: row.get(10)?,
-                source_domain: row.get(11)?,
-                identifier_keys: parse_string_list(&row.get::<_, String>(12)?),
-                retrieval_signals: parse_string_list(&row.get::<_, String>(13)?),
-                summary_text: row.get(14)?,
-                template_titles: parse_string_list(&row.get::<_, String>(15)?),
-                link_titles: parse_string_list(&row.get::<_, String>(16)?),
+                source_family: row.get(8)?,
+                authority_kind: row.get(9)?,
+                source_authority: row.get(10)?,
+                reference_title: row.get(11)?,
+                source_container: row.get(12)?,
+                source_author: row.get(13)?,
+                source_domain: row.get(14)?,
+                source_date: row.get(15)?,
+                canonical_url: row.get(16)?,
+                identifier_keys: parse_string_list(&row.get::<_, String>(17)?),
+                identifier_entries: parse_string_list(&row.get::<_, String>(18)?),
+                source_urls: parse_string_list(&row.get::<_, String>(19)?),
+                retrieval_signals: parse_string_list(&row.get::<_, String>(20)?),
+                summary_text: row.get(21)?,
+                template_titles: parse_string_list(&row.get::<_, String>(22)?),
+                link_titles: parse_string_list(&row.get::<_, String>(23)?),
                 token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
             })
         })
@@ -4645,6 +5370,7 @@ fn extract_page_artifacts(content: &str) -> ParsedPageArtifacts {
         section_records: extract_section_records_from_sections(&sections),
         context_chunks: chunk_article_context_from_sections(&sections),
         template_invocations: extract_template_invocations(content),
+        module_invocations: extract_module_invocations(content),
         references: extract_reference_records_from_sections(&sections),
         media: extract_media_records_from_sections(&sections),
     }
@@ -4717,6 +5443,24 @@ fn build_page_semantic_profile(
             .iter()
             .map(|reference| reference.source_domain.clone()),
     );
+    let reference_source_families = collect_normalized_string_list(
+        artifacts
+            .references
+            .iter()
+            .map(|reference| reference.source_family.clone()),
+    );
+    let reference_authorities = collect_normalized_string_list(
+        artifacts
+            .references
+            .iter()
+            .map(|reference| reference.source_authority.clone()),
+    );
+    let reference_identifiers = collect_normalized_string_list(
+        artifacts
+            .references
+            .iter()
+            .flat_map(|reference| reference.identifier_entries.iter().cloned()),
+    );
     let media_titles = collect_normalized_string_list(
         artifacts.media.iter().map(|media| media.file_title.clone()),
     );
@@ -4726,6 +5470,7 @@ fn build_page_semantic_profile(
             .iter()
             .map(|media| media.caption_text.clone()),
     );
+    let template_implementation_titles = collect_template_implementation_terms(file, artifacts);
     let mut profile = IndexedSemanticProfileRecord {
         source_title: file.title.clone(),
         source_namespace: file.namespace.clone(),
@@ -4738,8 +5483,12 @@ fn build_page_semantic_profile(
         reference_titles,
         reference_containers,
         reference_domains,
+        reference_source_families,
+        reference_authorities,
+        reference_identifiers,
         media_titles,
         media_captions,
+        template_implementation_titles,
         semantic_text: String::new(),
         token_estimate: 0,
     };
@@ -4763,8 +5512,12 @@ fn build_page_semantic_text(file: &ScannedFile, profile: &IndexedSemanticProfile
         &profile.reference_titles,
         &profile.reference_containers,
         &profile.reference_domains,
+        &profile.reference_source_families,
+        &profile.reference_authorities,
+        &profile.reference_identifiers,
         &profile.media_titles,
         &profile.media_captions,
+        &profile.template_implementation_titles,
     ] {
         for value in values {
             push_semantic_term(&mut terms, &mut seen, value);
@@ -4788,6 +5541,165 @@ where
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+fn collect_template_implementation_terms(
+    file: &ScannedFile,
+    artifacts: &ParsedPageArtifacts,
+) -> Vec<String> {
+    if file.namespace != Namespace::Template.as_str() {
+        return Vec::new();
+    }
+
+    let mut terms = Vec::new();
+    terms.extend(artifacts.module_invocations.iter().cloned());
+    terms.extend(
+        artifacts
+            .template_invocations
+            .iter()
+            .map(|invocation| invocation.template_title.clone())
+            .filter(|title| !title.eq_ignore_ascii_case(&file.title)),
+    );
+    if file.title.ends_with("/doc") {
+        if let Some(base_title) = file.title.strip_suffix("/doc") {
+            terms.push(base_title.to_string());
+        }
+    } else {
+        terms.push(format!("{}/doc", file.title));
+    }
+    collect_normalized_string_list(terms)
+}
+
+fn maybe_record_template_implementation_seed(
+    seeds: &mut BTreeMap<String, TemplateImplementationSeed>,
+    file: &ScannedFile,
+    artifacts: &ParsedPageArtifacts,
+) {
+    if file.namespace != Namespace::Template.as_str() {
+        return;
+    }
+
+    let mut seed = TemplateImplementationSeed {
+        template_dependencies: artifacts
+            .template_invocations
+            .iter()
+            .map(|invocation| invocation.template_title.clone())
+            .filter(|title| !title.eq_ignore_ascii_case(&file.title))
+            .collect(),
+        module_dependencies: artifacts.module_invocations.clone(),
+    };
+    seed.template_dependencies.sort();
+    seed.template_dependencies.dedup();
+    seed.module_dependencies.sort();
+    seed.module_dependencies.dedup();
+    seeds.insert(file.title.to_ascii_lowercase(), seed);
+}
+
+fn persist_template_implementation_pages(
+    statement: &mut rusqlite::Statement<'_>,
+    files: &[ScannedFile],
+    seeds: &BTreeMap<String, TemplateImplementationSeed>,
+) -> Result<()> {
+    let page_map = files
+        .iter()
+        .map(|file| (file.title.to_ascii_lowercase(), file))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut active_templates = BTreeSet::new();
+    for file in files {
+        if file.namespace == Namespace::Template.as_str() && !file.title.ends_with("/doc") {
+            active_templates.insert(file.title.clone());
+        }
+    }
+    for seed in seeds.values() {
+        for dependency in &seed.template_dependencies {
+            active_templates.insert(dependency.clone());
+        }
+    }
+
+    for template_title in active_templates {
+        let normalized_key = template_title.to_ascii_lowercase();
+        if let Some(file) = page_map.get(&normalized_key) {
+            statement
+                .execute(params![
+                    template_title.as_str(),
+                    file.title.as_str(),
+                    file.namespace.as_str(),
+                    file.relative_path.as_str(),
+                    "template",
+                ])
+                .with_context(|| {
+                    format!(
+                        "failed to insert template implementation page for {}",
+                        template_title
+                    )
+                })?;
+        }
+
+        let doc_title = format!("{template_title}/doc");
+        if let Some(file) = page_map.get(&doc_title.to_ascii_lowercase()) {
+            statement
+                .execute(params![
+                    template_title.as_str(),
+                    file.title.as_str(),
+                    file.namespace.as_str(),
+                    file.relative_path.as_str(),
+                    "documentation",
+                ])
+                .with_context(|| {
+                    format!(
+                        "failed to insert template documentation page for {}",
+                        template_title
+                    )
+                })?;
+        }
+
+        for seed_key in [normalized_key.clone(), doc_title.to_ascii_lowercase()] {
+            let Some(seed) = seeds.get(&seed_key) else {
+                continue;
+            };
+
+            for module_title in &seed.module_dependencies {
+                if let Some(file) = page_map.get(&module_title.to_ascii_lowercase()) {
+                    statement
+                        .execute(params![
+                            template_title.as_str(),
+                            file.title.as_str(),
+                            file.namespace.as_str(),
+                            file.relative_path.as_str(),
+                            "module",
+                        ])
+                        .with_context(|| {
+                            format!(
+                                "failed to insert template module implementation for {}",
+                                template_title
+                            )
+                        })?;
+                }
+            }
+
+            for dependency_title in &seed.template_dependencies {
+                if let Some(file) = page_map.get(&dependency_title.to_ascii_lowercase()) {
+                    statement
+                        .execute(params![
+                            template_title.as_str(),
+                            file.title.as_str(),
+                            file.namespace.as_str(),
+                            file.relative_path.as_str(),
+                            "dependency",
+                        ])
+                        .with_context(|| {
+                            format!(
+                                "failed to insert template dependency implementation for {}",
+                                template_title
+                            )
+                        })?;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn push_semantic_term(out: &mut Vec<String>, seen: &mut BTreeSet<String>, value: &str) {
@@ -4963,11 +5875,18 @@ fn extract_reference_records(content: &str) -> Vec<LocalReferenceUsage> {
             primary_template_title: record.primary_template_title,
             source_type: record.source_type,
             source_origin: record.source_origin,
+            source_family: record.source_family,
+            authority_kind: record.authority_kind,
+            source_authority: record.source_authority,
             reference_title: record.reference_title,
             source_container: record.source_container,
             source_author: record.source_author,
             source_domain: record.source_domain,
+            source_date: record.source_date,
+            canonical_url: record.canonical_url,
             identifier_keys: record.identifier_keys,
+            identifier_entries: record.identifier_entries,
+            source_urls: record.source_urls,
             retrieval_signals: record.retrieval_signals,
             summary_text: record.summary_text,
             template_titles: record.template_titles,
@@ -5054,11 +5973,18 @@ fn extract_reference_records_for_section(
             primary_template_title: analysis.primary_template_title,
             source_type: analysis.source_type,
             source_origin: analysis.source_origin,
+            source_family: analysis.source_family,
+            authority_kind: analysis.authority_kind,
+            source_authority: analysis.source_authority,
             reference_title: analysis.reference_title,
             source_container: analysis.source_container,
             source_author: analysis.source_author,
             source_domain: analysis.source_domain,
+            source_date: analysis.source_date,
+            canonical_url: analysis.canonical_url,
             identifier_keys: analysis.identifier_keys,
+            identifier_entries: analysis.identifier_entries,
+            source_urls: analysis.source_urls,
             retrieval_signals: analysis.retrieval_signals,
             summary_text: summarize_words(&summary_text, AUTHORING_PAGE_SUMMARY_WORD_LIMIT),
             reference_wikitext,
@@ -5388,6 +6314,36 @@ fn extract_template_invocations(content: &str) -> Vec<ParsedTemplateInvocation> 
     out
 }
 
+fn extract_module_invocations(content: &str) -> Vec<String> {
+    let bytes = content.as_bytes();
+    let mut out = BTreeSet::new();
+    let mut cursor = 0usize;
+    let mut stack = Vec::new();
+
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] == b'{' && bytes[cursor + 1] == b'{' {
+            stack.push(cursor + 2);
+            cursor += 2;
+            continue;
+        }
+        if bytes[cursor] == b'}' && bytes[cursor + 1] == b'}' {
+            if let Some(start) = stack.pop()
+                && cursor >= start
+            {
+                let inner = &content[start..cursor];
+                if let Some(module_title) = parse_module_invocation(inner) {
+                    out.insert(module_title);
+                }
+            }
+            cursor += 2;
+            continue;
+        }
+        cursor += 1;
+    }
+
+    out.into_iter().collect()
+}
+
 fn parse_template_invocation(inner: &str) -> Option<ParsedTemplateInvocation> {
     let segments = split_template_segments(inner);
     let raw_name = segments.first()?.trim();
@@ -5419,6 +6375,17 @@ fn parse_template_invocation(inner: &str) -> Option<ParsedTemplateInvocation> {
         raw_wikitext: format!("{{{{{inner}}}}}"),
         token_estimate: estimate_tokens(inner),
     })
+}
+
+fn parse_module_invocation(inner: &str) -> Option<String> {
+    let segments = split_template_segments(inner);
+    let raw_name = segments.first()?.trim();
+    let remainder = raw_name.strip_prefix("#invoke:")?;
+    let module_name = normalize_spaces(remainder);
+    if module_name.is_empty() {
+        return None;
+    }
+    Some(format!("Module:{module_name}"))
 }
 
 fn split_template_segments(inner: &str) -> Vec<String> {
@@ -5838,21 +6805,16 @@ fn analyze_reference_body(
     );
     let has_quote =
         !first_reference_text_param(primary_template, &["quote", "quotation"]).is_empty();
-    let url_value = first_reference_raw_param(
-        primary_template,
-        &["url", "chapter-url", "article-url", "archive-url"],
-    )
-    .or_else(|| extract_first_url(reference_body));
+    let source_urls = collect_reference_source_urls(primary_template, reference_body);
+    let canonical_url = source_urls.first().cloned().unwrap_or_default();
     let archive_url = first_reference_raw_param(primary_template, &["archive-url", "archiveurl"]);
-    let source_domain = url_value
-        .as_deref()
-        .and_then(normalize_source_domain)
+    let source_domain = normalize_source_domain(&canonical_url)
         .or_else(|| archive_url.as_deref().and_then(normalize_source_domain))
         .unwrap_or_default();
     let source_type = classify_reference_source_type(
         primary_template,
         &source_domain,
-        url_value.is_some(),
+        !source_urls.is_empty(),
         reference_body,
     );
     if source_container.is_empty()
@@ -5865,6 +6827,15 @@ fn analyze_reference_body(
         source_container = source_domain.clone();
     }
     let source_origin = source_origin_for_reference(&source_domain, &source_type);
+    let source_family = classify_reference_source_family(&source_type, &source_origin);
+    let (authority_kind, source_authority) = choose_reference_authority(
+        &source_domain,
+        &source_container,
+        &source_author,
+        primary_template_title.as_deref(),
+        reference_name,
+        &source_type,
+    );
     let citation_family = citation_family_for_reference(
         primary_template_title.as_deref(),
         &source_type,
@@ -5872,19 +6843,23 @@ fn analyze_reference_body(
     );
     let identifier_keys = collect_reference_identifier_keys(
         primary_template,
-        url_value.is_some(),
+        !source_urls.is_empty(),
         archive_url.is_some(),
     );
+    let identifier_entries = collect_reference_identifier_entries(primary_template);
     let signal_inputs = ReferenceSignalInputs {
         primary_template_title: primary_template_title.as_deref(),
         source_type: &source_type,
         source_origin: &source_origin,
+        source_family: &source_family,
+        authority_kind: &authority_kind,
         reference_title: &reference_title,
         source_container: &source_container,
         source_author: &source_author,
         source_domain: &source_domain,
         source_date: &source_date,
         identifier_keys: &identifier_keys,
+        identifier_entries: &identifier_entries,
         has_quote,
         has_links: !link_titles.is_empty(),
         has_archive: archive_url.is_some(),
@@ -5898,6 +6873,7 @@ fn analyze_reference_body(
         &source_container,
         &source_author,
         &source_domain,
+        &source_authority,
         primary_template_title.as_deref(),
         reference_name,
     );
@@ -5906,6 +6882,8 @@ fn analyze_reference_body(
         &source_origin,
         &citation_family,
         &source_domain,
+        &authority_kind,
+        &source_authority,
     );
 
     ReferenceAnalysis {
@@ -5914,11 +6892,18 @@ fn analyze_reference_body(
         primary_template_title,
         source_type,
         source_origin,
+        source_family,
+        authority_kind,
+        source_authority,
         reference_title,
         source_container,
         source_author,
         source_domain,
+        source_date,
+        canonical_url,
         identifier_keys,
+        identifier_entries,
+        source_urls,
         retrieval_signals,
         summary_hint,
     }
@@ -6066,17 +7051,220 @@ fn collect_reference_identifier_keys(
     out.into_iter().collect()
 }
 
+fn collect_reference_identifier_entries(
+    template: Option<&ReferenceTemplateDetails>,
+) -> Vec<String> {
+    let Some(template) = template else {
+        return Vec::new();
+    };
+
+    let mut out = BTreeSet::new();
+    for key in [
+        "doi", "isbn", "issn", "oclc", "pmid", "pmcid", "arxiv", "jstor", "id",
+    ] {
+        let Some(value) = template.named_params.get(key) else {
+            continue;
+        };
+        let normalized_value = normalize_reference_identifier_value(key, value);
+        if normalized_value.is_empty() {
+            continue;
+        }
+        out.insert(format!("{key}:{normalized_value}"));
+    }
+    out.into_iter().collect()
+}
+
+fn collect_reference_source_urls(
+    template: Option<&ReferenceTemplateDetails>,
+    reference_body: &str,
+) -> Vec<String> {
+    let mut out = BTreeSet::new();
+    if let Some(template) = template {
+        for key in [
+            "url",
+            "chapter-url",
+            "article-url",
+            "archive-url",
+            "archiveurl",
+        ] {
+            if let Some(value) = template.named_params.get(key)
+                && let Some(normalized) = normalize_reference_url(value)
+            {
+                out.insert(normalized);
+            }
+        }
+    }
+    if let Some(url) = extract_first_url(reference_body)
+        && let Some(normalized) = normalize_reference_url(&url)
+    {
+        out.insert(normalized);
+    }
+    out.into_iter().collect()
+}
+
+fn normalize_reference_url(value: &str) -> Option<String> {
+    let candidate = normalize_spaces(value);
+    if candidate.is_empty() {
+        return None;
+    }
+    if candidate.starts_with("//") {
+        return Some(format!("https:{candidate}"));
+    }
+    if candidate.starts_with("http://") || candidate.starts_with("https://") {
+        return Some(candidate);
+    }
+    None
+}
+
+fn choose_reference_authority(
+    source_domain: &str,
+    source_container: &str,
+    source_author: &str,
+    primary_template_title: Option<&str>,
+    reference_name: Option<&str>,
+    source_type: &str,
+) -> (String, String) {
+    if !source_domain.is_empty() {
+        return ("domain".to_string(), source_domain.to_string());
+    }
+    if !source_container.is_empty() {
+        return ("container".to_string(), source_container.to_string());
+    }
+    if !source_author.is_empty() {
+        return ("author".to_string(), source_author.to_string());
+    }
+    if let Some(template_title) = primary_template_title {
+        return ("template".to_string(), template_title.to_string());
+    }
+    if let Some(name) = reference_name {
+        let normalized = normalize_spaces(name);
+        if !normalized.is_empty() {
+            return ("named-reference".to_string(), normalized);
+        }
+    }
+    if !source_type.is_empty() {
+        return ("source-type".to_string(), source_type.to_string());
+    }
+    ("unknown".to_string(), String::new())
+}
+
+fn classify_reference_source_family(source_type: &str, source_origin: &str) -> String {
+    if source_type.is_empty() {
+        return "unknown".to_string();
+    }
+    if source_origin == "first-party" {
+        return format!("first-party-{source_type}");
+    }
+    source_type.to_string()
+}
+
+fn normalize_reference_identifier_value(key: &str, value: &str) -> String {
+    let flattened = flatten_markup_excerpt(value);
+    if flattened.is_empty() {
+        return String::new();
+    }
+    let lowered = flattened.to_ascii_lowercase();
+    match key {
+        "doi" => {
+            let trimmed = lowered
+                .trim_start_matches("https://doi.org/")
+                .trim_start_matches("http://doi.org/")
+                .trim_start_matches("doi:")
+                .trim();
+            normalize_reference_identifier_token(trimmed, true)
+        }
+        "isbn" | "issn" | "oclc" | "pmid" | "pmcid" | "jstor" => {
+            normalize_reference_identifier_token(&lowered, false)
+        }
+        "arxiv" => {
+            normalize_reference_identifier_token(lowered.trim_start_matches("arxiv:").trim(), true)
+        }
+        _ => normalize_spaces(&flattened),
+    }
+}
+
+fn normalize_reference_identifier_token(value: &str, preserve_slash: bool) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            continue;
+        }
+        if preserve_slash && matches!(ch, '.' | '/' | '_' | '-') {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn parse_identifier_entries(entries: &[String]) -> Vec<ParsedIdentifierEntry> {
+    let mut out = Vec::new();
+    for entry in entries {
+        let Some((key, value)) = entry.split_once(':') else {
+            continue;
+        };
+        let key = normalize_template_parameter_key(key);
+        let value = normalize_spaces(value);
+        if key.is_empty() || value.is_empty() {
+            continue;
+        }
+        let normalized_value = normalize_reference_identifier_value(&key, &value);
+        if normalized_value.is_empty() {
+            continue;
+        }
+        out.push(ParsedIdentifierEntry {
+            key,
+            value,
+            normalized_value,
+        });
+    }
+    out
+}
+
+fn build_reference_authority_key(authority_kind: &str, source_authority: &str) -> String {
+    let normalized_authority = normalize_spaces(source_authority);
+    if normalized_authority.is_empty() {
+        return authority_kind.to_string();
+    }
+    format!(
+        "{}:{}",
+        authority_kind,
+        normalized_authority.to_ascii_lowercase()
+    )
+}
+
+fn build_reference_authority_retrieval_text(reference: &IndexedReferenceRecord) -> String {
+    let mut values = vec![
+        reference.source_authority.clone(),
+        reference.reference_title.clone(),
+        reference.source_container.clone(),
+        reference.source_author.clone(),
+        reference.source_domain.clone(),
+        reference.source_family.clone(),
+        reference.source_type.clone(),
+        reference.source_origin.clone(),
+        reference.summary_text.clone(),
+    ];
+    values.extend(reference.identifier_entries.iter().cloned());
+    values.extend(reference.template_titles.iter().cloned());
+    values.extend(reference.link_titles.iter().cloned());
+    collect_normalized_string_list(values).join("\n")
+}
+
 #[derive(Clone, Copy)]
 struct ReferenceSignalInputs<'a> {
     primary_template_title: Option<&'a str>,
     source_type: &'a str,
     source_origin: &'a str,
+    source_family: &'a str,
+    authority_kind: &'a str,
     reference_title: &'a str,
     source_container: &'a str,
     source_author: &'a str,
     source_domain: &'a str,
     source_date: &'a str,
     identifier_keys: &'a [String],
+    identifier_entries: &'a [String],
     has_quote: bool,
     has_links: bool,
     has_archive: bool,
@@ -6108,6 +7296,12 @@ fn collect_reference_signals(input: ReferenceSignalInputs<'_>) -> Vec<String> {
     if !input.identifier_keys.is_empty() {
         flags.insert("has-identifier".to_string());
     }
+    if !input.source_family.is_empty() {
+        flags.insert(format!("source-family:{}", input.source_family));
+    }
+    if !input.authority_kind.is_empty() {
+        flags.insert(format!("authority:{}", input.authority_kind));
+    }
     if input.has_archive {
         flags.insert("has-archive".to_string());
     }
@@ -6131,6 +7325,14 @@ fn collect_reference_signals(input: ReferenceSignalInputs<'_>) -> Vec<String> {
     }
     if input.source_origin == "first-party" {
         flags.insert("first-party".to_string());
+    }
+    for key in input.identifier_keys {
+        flags.insert(format!("identifier:{key}"));
+    }
+    for entry in input.identifier_entries {
+        if let Some((key, _)) = entry.split_once(':') {
+            flags.insert(format!("identifier-entry:{key}"));
+        }
     }
     if matches!(input.source_type, "social" | "video" | "wiki") {
         flags.insert(format!("source-type:{}", input.source_type));
@@ -6224,6 +7426,7 @@ fn build_reference_summary_hint(
     source_container: &str,
     source_author: &str,
     source_domain: &str,
+    source_authority: &str,
     primary_template_title: Option<&str>,
     reference_name: Option<&str>,
 ) -> String {
@@ -6245,6 +7448,9 @@ fn build_reference_summary_hint(
     if !source_domain.is_empty() {
         return source_domain.to_string();
     }
+    if !source_authority.is_empty() {
+        return source_authority.to_string();
+    }
     if let Some(template_title) = primary_template_title {
         return template_title.to_string();
     }
@@ -6259,6 +7465,8 @@ fn build_reference_citation_profile(
     source_origin: &str,
     citation_family: &str,
     source_domain: &str,
+    authority_kind: &str,
+    source_authority: &str,
 ) -> String {
     if !source_domain.is_empty()
         && matches!(source_type, "web" | "news" | "social" | "video" | "wiki")
@@ -6267,6 +7475,12 @@ fn build_reference_citation_profile(
             return format!("first-party {source_type} / {source_domain}");
         }
         return format!("{source_type} / {source_domain}");
+    }
+    if !source_authority.is_empty() && matches!(authority_kind, "container" | "author") {
+        if source_origin == "first-party" {
+            return format!("first-party {source_type} / {source_authority}");
+        }
+        return format!("{source_type} / {source_authority}");
     }
     if citation_family != "<ref>" && !citation_family.is_empty() {
         return format!("{source_type} / {citation_family}");
@@ -6990,6 +8204,13 @@ fn rebuild_fts_index(connection: &Connection) -> Result<()> {
             )
             .context("failed to rebuild indexed_page_references_fts")?;
     }
+    if fts_table_exists(connection, "indexed_reference_authorities_fts") {
+        connection
+            .execute_batch(
+                "INSERT INTO indexed_reference_authorities_fts(indexed_reference_authorities_fts) VALUES('rebuild')",
+            )
+            .context("failed to rebuild indexed_reference_authorities_fts")?;
+    }
     if fts_table_exists(connection, "indexed_page_media_fts") {
         connection
             .execute_batch(
@@ -7331,7 +8552,7 @@ mod tests {
 
     #[test]
     fn extract_reference_records_parses_named_refs_and_template_summaries() {
-        let content = "Lead <ref name=\"alpha\">{{Cite web|title=Alpha Source|url=https://remilia.org/alpha|website=Remilia|author=Jane Example|date=2025-01-01}}</ref> tail <ref group=\"note\" name=\"reuse\" />";
+        let content = "Lead <ref name=\"alpha\">{{Cite web|title=Alpha Source|url=https://remilia.org/alpha|website=Remilia|author=Jane Example|date=2025-01-01|doi=10.1234/Alpha-01}}</ref> tail <ref group=\"note\" name=\"reuse\" />";
         let references = extract_reference_records(content);
 
         assert_eq!(references.len(), 2);
@@ -7347,10 +8568,27 @@ mod tests {
         );
         assert_eq!(references[0].source_type, "web");
         assert_eq!(references[0].source_origin, "first-party");
+        assert_eq!(references[0].source_family, "first-party-web");
+        assert_eq!(references[0].authority_kind, "domain");
+        assert_eq!(references[0].source_authority, "remilia.org");
         assert_eq!(references[0].reference_title, "Alpha Source");
         assert_eq!(references[0].source_container, "Remilia");
         assert_eq!(references[0].source_author, "Jane Example");
         assert_eq!(references[0].source_domain, "remilia.org");
+        assert_eq!(references[0].source_date, "2025-01-01");
+        assert_eq!(references[0].canonical_url, "https://remilia.org/alpha");
+        assert!(
+            references[0]
+                .identifier_entries
+                .iter()
+                .any(|entry| entry == "doi:10.1234/alpha-01")
+        );
+        assert!(
+            references[0]
+                .source_urls
+                .iter()
+                .any(|url| url == "https://remilia.org/alpha")
+        );
         assert!(references[0].citation_profile.contains("web"));
         assert!(references[0].citation_profile.contains("remilia.org"));
         assert!(
@@ -7362,7 +8600,7 @@ mod tests {
         assert!(references[0].summary_text.contains("Alpha Source"));
         assert_eq!(references[1].reference_name.as_deref(), Some("reuse"));
         assert_eq!(references[1].reference_group.as_deref(), Some("note"));
-        assert_eq!(references[1].summary_text, "Named reference reuse");
+        assert_eq!(references[1].summary_text, "reuse");
     }
 
     #[test]
@@ -7579,6 +8817,56 @@ mod tests {
     }
 
     #[test]
+    fn retrieve_local_context_chunks_across_pages_uses_reference_authority_and_identifier_hits() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "Lead prose without publisher words.\n<ref>{{Cite book|title=Alpha Source|publisher=Remilia Press|isbn=978-1-4028-9462-6}}</ref>",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Noise.wiki"),
+            "Noise page with unrelated prose only.",
+        );
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let authority_retrieval =
+            retrieve_local_context_chunks_across_pages(&paths, "Remilia Press", 3, 180, 2, true)
+                .expect("authority retrieval");
+        let authority_report = match authority_retrieval {
+            LocalChunkAcrossRetrieval::Found(report) => report,
+            other => panic!("expected found report, got {other:?}"),
+        };
+        assert!(authority_report.retrieval_mode.contains("authority"));
+        assert!(authority_report.retrieval_mode.contains("seed-pages"));
+        assert!(
+            authority_report
+                .chunks
+                .iter()
+                .any(|chunk| chunk.source_title == "Alpha")
+        );
+
+        let identifier_retrieval =
+            retrieve_local_context_chunks_across_pages(&paths, "9781402894626", 3, 180, 2, true)
+                .expect("identifier retrieval");
+        let identifier_report = match identifier_retrieval {
+            LocalChunkAcrossRetrieval::Found(report) => report,
+            other => panic!("expected found report, got {other:?}"),
+        };
+        assert!(identifier_report.retrieval_mode.contains("identifier"));
+        assert!(identifier_report.retrieval_mode.contains("seed-pages"));
+        assert!(
+            identifier_report
+                .chunks
+                .iter()
+                .any(|chunk| chunk.source_title == "Alpha")
+        );
+    }
+
+    #[test]
     fn build_authoring_knowledge_pack_requires_topic_or_stub_signal() {
         let temp = tempdir().expect("tempdir");
         let project_root = temp.path().join("project");
@@ -7777,7 +9065,21 @@ mod tests {
                 .templates_dir
                 .join("infobox")
                 .join("Template_Infobox_person.wiki"),
-            "Template lead text.\n== Parameters ==\nUse |name= and |occupation=.",
+            "Template lead text.\n{{#invoke:Infobox person|render}}\n== Parameters ==\nUse |name= and |occupation=.",
+        );
+        write_file(
+            &paths
+                .templates_dir
+                .join("infobox")
+                .join("Module_Infobox_person.wiki"),
+            "return { render = function() end }",
+        );
+        write_file(
+            &paths
+                .templates_dir
+                .join("infobox")
+                .join("Template_Infobox_person___doc.wiki"),
+            "Documentation lead.\n== Usage ==\nUse the template on biographies.",
         );
         write_file(
             &paths
@@ -7806,13 +9108,18 @@ mod tests {
                 .aliases
                 .contains(&"Template:Infobox human".to_string())
         );
+        assert!(infobox.parameter_stats.iter().any(|stat| {
+            stat.key == "name"
+                && stat.usage_count >= 2
+                && stat.example_values.iter().any(|value| value == "Alpha")
+        }));
+        assert!(!infobox.example_invocations.is_empty());
         assert!(
             infobox
-                .parameter_stats
+                .implementation_titles
                 .iter()
-                .any(|stat| stat.key == "name" && stat.usage_count >= 2)
+                .any(|title| title == "Module:Infobox person")
         );
-        assert!(!infobox.example_invocations.is_empty());
 
         let reference =
             query_template_reference(&paths, "Infobox person").expect("template reference query");
@@ -7821,6 +9128,18 @@ mod tests {
             other => panic!("expected template reference, got {other:?}"),
         };
         assert_eq!(reference.template.template_title, "Template:Infobox person");
+        assert!(
+            reference
+                .implementation_pages
+                .iter()
+                .any(|page| page.role == "module" && page.page_title == "Module:Infobox person")
+        );
+        assert!(
+            reference
+                .implementation_pages
+                .iter()
+                .any(|page| page.role == "documentation")
+        );
         assert!(
             reference
                 .implementation_sections

@@ -268,7 +268,7 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     println!("{prefix}.references.count: {}", bundle.references.len());
     for reference in &bundle.references {
         println!(
-            "{prefix}.reference: section={} name={} group={} profile={} family={} template={} type={} origin={} title={} container={} author={} domain={} summary={} templates={} links={} identifiers={} signals={} tokens={}",
+            "{prefix}.reference: section={} name={} group={} profile={} family={} template={} type={} origin={} source_family={} authority_kind={} authority={} title={} container={} author={} domain={} date={} url={} summary={} templates={} links={} identifiers={} identifier_entries={} urls={} signals={} tokens={}",
             reference.section_heading.as_deref().unwrap_or("<lead>"),
             reference.reference_name.as_deref().unwrap_or("<none>"),
             reference.reference_group.as_deref().unwrap_or("<none>"),
@@ -280,6 +280,13 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
                 .unwrap_or("<none>"),
             reference.source_type,
             reference.source_origin,
+            reference.source_family,
+            reference.authority_kind,
+            if reference.source_authority.is_empty() {
+                "<none>"
+            } else {
+                &reference.source_authority
+            },
             if reference.reference_title.is_empty() {
                 "<none>"
             } else {
@@ -300,6 +307,16 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
             } else {
                 &reference.source_domain
             },
+            if reference.source_date.is_empty() {
+                "<none>"
+            } else {
+                &reference.source_date
+            },
+            if reference.canonical_url.is_empty() {
+                "<none>"
+            } else {
+                &reference.canonical_url
+            },
             reference.summary_text,
             if reference.template_titles.is_empty() {
                 "<none>".to_string()
@@ -315,6 +332,16 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
                 "<none>".to_string()
             } else {
                 reference.identifier_keys.join(",")
+            },
+            if reference.identifier_entries.is_empty() {
+                "<none>".to_string()
+            } else {
+                reference.identifier_entries.join(",")
+            },
+            if reference.source_urls.is_empty() {
+                "<none>".to_string()
+            } else {
+                reference.source_urls.join(",")
             },
             if reference.retrieval_signals.is_empty() {
                 "<none>".to_string()

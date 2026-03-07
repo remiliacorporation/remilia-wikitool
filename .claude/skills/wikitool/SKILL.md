@@ -54,5 +54,5 @@ wikitool release build-matrix
 ## Retrieval model
 
 1. Treat local files as the editor-facing source of truth.
-2. Treat SQLite as an AI retrieval index: semantic page profiles, sections, templates, references, links, and media.
-3. Do not describe reference rows as “quality scored”; use the stored retrieval signals and source metadata directly.
+2. Treat SQLite as an AI retrieval index: semantic page profiles, sections, templates, references, source authorities, identifiers, template implementation bundles, links, and media.
+3. Do not describe reference rows as quality scored; use the stored retrieval signals, authority/identifier data, and source metadata directly.

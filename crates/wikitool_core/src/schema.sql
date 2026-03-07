@@ -231,11 +231,18 @@ CREATE TABLE IF NOT EXISTS indexed_page_references (
     primary_template_title TEXT NOT NULL,
     source_type TEXT NOT NULL,
     source_origin TEXT NOT NULL,
+    source_family TEXT NOT NULL,
+    authority_kind TEXT NOT NULL,
+    source_authority TEXT NOT NULL,
     reference_title TEXT NOT NULL,
     source_container TEXT NOT NULL,
     source_author TEXT NOT NULL,
     source_domain TEXT NOT NULL,
+    source_date TEXT NOT NULL,
+    canonical_url TEXT NOT NULL,
     identifier_keys TEXT NOT NULL,
+    identifier_entries TEXT NOT NULL,
+    source_urls TEXT NOT NULL,
     retrieval_signals TEXT NOT NULL,
     summary_text TEXT NOT NULL,
     reference_wikitext TEXT NOT NULL,
@@ -253,6 +260,10 @@ CREATE INDEX IF NOT EXISTS idx_indexed_page_references_profile
     ON indexed_page_references(citation_profile);
 CREATE INDEX IF NOT EXISTS idx_indexed_page_references_type
     ON indexed_page_references(source_type);
+CREATE INDEX IF NOT EXISTS idx_indexed_page_references_family
+    ON indexed_page_references(source_family);
+CREATE INDEX IF NOT EXISTS idx_indexed_page_references_authority
+    ON indexed_page_references(source_authority);
 CREATE INDEX IF NOT EXISTS idx_indexed_page_references_domain
     ON indexed_page_references(source_domain);
 CREATE INDEX IF NOT EXISTS idx_indexed_page_references_template
@@ -263,10 +274,17 @@ CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_references_fts USING fts5(
     citation_profile,
     citation_family,
     source_type,
+    source_family,
+    authority_kind,
+    source_authority,
     reference_title,
     source_container,
     source_author,
     source_domain,
+    source_date,
+    canonical_url,
+    identifier_entries,
+    source_urls,
     summary_text,
     reference_wikitext,
     template_titles,
@@ -274,6 +292,87 @@ CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_references_fts USING fts5(
     content=indexed_page_references,
     content_rowid=rowid
 );
+
+CREATE TABLE IF NOT EXISTS indexed_reference_authorities (
+    source_relative_path TEXT NOT NULL,
+    reference_index INTEGER NOT NULL,
+    source_title TEXT NOT NULL,
+    source_namespace TEXT NOT NULL,
+    section_heading TEXT,
+    citation_profile TEXT NOT NULL,
+    citation_family TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_origin TEXT NOT NULL,
+    source_family TEXT NOT NULL,
+    authority_kind TEXT NOT NULL,
+    authority_key TEXT NOT NULL,
+    authority_label TEXT NOT NULL,
+    primary_template_title TEXT NOT NULL,
+    source_domain TEXT NOT NULL,
+    source_container TEXT NOT NULL,
+    source_author TEXT NOT NULL,
+    identifier_keys TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    retrieval_text TEXT NOT NULL,
+    PRIMARY KEY (source_relative_path, reference_index, authority_key),
+    FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_reference_authorities_key
+    ON indexed_reference_authorities(authority_key);
+CREATE INDEX IF NOT EXISTS idx_indexed_reference_authorities_label
+    ON indexed_reference_authorities(authority_label);
+CREATE INDEX IF NOT EXISTS idx_indexed_reference_authorities_family
+    ON indexed_reference_authorities(source_family);
+CREATE INDEX IF NOT EXISTS idx_indexed_reference_authorities_source
+    ON indexed_reference_authorities(source_title);
+CREATE VIRTUAL TABLE IF NOT EXISTS indexed_reference_authorities_fts USING fts5(
+    source_title,
+    section_heading,
+    citation_profile,
+    citation_family,
+    source_type,
+    source_origin,
+    source_family,
+    authority_kind,
+    authority_label,
+    primary_template_title,
+    source_domain,
+    source_container,
+    source_author,
+    summary_text,
+    retrieval_text,
+    content=indexed_reference_authorities,
+    content_rowid=rowid
+);
+
+CREATE TABLE IF NOT EXISTS indexed_reference_identifiers (
+    source_relative_path TEXT NOT NULL,
+    reference_index INTEGER NOT NULL,
+    source_title TEXT NOT NULL,
+    source_namespace TEXT NOT NULL,
+    section_heading TEXT,
+    citation_profile TEXT NOT NULL,
+    citation_family TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_origin TEXT NOT NULL,
+    source_family TEXT NOT NULL,
+    authority_key TEXT NOT NULL,
+    authority_label TEXT NOT NULL,
+    identifier_key TEXT NOT NULL,
+    identifier_value TEXT NOT NULL,
+    normalized_value TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    PRIMARY KEY (source_relative_path, reference_index, identifier_key, normalized_value),
+    FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_reference_identifiers_key
+    ON indexed_reference_identifiers(identifier_key);
+CREATE INDEX IF NOT EXISTS idx_indexed_reference_identifiers_value
+    ON indexed_reference_identifiers(normalized_value);
+CREATE INDEX IF NOT EXISTS idx_indexed_reference_identifiers_authority
+    ON indexed_reference_identifiers(authority_key);
+CREATE INDEX IF NOT EXISTS idx_indexed_reference_identifiers_source
+    ON indexed_reference_identifiers(source_title);
 
 CREATE TABLE IF NOT EXISTS indexed_page_media (
     source_relative_path TEXT NOT NULL,
@@ -316,8 +415,12 @@ CREATE TABLE IF NOT EXISTS indexed_page_semantics (
     reference_titles TEXT NOT NULL,
     reference_containers TEXT NOT NULL,
     reference_domains TEXT NOT NULL,
+    reference_source_families TEXT NOT NULL,
+    reference_authorities TEXT NOT NULL,
+    reference_identifiers TEXT NOT NULL,
     media_titles TEXT NOT NULL,
     media_captions TEXT NOT NULL,
+    template_implementation_titles TEXT NOT NULL,
     semantic_text TEXT NOT NULL,
     token_estimate INTEGER NOT NULL,
     FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
@@ -337,12 +440,30 @@ CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_semantics_fts USING fts5(
     reference_titles,
     reference_containers,
     reference_domains,
+    reference_source_families,
+    reference_authorities,
+    reference_identifiers,
     media_titles,
     media_captions,
+    template_implementation_titles,
     semantic_text,
     content=indexed_page_semantics,
     content_rowid=rowid
 );
+
+CREATE TABLE IF NOT EXISTS indexed_template_implementation_pages (
+    template_title TEXT NOT NULL,
+    implementation_page_title TEXT NOT NULL,
+    implementation_namespace TEXT NOT NULL,
+    source_relative_path TEXT NOT NULL,
+    role TEXT NOT NULL,
+    PRIMARY KEY (template_title, implementation_page_title, role),
+    FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_template
+    ON indexed_template_implementation_pages(template_title);
+CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_role
+    ON indexed_template_implementation_pages(role);
 
 CREATE TABLE IF NOT EXISTS extension_docs (
     extension_name TEXT PRIMARY KEY,

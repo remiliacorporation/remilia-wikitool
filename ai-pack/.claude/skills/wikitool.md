@@ -35,4 +35,4 @@ wikitool docs list --outdated
 ## Retrieval guidance
 
 1. Use `workflow authoring-pack` and `index chunks --across-pages` for AI-facing article retrieval.
-2. The DB stores semantic retrieval signals and source metadata, not opaque quality scores.
+2. The DB stores semantic retrieval signals, normalized source authorities, identifier rows, template implementation bundles, and source metadata, not opaque quality scores.

@@ -35,8 +35,9 @@ The local SQLite DB is disposable and is created automatically on first use. If 
 For authoring retrieval, the DB is optimized as an AI-facing index rather than a human-facing store:
 
 - local files remain the source of truth for editors
-- SQLite stores semantic page profiles, links, sections, templates, references, and media for fast retrieval
-- reference rows expose explicit retrieval signals and source metadata instead of opaque quality scores
+- SQLite stores semantic page profiles, links, sections, templates, references, source authorities, identifiers, media, and template implementation relationships for fast retrieval
+- reference rows expose explicit retrieval signals, normalized authority/identifier data, and source metadata instead of opaque quality scores
+- active template lookup includes implementation bundles across template pages, `/doc` pages, helper templates, and `Module:` pages when present
 
 ## Core Workflow
 

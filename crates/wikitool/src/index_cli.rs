@@ -447,6 +447,23 @@ fn run_index_templates(
                 TemplateReferenceLookup::Found(reference) => {
                     print_template_summary("template", &reference.template);
                     println!(
+                        "template.implementation_pages.count: {}",
+                        reference.implementation_pages.len()
+                    );
+                    for page in &reference.implementation_pages {
+                        println!(
+                            "template.implementation_page: title={} namespace={} role={} summary={}",
+                            page.page_title,
+                            page.namespace,
+                            page.role,
+                            if page.summary_text.is_empty() {
+                                "<none>"
+                            } else {
+                                &page.summary_text
+                            }
+                        );
+                    }
+                    println!(
                         "template.implementation_sections.count: {}",
                         reference.implementation_sections.len()
                     );
@@ -594,7 +611,7 @@ fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
 
 fn print_template_summary(label: &str, template: &TemplateUsageSummary) {
     println!(
-        "{label}: {} (usage={} pages={} aliases={} keys={} preview={})",
+        "{label}: {} (usage={} pages={} aliases={} keys={} implementations={} preview={})",
         template.template_title,
         template.usage_count,
         template.distinct_page_count,
@@ -604,6 +621,11 @@ fn print_template_summary(label: &str, template: &TemplateUsageSummary) {
             template.aliases.join(", ")
         },
         format_parameter_stats(&template.parameter_stats),
+        if template.implementation_titles.is_empty() {
+            "<none>".to_string()
+        } else {
+            template.implementation_titles.join(", ")
+        },
         template
             .implementation_preview
             .as_deref()
@@ -637,7 +659,18 @@ fn format_parameter_stats(stats: &[TemplateParameterUsage]) -> String {
     }
     stats
         .iter()
-        .map(|stat| format!("{}:{}", stat.key, stat.usage_count))
+        .map(|stat| {
+            if stat.example_values.is_empty() {
+                format!("{}:{}", stat.key, stat.usage_count)
+            } else {
+                format!(
+                    "{}:{}[{}]",
+                    stat.key,
+                    stat.usage_count,
+                    stat.example_values.join(" | ")
+                )
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }

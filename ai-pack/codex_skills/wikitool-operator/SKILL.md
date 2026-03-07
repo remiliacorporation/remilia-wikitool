@@ -56,7 +56,8 @@ wikitool docs import --installed
 
 1. Treat local files as the human editing surface and SQLite as the AI retrieval layer.
 2. Prefer `workflow authoring-pack` and `index chunks --across-pages` when building article context.
-3. Describe references using their source metadata and retrieval signals; do not imply that wikitool assigns authoritative quality ratings.
+3. Describe references using their source metadata, authority/identifier matches, and retrieval signals; do not imply that wikitool assigns authoritative quality ratings.
+4. Use `index templates TEMPLATE` when you need the implementation bundle for an active template, including `/doc` and `Module:` pages when present.
 
 ## Safety constraints
 

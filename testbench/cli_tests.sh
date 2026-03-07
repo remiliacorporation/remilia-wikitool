@@ -406,21 +406,30 @@ cat > "$PROJ_TEMPLATES/wiki_content/Main/Beta.wiki" << 'WIKIEOF'
 WIKIEOF
 cat > "$PROJ_TEMPLATES/templates/infobox/Template_Infobox_person.wiki" << 'WIKIEOF'
 Template lead text.
+{{#invoke:Infobox person|render}}
 == Parameters ==
 Use |name= and |occupation=.
+WIKIEOF
+cat > "$PROJ_TEMPLATES/templates/infobox/Module_Infobox_person.wiki" << 'WIKIEOF'
+return { render = function() end }
+WIKIEOF
+cat > "$PROJ_TEMPLATES/templates/infobox/Template_Infobox_person___doc.wiki" << 'WIKIEOF'
+Documentation lead.
+== Usage ==
+Use the template on biographies.
 WIKIEOF
 cat > "$PROJ_TEMPLATES/templates/infobox/_redirects/Template_Infobox_human.wiki" << 'WIKIEOF'
 #REDIRECT [[Template:Infobox person]]
 WIKIEOF
 wt "$PROJ_TEMPLATES" index rebuild > /dev/null 2>&1
 OUTPUT=$(wt "$PROJ_TEMPLATES" index templates --limit 5 2>&1 || true)
-if echo "$OUTPUT" | grep -q "Template:Infobox person" && echo "$OUTPUT" | grep -q "aliases="; then
+if echo "$OUTPUT" | grep -q "Template:Infobox person" && echo "$OUTPUT" | grep -q "implementations="; then
     pass "index templates catalogs active template usage"
 else
     fail "index templates catalogs active template usage (got: $OUTPUT)"
 fi
 OUTPUT=$(wt "$PROJ_TEMPLATES" index templates "Infobox person" 2>&1 || true)
-if echo "$OUTPUT" | grep -q "template.implementation_sections.count:" && echo "$OUTPUT" | grep -q "Template:Infobox person"; then
+if echo "$OUTPUT" | grep -q "template.implementation_pages.count:" && echo "$OUTPUT" | grep -q "role=module" && echo "$OUTPUT" | grep -q "role=documentation"; then
     pass "index templates returns implementation reference for a template"
 else
     fail "index templates returns implementation reference for a template (got: $OUTPUT)"

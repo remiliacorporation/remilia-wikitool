@@ -17,12 +17,57 @@ const REQUIRED_REFERENCE_COLUMNS: &[&str] = &[
     "primary_template_title",
     "source_type",
     "source_origin",
+    "source_family",
+    "authority_kind",
+    "source_authority",
     "reference_title",
     "source_container",
     "source_author",
     "source_domain",
+    "source_date",
+    "canonical_url",
     "identifier_keys",
+    "identifier_entries",
+    "source_urls",
     "retrieval_signals",
+];
+
+const REQUIRED_REFERENCE_AUTHORITY_COLUMNS: &[&str] = &[
+    "source_title",
+    "source_namespace",
+    "section_heading",
+    "citation_profile",
+    "citation_family",
+    "source_type",
+    "source_origin",
+    "source_family",
+    "authority_kind",
+    "authority_key",
+    "authority_label",
+    "primary_template_title",
+    "source_domain",
+    "source_container",
+    "source_author",
+    "identifier_keys",
+    "summary_text",
+    "retrieval_text",
+];
+
+const REQUIRED_REFERENCE_IDENTIFIER_COLUMNS: &[&str] = &[
+    "source_title",
+    "source_namespace",
+    "section_heading",
+    "citation_profile",
+    "citation_family",
+    "source_type",
+    "source_origin",
+    "source_family",
+    "authority_key",
+    "authority_label",
+    "identifier_key",
+    "identifier_value",
+    "normalized_value",
+    "summary_text",
 ];
 
 const REQUIRED_ALIAS_COLUMNS: &[&str] = &[
@@ -77,10 +122,22 @@ const REQUIRED_SEMANTIC_COLUMNS: &[&str] = &[
     "reference_titles",
     "reference_containers",
     "reference_domains",
+    "reference_source_families",
+    "reference_authorities",
+    "reference_identifiers",
     "media_titles",
     "media_captions",
+    "template_implementation_titles",
     "semantic_text",
     "token_estimate",
+];
+
+const REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS: &[&str] = &[
+    "template_title",
+    "implementation_page_title",
+    "implementation_namespace",
+    "source_relative_path",
+    "role",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,11 +214,26 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
         "indexed_page_references",
         REQUIRED_REFERENCE_COLUMNS,
     )?;
+    require_columns(
+        connection,
+        "indexed_reference_authorities",
+        REQUIRED_REFERENCE_AUTHORITY_COLUMNS,
+    )?;
+    require_columns(
+        connection,
+        "indexed_reference_identifiers",
+        REQUIRED_REFERENCE_IDENTIFIER_COLUMNS,
+    )?;
     require_columns(connection, "indexed_page_media", REQUIRED_MEDIA_COLUMNS)?;
     require_columns(
         connection,
         "indexed_page_semantics",
         REQUIRED_SEMANTIC_COLUMNS,
+    )?;
+    require_columns(
+        connection,
+        "indexed_template_implementation_pages",
+        REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS,
     )
 }
 
@@ -182,11 +254,26 @@ fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()>
         "indexed_page_references",
         REQUIRED_REFERENCE_COLUMNS,
     )?;
+    require_columns_if_table_exists(
+        connection,
+        "indexed_reference_authorities",
+        REQUIRED_REFERENCE_AUTHORITY_COLUMNS,
+    )?;
+    require_columns_if_table_exists(
+        connection,
+        "indexed_reference_identifiers",
+        REQUIRED_REFERENCE_IDENTIFIER_COLUMNS,
+    )?;
     require_columns_if_table_exists(connection, "indexed_page_media", REQUIRED_MEDIA_COLUMNS)?;
     require_columns_if_table_exists(
         connection,
         "indexed_page_semantics",
         REQUIRED_SEMANTIC_COLUMNS,
+    )?;
+    require_columns_if_table_exists(
+        connection,
+        "indexed_template_implementation_pages",
+        REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS,
     )
 }
 

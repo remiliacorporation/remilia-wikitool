@@ -404,6 +404,14 @@ fn run_workflow_authoring_pack(
                 report.inventory.reference_rows_total
             );
             println!(
+                "inventory.references.authority_rows: {}",
+                report.inventory.reference_authority_rows_total
+            );
+            println!(
+                "inventory.references.identifier_rows: {}",
+                report.inventory.reference_identifier_rows_total
+            );
+            println!(
                 "inventory.references.distinct_profiles: {}",
                 report.inventory.distinct_reference_profiles
             );
@@ -414,6 +422,10 @@ fn run_workflow_authoring_pack(
             println!(
                 "inventory.media.distinct_files: {}",
                 report.inventory.distinct_media_files
+            );
+            println!(
+                "inventory.templates.implementation_rows: {}",
+                report.inventory.template_implementation_rows_total
             );
             println!("related_pages.count: {}", report.related_pages.len());
             for page in &report.related_pages {
@@ -528,7 +540,7 @@ fn print_authoring_suggestion(label: &str, suggestion: &AuthoringSuggestion) {
 
 fn print_template_summary(label: &str, template: &TemplateUsageSummary) {
     println!(
-        "{label}: {} (usage={} pages={} aliases={} keys={} preview={})",
+        "{label}: {} (usage={} pages={} aliases={} keys={} implementations={} preview={})",
         template.template_title,
         template.usage_count,
         template.distinct_page_count,
@@ -538,6 +550,11 @@ fn print_template_summary(label: &str, template: &TemplateUsageSummary) {
             template.aliases.join(", ")
         },
         format_parameter_stats(&template.parameter_stats),
+        if template.implementation_titles.is_empty() {
+            "<none>".to_string()
+        } else {
+            template.implementation_titles.join(", ")
+        },
         template
             .implementation_preview
             .as_deref()
@@ -579,11 +596,12 @@ fn print_stub_template_hint(template: &StubTemplateHint) {
 
 fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
     println!(
-        "{label}: {} (family={} type={} origin={} usage={} pages={} templates={} links={} domains={} identifiers={} signals={})",
+        "{label}: {} (family={} type={} origin={} source_family={} usage={} pages={} templates={} links={} domains={} authorities={} identifiers={} identifier_entries={} signals={})",
         reference.citation_profile,
         reference.citation_family,
         reference.source_type,
         reference.source_origin,
+        reference.source_family,
         reference.usage_count,
         reference.distinct_page_count,
         if reference.common_templates.is_empty() {
@@ -601,10 +619,20 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
         } else {
             reference.common_domains.join(", ")
         },
+        if reference.common_authorities.is_empty() {
+            "<none>".to_string()
+        } else {
+            reference.common_authorities.join(", ")
+        },
         if reference.common_identifier_keys.is_empty() {
             "<none>".to_string()
         } else {
             reference.common_identifier_keys.join(", ")
+        },
+        if reference.common_identifier_entries.is_empty() {
+            "<none>".to_string()
+        } else {
+            reference.common_identifier_entries.join(", ")
         },
         if reference.common_retrieval_signals.is_empty() {
             "<none>".to_string()
@@ -620,7 +648,7 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
     }
     for example in &reference.example_references {
         println!(
-            "{label}.example: profile={} source={} section={} name={} group={} family={} template={} type={} origin={} title={} container={} author={} domain={} summary={} templates={} links={} identifiers={} signals={} tokens={} text={}",
+            "{label}.example: profile={} source={} section={} name={} group={} family={} template={} type={} origin={} source_family={} authority_kind={} authority={} title={} container={} author={} domain={} date={} url={} summary={} templates={} links={} identifiers={} identifier_entries={} urls={} signals={} tokens={} text={}",
             reference.citation_profile,
             example.source_title,
             example.section_heading.as_deref().unwrap_or("<lead>"),
@@ -633,6 +661,13 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
                 .unwrap_or("<none>"),
             example.source_type,
             example.source_origin,
+            example.source_family,
+            example.authority_kind,
+            if example.source_authority.is_empty() {
+                "<none>"
+            } else {
+                &example.source_authority
+            },
             if example.reference_title.is_empty() {
                 "<none>"
             } else {
@@ -653,6 +688,16 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
             } else {
                 &example.source_domain
             },
+            if example.source_date.is_empty() {
+                "<none>"
+            } else {
+                &example.source_date
+            },
+            if example.canonical_url.is_empty() {
+                "<none>"
+            } else {
+                &example.canonical_url
+            },
             example.summary_text,
             if example.template_titles.is_empty() {
                 "<none>".to_string()
@@ -668,6 +713,16 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
                 "<none>".to_string()
             } else {
                 example.identifier_keys.join(", ")
+            },
+            if example.identifier_entries.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.identifier_entries.join(", ")
+            },
+            if example.source_urls.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.source_urls.join(", ")
             },
             if example.retrieval_signals.is_empty() {
                 "<none>".to_string()
@@ -715,7 +770,18 @@ fn format_parameter_stats(stats: &[TemplateParameterUsage]) -> String {
     }
     stats
         .iter()
-        .map(|stat| format!("{}:{}", stat.key, stat.usage_count))
+        .map(|stat| {
+            if stat.example_values.is_empty() {
+                format!("{}:{}", stat.key, stat.usage_count)
+            } else {
+                format!(
+                    "{}:{}[{}]",
+                    stat.key,
+                    stat.usage_count,
+                    stat.example_values.join(" | ")
+                )
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
