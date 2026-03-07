@@ -125,17 +125,19 @@ wikitool context "Template:Infobox person"
 wikitool search "Category:"
 wikitool index chunks "Title" --query "aspect" --limit 6 --token-budget 480
 wikitool index chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify
-wikitool docs search "extension name"
+wikitool docs import-profile remilia-mw-1.44
+wikitool docs context "extension name" --profile remilia-mw-1.44 --format json
 wikitool fetch "https://www.mediawiki.org/wiki/Manual:Hooks"
 wikitool export "https://www.mediawiki.org/wiki/Manual:Hooks" --subpages --combined
 wikitool validate
 wikitool diff
 ```
 
-Docs bundle import path mapping:
+Docs bootstrap paths:
 
-1. Source: `wikitool docs import --bundle ./ai-pack/docs-bundle-v1.json`
-2. Packaged: `wikitool docs import --bundle ./ai/docs-bundle-v1.json`
+1. Preferred: `wikitool docs import-profile remilia-mw-1.44`
+2. Source offline bundle: `wikitool docs import --bundle ./ai-pack/docs-bundle-v1.json`
+3. Packaged offline bundle: `wikitool docs import --bundle ./ai/docs-bundle-v1.json`
 
 ## API Verification Rule
 

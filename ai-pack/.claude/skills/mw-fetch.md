@@ -14,8 +14,9 @@ wikitool search-external "MediaWiki Cargo"
 ## Docs import/search
 
 ```bash
-wikitool docs import --installed
-wikitool docs import Cargo Scribunto
+wikitool docs import-profile remilia-mw-1.44
+wikitool docs import-profile mw-1.44-authoring --extension Cargo --extension Scribunto
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
-wikitool docs search "Cargo" --tier extension
+wikitool docs search "Cargo" --profile remilia-mw-1.44 --tier extension
+wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
 ```

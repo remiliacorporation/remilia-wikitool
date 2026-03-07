@@ -540,10 +540,28 @@ fi
 # --- docs search ---
 section "docs search"
 OUTPUT=$(wt "$PROJ" docs search "TestExtension" 2>&1 || true)
-if echo "$OUTPUT" | grep -q "hit: \[extension\] Extension:TestExtension"; then
-    pass "docs search returns results or reports none"
+if echo "$OUTPUT" | grep -q "hit: \[page\] Extension:TestExtension"; then
+    pass "docs search returns page-level results"
 else
     fail "docs search returns results (got: $OUTPUT)"
+fi
+
+# --- docs context ---
+section "docs context"
+OUTPUT=$(wt "$PROJ" docs context "AlphaBetaToken" --format text 2>&1 || true)
+if echo "$OUTPUT" | grep -q "docs context" && echo "$OUTPUT" | grep -q "pages.count:"; then
+    pass "docs context returns AI retrieval bundle"
+else
+    fail "docs context returns AI retrieval bundle (got: $OUTPUT)"
+fi
+
+# --- docs symbols ---
+section "docs symbols"
+OUTPUT=$(wt "$PROJ" docs symbols "\$wgTestExtensionEnable" --format text 2>&1 || true)
+if echo "$OUTPUT" | grep -q 'symbol: \[config\] \$wgTestExtensionEnable'; then
+    pass "docs symbols returns normalized symbol hits"
+else
+    fail "docs symbols returns normalized symbol hits (got: $OUTPUT)"
 fi
 
 # --- FTS continuity: local search substring ---
@@ -685,13 +703,22 @@ if [ "$TIER" = "live" ]; then
         fail "export saves page locally (got: ${OUTPUT:0:300})"
     fi
 
-    # --- docs import (live) ---
-    section "docs import (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" docs import "Scribunto" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "import\|Scribunto\|page\|fetched"; then
-        pass "docs import fetches from mediawiki.org"
+    # --- docs import-profile (live) ---
+    section "docs import-profile (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" docs import-profile mw-1.44-authoring --no-extension-subpages --limit 12 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "docs import-profile\|imported_pages:\|imported_corpora:"; then
+        pass "docs import-profile fetches pinned mediawiki docs"
     else
-        fail "docs import fetches from mediawiki.org (got: ${OUTPUT:0:300})"
+        fail "docs import-profile fetches pinned mediawiki docs (got: ${OUTPUT:0:300})"
+    fi
+
+    # --- docs context (live) ---
+    section "docs context (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" docs context "parser function" --profile mw-1.44-authoring --format text 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "docs context\|pages.count:\|symbols.count:"; then
+        pass "docs context returns live retrieval bundle"
+    else
+        fail "docs context returns live retrieval bundle (got: ${OUTPUT:0:300})"
     fi
 
     # --- docs update (live) ---

@@ -57,11 +57,13 @@ Remote delete is attempted only when write credentials are configured.
 ## Docs workflows
 
 ```bash
-wikitool docs import --installed
-wikitool docs import SemanticMediaWiki
+wikitool docs import-profile remilia-mw-1.44
+wikitool docs import-profile mw-1.44-authoring --extension Scribunto --extension TemplateStyles
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
 wikitool docs list
-wikitool docs search "parser function"
+wikitool docs search "parser function" --profile remilia-mw-1.44
+wikitool docs context "TemplateStyles" --profile remilia-mw-1.44 --format json
+wikitool docs symbols "$wg" --profile remilia-mw-1.44
 wikitool docs update
 ```
 

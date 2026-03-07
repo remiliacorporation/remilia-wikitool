@@ -7,7 +7,8 @@ Research using local wiki index, live API checks, and external references.
 ```bash
 wikitool search "topic"
 wikitool context "Page Title"
-wikitool docs search "extension feature"
+wikitool docs import-profile remilia-mw-1.44
+wikitool docs context "extension feature" --profile remilia-mw-1.44 --format json
 wikitool search-external "topic"
 ```
 

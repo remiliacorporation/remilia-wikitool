@@ -98,7 +98,7 @@ Release folder contents:
 4. `llm_instructions/*.md`
 5. `docs/wikitool/*.md`
 6. `codex_skills/*` installable Codex skill bundle
-7. optional `ai/docs-bundle-v1.json` (generated at build time, not committed)
+7. optional `ai/docs-bundle-v1.json` for offline docs preload or fixtures (generated at build time, not committed)
 8. optional host overlay extras when `--host-project-root` is provided:
    - host `CLAUDE.md` (mirrored to `AGENTS.md`)
    - `WIKITOOL_CLAUDE.md` preserving wikitool-local guidance
@@ -106,7 +106,14 @@ Release folder contents:
 
 This content is intentionally shipped outside the binary.
 
-Use bundle import to preload docs offline:
+Bootstrap the pinned MediaWiki authoring corpus:
+
+```bash
+wikitool docs import-profile remilia-mw-1.44
+wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
+```
+
+Use bundle import only when you need an offline preload:
 
 ```bash
 wikitool docs import --bundle ./ai/docs-bundle-v1.json

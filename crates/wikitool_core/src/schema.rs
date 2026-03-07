@@ -140,6 +140,85 @@ const REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS: &[&str] = &[
     "role",
 ];
 
+const REQUIRED_DOCS_CORPORA_COLUMNS: &[&str] = &[
+    "corpus_kind",
+    "label",
+    "source_wiki",
+    "source_version",
+    "source_profile",
+    "technical_type",
+    "refresh_kind",
+    "refresh_spec",
+    "pages_count",
+    "sections_count",
+    "symbols_count",
+    "examples_count",
+    "fetched_at_unix",
+    "expires_at_unix",
+];
+
+const REQUIRED_DOCS_PAGE_COLUMNS: &[&str] = &[
+    "page_title",
+    "normalized_title_key",
+    "page_namespace",
+    "doc_type",
+    "title_aliases",
+    "local_path",
+    "raw_content",
+    "normalized_content",
+    "content_hash",
+    "summary_text",
+    "semantic_text",
+    "fetched_at_unix",
+    "token_estimate",
+];
+
+const REQUIRED_DOCS_SECTION_COLUMNS: &[&str] = &[
+    "page_title",
+    "section_index",
+    "section_level",
+    "section_heading",
+    "summary_text",
+    "section_text",
+    "semantic_text",
+    "token_estimate",
+];
+
+const REQUIRED_DOCS_SYMBOL_COLUMNS: &[&str] = &[
+    "page_title",
+    "symbol_index",
+    "symbol_kind",
+    "symbol_name",
+    "normalized_symbol_key",
+    "aliases",
+    "section_heading",
+    "signature_text",
+    "summary_text",
+    "detail_text",
+    "retrieval_text",
+    "token_estimate",
+];
+
+const REQUIRED_DOCS_EXAMPLE_COLUMNS: &[&str] = &[
+    "page_title",
+    "example_index",
+    "example_kind",
+    "section_heading",
+    "language_hint",
+    "summary_text",
+    "example_text",
+    "retrieval_text",
+    "token_estimate",
+];
+
+const REQUIRED_DOCS_LINK_COLUMNS: &[&str] = &[
+    "page_title",
+    "link_index",
+    "target_title",
+    "relation_kind",
+    "display_text",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DatabaseSchemaState {
     Missing,
@@ -234,7 +313,13 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
         connection,
         "indexed_template_implementation_pages",
         REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS,
-    )
+    )?;
+    require_columns(connection, "docs_corpora", REQUIRED_DOCS_CORPORA_COLUMNS)?;
+    require_columns(connection, "docs_pages", REQUIRED_DOCS_PAGE_COLUMNS)?;
+    require_columns(connection, "docs_sections", REQUIRED_DOCS_SECTION_COLUMNS)?;
+    require_columns(connection, "docs_symbols", REQUIRED_DOCS_SYMBOL_COLUMNS)?;
+    require_columns(connection, "docs_examples", REQUIRED_DOCS_EXAMPLE_COLUMNS)?;
+    require_columns(connection, "docs_links", REQUIRED_DOCS_LINK_COLUMNS)
 }
 
 fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()> {
@@ -274,7 +359,13 @@ fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()>
         connection,
         "indexed_template_implementation_pages",
         REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS,
-    )
+    )?;
+    require_columns_if_table_exists(connection, "docs_corpora", REQUIRED_DOCS_CORPORA_COLUMNS)?;
+    require_columns_if_table_exists(connection, "docs_pages", REQUIRED_DOCS_PAGE_COLUMNS)?;
+    require_columns_if_table_exists(connection, "docs_sections", REQUIRED_DOCS_SECTION_COLUMNS)?;
+    require_columns_if_table_exists(connection, "docs_symbols", REQUIRED_DOCS_SYMBOL_COLUMNS)?;
+    require_columns_if_table_exists(connection, "docs_examples", REQUIRED_DOCS_EXAMPLE_COLUMNS)?;
+    require_columns_if_table_exists(connection, "docs_links", REQUIRED_DOCS_LINK_COLUMNS)
 }
 
 fn require_columns_if_table_exists(

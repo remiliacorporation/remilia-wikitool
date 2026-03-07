@@ -48,8 +48,9 @@ wikitool context "Template:Infobox person"
 wikitool workflow authoring-pack "Topic" --format json
 wikitool index chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool search "Category:"
-wikitool docs search "extension feature"
-wikitool docs import --installed
+wikitool docs import-profile remilia-mw-1.44
+wikitool docs search "extension feature" --profile remilia-mw-1.44
+wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
 ```
 
 ## Retrieval guidance

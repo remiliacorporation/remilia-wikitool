@@ -27,7 +27,7 @@ wikitool search "Category:"
 ## Docs-assisted checks
 
 ```bash
-wikitool docs search "extension feature"
+wikitool docs context "extension feature" --profile remilia-mw-1.44 --format json
 wikitool context "Template:Infobox person"
 ```
 

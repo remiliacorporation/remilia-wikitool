@@ -1,6 +1,6 @@
 ﻿---
 name: docs
-description: Run docs import/list/search/update/remove/reference workflows.
+description: Run docs import-profile/import/list/search/context/symbols/update/remove/reference workflows.
 allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: <subcommand> [options]
 ---

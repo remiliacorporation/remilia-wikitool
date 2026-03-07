@@ -30,7 +30,7 @@ Helpful lookups:
 ```bash
 wikitool context "Template:Infobox person"
 wikitool search "Category:"
-wikitool docs search "embed video"
+wikitool docs context "embed video" --profile remilia-mw-1.44 --format json
 ```
 
 ### With Claude Projects (claude.ai)

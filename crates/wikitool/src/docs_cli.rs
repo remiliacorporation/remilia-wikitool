@@ -4,10 +4,11 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Command, CommandFactory, Subcommand, error::ErrorKind};
 use wikitool_core::docs::{
-    DocsImportOptions, DocsImportTechnicalOptions, DocsListOptions, DocsRemoveKind,
-    TechnicalDocType, TechnicalImportTask, discover_installed_extensions_from_wiki_with_config,
-    format_expiration, import_docs_bundle, import_extension_docs, import_technical_docs, list_docs,
-    remove_docs, search_docs, update_outdated_docs,
+    DocsContextOptions, DocsImportOptions, DocsImportProfileOptions, DocsImportTechnicalOptions,
+    DocsListOptions, DocsRemoveKind, DocsSearchOptions, DocsSymbolLookupOptions, TechnicalDocType,
+    TechnicalImportTask, build_docs_context, format_expiration, import_docs_bundle,
+    import_docs_profile_with_config, import_extension_docs, import_technical_docs, list_docs,
+    lookup_docs_symbols, remove_docs, search_docs, update_outdated_docs_with_config,
 };
 
 use crate::{
@@ -29,6 +30,8 @@ enum DocsSubcommand {
     Import(DocsImportArgs),
     #[command(name = "import-technical")]
     ImportTechnical(DocsImportTechnicalArgs),
+    #[command(name = "import-profile")]
+    ImportProfile(DocsImportProfileArgs),
     #[command(name = "generate-reference")]
     GenerateReference(DocsGenerateReferenceArgs),
     List(DocsListArgs),
@@ -36,13 +39,9 @@ enum DocsSubcommand {
     Remove {
         target: String,
     },
-    Search {
-        query: String,
-        #[arg(long, value_name = "TIER", help = "Search tier (extension, technical)")]
-        tier: Option<String>,
-        #[arg(short = 'l', long, default_value_t = 20, help = "Limit result count")]
-        limit: usize,
-    },
+    Search(DocsSearchArgs),
+    Context(DocsContextArgs),
+    Symbols(DocsSymbolsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -76,6 +75,8 @@ struct DocsImportTechnicalArgs {
     config: bool,
     #[arg(long, help = "Import API documentation")]
     api: bool,
+    #[arg(long = "help-docs", help = "Import Help: docs")]
+    help_docs: bool,
     #[arg(
         short = 'l',
         long,
@@ -86,11 +87,104 @@ struct DocsImportTechnicalArgs {
 }
 
 #[derive(Debug, Args)]
+struct DocsImportProfileArgs {
+    #[arg(value_name = "PROFILE", default_value = "remilia-mw-1.44")]
+    profile: String,
+    #[arg(long, help = "Discover installed extensions from the configured wiki")]
+    installed: bool,
+    #[arg(
+        long = "no-extension-subpages",
+        help = "Skip extension subpages for profile extension docs"
+    )]
+    no_extension_subpages: bool,
+    #[arg(
+        long = "extension",
+        value_name = "EXTENSION",
+        help = "Add extra extension docs to the profile import"
+    )]
+    extensions: Vec<String>,
+    #[arg(
+        short = 'l',
+        long,
+        default_value_t = 100,
+        help = "Limit subpage imports per profile seed"
+    )]
+    limit: usize,
+}
+
+#[derive(Debug, Args)]
 struct DocsListArgs {
     #[arg(long, help = "Show only outdated docs")]
     outdated: bool,
     #[arg(long, value_name = "TYPE", help = "Filter technical docs by type")]
     r#type: Option<String>,
+    #[arg(long, value_name = "KIND", help = "Filter corpora by kind")]
+    kind: Option<String>,
+    #[arg(
+        long,
+        value_name = "PROFILE",
+        help = "Filter corpora by source profile"
+    )]
+    profile: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct DocsSearchArgs {
+    query: String,
+    #[arg(
+        long,
+        value_name = "TIER",
+        help = "Search tier: page|section|symbol|example|extension|technical|profile"
+    )]
+    tier: Option<String>,
+    #[arg(
+        long,
+        value_name = "PROFILE",
+        help = "Restrict search to a docs profile"
+    )]
+    profile: Option<String>,
+    #[arg(long, default_value = "text", help = "Output format: text|json")]
+    format: String,
+    #[arg(short = 'l', long, default_value_t = 20, help = "Limit result count")]
+    limit: usize,
+}
+
+#[derive(Debug, Args)]
+struct DocsContextArgs {
+    query: String,
+    #[arg(
+        long,
+        value_name = "PROFILE",
+        help = "Restrict context retrieval to a docs profile"
+    )]
+    profile: Option<String>,
+    #[arg(long, default_value = "json", help = "Output format: text|json")]
+    format: String,
+    #[arg(short = 'l', long, default_value_t = 6, help = "Limit hits per tier")]
+    limit: usize,
+    #[arg(
+        long,
+        default_value_t = 1600,
+        help = "Approximate token budget for returned context"
+    )]
+    token_budget: usize,
+}
+
+#[derive(Debug, Args)]
+struct DocsSymbolsArgs {
+    query: String,
+    #[arg(long, value_name = "KIND", help = "Symbol kind filter")]
+    kind: Option<String>,
+    #[arg(
+        long,
+        value_name = "PROFILE",
+        help = "Restrict symbol lookup to a docs profile"
+    )]
+    profile: Option<String>,
+    #[arg(long, default_value = "text", help = "Output format: text|json")]
+    format: String,
+    #[arg(short = 'l', long, default_value_t = 20, help = "Limit result count")]
+    limit: usize,
 }
 
 #[derive(Debug, Args)]
@@ -107,13 +201,14 @@ pub(crate) fn run_docs(runtime: &RuntimeOptions, args: DocsArgs) -> Result<()> {
     match args.command {
         DocsSubcommand::Import(args) => run_docs_import(runtime, args),
         DocsSubcommand::ImportTechnical(args) => run_docs_import_technical(runtime, args),
+        DocsSubcommand::ImportProfile(args) => run_docs_import_profile(runtime, args),
         DocsSubcommand::GenerateReference(args) => run_docs_generate_reference(args),
         DocsSubcommand::List(args) => run_docs_list(runtime, args),
         DocsSubcommand::Update => run_docs_update(runtime),
         DocsSubcommand::Remove { target } => run_docs_remove(runtime, &target),
-        DocsSubcommand::Search { query, tier, limit } => {
-            run_docs_search(runtime, &query, tier.as_deref(), limit)
-        }
+        DocsSubcommand::Search(args) => run_docs_search(runtime, args),
+        DocsSubcommand::Context(args) => run_docs_context(runtime, args),
+        DocsSubcommand::Symbols(args) => run_docs_symbols(runtime, args),
     }
 }
 
@@ -139,6 +234,9 @@ fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()>
             report.imported_technical_types
         );
         println!("imported_pages: {}", report.imported_pages);
+        println!("imported_sections: {}", report.imported_sections);
+        println!("imported_symbols: {}", report.imported_symbols);
+        println!("imported_examples: {}", report.imported_examples);
         println!("failures.count: {}", report.failures.len());
         for failure in &report.failures {
             println!("failure: {failure}");
@@ -156,19 +254,13 @@ fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()>
 
     let mut extensions = args.extensions;
     if args.installed {
-        let discovered = discover_installed_extensions_from_wiki_with_config(&config)
-            .context("failed to discover installed extensions from live wiki API")?;
-        extensions.extend(discovered);
+        extensions.extend(
+            wikitool_core::docs::discover_installed_extensions_from_wiki_with_config(&config)
+                .context("failed to discover installed extensions from live wiki API")?,
+        );
     }
 
-    let mut normalized = extensions
-        .into_iter()
-        .map(|value| normalize_title_query(&value))
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-    normalized.sort_unstable_by_key(|value| value.to_ascii_lowercase());
-    normalized.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
-
+    let normalized = normalize_title_list(extensions);
     if normalized.is_empty() {
         bail!(
             "no extensions specified. Use `docs import <Extension>` or `docs import --installed`"
@@ -193,6 +285,9 @@ fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) -> Result<()>
     println!("subpages: {}", format_flag(!args.no_subpages));
     println!("imported_extensions: {}", report.imported_extensions);
     println!("imported_pages: {}", report.imported_pages);
+    println!("imported_sections: {}", report.imported_sections);
+    println!("imported_symbols: {}", report.imported_symbols);
+    println!("imported_examples: {}", report.imported_examples);
     println!("request_count: {}", report.request_count);
     println!("failures.count: {}", report.failures.len());
     for failure in &report.failures {
@@ -248,10 +343,15 @@ fn run_docs_import_technical(
             include_subpages: true,
         });
     }
+    if args.help_docs {
+        tasks.push(TechnicalImportTask {
+            doc_type: TechnicalDocType::Help,
+            page_title: None,
+            include_subpages: true,
+        });
+    }
     if tasks.is_empty() {
-        bail!(
-            "no technical documentation specified. Use `docs import-technical <Page> [--subpages]` or flags: --hooks --config --api"
-        );
+        bail!("no technical documentation specified");
     }
 
     let report = import_technical_docs(
@@ -264,16 +364,15 @@ fn run_docs_import_technical(
 
     println!("docs import-technical");
     println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("tasks.requested: {}", report.requested_tasks);
-    println!("limit: {}", args.limit.max(1));
+    println!("requested_tasks: {}", report.requested_tasks);
+    println!("imported_corpora: {}", report.imported_corpora);
     println!("imported_pages: {}", report.imported_pages);
+    println!("imported_sections: {}", report.imported_sections);
+    println!("imported_symbols: {}", report.imported_symbols);
+    println!("imported_examples: {}", report.imported_examples);
     println!("request_count: {}", report.request_count);
-    if report.imported_by_type.is_empty() {
-        println!("imported_by_type: <none>");
-    } else {
-        for (doc_type, count) in &report.imported_by_type {
-            println!("imported_by_type.{doc_type}: {count}");
-        }
+    for (doc_type, count) in &report.imported_by_type {
+        println!("imported_by_type.{doc_type}: {count}");
     }
     println!("failures.count: {}", report.failures.len());
     for failure in &report.failures {
@@ -290,80 +389,104 @@ fn run_docs_import_technical(
     Ok(())
 }
 
+fn run_docs_import_profile(runtime: &RuntimeOptions, args: DocsImportProfileArgs) -> Result<()> {
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let report = import_docs_profile_with_config(
+        &paths,
+        &DocsImportProfileOptions {
+            profile: normalize_title_query(&args.profile),
+            include_installed_extensions: args.installed,
+            include_extension_subpages: !args.no_extension_subpages,
+            extra_extensions: normalize_title_list(args.extensions),
+            limit: args.limit.max(1),
+        },
+        &config,
+    )?;
+
+    println!("docs import-profile");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("profile: {}", report.profile);
+    println!("imported_corpora: {}", report.imported_corpora);
+    println!("imported_extensions: {}", report.imported_extensions);
+    println!("imported_pages: {}", report.imported_pages);
+    println!("imported_sections: {}", report.imported_sections);
+    println!("imported_symbols: {}", report.imported_symbols);
+    println!("imported_examples: {}", report.imported_examples);
+    println!("request_count: {}", report.request_count);
+    println!("failures.count: {}", report.failures.len());
+    for failure in &report.failures {
+        println!("failure: {failure}");
+    }
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+
+    if report.imported_pages == 0 {
+        bail!("docs import-profile completed with no imported pages")
+    }
+    Ok(())
+}
+
 fn run_docs_list(runtime: &RuntimeOptions, args: DocsListArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let listing = list_docs(
         &paths,
         &DocsListOptions {
             technical_type: args.r#type.clone(),
+            corpus_kind: args.kind.clone(),
+            profile: args.profile.clone(),
         },
     )?;
 
     println!("docs list");
     println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("stats.extension_count: {}", listing.stats.extension_count);
-    println!(
-        "stats.extension_pages_count: {}",
-        listing.stats.extension_pages_count
-    );
-    println!("stats.technical_count: {}", listing.stats.technical_count);
-    if listing.stats.technical_by_type.is_empty() {
-        println!("stats.technical_by_type: <none>");
-    } else {
-        for (doc_type, count) in &listing.stats.technical_by_type {
-            println!("stats.technical_by_type.{doc_type}: {count}");
-        }
+    println!("stats.corpora_count: {}", listing.stats.corpora_count);
+    println!("stats.pages_count: {}", listing.stats.pages_count);
+    println!("stats.sections_count: {}", listing.stats.sections_count);
+    println!("stats.symbols_count: {}", listing.stats.symbols_count);
+    println!("stats.examples_count: {}", listing.stats.examples_count);
+    for (kind, count) in &listing.stats.corpora_by_kind {
+        println!("stats.corpora_by_kind.{kind}: {count}");
+    }
+    for (doc_type, count) in &listing.stats.technical_by_type {
+        println!("stats.technical_by_type.{doc_type}: {count}");
     }
 
     if args.outdated {
-        println!(
-            "outdated.extensions.count: {}",
-            listing.outdated.extensions.len()
-        );
-        for extension in &listing.outdated.extensions {
+        println!("outdated.corpora.count: {}", listing.outdated.corpora.len());
+        for corpus in &listing.outdated.corpora {
             println!(
-                "outdated.extension: {} ({})",
-                extension.extension_name,
-                format_expiration(listing.now_unix, extension.expires_at_unix)
+                "outdated.corpus: [{}] {} ({})",
+                corpus.corpus_kind,
+                corpus.label,
+                format_expiration(listing.now_unix, corpus.expires_at_unix)
             );
-        }
-        println!(
-            "outdated.technical.count: {}",
-            listing.outdated.technical.len()
-        );
-        for doc in &listing.outdated.technical {
-            println!(
-                "outdated.technical: [{}] {} ({})",
-                doc.doc_type,
-                doc.page_title,
-                format_expiration(listing.now_unix, doc.expires_at_unix)
-            );
-        }
-        println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-        if runtime.diagnostics {
-            println!("\n[diagnostics]\n{}", paths.diagnostics());
         }
         return Ok(());
     }
 
-    println!("extensions.count: {}", listing.extensions.len());
-    for extension in &listing.extensions {
+    println!("corpora.count: {}", listing.corpora.len());
+    for corpus in &listing.corpora {
         println!(
-            "extension: {} version={} pages={} status={}",
-            extension.extension_name,
-            extension.version.as_deref().unwrap_or("<none>"),
-            extension.pages_count,
-            format_expiration(listing.now_unix, extension.expires_at_unix)
-        );
-    }
-
-    println!("technical.count: {}", listing.technical.len());
-    for doc in &listing.technical {
-        println!(
-            "technical: [{}] {} status={}",
-            doc.doc_type,
-            doc.page_title,
-            format_expiration(listing.now_unix, doc.expires_at_unix)
+            "corpus: [{}] {} profile={} version={} pages={} sections={} symbols={} examples={} status={}",
+            corpus.corpus_kind,
+            corpus.label,
+            if corpus.source_profile.is_empty() {
+                "<none>"
+            } else {
+                &corpus.source_profile
+            },
+            if corpus.source_version.is_empty() {
+                "<none>"
+            } else {
+                &corpus.source_version
+            },
+            corpus.pages_count,
+            corpus.sections_count,
+            corpus.symbols_count,
+            corpus.examples_count,
+            format_expiration(listing.now_unix, corpus.expires_at_unix)
         );
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -374,17 +497,16 @@ fn run_docs_list(runtime: &RuntimeOptions, args: DocsListArgs) -> Result<()> {
 }
 
 fn run_docs_update(runtime: &RuntimeOptions) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let report = update_outdated_docs(&paths)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let report = update_outdated_docs_with_config(&paths, &config)?;
 
     println!("docs update");
     println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("updated_extensions: {}", report.updated_extensions);
-    println!(
-        "updated_technical_types: {}",
-        report.updated_technical_types
-    );
+    println!("updated_corpora: {}", report.updated_corpora);
     println!("updated_pages: {}", report.updated_pages);
+    println!("updated_sections: {}", report.updated_sections);
+    println!("updated_symbols: {}", report.updated_symbols);
+    println!("updated_examples: {}", report.updated_examples);
     println!("request_count: {}", report.request_count);
     println!("failures.count: {}", report.failures.len());
     for failure in &report.failures {
@@ -417,32 +539,132 @@ fn run_docs_remove(runtime: &RuntimeOptions, target: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_docs_search(
-    runtime: &RuntimeOptions,
-    query: &str,
-    tier: Option<&str>,
-    limit: usize,
-) -> Result<()> {
+fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let hits = search_docs(&paths, query, tier, limit)?;
+    let format = normalize_output_format(&args.format)?;
+    let hits = search_docs(
+        &paths,
+        &args.query,
+        &DocsSearchOptions {
+            tier: args.tier.clone(),
+            profile: args.profile.clone(),
+            limit: args.limit.max(1),
+        },
+    )?;
+
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&hits)?);
+        return Ok(());
+    }
 
     println!("docs search");
     println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("query: {}", collapse_whitespace(query));
-    println!("tier: {}", tier.unwrap_or("<all>"));
-    println!("limit: {limit}");
+    println!("query: {}", collapse_whitespace(&args.query));
+    println!("tier: {}", args.tier.as_deref().unwrap_or("<all>"));
+    println!("profile: {}", args.profile.as_deref().unwrap_or("<all>"));
+    println!("limit: {}", args.limit.max(1));
     println!("hits.count: {}", hits.len());
-    if hits.is_empty() {
-        println!("hits: <none>");
-    } else {
-        for hit in &hits {
-            println!("hit: [{}] {}", hit.tier, hit.title);
-            println!("hit.snippet: {}", hit.snippet);
-        }
+    for hit in &hits {
+        println!(
+            "hit: [{}] {} page={} weight={}",
+            hit.tier, hit.title, hit.page_title, hit.retrieval_weight
+        );
+        println!("hit.snippet: {}", hit.snippet);
     }
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    Ok(())
+}
+
+fn run_docs_context(runtime: &RuntimeOptions, args: DocsContextArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let format = normalize_output_format(&args.format)?;
+    let report = build_docs_context(
+        &paths,
+        &args.query,
+        &DocsContextOptions {
+            profile: args.profile.clone(),
+            limit: args.limit.max(1),
+            token_budget: args.token_budget.max(1),
+        },
+    )?;
+
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    println!("docs context");
+    println!("query: {}", report.query);
+    println!("profile: {}", report.profile.as_deref().unwrap_or("<all>"));
+    println!("token_estimate: {}", report.token_estimate);
+    println!("pages.count: {}", report.pages.len());
+    for page in &report.pages {
+        println!("page: {} weight={}", page.title, page.retrieval_weight);
+        println!("page.snippet: {}", page.snippet);
+    }
+    println!("sections.count: {}", report.sections.len());
+    for section in &report.sections {
+        println!(
+            "section: page={} heading={} weight={}",
+            section.page_title,
+            section.section_heading.as_deref().unwrap_or("<lead>"),
+            section.retrieval_weight
+        );
+        println!("section.summary: {}", section.summary_text);
+    }
+    println!("symbols.count: {}", report.symbols.len());
+    for symbol in &report.symbols {
+        println!(
+            "symbol: [{}] {} page={} weight={}",
+            symbol.symbol_kind, symbol.symbol_name, symbol.page_title, symbol.retrieval_weight
+        );
+        println!("symbol.summary: {}", symbol.summary_text);
+    }
+    println!("examples.count: {}", report.examples.len());
+    for example in &report.examples {
+        println!(
+            "example: [{}] page={} lang={} weight={}",
+            example.example_kind,
+            example.page_title,
+            example.language_hint,
+            example.retrieval_weight
+        );
+        println!("example.summary: {}", example.summary_text);
+    }
+    Ok(())
+}
+
+fn run_docs_symbols(runtime: &RuntimeOptions, args: DocsSymbolsArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let format = normalize_output_format(&args.format)?;
+    let hits = lookup_docs_symbols(
+        &paths,
+        &args.query,
+        &DocsSymbolLookupOptions {
+            kind: args.kind.clone(),
+            profile: args.profile.clone(),
+            limit: args.limit.max(1),
+        },
+    )?;
+
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&hits)?);
+        return Ok(());
+    }
+
+    println!("docs symbols");
+    println!("query: {}", collapse_whitespace(&args.query));
+    println!("kind: {}", args.kind.as_deref().unwrap_or("<all>"));
+    println!("profile: {}", args.profile.as_deref().unwrap_or("<all>"));
+    println!("hits.count: {}", hits.len());
+    for hit in &hits {
+        println!(
+            "symbol: [{}] {} page={} weight={}",
+            hit.symbol_kind, hit.symbol_name, hit.page_title, hit.retrieval_weight
+        );
+        println!("symbol.summary: {}", hit.summary_text);
+        if !hit.signature_text.is_empty() {
+            println!("symbol.signature: {}", hit.signature_text);
+        }
     }
     Ok(())
 }
@@ -553,6 +775,25 @@ fn help_text_for_command_path(path: &[String]) -> Result<String> {
     }
 }
 
+fn normalize_output_format(value: &str) -> Result<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized != "text" && normalized != "json" {
+        bail!("unsupported docs format: {value} (expected text|json)");
+    }
+    Ok(normalized)
+}
+
+fn normalize_title_list(values: Vec<String>) -> Vec<String> {
+    let mut normalized = values
+        .into_iter()
+        .map(|value| normalize_title_query(&value))
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort_unstable_by_key(|value| value.to_ascii_lowercase());
+    normalized.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    normalized
+}
+
 fn infer_doc_type_from_title(title: &str) -> TechnicalDocType {
     if title.starts_with("Manual:Hooks") {
         return TechnicalDocType::Hooks;
@@ -562,6 +803,9 @@ fn infer_doc_type_from_title(title: &str) -> TechnicalDocType {
     }
     if title.starts_with("API:") {
         return TechnicalDocType::Api;
+    }
+    if title.starts_with("Help:") {
+        return TechnicalDocType::Help;
     }
     TechnicalDocType::Manual
 }

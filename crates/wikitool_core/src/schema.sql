@@ -465,52 +465,175 @@ CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_template
 CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_role
     ON indexed_template_implementation_pages(role);
 
-CREATE TABLE IF NOT EXISTS extension_docs (
-    extension_name TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS docs_corpora (
+    corpus_id TEXT PRIMARY KEY,
+    corpus_kind TEXT NOT NULL,
+    label TEXT NOT NULL,
     source_wiki TEXT NOT NULL,
-    version TEXT,
+    source_version TEXT NOT NULL,
+    source_profile TEXT NOT NULL,
+    technical_type TEXT NOT NULL,
+    refresh_kind TEXT NOT NULL,
+    refresh_spec TEXT NOT NULL,
     pages_count INTEGER NOT NULL,
+    sections_count INTEGER NOT NULL,
+    symbols_count INTEGER NOT NULL,
+    examples_count INTEGER NOT NULL,
     fetched_at_unix INTEGER NOT NULL,
     expires_at_unix INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_extension_docs_expires
-    ON extension_docs(expires_at_unix);
+CREATE INDEX IF NOT EXISTS idx_docs_corpora_kind
+    ON docs_corpora(corpus_kind);
+CREATE INDEX IF NOT EXISTS idx_docs_corpora_profile
+    ON docs_corpora(source_profile);
+CREATE INDEX IF NOT EXISTS idx_docs_corpora_type
+    ON docs_corpora(technical_type);
+CREATE INDEX IF NOT EXISTS idx_docs_corpora_expires
+    ON docs_corpora(expires_at_unix);
 
-CREATE TABLE IF NOT EXISTS extension_doc_pages (
-    extension_name TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS docs_pages (
+    corpus_id TEXT NOT NULL,
     page_title TEXT NOT NULL,
-    local_path TEXT NOT NULL,
-    content TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    fetched_at_unix INTEGER NOT NULL,
-    PRIMARY KEY (extension_name, page_title),
-    FOREIGN KEY (extension_name) REFERENCES extension_docs(extension_name) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_extension_doc_pages_title ON extension_doc_pages(page_title);
-CREATE VIRTUAL TABLE IF NOT EXISTS extension_doc_pages_fts USING fts5(
-    page_title,
-    content,
-    content=extension_doc_pages,
-    content_rowid=rowid
-);
-
-CREATE TABLE IF NOT EXISTS technical_docs (
+    normalized_title_key TEXT NOT NULL,
+    page_namespace TEXT NOT NULL,
     doc_type TEXT NOT NULL,
-    page_title TEXT NOT NULL,
+    title_aliases TEXT NOT NULL,
     local_path TEXT NOT NULL,
-    content TEXT NOT NULL,
+    raw_content TEXT NOT NULL,
+    normalized_content TEXT NOT NULL,
     content_hash TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    semantic_text TEXT NOT NULL,
     fetched_at_unix INTEGER NOT NULL,
-    expires_at_unix INTEGER NOT NULL,
-    PRIMARY KEY (doc_type, page_title)
+    token_estimate INTEGER NOT NULL,
+    PRIMARY KEY (corpus_id, page_title),
+    FOREIGN KEY (corpus_id) REFERENCES docs_corpora(corpus_id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_technical_docs_type ON technical_docs(doc_type);
-CREATE INDEX IF NOT EXISTS idx_technical_docs_title ON technical_docs(page_title);
-CREATE INDEX IF NOT EXISTS idx_technical_docs_expires
-    ON technical_docs(expires_at_unix);
-CREATE VIRTUAL TABLE IF NOT EXISTS technical_docs_fts USING fts5(
+CREATE INDEX IF NOT EXISTS idx_docs_pages_title
+    ON docs_pages(page_title);
+CREATE INDEX IF NOT EXISTS idx_docs_pages_title_key
+    ON docs_pages(normalized_title_key);
+CREATE INDEX IF NOT EXISTS idx_docs_pages_namespace
+    ON docs_pages(page_namespace);
+CREATE INDEX IF NOT EXISTS idx_docs_pages_doc_type
+    ON docs_pages(doc_type);
+CREATE VIRTUAL TABLE IF NOT EXISTS docs_pages_fts USING fts5(
     page_title,
-    content,
-    content=technical_docs,
+    title_aliases,
+    summary_text,
+    normalized_content,
+    semantic_text,
+    content=docs_pages,
     content_rowid=rowid
 );
+
+CREATE TABLE IF NOT EXISTS docs_sections (
+    corpus_id TEXT NOT NULL,
+    page_title TEXT NOT NULL,
+    section_index INTEGER NOT NULL,
+    section_level INTEGER NOT NULL,
+    section_heading TEXT,
+    summary_text TEXT NOT NULL,
+    section_text TEXT NOT NULL,
+    semantic_text TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    PRIMARY KEY (corpus_id, page_title, section_index),
+    FOREIGN KEY (corpus_id, page_title) REFERENCES docs_pages(corpus_id, page_title) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_docs_sections_title
+    ON docs_sections(page_title);
+CREATE INDEX IF NOT EXISTS idx_docs_sections_heading
+    ON docs_sections(section_heading);
+CREATE VIRTUAL TABLE IF NOT EXISTS docs_sections_fts USING fts5(
+    page_title,
+    section_heading,
+    summary_text,
+    section_text,
+    semantic_text,
+    content=docs_sections,
+    content_rowid=rowid
+);
+
+CREATE TABLE IF NOT EXISTS docs_symbols (
+    corpus_id TEXT NOT NULL,
+    page_title TEXT NOT NULL,
+    symbol_index INTEGER NOT NULL,
+    symbol_kind TEXT NOT NULL,
+    symbol_name TEXT NOT NULL,
+    normalized_symbol_key TEXT NOT NULL,
+    aliases TEXT NOT NULL,
+    section_heading TEXT,
+    signature_text TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    detail_text TEXT NOT NULL,
+    retrieval_text TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    PRIMARY KEY (corpus_id, page_title, symbol_index),
+    FOREIGN KEY (corpus_id, page_title) REFERENCES docs_pages(corpus_id, page_title) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_docs_symbols_name
+    ON docs_symbols(symbol_name);
+CREATE INDEX IF NOT EXISTS idx_docs_symbols_key
+    ON docs_symbols(normalized_symbol_key);
+CREATE INDEX IF NOT EXISTS idx_docs_symbols_kind
+    ON docs_symbols(symbol_kind);
+CREATE VIRTUAL TABLE IF NOT EXISTS docs_symbols_fts USING fts5(
+    page_title,
+    section_heading,
+    symbol_kind,
+    symbol_name,
+    aliases,
+    signature_text,
+    summary_text,
+    detail_text,
+    retrieval_text,
+    content=docs_symbols,
+    content_rowid=rowid
+);
+
+CREATE TABLE IF NOT EXISTS docs_examples (
+    corpus_id TEXT NOT NULL,
+    page_title TEXT NOT NULL,
+    example_index INTEGER NOT NULL,
+    example_kind TEXT NOT NULL,
+    section_heading TEXT,
+    language_hint TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    example_text TEXT NOT NULL,
+    retrieval_text TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    PRIMARY KEY (corpus_id, page_title, example_index),
+    FOREIGN KEY (corpus_id, page_title) REFERENCES docs_pages(corpus_id, page_title) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_docs_examples_title
+    ON docs_examples(page_title);
+CREATE INDEX IF NOT EXISTS idx_docs_examples_kind
+    ON docs_examples(example_kind);
+CREATE INDEX IF NOT EXISTS idx_docs_examples_language
+    ON docs_examples(language_hint);
+CREATE VIRTUAL TABLE IF NOT EXISTS docs_examples_fts USING fts5(
+    page_title,
+    section_heading,
+    example_kind,
+    language_hint,
+    summary_text,
+    example_text,
+    retrieval_text,
+    content=docs_examples,
+    content_rowid=rowid
+);
+
+CREATE TABLE IF NOT EXISTS docs_links (
+    corpus_id TEXT NOT NULL,
+    page_title TEXT NOT NULL,
+    link_index INTEGER NOT NULL,
+    target_title TEXT NOT NULL,
+    relation_kind TEXT NOT NULL,
+    display_text TEXT NOT NULL,
+    PRIMARY KEY (corpus_id, page_title, link_index),
+    FOREIGN KEY (corpus_id, page_title) REFERENCES docs_pages(corpus_id, page_title) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_docs_links_target
+    ON docs_links(target_title);
+CREATE INDEX IF NOT EXISTS idx_docs_links_kind
+    ON docs_links(relation_kind);

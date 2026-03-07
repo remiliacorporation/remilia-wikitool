@@ -7,8 +7,9 @@ Work on templates/modules/CSS with safe wiki sync flow.
 ```bash
 wikitool context "Template:Infobox person"
 wikitool context "Template:Cite web"
-wikitool docs search "Scribunto" --tier extension
-wikitool docs search "TemplateStyles" --tier extension
+wikitool docs import-profile remilia-mw-1.44
+wikitool docs context "Scribunto" --profile remilia-mw-1.44 --format json
+wikitool docs search "TemplateStyles" --profile remilia-mw-1.44 --tier extension
 ```
 
 ## Template workflow

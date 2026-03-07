@@ -95,7 +95,14 @@ wikitool docs generate-reference
 
 AI companion source assets are maintained under `ai-pack/` in this repository.
 
-Release AI pack includes setup/docs/instructions outside the binary. If `ai/docs-bundle-v1.json` is present, import it with:
+Release AI pack includes setup/docs/instructions outside the binary. Bootstrap the pinned MediaWiki docs profile with:
+
+```bash
+wikitool docs import-profile remilia-mw-1.44
+wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
+```
+
+If `ai/docs-bundle-v1.json` is present, you can use it as an offline preload:
 
 ```bash
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
