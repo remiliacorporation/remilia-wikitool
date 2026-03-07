@@ -98,6 +98,17 @@ const REQUIRED_TEMPLATE_EXAMPLE_COLUMNS: &[&str] = &[
     "token_estimate",
 ];
 
+const REQUIRED_MODULE_INVOCATION_COLUMNS: &[&str] = &[
+    "invocation_index",
+    "source_title",
+    "source_namespace",
+    "module_title",
+    "function_name",
+    "parameter_keys",
+    "invocation_wikitext",
+    "token_estimate",
+];
+
 const REQUIRED_MEDIA_COLUMNS: &[&str] = &[
     "media_index",
     "source_title",
@@ -290,6 +301,11 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
     )?;
     require_columns(
         connection,
+        "indexed_module_invocations",
+        REQUIRED_MODULE_INVOCATION_COLUMNS,
+    )?;
+    require_columns(
+        connection,
         "indexed_page_references",
         REQUIRED_REFERENCE_COLUMNS,
     )?;
@@ -333,6 +349,11 @@ fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()>
         connection,
         "indexed_template_examples",
         REQUIRED_TEMPLATE_EXAMPLE_COLUMNS,
+    )?;
+    require_columns_if_table_exists(
+        connection,
+        "indexed_module_invocations",
+        REQUIRED_MODULE_INVOCATION_COLUMNS,
     )?;
     require_columns_if_table_exists(
         connection,

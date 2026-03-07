@@ -50,6 +50,7 @@ Useful authoring retrieval checks:
 ```bash
 wikitool index chunks --across-pages --query "network spirituality remilia" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool workflow authoring-pack "Remilia Corporation" --format json
+wikitool workflow ask "write an article on Remilia Corporation" --format json
 ```
 
 ## 5) Optional: configure credentials and API target
@@ -100,7 +101,10 @@ Release AI pack includes setup/docs/instructions outside the binary. Bootstrap t
 ```bash
 wikitool docs import-profile remilia-mw-1.44
 wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
+wikitool workflow ask "write an article on Remilia Corporation" --format json
 ```
+
+If live installed-extension discovery is blocked or unconfigured, `remilia-mw-1.44` still imports the pinned core corpus and reports the discovery skip in the command output instead of aborting the whole import.
 
 If `ai/docs-bundle-v1.json` is present, you can use it as an offline preload:
 
@@ -128,7 +132,7 @@ Codex skill templates are also included under `codex_skills/` and can be copied 
 
 The local SQLite DB is disposable and recreated automatically on first use.
 
-Authoring retrieval is DB-first and AI-oriented: semantic page profiles, normalized source authorities, identifier rows, template implementation bundles, and explicit reference/template/link signals are indexed for retrieval, while local files remain the human editing surface.
+Authoring retrieval is DB-first and AI-oriented: semantic page profiles, normalized source authorities, identifier rows, template implementation bundles, module invocation patterns, pinned MediaWiki docs corpora, and explicit reference/template/link signals are indexed for retrieval, while local files remain the human editing surface.
 
 If runtime/schema changes break local state:
 

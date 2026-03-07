@@ -35,9 +35,10 @@ The local SQLite DB is disposable and is created automatically on first use. If 
 For authoring retrieval, the DB is optimized as an AI-facing index rather than a human-facing store:
 
 - local files remain the source of truth for editors
-- SQLite stores semantic page profiles, links, sections, templates, references, source authorities, identifiers, media, and template implementation relationships for fast retrieval
+- SQLite stores semantic page profiles, links, sections, templates, module invocation patterns, references, source authorities, identifiers, media, template implementation relationships, and pinned docs corpora for fast retrieval
 - reference rows expose explicit retrieval signals, normalized authority/identifier data, and source metadata instead of opaque quality scores
 - active template lookup includes implementation bundles across template pages, `/doc` pages, helper templates, and `Module:` pages when present
+- authoring retrieval can bridge pinned MediaWiki 1.44 docs with local template/module usage so agents get both “how MediaWiki says it works” and “how this wiki uses it”
 
 ## Core Workflow
 
@@ -111,7 +112,11 @@ Bootstrap the pinned MediaWiki authoring corpus:
 ```bash
 wikitool docs import-profile remilia-mw-1.44
 wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
+wikitool workflow ask "write an article on Remilia Corporation" --format json
+wikitool index templates "Infobox person"
 ```
+
+`remilia-mw-1.44` will try to enrich the corpus with installed extensions from the configured wiki when that API is available. If extension discovery is unavailable, the core pinned corpus still imports and remains usable for authoring retrieval.
 
 Use bundle import only when you need an offline preload:
 

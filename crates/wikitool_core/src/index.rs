@@ -26,6 +26,13 @@ const AUTHORING_TEMPLATE_KEY_LIMIT: usize = 12;
 const TEMPLATE_REFERENCE_EXAMPLE_LIMIT: usize = 3;
 const TEMPLATE_IMPLEMENTATION_PAGE_LIMIT: usize = 6;
 const TEMPLATE_PARAMETER_VALUE_LIMIT: usize = 3;
+const MODULE_REFERENCE_EXAMPLE_LIMIT: usize = 4;
+const AUTHORING_MODULE_FUNCTION_LIMIT: usize = 8;
+const AUTHORING_TEMPLATE_REFERENCE_LIMIT: usize = 4;
+const AUTHORING_MODULE_PATTERN_LIMIT: usize = 6;
+const AUTHORING_DOCS_QUERY_LIMIT: usize = 4;
+const AUTHORING_DOCS_TOKEN_BUDGET: usize = 560;
+const AUTHORING_DOCS_PROFILE: &str = "remilia-mw-1.44";
 const AUTHORING_REFERENCE_LIMIT: usize = 8;
 const AUTHORING_REFERENCE_EXAMPLE_LIMIT: usize = 3;
 const AUTHORING_REFERENCE_AUTHORITY_LIMIT: usize = 8;
@@ -209,6 +216,8 @@ pub struct AuthoringInventory {
     pub indexed_links_total: usize,
     pub template_invocation_rows: usize,
     pub distinct_templates_invoked: usize,
+    pub module_invocation_rows_total: usize,
+    pub distinct_modules_invoked: usize,
     pub reference_rows_total: usize,
     pub reference_authority_rows_total: usize,
     pub reference_identifier_rows_total: usize,
@@ -249,6 +258,33 @@ pub struct TemplateInvocationExample {
     pub parameter_keys: Vec<String>,
     pub invocation_text: String,
     pub token_estimate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ModuleFunctionUsage {
+    pub function_name: String,
+    pub usage_count: usize,
+    pub example_parameter_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ModuleInvocationExample {
+    pub source_title: String,
+    pub source_relative_path: String,
+    pub function_name: String,
+    pub parameter_keys: Vec<String>,
+    pub invocation_text: String,
+    pub token_estimate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ModuleUsageSummary {
+    pub module_title: String,
+    pub usage_count: usize,
+    pub distinct_page_count: usize,
+    pub function_stats: Vec<ModuleFunctionUsage>,
+    pub example_pages: Vec<String>,
+    pub example_invocations: Vec<ModuleInvocationExample>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -354,6 +390,17 @@ pub struct TemplateReference {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringDocsContext {
+    pub profile: String,
+    pub queries: Vec<String>,
+    pub pages: Vec<crate::docs::DocsSearchHit>,
+    pub sections: Vec<crate::docs::DocsContextSection>,
+    pub symbols: Vec<crate::docs::DocsSymbolHit>,
+    pub examples: Vec<crate::docs::DocsContextExample>,
+    pub token_estimate_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ActiveTemplateCatalog {
     pub active_template_count: usize,
     pub templates: Vec<TemplateUsageSummary>,
@@ -393,6 +440,9 @@ pub struct AuthoringKnowledgePackResult {
     pub suggested_references: Vec<ReferenceUsageSummary>,
     pub suggested_media: Vec<MediaUsageSummary>,
     pub template_baseline: Vec<TemplateUsageSummary>,
+    pub template_references: Vec<TemplateReference>,
+    pub module_patterns: Vec<ModuleUsageSummary>,
+    pub docs_context: Option<AuthoringDocsContext>,
     pub stub_existing_links: Vec<String>,
     pub stub_missing_links: Vec<String>,
     pub stub_detected_templates: Vec<StubTemplateHint>,
@@ -561,6 +611,22 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )
         .context("failed to prepare indexed_template_examples insert")?;
+
+    let mut module_invocation_statement = transaction
+        .prepare(
+            "INSERT OR REPLACE INTO indexed_module_invocations (
+                source_relative_path,
+                invocation_index,
+                source_title,
+                source_namespace,
+                module_title,
+                function_name,
+                parameter_keys,
+                invocation_wikitext,
+                token_estimate
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        )
+        .context("failed to prepare indexed_module_invocations insert")?;
 
     let mut reference_statement = transaction
         .prepare(
@@ -1021,6 +1087,28 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                     )
                 })?;
         }
+        for (invocation_index, invocation) in artifacts.module_invocations.into_iter().enumerate() {
+            module_invocation_statement
+                .execute(params![
+                    file.relative_path,
+                    i64::try_from(invocation_index)
+                        .context("module invocation index does not fit into i64")?,
+                    file.title,
+                    file.namespace,
+                    invocation.module_title,
+                    invocation.function_name,
+                    canonical_parameter_key_list(&invocation.parameter_keys),
+                    invocation.raw_wikitext,
+                    i64::try_from(invocation.token_estimate)
+                        .context("module invocation token estimate does not fit into i64")?,
+                ])
+                .with_context(|| {
+                    format!(
+                        "failed to insert module invocations for {}",
+                        file.relative_path
+                    )
+                })?;
+        }
     }
     persist_template_implementation_pages(
         &mut template_implementation_statement,
@@ -1033,6 +1121,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
     drop(reference_identifier_statement);
     drop(reference_authority_statement);
     drop(reference_statement);
+    drop(module_invocation_statement);
     drop(template_example_statement);
     drop(section_statement);
     drop(alias_statement);
@@ -1595,7 +1684,7 @@ pub fn build_authoring_knowledge_pack(
             identifier_page_weights,
         },
     )?;
-    let retrieval_mode = chunk_report.retrieval_mode;
+    let mut retrieval_mode = chunk_report.retrieval_mode;
     let chunks = chunk_report.chunks;
     let token_estimate_total = chunk_report.token_estimate_total;
 
@@ -1668,6 +1757,39 @@ pub fn build_authoring_knowledge_pack(
         summarize_media_usage_for_sources(&connection, &source_titles, AUTHORING_MEDIA_LIMIT)?;
     let template_baseline =
         summarize_template_usage_for_sources(&connection, None, template_limit)?;
+    let template_reference_titles = collect_authoring_template_reference_titles(
+        &stub_detected_templates,
+        &suggested_templates,
+        &template_baseline,
+        AUTHORING_TEMPLATE_REFERENCE_LIMIT,
+    );
+    let template_references = load_authoring_template_references(
+        &connection,
+        &template_reference_titles,
+        AUTHORING_TEMPLATE_REFERENCE_LIMIT,
+    )?;
+    let module_patterns = build_authoring_module_patterns(
+        &connection,
+        &source_titles,
+        &template_references,
+        AUTHORING_MODULE_PATTERN_LIMIT,
+    )?;
+    let docs_context = build_authoring_docs_context(
+        paths,
+        &topic,
+        &query_terms,
+        &template_references,
+        &module_patterns,
+    )?;
+    if !template_references.is_empty() {
+        retrieval_mode.push_str("+template-guides");
+    }
+    if !module_patterns.is_empty() {
+        retrieval_mode.push_str("+module-patterns");
+    }
+    if docs_context.is_some() {
+        retrieval_mode.push_str("+docs-bridge");
+    }
 
     let inventory = load_authoring_inventory(&connection)?;
     let pack_token_estimate_total = estimate_authoring_pack_total(AuthoringPackEstimateInputs {
@@ -1678,6 +1800,9 @@ pub fn build_authoring_knowledge_pack(
         suggested_references: &suggested_references,
         suggested_media: &suggested_media,
         template_baseline: &template_baseline,
+        template_references: &template_references,
+        module_patterns: &module_patterns,
+        docs_context: docs_context.as_ref(),
         stub_detected_templates: &stub_detected_templates,
         chunks: &chunks,
     });
@@ -1697,6 +1822,9 @@ pub fn build_authoring_knowledge_pack(
             suggested_references,
             suggested_media,
             template_baseline,
+            template_references,
+            module_patterns,
+            docs_context,
             stub_existing_links,
             stub_missing_links,
             stub_detected_templates,
@@ -1747,16 +1875,28 @@ pub fn query_template_reference(
         });
     }
 
-    let Some(template) =
-        load_template_usage_summary_for_connection(&connection, &normalized_template)?
+    let Some(reference) =
+        load_template_reference_for_connection(&connection, &normalized_template)?
     else {
         return Ok(TemplateReferenceLookup::TemplateMissing {
             template_title: normalized_template,
         });
     };
 
+    Ok(TemplateReferenceLookup::Found(Box::new(reference)))
+}
+
+fn load_template_reference_for_connection(
+    connection: &Connection,
+    template_title: &str,
+) -> Result<Option<TemplateReference>> {
+    let Some(template) = load_template_usage_summary_for_connection(connection, template_title)?
+    else {
+        return Ok(None);
+    };
+
     let implementation_records =
-        load_template_implementation_pages_for_connection(&connection, &normalized_template)?;
+        load_template_implementation_pages_for_connection(connection, template_title)?;
     let mut implementation_pages = Vec::new();
     let mut implementation_sections = Vec::new();
     let mut implementation_chunks = Vec::new();
@@ -1764,7 +1904,7 @@ pub fn query_template_reference(
         .into_iter()
         .take(TEMPLATE_IMPLEMENTATION_PAGE_LIMIT)
     {
-        let section_summaries = load_section_records_for_bundle(&connection, &page.relative_path)?
+        let section_summaries = load_section_records_for_bundle(connection, &page.relative_path)?
             .unwrap_or_default()
             .into_iter()
             .map(|section| LocalSectionSummary {
@@ -1774,29 +1914,315 @@ pub fn query_template_reference(
                 token_estimate: section.token_estimate,
             })
             .collect::<Vec<_>>();
-        let context_chunks =
-            load_context_chunks_for_bundle(&connection, &page.relative_path, None)?
-                .unwrap_or_default();
+        let context_chunks = load_context_chunks_for_bundle(connection, &page.relative_path, None)?
+            .unwrap_or_default();
         implementation_sections.extend(section_summaries.iter().cloned());
         implementation_chunks.extend(context_chunks.iter().cloned());
         implementation_pages.push(TemplateImplementationPage {
             page_title: page.title.clone(),
             namespace: page.namespace.clone(),
             role: page.role,
-            summary_text: load_page_summary_for_connection(&connection, &page.relative_path)?,
+            summary_text: load_page_summary_for_connection(connection, &page.relative_path)?,
             section_summaries,
             context_chunks,
         });
     }
 
-    Ok(TemplateReferenceLookup::Found(Box::new(
-        TemplateReference {
-            template,
-            implementation_pages,
-            implementation_sections,
-            implementation_chunks,
-        },
-    )))
+    Ok(Some(TemplateReference {
+        template,
+        implementation_pages,
+        implementation_sections,
+        implementation_chunks,
+    }))
+}
+
+fn collect_authoring_template_reference_titles(
+    stub_detected_templates: &[StubTemplateHint],
+    suggested_templates: &[TemplateUsageSummary],
+    template_baseline: &[TemplateUsageSummary],
+    limit: usize,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for title in stub_detected_templates
+        .iter()
+        .map(|template| template.template_title.clone())
+        .chain(
+            suggested_templates
+                .iter()
+                .map(|template| template.template_title.clone()),
+        )
+        .chain(
+            template_baseline
+                .iter()
+                .map(|template| template.template_title.clone()),
+        )
+    {
+        let normalized = normalize_template_lookup_title(&title);
+        if normalized.is_empty() || !seen.insert(normalized.to_ascii_lowercase()) {
+            continue;
+        }
+        out.push(normalized);
+        if out.len() >= limit {
+            break;
+        }
+    }
+
+    out
+}
+
+fn load_authoring_template_references(
+    connection: &Connection,
+    template_titles: &[String],
+    limit: usize,
+) -> Result<Vec<TemplateReference>> {
+    let mut out = Vec::new();
+    for template_title in template_titles.iter().take(limit) {
+        if let Some(reference) = load_template_reference_for_connection(connection, template_title)?
+        {
+            out.push(reference);
+        }
+    }
+    Ok(out)
+}
+
+fn build_authoring_module_patterns(
+    connection: &Connection,
+    source_titles: &[String],
+    template_references: &[TemplateReference],
+    limit: usize,
+) -> Result<Vec<ModuleUsageSummary>> {
+    let mut out = summarize_module_usage_for_sources(connection, source_titles, limit)?;
+    let mut seen = out
+        .iter()
+        .map(|summary| summary.module_title.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+
+    let referenced_modules = template_references
+        .iter()
+        .flat_map(|reference| reference.implementation_pages.iter())
+        .filter(|page| page.role == "module")
+        .map(|page| page.page_title.clone())
+        .collect::<Vec<_>>();
+
+    for module_title in referenced_modules {
+        if out.len() >= limit {
+            break;
+        }
+        let normalized = normalize_module_lookup_title(&module_title);
+        if normalized.is_empty() || !seen.insert(normalized.to_ascii_lowercase()) {
+            continue;
+        }
+        if let Some(summary) = load_module_usage_summary_for_connection(connection, &normalized)? {
+            out.push(summary);
+        }
+    }
+
+    out.sort_by(|left, right| {
+        right
+            .usage_count
+            .cmp(&left.usage_count)
+            .then_with(|| right.distinct_page_count.cmp(&left.distinct_page_count))
+            .then_with(|| left.module_title.cmp(&right.module_title))
+    });
+    out.truncate(limit);
+    Ok(out)
+}
+
+fn build_authoring_docs_context(
+    paths: &ResolvedPaths,
+    topic: &str,
+    query_terms: &[String],
+    template_references: &[TemplateReference],
+    module_patterns: &[ModuleUsageSummary],
+) -> Result<Option<AuthoringDocsContext>> {
+    let queries =
+        build_authoring_docs_queries(topic, query_terms, template_references, module_patterns);
+    if queries.is_empty() {
+        return Ok(None);
+    }
+
+    let mut pages = Vec::new();
+    let mut sections = Vec::new();
+    let mut symbols = Vec::new();
+    let mut examples = Vec::new();
+    let mut seen_pages = BTreeSet::new();
+    let mut seen_sections = BTreeSet::new();
+    let mut seen_symbols = BTreeSet::new();
+    let mut seen_examples = BTreeSet::new();
+
+    for query in &queries {
+        let report = crate::docs::build_docs_context(
+            paths,
+            query,
+            &crate::docs::DocsContextOptions {
+                profile: Some(AUTHORING_DOCS_PROFILE.to_string()),
+                limit: 4,
+                token_budget: AUTHORING_DOCS_TOKEN_BUDGET,
+            },
+        )?;
+
+        for page in report.pages {
+            let key = format!(
+                "{}|{}|{}|{}",
+                page.corpus_id,
+                page.tier,
+                page.page_title,
+                page.section_heading.as_deref().unwrap_or("")
+            );
+            if seen_pages.insert(key) {
+                pages.push(page);
+            }
+        }
+        for section in report.sections {
+            let key = format!(
+                "{}|{}|{}",
+                section.corpus_id,
+                section.page_title,
+                section.section_heading.as_deref().unwrap_or("")
+            );
+            if seen_sections.insert(key) {
+                sections.push(section);
+            }
+        }
+        for symbol in report.symbols {
+            let key = format!(
+                "{}|{}|{}|{}",
+                symbol.corpus_id, symbol.page_title, symbol.symbol_kind, symbol.symbol_name
+            );
+            if seen_symbols.insert(key) {
+                symbols.push(symbol);
+            }
+        }
+        for example in report.examples {
+            let key = format!(
+                "{}|{}|{}|{}",
+                example.corpus_id,
+                example.page_title,
+                example.example_kind,
+                example.section_heading.as_deref().unwrap_or("")
+            );
+            if seen_examples.insert(key) {
+                examples.push(example);
+            }
+        }
+    }
+
+    pages.sort_by(|left, right| {
+        right
+            .retrieval_weight
+            .cmp(&left.retrieval_weight)
+            .then_with(|| left.title.cmp(&right.title))
+    });
+    sections.sort_by(|left, right| {
+        right
+            .retrieval_weight
+            .cmp(&left.retrieval_weight)
+            .then_with(|| left.page_title.cmp(&right.page_title))
+    });
+    symbols.sort_by(|left, right| {
+        right
+            .retrieval_weight
+            .cmp(&left.retrieval_weight)
+            .then_with(|| left.symbol_name.cmp(&right.symbol_name))
+    });
+    examples.sort_by(|left, right| {
+        right
+            .retrieval_weight
+            .cmp(&left.retrieval_weight)
+            .then_with(|| left.page_title.cmp(&right.page_title))
+    });
+
+    pages.truncate(AUTHORING_DOCS_QUERY_LIMIT * 2);
+    sections.truncate(AUTHORING_DOCS_QUERY_LIMIT * 3);
+    symbols.truncate(AUTHORING_DOCS_QUERY_LIMIT * 3);
+    examples.truncate(AUTHORING_DOCS_QUERY_LIMIT * 2);
+
+    if pages.is_empty() && sections.is_empty() && symbols.is_empty() && examples.is_empty() {
+        return Ok(None);
+    }
+
+    let token_estimate_total = pages
+        .iter()
+        .map(|page| estimate_tokens(&page.snippet).max(1))
+        .sum::<usize>()
+        .saturating_add(
+            sections
+                .iter()
+                .map(|section| section.token_estimate.max(1))
+                .sum::<usize>(),
+        )
+        .saturating_add(
+            symbols
+                .iter()
+                .map(|symbol| {
+                    estimate_tokens(&format!("{} {}", symbol.summary_text, symbol.detail_text))
+                        .max(1)
+                })
+                .sum::<usize>(),
+        )
+        .saturating_add(
+            examples
+                .iter()
+                .map(|example| example.token_estimate.max(1))
+                .sum::<usize>(),
+        );
+
+    Ok(Some(AuthoringDocsContext {
+        profile: AUTHORING_DOCS_PROFILE.to_string(),
+        queries,
+        pages,
+        sections,
+        symbols,
+        examples,
+        token_estimate_total,
+    }))
+}
+
+fn build_authoring_docs_queries(
+    topic: &str,
+    query_terms: &[String],
+    template_references: &[TemplateReference],
+    module_patterns: &[ModuleUsageSummary],
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    push_authoring_docs_query(&mut out, &mut seen, topic);
+    for term in query_terms.iter().take(2) {
+        push_authoring_docs_query(&mut out, &mut seen, term);
+    }
+    for template_title in template_references
+        .iter()
+        .map(|reference| reference.template.template_title.as_str())
+    {
+        if let Some(tail) = template_title.split_once(':').map(|(_, tail)| tail) {
+            push_authoring_docs_query(&mut out, &mut seen, tail);
+        }
+        if out.len() >= AUTHORING_DOCS_QUERY_LIMIT {
+            break;
+        }
+    }
+    if !template_references.is_empty() {
+        push_authoring_docs_query(&mut out, &mut seen, "template parameters");
+    }
+    if !module_patterns.is_empty() {
+        push_authoring_docs_query(&mut out, &mut seen, "Scribunto #invoke");
+    }
+    out.truncate(AUTHORING_DOCS_QUERY_LIMIT);
+    out
+}
+
+fn push_authoring_docs_query(queries: &mut Vec<String>, seen: &mut BTreeSet<String>, value: &str) {
+    let normalized = normalize_spaces(&value.replace('_', " "));
+    if normalized.is_empty() {
+        return;
+    }
+    let key = normalized.to_ascii_lowercase();
+    if seen.insert(key) {
+        queries.push(normalized);
+    }
 }
 
 pub fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
@@ -1986,11 +2412,20 @@ struct ParsedTemplateInvocation {
 }
 
 #[derive(Debug, Clone)]
+struct ParsedModuleInvocation {
+    module_title: String,
+    function_name: String,
+    parameter_keys: Vec<String>,
+    raw_wikitext: String,
+    token_estimate: usize,
+}
+
+#[derive(Debug, Clone)]
 struct ParsedPageArtifacts {
     section_records: Vec<IndexedSectionRecord>,
     context_chunks: Vec<ArticleContextChunkRow>,
     template_invocations: Vec<ParsedTemplateInvocation>,
-    module_invocations: Vec<String>,
+    module_invocations: Vec<ParsedModuleInvocation>,
     references: Vec<IndexedReferenceRecord>,
     media: Vec<IndexedMediaRecord>,
 }
@@ -3822,6 +4257,26 @@ struct TemplateUsageAccumulator {
     parameter_key_counts: BTreeMap<String, usize>,
 }
 
+#[derive(Default)]
+struct ModuleUsageAccumulator {
+    usage_count: usize,
+    source_pages: BTreeSet<String>,
+    function_counts: BTreeMap<String, usize>,
+    function_parameter_examples: BTreeMap<String, BTreeSet<String>>,
+    examples: Vec<ModuleInvocationExample>,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedModuleInvocationRow {
+    source_title: String,
+    source_relative_path: String,
+    module_title: String,
+    function_name: String,
+    parameter_keys: Vec<String>,
+    invocation_wikitext: String,
+    token_estimate: usize,
+}
+
 fn summarize_template_usage_for_sources(
     connection: &Connection,
     source_titles: Option<&[String]>,
@@ -3919,6 +4374,248 @@ fn load_template_invocation_rows_for_sources(
         out.push(row.context("failed to decode template invocation summary row")?);
     }
     Ok(out)
+}
+
+fn summarize_module_usage_for_sources(
+    connection: &Connection,
+    source_titles: &[String],
+    limit: usize,
+) -> Result<Vec<ModuleUsageSummary>> {
+    if limit == 0
+        || source_titles.is_empty()
+        || !table_exists(connection, "indexed_module_invocations")?
+    {
+        return Ok(Vec::new());
+    }
+
+    let rows = load_module_invocation_rows_for_sources(connection, source_titles)?;
+    let mut grouped = BTreeMap::<String, ModuleUsageAccumulator>::new();
+    for row in rows {
+        let entry = grouped.entry(row.module_title.clone()).or_default();
+        entry.usage_count = entry.usage_count.saturating_add(1);
+        entry.source_pages.insert(row.source_title.clone());
+        let function_count = entry
+            .function_counts
+            .entry(row.function_name.clone())
+            .or_insert(0);
+        *function_count = function_count.saturating_add(1);
+        let function_examples = entry
+            .function_parameter_examples
+            .entry(row.function_name.clone())
+            .or_default();
+        for key in &row.parameter_keys {
+            function_examples.insert(key.clone());
+        }
+        entry.examples.push(ModuleInvocationExample {
+            source_title: row.source_title,
+            source_relative_path: row.source_relative_path,
+            function_name: row.function_name,
+            parameter_keys: row.parameter_keys,
+            invocation_text: row.invocation_wikitext,
+            token_estimate: row.token_estimate,
+        });
+    }
+
+    let mut ranked = grouped.into_iter().collect::<Vec<_>>();
+    ranked.sort_by(|(left_title, left_acc), (right_title, right_acc)| {
+        right_acc
+            .usage_count
+            .cmp(&left_acc.usage_count)
+            .then_with(|| {
+                right_acc
+                    .source_pages
+                    .len()
+                    .cmp(&left_acc.source_pages.len())
+            })
+            .then_with(|| left_title.cmp(right_title))
+    });
+    ranked.truncate(limit);
+
+    Ok(ranked
+        .into_iter()
+        .map(|(module_title, accumulator)| {
+            materialize_module_usage_summary(module_title, accumulator)
+        })
+        .collect())
+}
+
+fn load_module_usage_summary_for_connection(
+    connection: &Connection,
+    module_title: &str,
+) -> Result<Option<ModuleUsageSummary>> {
+    if !table_exists(connection, "indexed_module_invocations")? {
+        return Ok(None);
+    }
+
+    let rows = load_module_invocation_rows_for_module(connection, module_title)?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    let mut accumulator = ModuleUsageAccumulator::default();
+    for row in rows {
+        accumulator.usage_count = accumulator.usage_count.saturating_add(1);
+        accumulator.source_pages.insert(row.source_title.clone());
+        let function_count = accumulator
+            .function_counts
+            .entry(row.function_name.clone())
+            .or_insert(0);
+        *function_count = function_count.saturating_add(1);
+        let function_examples = accumulator
+            .function_parameter_examples
+            .entry(row.function_name.clone())
+            .or_default();
+        for key in &row.parameter_keys {
+            function_examples.insert(key.clone());
+        }
+        accumulator.examples.push(ModuleInvocationExample {
+            source_title: row.source_title,
+            source_relative_path: row.source_relative_path,
+            function_name: row.function_name,
+            parameter_keys: row.parameter_keys,
+            invocation_text: row.invocation_wikitext,
+            token_estimate: row.token_estimate,
+        });
+    }
+
+    Ok(Some(materialize_module_usage_summary(
+        normalize_module_lookup_title(module_title),
+        accumulator,
+    )))
+}
+
+fn load_module_invocation_rows_for_sources(
+    connection: &Connection,
+    source_titles: &[String],
+) -> Result<Vec<IndexedModuleInvocationRow>> {
+    let placeholders = std::iter::repeat_n("?", source_titles.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT source_title, source_relative_path, module_title, function_name, parameter_keys,
+                invocation_wikitext, token_estimate
+         FROM indexed_module_invocations
+         WHERE source_title IN ({placeholders})"
+    );
+    let values = source_titles
+        .iter()
+        .cloned()
+        .map(rusqlite::types::Value::from)
+        .collect::<Vec<_>>();
+    let mut statement = connection
+        .prepare(&sql)
+        .context("failed to prepare module invocation summary query")?;
+    let rows = statement
+        .query_map(params_from_iter(values), |row| {
+            let token_estimate_i64: i64 = row.get(6)?;
+            Ok(IndexedModuleInvocationRow {
+                source_title: row.get(0)?,
+                source_relative_path: row.get(1)?,
+                module_title: row.get(2)?,
+                function_name: row.get(3)?,
+                parameter_keys: parse_parameter_key_list(&row.get::<_, String>(4)?),
+                invocation_wikitext: row.get(5)?,
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+            })
+        })
+        .context("failed to run module invocation summary query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode module invocation summary row")?);
+    }
+    Ok(out)
+}
+
+fn load_module_invocation_rows_for_module(
+    connection: &Connection,
+    module_title: &str,
+) -> Result<Vec<IndexedModuleInvocationRow>> {
+    let normalized = normalize_module_lookup_title(module_title);
+    if normalized.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut statement = connection
+        .prepare(
+            "SELECT source_title, source_relative_path, module_title, function_name, parameter_keys,
+                    invocation_wikitext, token_estimate
+             FROM indexed_module_invocations
+             WHERE lower(module_title) = lower(?1)",
+        )
+        .context("failed to prepare module invocation lookup query")?;
+    let rows = statement
+        .query_map([normalized], |row| {
+            let token_estimate_i64: i64 = row.get(6)?;
+            Ok(IndexedModuleInvocationRow {
+                source_title: row.get(0)?,
+                source_relative_path: row.get(1)?,
+                module_title: row.get(2)?,
+                function_name: row.get(3)?,
+                parameter_keys: parse_parameter_key_list(&row.get::<_, String>(4)?),
+                invocation_wikitext: row.get(5)?,
+                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
+            })
+        })
+        .context("failed to run module invocation lookup query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode module invocation lookup row")?);
+    }
+    Ok(out)
+}
+
+fn materialize_module_usage_summary(
+    module_title: String,
+    mut accumulator: ModuleUsageAccumulator,
+) -> ModuleUsageSummary {
+    let mut function_stats = accumulator
+        .function_counts
+        .into_iter()
+        .map(|(function_name, usage_count)| ModuleFunctionUsage {
+            example_parameter_keys: accumulator
+                .function_parameter_examples
+                .remove(&function_name)
+                .unwrap_or_default()
+                .into_iter()
+                .take(AUTHORING_TEMPLATE_KEY_LIMIT)
+                .collect(),
+            function_name,
+            usage_count,
+        })
+        .collect::<Vec<_>>();
+    function_stats.sort_by(|left, right| {
+        right
+            .usage_count
+            .cmp(&left.usage_count)
+            .then_with(|| left.function_name.cmp(&right.function_name))
+    });
+    function_stats.truncate(AUTHORING_MODULE_FUNCTION_LIMIT);
+
+    accumulator.examples.sort_by(|left, right| {
+        left.token_estimate
+            .cmp(&right.token_estimate)
+            .then_with(|| left.source_title.cmp(&right.source_title))
+            .then_with(|| left.function_name.cmp(&right.function_name))
+    });
+    accumulator
+        .examples
+        .truncate(MODULE_REFERENCE_EXAMPLE_LIMIT);
+
+    ModuleUsageSummary {
+        module_title,
+        usage_count: accumulator.usage_count,
+        distinct_page_count: accumulator.source_pages.len(),
+        function_stats,
+        example_pages: accumulator
+            .source_pages
+            .iter()
+            .take(MODULE_REFERENCE_EXAMPLE_LIMIT)
+            .cloned()
+            .collect(),
+        example_invocations: accumulator.examples,
+    }
 }
 
 fn load_template_usage_summary_for_connection(
@@ -4027,6 +4724,20 @@ fn normalize_template_lookup_title(value: &str) -> String {
         return String::new();
     }
     canonical_template_title(&normalized).unwrap_or_else(|| normalize_query_title(&normalized))
+}
+
+fn normalize_module_lookup_title(value: &str) -> String {
+    let normalized = normalize_spaces(&value.replace('_', " "));
+    if normalized.is_empty() {
+        return String::new();
+    }
+    if normalized
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("Module:"))
+    {
+        return normalize_query_title(&normalized);
+    }
+    format!("Module:{normalized}")
 }
 
 fn load_page_summary_for_connection(
@@ -4764,6 +5475,9 @@ struct AuthoringPackEstimateInputs<'a> {
     suggested_references: &'a [ReferenceUsageSummary],
     suggested_media: &'a [MediaUsageSummary],
     template_baseline: &'a [TemplateUsageSummary],
+    template_references: &'a [TemplateReference],
+    module_patterns: &'a [ModuleUsageSummary],
+    docs_context: Option<&'a AuthoringDocsContext>,
     stub_detected_templates: &'a [StubTemplateHint],
     chunks: &'a [RetrievedChunk],
 }
@@ -4813,6 +5527,50 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
                     .map(estimate_tokens)
                     .unwrap_or(0)
                 + template
+                    .example_invocations
+                    .iter()
+                    .map(|example| example.token_estimate)
+                    .sum::<usize>()
+        })
+        .sum::<usize>();
+    let template_reference_tokens = inputs
+        .template_references
+        .iter()
+        .map(|reference| {
+            estimate_tokens(&reference.template.template_title)
+                + reference
+                    .implementation_pages
+                    .iter()
+                    .map(|page| {
+                        estimate_tokens(&page.page_title)
+                            + estimate_tokens(&page.summary_text)
+                            + page
+                                .context_chunks
+                                .iter()
+                                .map(|chunk| chunk.token_estimate)
+                                .sum::<usize>()
+                    })
+                    .sum::<usize>()
+        })
+        .sum::<usize>();
+    let module_tokens = inputs
+        .module_patterns
+        .iter()
+        .map(|module| {
+            estimate_tokens(&module.module_title)
+                + module
+                    .function_stats
+                    .iter()
+                    .map(|function| {
+                        estimate_tokens(&function.function_name)
+                            + function
+                                .example_parameter_keys
+                                .iter()
+                                .map(|key| estimate_tokens(key))
+                                .sum::<usize>()
+                    })
+                    .sum::<usize>()
+                + module
                     .example_invocations
                     .iter()
                     .map(|example| example.token_estimate)
@@ -4899,13 +5657,20 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
         .iter()
         .map(|chunk| chunk.token_estimate)
         .sum::<usize>();
+    let docs_tokens = inputs
+        .docs_context
+        .map(|context| context.token_estimate_total)
+        .unwrap_or(0);
 
     page_summary_tokens
         .saturating_add(link_tokens)
         .saturating_add(category_tokens)
         .saturating_add(template_tokens)
+        .saturating_add(template_reference_tokens)
+        .saturating_add(module_tokens)
         .saturating_add(reference_tokens)
         .saturating_add(media_tokens)
+        .saturating_add(docs_tokens)
         .saturating_add(stub_template_tokens)
         .saturating_add(chunk_tokens)
 }
@@ -4949,6 +5714,23 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
                     "SELECT COUNT(DISTINCT template_title) FROM indexed_template_invocations",
                 )
                 .context("failed to count distinct templates for authoring inventory")?,
+            )
+        } else {
+            (0, 0)
+        };
+    let (module_invocation_rows_total, distinct_modules_invoked) =
+        if table_exists(connection, "indexed_module_invocations")? {
+            (
+                count_query(
+                    connection,
+                    "SELECT COUNT(*) FROM indexed_module_invocations",
+                )
+                .context("failed to count module invocation rows for authoring inventory")?,
+                count_query(
+                    connection,
+                    "SELECT COUNT(DISTINCT module_title) FROM indexed_module_invocations",
+                )
+                .context("failed to count distinct modules for authoring inventory")?,
             )
         } else {
             (0, 0)
@@ -5020,6 +5802,8 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         indexed_links_total,
         template_invocation_rows,
         distinct_templates_invoked,
+        module_invocation_rows_total,
+        distinct_modules_invoked,
         reference_rows_total,
         reference_authority_rows_total,
         reference_identifier_rows_total,
@@ -5471,6 +6255,14 @@ fn build_page_semantic_profile(
             .map(|media| media.caption_text.clone()),
     );
     let template_implementation_titles = collect_template_implementation_terms(file, artifacts);
+    let module_terms = collect_normalized_string_list(
+        artifacts.module_invocations.iter().flat_map(|invocation| {
+            [
+                invocation.module_title.clone(),
+                invocation.function_name.clone(),
+            ]
+        }),
+    );
     let mut profile = IndexedSemanticProfileRecord {
         source_title: file.title.clone(),
         source_namespace: file.namespace.clone(),
@@ -5492,12 +6284,16 @@ fn build_page_semantic_profile(
         semantic_text: String::new(),
         token_estimate: 0,
     };
-    profile.semantic_text = build_page_semantic_text(file, &profile);
+    profile.semantic_text = build_page_semantic_text(file, &profile, &module_terms);
     profile.token_estimate = estimate_tokens(&profile.semantic_text);
     profile
 }
 
-fn build_page_semantic_text(file: &ScannedFile, profile: &IndexedSemanticProfileRecord) -> String {
+fn build_page_semantic_text(
+    file: &ScannedFile,
+    profile: &IndexedSemanticProfileRecord,
+    module_terms: &[String],
+) -> String {
     let mut terms = Vec::new();
     let mut seen = BTreeSet::new();
 
@@ -5518,6 +6314,7 @@ fn build_page_semantic_text(file: &ScannedFile, profile: &IndexedSemanticProfile
         &profile.media_titles,
         &profile.media_captions,
         &profile.template_implementation_titles,
+        module_terms,
     ] {
         for value in values {
             push_semantic_term(&mut terms, &mut seen, value);
@@ -5552,7 +6349,12 @@ fn collect_template_implementation_terms(
     }
 
     let mut terms = Vec::new();
-    terms.extend(artifacts.module_invocations.iter().cloned());
+    terms.extend(artifacts.module_invocations.iter().flat_map(|invocation| {
+        [
+            invocation.module_title.clone(),
+            invocation.function_name.clone(),
+        ]
+    }));
     terms.extend(
         artifacts
             .template_invocations
@@ -5586,7 +6388,11 @@ fn maybe_record_template_implementation_seed(
             .map(|invocation| invocation.template_title.clone())
             .filter(|title| !title.eq_ignore_ascii_case(&file.title))
             .collect(),
-        module_dependencies: artifacts.module_invocations.clone(),
+        module_dependencies: artifacts
+            .module_invocations
+            .iter()
+            .map(|invocation| invocation.module_title.clone())
+            .collect(),
     };
     seed.template_dependencies.sort();
     seed.template_dependencies.dedup();
@@ -6314,9 +7120,10 @@ fn extract_template_invocations(content: &str) -> Vec<ParsedTemplateInvocation> 
     out
 }
 
-fn extract_module_invocations(content: &str) -> Vec<String> {
+fn extract_module_invocations(content: &str) -> Vec<ParsedModuleInvocation> {
     let bytes = content.as_bytes();
-    let mut out = BTreeSet::new();
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
     let mut cursor = 0usize;
     let mut stack = Vec::new();
 
@@ -6331,8 +7138,16 @@ fn extract_module_invocations(content: &str) -> Vec<String> {
                 && cursor >= start
             {
                 let inner = &content[start..cursor];
-                if let Some(module_title) = parse_module_invocation(inner) {
-                    out.insert(module_title);
+                if let Some(invocation) = parse_module_invocation(inner) {
+                    let signature = format!(
+                        "{}|{}|{}",
+                        invocation.module_title.to_ascii_lowercase(),
+                        invocation.function_name.to_ascii_lowercase(),
+                        canonical_parameter_key_list(&invocation.parameter_keys)
+                    );
+                    if seen.insert(signature) {
+                        out.push(invocation);
+                    }
                 }
             }
             cursor += 2;
@@ -6341,7 +7156,7 @@ fn extract_module_invocations(content: &str) -> Vec<String> {
         cursor += 1;
     }
 
-    out.into_iter().collect()
+    out
 }
 
 fn parse_template_invocation(inner: &str) -> Option<ParsedTemplateInvocation> {
@@ -6377,7 +7192,7 @@ fn parse_template_invocation(inner: &str) -> Option<ParsedTemplateInvocation> {
     })
 }
 
-fn parse_module_invocation(inner: &str) -> Option<String> {
+fn parse_module_invocation(inner: &str) -> Option<ParsedModuleInvocation> {
     let segments = split_template_segments(inner);
     let raw_name = segments.first()?.trim();
     let remainder = raw_name.strip_prefix("#invoke:")?;
@@ -6385,7 +7200,38 @@ fn parse_module_invocation(inner: &str) -> Option<String> {
     if module_name.is_empty() {
         return None;
     }
-    Some(format!("Module:{module_name}"))
+    let function_name = normalize_spaces(segments.get(1).map(String::as_str).unwrap_or(""));
+    if function_name.is_empty() {
+        return None;
+    }
+
+    let mut parameter_keys = Vec::new();
+    let mut positional_index = 1usize;
+    for segment in segments.iter().skip(2) {
+        let value = segment.trim();
+        if value.is_empty() {
+            continue;
+        }
+        if let Some((key, _)) = split_once_top_level_equals(value) {
+            let normalized = normalize_template_parameter_key(&key);
+            if !normalized.is_empty() {
+                parameter_keys.push(normalized);
+                continue;
+            }
+        }
+        parameter_keys.push(format!("${positional_index}"));
+        positional_index += 1;
+    }
+    parameter_keys.sort();
+    parameter_keys.dedup();
+
+    Some(ParsedModuleInvocation {
+        module_title: format!("Module:{module_name}"),
+        function_name,
+        parameter_keys,
+        raw_wikitext: format!("{{{{{inner}}}}}"),
+        token_estimate: estimate_tokens(inner),
+    })
 }
 
 fn split_template_segments(inner: &str) -> Vec<String> {
@@ -8197,6 +9043,13 @@ fn rebuild_fts_index(connection: &Connection) -> Result<()> {
             )
             .context("failed to rebuild indexed_template_examples_fts")?;
     }
+    if fts_table_exists(connection, "indexed_module_invocations_fts") {
+        connection
+            .execute_batch(
+                "INSERT INTO indexed_module_invocations_fts(indexed_module_invocations_fts) VALUES('rebuild')",
+            )
+            .context("failed to rebuild indexed_module_invocations_fts")?;
+    }
     if fts_table_exists(connection, "indexed_page_references_fts") {
         connection
             .execute_batch(
@@ -8240,8 +9093,8 @@ mod tests {
         ActiveTemplateCatalogLookup, AuthoringKnowledgePack, AuthoringKnowledgePackOptions,
         BrokenLinkIssue, LocalChunkAcrossRetrieval, LocalChunkRetrieval, TemplateReferenceLookup,
         build_authoring_knowledge_pack, build_local_context, extract_media_records,
-        extract_reference_records, extract_template_invocations, extract_wikilinks,
-        load_stored_index_stats, query_active_template_catalog, query_backlinks,
+        extract_module_invocations, extract_reference_records, extract_template_invocations,
+        extract_wikilinks, load_stored_index_stats, query_active_template_catalog, query_backlinks,
         query_empty_categories, query_orphans, query_search_local, query_template_reference,
         rebuild_index, retrieve_local_context_chunks, retrieve_local_context_chunks_across_pages,
         run_validation_checks,
@@ -8547,6 +9400,29 @@ mod tests {
             invocations
                 .iter()
                 .all(|invocation| !invocation.template_title.starts_with("Template:#"))
+        );
+    }
+
+    #[test]
+    fn extract_module_invocations_captures_functions_and_parameter_keys() {
+        let content = "{{#invoke:Infobox person|render|name=Alpha|occupation=Archivist|2020}} {{#invoke:Infobox person|render|name=Alpha|occupation=Archivist|2020}}";
+        let invocations = extract_module_invocations(content);
+
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].module_title, "Module:Infobox person");
+        assert_eq!(invocations[0].function_name, "render");
+        assert_eq!(
+            invocations[0].parameter_keys,
+            vec![
+                "$1".to_string(),
+                "name".to_string(),
+                "occupation".to_string()
+            ]
+        );
+        assert!(
+            invocations[0]
+                .raw_wikitext
+                .contains("#invoke:Infobox person")
         );
     }
 
@@ -9147,6 +10023,127 @@ mod tests {
                 .any(|section| section.section_heading.as_deref() == Some("Parameters"))
         );
         assert!(!reference.implementation_chunks.is_empty());
+    }
+
+    #[test]
+    fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create project root");
+        let paths = paths(&project_root);
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "{{Infobox person|name=Alpha|occupation=Archivist}}\n'''Alpha''' article body with [[Beta]].",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+            "'''Beta''' article body linked from [[Alpha]].",
+        );
+        write_file(
+            &paths
+                .templates_dir
+                .join("infobox")
+                .join("Template_Infobox_person.wiki"),
+            "Template lead text.\n{{#invoke:Infobox person|render|name=Example|occupation=Archivist}}\n== Parameters ==\nUse |name= and |occupation=.",
+        );
+        write_file(
+            &paths
+                .templates_dir
+                .join("infobox")
+                .join("Module_Infobox_person.wiki"),
+            "return { render = function(frame) return frame.args.name end }",
+        );
+        write_file(
+            &paths
+                .templates_dir
+                .join("infobox")
+                .join("Template_Infobox_person___doc.wiki"),
+            "Documentation lead.\n== Usage ==\nUse {{Infobox person}} for biographies.",
+        );
+
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+        let bundle_path = project_root.join("authoring_docs_bundle.json");
+        write_file(
+            &bundle_path,
+            r#"{
+  "schema_version": 1,
+  "generated_at_unix": 1739000000,
+  "source": "authoring_bridge_test",
+  "technical": [
+    {
+      "doc_type": "manual",
+      "pages": [
+        {
+          "page_title": "Manual:Scribunto",
+          "local_path": "manual/Scribunto.md",
+          "content": "Scribunto supports {{#invoke:Infobox person|render|name=Alpha}} for Lua-backed templates. Template parameters should map cleanly to module functions."
+        }
+      ]
+    }
+  ]
+}"#,
+        );
+        crate::docs::import_docs_bundle(&paths, &bundle_path).expect("import docs bundle");
+        let connection =
+            crate::schema::open_initialized_database_connection(&paths.db_path).expect("open db");
+        connection
+            .execute(
+                "UPDATE docs_corpora SET source_profile = 'remilia-mw-1.44'",
+                [],
+            )
+            .expect("set docs profile");
+
+        let report = build_authoring_knowledge_pack(
+            &paths,
+            Some("Alpha"),
+            None,
+            &AuthoringKnowledgePackOptions {
+                related_page_limit: 6,
+                chunk_limit: 6,
+                token_budget: 420,
+                max_pages: 4,
+                link_limit: 8,
+                category_limit: 4,
+                template_limit: 6,
+                diversify: true,
+            },
+        )
+        .expect("authoring pack");
+        let report = match report {
+            AuthoringKnowledgePack::Found(report) => *report,
+            other => panic!("expected found authoring pack, got {other:?}"),
+        };
+
+        assert!(
+            report
+                .template_references
+                .iter()
+                .any(|reference| reference.template.template_title == "Template:Infobox person")
+        );
+        assert!(
+            report
+                .module_patterns
+                .iter()
+                .any(|module| module.module_title == "Module:Infobox person")
+        );
+        let docs_context = report.docs_context.expect("docs context must exist");
+        assert!(
+            docs_context
+                .queries
+                .iter()
+                .any(|query| query == "Scribunto #invoke")
+        );
+        assert!(
+            docs_context
+                .pages
+                .iter()
+                .any(|page| page.page_title == "Manual:Scribunto")
+        );
+        assert!(report.retrieval_mode.contains("template-guides"));
+        assert!(report.retrieval_mode.contains("module-patterns"));
+        assert!(report.retrieval_mode.contains("docs-bridge"));
     }
 
     #[test]

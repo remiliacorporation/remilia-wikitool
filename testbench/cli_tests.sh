@@ -381,6 +381,7 @@ if not isinstance(report, dict):
     raise SystemExit(1)
 required = ("suggested_templates", "template_baseline", "stub_missing_links")
 required += ("suggested_references", "suggested_media")
+required += ("template_references", "module_patterns", "docs_context")
 if any(key not in report for key in required):
     raise SystemExit(1)
 PY
@@ -388,6 +389,31 @@ then
     pass "workflow authoring-pack emits authoring knowledge pack"
 else
     fail "workflow authoring-pack emits authoring knowledge pack (got: $OUTPUT)"
+fi
+
+# --- workflow ask ---
+section "workflow ask"
+OUTPUT=$(wt "$PROJ" workflow ask "write an article on Alpha" --format json 2>&1 || true)
+WORKFLOW_ASK_JSON="$TMPDIR_ROOT/workflow-ask.json"
+printf '%s' "$OUTPUT" > "$WORKFLOW_ASK_JSON"
+if python3 - "$WORKFLOW_ASK_JSON" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+report = payload.get("Found")
+if not isinstance(report, dict):
+    raise SystemExit(1)
+if report.get("topic") != "Alpha":
+    raise SystemExit(1)
+if report.get("query") != "Alpha":
+    raise SystemExit(1)
+PY
+then
+    pass "workflow ask resolves natural-language prompts into authoring retrieval"
+else
+    fail "workflow ask resolves natural-language prompts into authoring retrieval (got: $OUTPUT)"
 fi
 
 # --- index templates ---

@@ -896,6 +896,7 @@ Usage: wikitool workflow [OPTIONS] <COMMAND>
 Commands:
   bootstrap       
   full-refresh    
+  ask             
   authoring-pack  Generate a token-budgeted knowledge pack for article authoring
   help            Print this message or the help of the given subcommand(s)
 
@@ -940,6 +941,24 @@ Options:
       --no-templates         Do not create templates/ during initialization
       --diagnostics          Print resolved runtime diagnostics
       --skip-reference       Skip docs reference generation
+  -h, --help                 Print help
+```
+
+## workflow ask
+
+```text
+Usage: wikitool workflow ask [OPTIONS] <PROMPT>
+
+Arguments:
+  <PROMPT>  Natural-language authoring request
+
+Options:
+      --project-root <PATH>  
+      --stub-path <PATH>     Optional stub wikitext file used for link/template hint extraction
+      --data-dir <PATH>      
+      --format <FORMAT>      Output format: text|json [default: json]
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
 

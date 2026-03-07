@@ -218,6 +218,35 @@ CREATE VIRTUAL TABLE IF NOT EXISTS indexed_template_examples_fts USING fts5(
     content_rowid=rowid
 );
 
+CREATE TABLE IF NOT EXISTS indexed_module_invocations (
+    source_relative_path TEXT NOT NULL,
+    invocation_index INTEGER NOT NULL,
+    source_title TEXT NOT NULL,
+    source_namespace TEXT NOT NULL,
+    module_title TEXT NOT NULL,
+    function_name TEXT NOT NULL,
+    parameter_keys TEXT NOT NULL,
+    invocation_wikitext TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    PRIMARY KEY (source_relative_path, invocation_index),
+    FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_module_invocations_module
+    ON indexed_module_invocations(module_title);
+CREATE INDEX IF NOT EXISTS idx_indexed_module_invocations_source
+    ON indexed_module_invocations(source_title);
+CREATE INDEX IF NOT EXISTS idx_indexed_module_invocations_function
+    ON indexed_module_invocations(function_name);
+CREATE VIRTUAL TABLE IF NOT EXISTS indexed_module_invocations_fts USING fts5(
+    module_title,
+    function_name,
+    parameter_keys,
+    invocation_wikitext,
+    source_title,
+    content=indexed_module_invocations,
+    content_rowid=rowid
+);
+
 CREATE TABLE IF NOT EXISTS indexed_page_references (
     source_relative_path TEXT NOT NULL,
     reference_index INTEGER NOT NULL,

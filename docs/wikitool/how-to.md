@@ -67,6 +67,8 @@ wikitool docs symbols "$wg" --profile remilia-mw-1.44
 wikitool docs update
 ```
 
+`remilia-mw-1.44` attempts installed-extension discovery when the configured wiki API allows it. If that discovery step is unavailable, the pinned core corpus still imports and can be used by `workflow ask` / `workflow authoring-pack`.
+
 ## Fetch/export external sources
 
 ```bash
@@ -97,6 +99,7 @@ wikitool index prune-categories
 Generate a token-budgeted local context pack for writing new articles or upgrading stubs:
 
 ```bash
+wikitool workflow ask "write an article on Example Topic" --format json
 wikitool workflow authoring-pack "Example Topic" --format json
 wikitool workflow authoring-pack "Milady Maker" --stub-path wiki_content/Main/Milady_Draft.wiki --format json
 ```
@@ -105,6 +108,9 @@ The pack includes:
 - related local pages
 - suggested internal links/categories
 - template usage summaries (topic-scoped + global baseline)
+- template implementation references across `Template:`, `/doc`, helper pages, and `Module:`
+- module invocation patterns gathered from local template/article usage
+- bridged MediaWiki docs context from the pinned `remilia-mw-1.44` corpus when that profile is imported
 - chunked cross-page context under a strict token budget
 - stub diagnostics (existing links, missing links, templates already used)
 

@@ -290,7 +290,7 @@ pub struct DocsSearchOptions {
     pub limit: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DocsSearchHit {
     pub tier: String,
     pub title: String,
@@ -311,7 +311,7 @@ pub struct DocsSymbolLookupOptions {
     pub limit: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DocsSymbolHit {
     pub corpus_id: String,
     pub corpus_kind: String,
@@ -335,7 +335,7 @@ pub struct DocsContextOptions {
     pub token_budget: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DocsContextSection {
     pub corpus_id: String,
     pub page_title: String,
@@ -347,7 +347,7 @@ pub struct DocsContextSection {
     pub signals: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DocsContextExample {
     pub corpus_id: String,
     pub corpus_kind: String,
@@ -363,7 +363,7 @@ pub struct DocsContextExample {
     pub signals: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DocsContextReport {
     pub query: String,
     pub profile: Option<String>,
@@ -824,10 +824,13 @@ pub fn import_docs_profile_with_api<A: DocsApi>(
         .collect::<Vec<_>>();
     extension_names.extend(options.extra_extensions.clone());
     if include_installed_extensions {
-        extension_names.extend(
-            discover_installed_extensions_from_wiki_with_config(config)
-                .context("failed to discover installed extensions for docs profile")?,
-        );
+        match discover_installed_extensions_from_wiki_with_config(config) {
+            Ok(discovered) => extension_names.extend(discovered),
+            Err(error) => failures.push(format!(
+                "profile {}: installed extension discovery skipped: {error}",
+                definition.id
+            )),
+        }
     }
     normalize_extension_list(&mut extension_names);
 
@@ -3552,6 +3555,7 @@ mod tests {
     struct MockDocsApi {
         subpages: Vec<String>,
         pages: BTreeMap<String, RemoteDocsPage>,
+        default_page_content: Option<String>,
         subpage_calls: Vec<(String, i32, usize)>,
         page_calls: Vec<String>,
     }
@@ -3570,7 +3574,16 @@ mod tests {
 
         fn get_page(&mut self, title: &str) -> anyhow::Result<Option<RemoteDocsPage>> {
             self.page_calls.push(title.to_string());
-            Ok(self.pages.get(title).cloned())
+            Ok(self.pages.get(title).cloned().or_else(|| {
+                self.default_page_content
+                    .as_ref()
+                    .map(|content| RemoteDocsPage {
+                        requested_title: title.to_string(),
+                        title: title.to_string(),
+                        timestamp: String::new(),
+                        content: format!("{content} {title}"),
+                    })
+            }))
         }
 
         fn request_count(&self) -> usize {
@@ -3605,6 +3618,7 @@ mod tests {
                     },
                 ),
             ]),
+            default_page_content: None,
             subpage_calls: Vec::new(),
             page_calls: Vec::new(),
         };
@@ -3629,6 +3643,54 @@ mod tests {
             pages
                 .iter()
                 .any(|page| page.page_title == "Manual:Hooks/PageSaveComplete")
+        );
+    }
+
+    #[test]
+    fn import_docs_profile_skips_installed_extension_discovery_failures() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        std::fs::create_dir_all(&project_root).expect("create project root");
+        let context = crate::runtime::ResolutionContext {
+            cwd: project_root.clone(),
+            executable_dir: None,
+        };
+        let overrides = crate::runtime::PathOverrides {
+            project_root: Some(project_root.clone()),
+            ..crate::runtime::PathOverrides::default()
+        };
+        let paths = crate::runtime::resolve_paths(&context, &overrides).expect("resolve runtime");
+        crate::runtime::init_layout(&paths, &crate::runtime::InitOptions::default())
+            .expect("init runtime");
+
+        let mut api = MockDocsApi {
+            subpages: Vec::new(),
+            pages: BTreeMap::new(),
+            default_page_content: Some("Profile docs fixture".to_string()),
+            subpage_calls: Vec::new(),
+            page_calls: Vec::new(),
+        };
+        let report = super::import_docs_profile_with_api(
+            &paths,
+            &super::DocsImportProfileOptions {
+                profile: "remilia-mw-1.44".to_string(),
+                include_installed_extensions: false,
+                include_extension_subpages: false,
+                extra_extensions: Vec::new(),
+                limit: 2,
+            },
+            &crate::config::WikiConfig::default(),
+            &mut api,
+        )
+        .expect("profile import should degrade cleanly");
+
+        assert_eq!(report.profile, "remilia-mw-1.44");
+        assert!(report.imported_pages > 0);
+        assert!(
+            report
+                .failures
+                .iter()
+                .any(|entry| entry.contains("installed extension discovery skipped"))
         );
     }
 }

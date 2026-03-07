@@ -6,8 +6,8 @@ use clap::{Args, Subcommand};
 use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::index::{
     AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringSuggestion, MediaUsageSummary,
-    ReferenceUsageSummary, StubTemplateHint, TemplateParameterUsage, TemplateUsageSummary,
-    build_authoring_knowledge_pack,
+    ModuleUsageSummary, ReferenceUsageSummary, StubTemplateHint, TemplateParameterUsage,
+    TemplateReference, TemplateUsageSummary, build_authoring_knowledge_pack,
 };
 use wikitool_core::runtime::ResolvedPaths;
 
@@ -32,6 +32,7 @@ enum WorkflowSubcommand {
     Bootstrap(WorkflowBootstrapArgs),
     #[command(name = "full-refresh")]
     FullRefresh(WorkflowFullRefreshArgs),
+    Ask(WorkflowAskArgs),
     /// Generate a token-budgeted knowledge pack for article authoring
     #[command(name = "authoring-pack")]
     AuthoringPack(WorkflowAuthoringPackArgs),
@@ -143,10 +144,30 @@ struct WorkflowAuthoringPackArgs {
     no_diversify: bool,
 }
 
+#[derive(Debug, Args)]
+struct WorkflowAskArgs {
+    #[arg(value_name = "PROMPT", help = "Natural-language authoring request")]
+    prompt: String,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Optional stub wikitext file used for link/template hint extraction"
+    )]
+    stub_path: Option<PathBuf>,
+    #[arg(
+        long,
+        default_value = "json",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: String,
+}
+
 pub(crate) fn run_workflow(runtime: &RuntimeOptions, args: WorkflowArgs) -> Result<()> {
     match args.command {
         WorkflowSubcommand::Bootstrap(options) => run_workflow_bootstrap(runtime, options),
         WorkflowSubcommand::FullRefresh(options) => run_workflow_full_refresh(runtime, options),
+        WorkflowSubcommand::Ask(options) => run_workflow_ask(runtime, options),
         WorkflowSubcommand::AuthoringPack(options) => run_workflow_authoring_pack(runtime, options),
     }
 }
@@ -400,6 +421,14 @@ fn run_workflow_authoring_pack(
                 report.inventory.distinct_templates_invoked
             );
             println!(
+                "inventory.modules.invocation_rows: {}",
+                report.inventory.module_invocation_rows_total
+            );
+            println!(
+                "inventory.modules.distinct: {}",
+                report.inventory.distinct_modules_invoked
+            );
+            println!(
                 "inventory.references.total: {}",
                 report.inventory.reference_rows_total
             );
@@ -480,6 +509,33 @@ fn run_workflow_authoring_pack(
                 print_template_summary("template_baseline", template);
             }
             println!(
+                "template_references.count: {}",
+                report.template_references.len()
+            );
+            for template_reference in &report.template_references {
+                print_template_reference("template_reference", template_reference);
+            }
+            println!("module_patterns.count: {}", report.module_patterns.len());
+            for module in &report.module_patterns {
+                print_module_summary("module_pattern", module);
+            }
+            println!(
+                "docs_context.count: {}",
+                report
+                    .docs_context
+                    .as_ref()
+                    .map(|context| {
+                        context.pages.len()
+                            + context.sections.len()
+                            + context.symbols.len()
+                            + context.examples.len()
+                    })
+                    .unwrap_or(0)
+            );
+            if let Some(docs_context) = &report.docs_context {
+                print_docs_context("docs_context", docs_context);
+            }
+            println!(
                 "stub.existing_links.count: {}",
                 report.stub_existing_links.len()
             );
@@ -523,6 +579,33 @@ fn run_workflow_authoring_pack(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+fn run_workflow_ask(runtime: &RuntimeOptions, args: WorkflowAskArgs) -> Result<()> {
+    let topic = derive_topic_from_prompt(&args.prompt)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| collapse_whitespace(&args.prompt));
+    if topic.is_empty() {
+        bail!("workflow ask requires a non-empty prompt");
+    }
+
+    run_workflow_authoring_pack(
+        runtime,
+        WorkflowAuthoringPackArgs {
+            topic: Some(topic),
+            stub_path: args.stub_path,
+            related_limit: 18,
+            chunk_limit: 10,
+            token_budget: 1200,
+            max_pages: 8,
+            link_limit: 18,
+            category_limit: 8,
+            template_limit: 16,
+            format: args.format,
+            diversify: true,
+            no_diversify: false,
+        },
+    )
 }
 
 fn print_authoring_suggestion(label: &str, suggestion: &AuthoringSuggestion) {
@@ -735,6 +818,110 @@ fn print_reference_summary(label: &str, reference: &ReferenceUsageSummary) {
     }
 }
 
+fn print_template_reference(label: &str, reference: &TemplateReference) {
+    println!(
+        "{label}: {} (pages={} sections={} chunks={})",
+        reference.template.template_title,
+        reference.implementation_pages.len(),
+        reference.implementation_sections.len(),
+        reference.implementation_chunks.len()
+    );
+    for page in &reference.implementation_pages {
+        println!(
+            "{label}.page: template={} role={} page={} summary={}",
+            reference.template.template_title,
+            page.role,
+            page.page_title,
+            if page.summary_text.is_empty() {
+                "<none>"
+            } else {
+                &page.summary_text
+            }
+        );
+    }
+}
+
+fn print_module_summary(label: &str, module: &ModuleUsageSummary) {
+    println!(
+        "{label}: {} (usage={} pages={})",
+        module.module_title, module.usage_count, module.distinct_page_count
+    );
+    for function in &module.function_stats {
+        println!(
+            "{label}.function: module={} name={} usage={} keys={}",
+            module.module_title,
+            function.function_name,
+            function.usage_count,
+            if function.example_parameter_keys.is_empty() {
+                "<none>".to_string()
+            } else {
+                function.example_parameter_keys.join(", ")
+            }
+        );
+    }
+    for example in &module.example_invocations {
+        println!(
+            "{label}.example: module={} source={} function={} keys={} tokens={} text={}",
+            module.module_title,
+            example.source_title,
+            example.function_name,
+            if example.parameter_keys.is_empty() {
+                "<none>".to_string()
+            } else {
+                example.parameter_keys.join(", ")
+            },
+            example.token_estimate,
+            example.invocation_text
+        );
+    }
+}
+
+fn print_docs_context(label: &str, context: &wikitool_core::index::AuthoringDocsContext) {
+    println!("{label}.profile: {}", context.profile);
+    println!("{label}.queries: {}", context.queries.join(" | "));
+    println!(
+        "{label}.token_estimate_total: {}",
+        context.token_estimate_total
+    );
+    println!("{label}.pages.count: {}", context.pages.len());
+    for page in &context.pages {
+        println!(
+            "{label}.page: [{}] {} page={} weight={}",
+            page.tier, page.title, page.page_title, page.retrieval_weight
+        );
+    }
+    println!("{label}.sections.count: {}", context.sections.len());
+    for section in &context.sections {
+        println!(
+            "{label}.section: page={} heading={} weight={}",
+            section.page_title,
+            section.section_heading.as_deref().unwrap_or("<lead>"),
+            section.retrieval_weight
+        );
+    }
+    println!("{label}.symbols.count: {}", context.symbols.len());
+    for symbol in &context.symbols {
+        println!(
+            "{label}.symbol: [{}] {} page={} weight={}",
+            symbol.symbol_kind, symbol.symbol_name, symbol.page_title, symbol.retrieval_weight
+        );
+    }
+    println!("{label}.examples.count: {}", context.examples.len());
+    for example in &context.examples {
+        println!(
+            "{label}.example: [{}] page={} lang={} weight={}",
+            example.example_kind,
+            example.page_title,
+            if example.language_hint.is_empty() {
+                "<none>"
+            } else {
+                &example.language_hint
+            },
+            example.retrieval_weight
+        );
+    }
+}
+
 fn print_media_summary(label: &str, media: &MediaUsageSummary) {
     println!(
         "{label}: {} (kind={} usage={} pages={})",
@@ -815,9 +1002,65 @@ fn derive_topic_from_stub_path(path: Option<&Path>) -> Option<String> {
     }
 }
 
+fn derive_topic_from_prompt(prompt: &str) -> Option<String> {
+    let normalized = collapse_whitespace(prompt);
+    if normalized.is_empty() {
+        return None;
+    }
+
+    for prefix in [
+        "please write an article on ",
+        "please write an article about ",
+        "write an article on ",
+        "write an article about ",
+        "write article on ",
+        "write article about ",
+        "write a wiki article on ",
+        "write a wiki article about ",
+        "draft an article on ",
+        "draft an article about ",
+        "draft a page on ",
+        "draft a page about ",
+        "create an article on ",
+        "create an article about ",
+        "create a page on ",
+        "create a page about ",
+        "write a page on ",
+        "write a page about ",
+        "article on ",
+        "article about ",
+    ] {
+        if let Some(remainder) = strip_case_insensitive_prefix(&normalized, prefix) {
+            let topic = trim_prompt_topic(remainder);
+            if !topic.is_empty() {
+                return Some(topic);
+            }
+        }
+    }
+
+    Some(trim_prompt_topic(&normalized))
+}
+
+fn trim_prompt_topic(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches(['.', '!', '?', ':', ';'])
+        .trim()
+        .trim_matches(['"', '\'', '`'])
+        .trim()
+        .to_string()
+}
+
+fn strip_case_insensitive_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    value
+        .get(..prefix.len())
+        .filter(|candidate| candidate.eq_ignore_ascii_case(prefix))
+        .and_then(|_| value.get(prefix.len()..))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::derive_topic_from_stub_path;
+    use super::{derive_topic_from_prompt, derive_topic_from_stub_path};
     use std::path::Path;
 
     #[test]
@@ -833,6 +1076,30 @@ mod tests {
         assert_eq!(
             derive_topic_from_stub_path(Some(Path::new("drafts/___.md"))),
             None
+        );
+    }
+
+    #[test]
+    fn derive_topic_from_prompt_extracts_article_subject() {
+        assert_eq!(
+            derive_topic_from_prompt("write an article on Remilia Corporation"),
+            Some("Remilia Corporation".to_string())
+        );
+        assert_eq!(
+            derive_topic_from_prompt("Draft an article about Milady Maker."),
+            Some("Milady Maker".to_string())
+        );
+        assert_eq!(
+            derive_topic_from_prompt("Please write an article on \"Milady\""),
+            Some("Milady".to_string())
+        );
+    }
+
+    #[test]
+    fn derive_topic_from_prompt_falls_back_to_raw_prompt() {
+        assert_eq!(
+            derive_topic_from_prompt("Remilia Corporation"),
+            Some("Remilia Corporation".to_string())
         );
     }
 }

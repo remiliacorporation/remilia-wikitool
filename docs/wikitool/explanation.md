@@ -20,6 +20,7 @@ Wikitool is a Rust CLI that synchronizes MediaWiki content with local files and 
 - Runtime state/config is kept under `.wikitool/`
 - Delete and push flows include explicit write safeguards and diagnostics
 - Authoring retrieval uses semantic page profiles plus explicit template/link/reference/media signals, normalized source authorities, identifier rows, and template implementation bundles to narrow context for agents
+- Authoring retrieval can also bridge a pinned MediaWiki docs corpus with local template/module usage so agents can compare upstream behavior with live wiki implementation patterns
 - The DB does not assign opaque reference quality scores; it stores inspectable source metadata, authority/identifier matches, and retrieval signals so ranking stays transparent
 
 ## Cutover policy
