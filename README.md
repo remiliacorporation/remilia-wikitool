@@ -30,7 +30,7 @@ Wikitool resolves paths from project root and uses `.wikitool/` for local runtim
 - `.wikitool/config.toml` runtime config
 - `.wikitool/data/wikitool.db` local index/sync database
 
-The local SQLite DB is disposable and is created automatically on first use. If binary/schema changes make it stale, run `wikitool db reset --yes` or delete `.wikitool/data/wikitool.db`, then repull/resync.
+The local SQLite DB is disposable and is created automatically on first use. If binary/schema changes make it stale, run `wikitool db reset --yes` or delete `.wikitool/data/wikitool.db`, then rerun `wikitool pull --full --all` if needed and rebuild retrieval state with `wikitool knowledge build` or `wikitool knowledge warm`.
 
 For authoring retrieval, the DB is optimized as an AI-facing index rather than a human-facing store:
 
@@ -73,8 +73,8 @@ wikitool release build-matrix
 
 By default this emits versioned bundle names, for example:
 
-1. `wikitool-v0.1.0-x86_64-unknown-linux-gnu.zip`
-2. `wikitool-v0.1.0-x86_64-pc-windows-msvc.zip`
+1. `wikitool-v0.2.0-x86_64-unknown-linux-gnu.zip`
+2. `wikitool-v0.2.0-x86_64-pc-windows-msvc.zip`
 
 For CI matrix jobs, package one target explicitly:
 
@@ -107,12 +107,13 @@ Release folder contents:
 
 This content is intentionally shipped outside the binary.
 
-Bootstrap the pinned MediaWiki authoring corpus:
+Bootstrap the local knowledge index and pinned MediaWiki authoring corpus:
 
 ```bash
-wikitool docs import-profile remilia-mw-1.44
+wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge pack "Remilia Corporation" --docs-profile remilia-mw-1.44 --format json
 wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
-wikitool workflow ask "write an article on Remilia Corporation" --format json
 wikitool index templates "Infobox person"
 ```
 

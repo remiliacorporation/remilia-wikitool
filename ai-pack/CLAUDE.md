@@ -120,7 +120,9 @@ Codex skills must remain thin overlays that defer to runbooks and CLI help.
 
 ```bash
 wikitool pull --full --all
-wikitool workflow authoring-pack "Topic" --format json
+wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge pack "Topic" --format json
 wikitool context "Template:Infobox person"
 wikitool search "Category:"
 wikitool index chunks "Title" --query "aspect" --limit 6 --token-budget 480
@@ -135,9 +137,12 @@ wikitool diff
 
 Docs bootstrap paths:
 
-1. Preferred: `wikitool docs import-profile remilia-mw-1.44`
-2. Source offline bundle: `wikitool docs import --bundle ./ai-pack/docs-bundle-v1.json`
-3. Packaged offline bundle: `wikitool docs import --bundle ./ai/docs-bundle-v1.json`
+1. Preferred: `wikitool knowledge warm --docs-profile remilia-mw-1.44` then `wikitool knowledge status --docs-profile remilia-mw-1.44 --format json`
+2. Admin surface: `wikitool docs import-profile remilia-mw-1.44`
+3. Source offline bundle: `wikitool docs import --bundle ./ai-pack/docs-bundle-v1.json`
+4. Packaged offline bundle: `wikitool docs import --bundle ./ai/docs-bundle-v1.json`
+
+Use `knowledge status` before depending on docs-bridged local retrieval; it surfaces `readiness`, `degradations`, the requested docs profile, and the current `knowledge_generation`.
 
 ## API Verification Rule
 

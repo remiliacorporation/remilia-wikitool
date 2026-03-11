@@ -38,6 +38,8 @@ Patch (`Z`):
 
 Current series is `0.y.z`. Before `1.0.0`, breaking changes may happen in minor bumps.
 
+Example: `v0.2.0` is a minor bump that intentionally removed legacy retrieval commands in favor of the `knowledge` command family.
+
 When CLI and bundle contracts stabilize, cut `1.0.0` and enforce strict SemVer from that point onward.
 
 ## Internal schema versioning
@@ -46,6 +48,14 @@ Schema versions are independent from SemVer and must be bumped only when their s
 
 1. `manifest.schema_version`
 2. `ai/docs-bundle-vN.json`
+
+Local retrieval state is intentionally disposable. Starting with `v0.2.0`, readiness is surfaced through manifest-backed `knowledge_artifacts` rows and the operator-facing `knowledge_generation` contract.
+
+Cutover rule:
+
+1. Do not add compatibility migrations for pre-manifest knowledge databases.
+2. Reset and rebuild local state with `wikitool db reset --yes`, then `wikitool knowledge build` or `wikitool knowledge warm --docs-profile <PROFILE>`.
+3. Use `wikitool knowledge status --docs-profile <PROFILE>` to verify readiness before relying on local authoring retrieval.
 
 ## Release channels
 
@@ -70,14 +80,19 @@ Packaged / distributable:
    - `cargo fmt --all`
    - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
    - `cargo test --workspace`
-5. Build release bundles:
+5. Validate the knowledge cutover from a fresh runtime:
+   - `cargo run --package wikitool -- db reset --yes`
+   - `cargo run --package wikitool -- knowledge warm --docs-profile remilia-mw-1.44`
+   - `cargo run --package wikitool -- knowledge status --docs-profile remilia-mw-1.44`
+   - `cargo run --package wikitool -- knowledge pack "Example Topic" --docs-profile remilia-mw-1.44 --format json`
+6. Build release bundles:
    - `cargo run --package wikitool -- release build-matrix --targets <triple>`
    - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=vX.Y.Z` for per-platform artifacts
-6. Verify each zip contains:
+7. Verify each zip contains:
    - `wikitool` or `wikitool.exe`
    - `AGENTS.md`, `CLAUDE.md`, `SETUP.md`, `README.md`
    - `.claude/rules/`, `.claude/skills/`
    - `llm_instructions/`
    - `codex_skills/`
    - `manifest.json`
-7. Create tag `vX.Y.Z`.
+8. Create tag `vX.Y.Z`.

@@ -36,6 +36,7 @@ Commands:
   perf                 
   import               
   index                
+  knowledge            
   lsp:generate-config  
   lsp:status           
   lsp:info             
@@ -289,7 +290,6 @@ Usage: wikitool db [OPTIONS] <COMMAND>
 
 Commands:
   stats  
-  sync   
   reset  
   help   Print this message or the help of the given subcommand(s)
 
@@ -305,19 +305,6 @@ Options:
 
 ```text
 Usage: wikitool db stats [OPTIONS]
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## db sync
-
-```text
-Usage: wikitool db sync [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -712,7 +699,6 @@ Options:
 Usage: wikitool index [OPTIONS] <COMMAND>
 
 Commands:
-  rebuild           Rebuild the local search index from wiki_content and templates
   stats             Show index statistics
   chunks            Retrieve token-budgeted content chunks from indexed pages
   backlinks         
@@ -720,21 +706,6 @@ Commands:
   orphans           
   prune-categories  
   help              Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## index rebuild
-
-```text
-Rebuild the local search index from wiki_content and templates
-
-Usage: wikitool index rebuild [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -848,6 +819,98 @@ Options:
   -h, --help                 Print help
 ```
 
+## knowledge
+
+```text
+Usage: wikitool knowledge [OPTIONS] <COMMAND>
+
+Commands:
+  build   
+  warm    
+  status  
+  pack    
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge build
+
+```text
+Usage: wikitool knowledge build [OPTIONS]
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: text]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge warm
+
+```text
+Usage: wikitool knowledge warm [OPTIONS]
+
+Options:
+      --docs-profile <PROFILE>  Docs profile to hydrate during warmup [default: remilia-mw-1.44]
+      --project-root <PATH>     
+      --data-dir <PATH>         
+      --format <FORMAT>         Output format: text|json [default: text]
+      --config <PATH>           
+      --diagnostics             Print resolved runtime diagnostics
+  -h, --help                    Print help
+```
+
+## knowledge status
+
+```text
+Usage: wikitool knowledge status [OPTIONS]
+
+Options:
+      --docs-profile <PROFILE>  Docs profile to assess for authoring readiness [default: remilia-mw-1.44]
+      --project-root <PATH>     
+      --data-dir <PATH>         
+      --format <FORMAT>         Output format: text|json [default: text]
+      --config <PATH>           
+      --diagnostics             Print resolved runtime diagnostics
+  -h, --help                    Print help
+```
+
+## knowledge pack
+
+```text
+Usage: wikitool knowledge pack [OPTIONS] [TOPIC]
+
+Arguments:
+  [TOPIC]  Primary article topic/title for retrieval
+
+Options:
+      --project-root <PATH>     
+      --stub-path <PATH>        Optional stub wikitext file used for link/template hint extraction
+      --data-dir <PATH>         
+      --related-limit <N>       Maximum related pages in the pack [default: 18]
+      --chunk-limit <N>         Maximum retrieved context chunks [default: 10]
+      --config <PATH>           
+      --diagnostics             Print resolved runtime diagnostics
+      --token-budget <TOKENS>   Token budget across retrieved chunks [default: 1200]
+      --max-pages <N>           Maximum distinct source pages in chunk retrieval [default: 8]
+      --link-limit <N>          Maximum internal link suggestions [default: 18]
+      --category-limit <N>      Maximum category suggestions [default: 8]
+      --template-limit <N>      Maximum template summaries [default: 16]
+      --docs-profile <PROFILE>  Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
+      --format <FORMAT>         Output format: text|json [default: json]
+      --diversify               Enable lexical chunk de-duplication and diversification
+      --no-diversify            Disable lexical chunk de-duplication and diversification
+  -h, --help                    Print help
+```
+
 ## lsp:generate-config
 
 ```text
@@ -894,11 +957,9 @@ Options:
 Usage: wikitool workflow [OPTIONS] <COMMAND>
 
 Commands:
-  bootstrap       
-  full-refresh    
-  ask             
-  authoring-pack  Generate a token-budgeted knowledge pack for article authoring
-  help            Print this message or the help of the given subcommand(s)
+  bootstrap     
+  full-refresh  
+  help          Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>  
@@ -914,17 +975,18 @@ Options:
 Usage: wikitool workflow bootstrap [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --templates            Create templates/ during initialization (default: true)
-      --data-dir <PATH>      
-      --no-templates         Do not create templates/ during initialization
-      --config <PATH>        
-      --pull                 Pull content after initialization (default: true)
-      --diagnostics          Print resolved runtime diagnostics
-      --no-pull              Skip content pull after initialization
-      --skip-reference       Skip docs reference generation
-      --skip-git-hooks       Skip commit-msg hook installation
-  -h, --help                 Print help
+      --project-root <PATH>     
+      --templates               Create templates/ during initialization (default: true)
+      --data-dir <PATH>         
+      --no-templates            Do not create templates/ during initialization
+      --config <PATH>           
+      --pull                    Pull content after initialization (default: true)
+      --diagnostics             Print resolved runtime diagnostics
+      --no-pull                 Skip content pull after initialization
+      --skip-reference          Skip docs reference generation
+      --skip-git-hooks          Skip commit-msg hook installation
+      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-mw-1.44]
+  -h, --help                    Print help
 ```
 
 ## workflow full-refresh
@@ -933,62 +995,16 @@ Options:
 Usage: wikitool workflow full-refresh [OPTIONS]
 
 Options:
-      --project-root <PATH>  
-      --yes                  Assume yes; do not prompt for confirmation
-      --data-dir <PATH>      
-      --templates            Create templates/ during initialization (default: true)
-      --config <PATH>        
-      --no-templates         Do not create templates/ during initialization
-      --diagnostics          Print resolved runtime diagnostics
-      --skip-reference       Skip docs reference generation
-  -h, --help                 Print help
-```
-
-## workflow ask
-
-```text
-Usage: wikitool workflow ask [OPTIONS] <PROMPT>
-
-Arguments:
-  <PROMPT>  Natural-language authoring request
-
-Options:
-      --project-root <PATH>  
-      --stub-path <PATH>     Optional stub wikitext file used for link/template hint extraction
-      --data-dir <PATH>      
-      --format <FORMAT>      Output format: text|json [default: json]
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## workflow authoring-pack
-
-```text
-Generate a token-budgeted knowledge pack for article authoring
-
-Usage: wikitool workflow authoring-pack [OPTIONS] [TOPIC]
-
-Arguments:
-  [TOPIC]  Primary article topic/title for retrieval
-
-Options:
-      --project-root <PATH>    
-      --stub-path <PATH>       Optional stub wikitext file used for link/template hint extraction
-      --data-dir <PATH>        
-      --related-limit <N>      Maximum related pages in the pack [default: 18]
-      --chunk-limit <N>        Maximum retrieved context chunks [default: 10]
-      --config <PATH>          
-      --diagnostics            Print resolved runtime diagnostics
-      --token-budget <TOKENS>  Token budget across retrieved chunks [default: 1200]
-      --max-pages <N>          Maximum distinct source pages in chunk retrieval [default: 8]
-      --link-limit <N>         Maximum internal link suggestions [default: 18]
-      --category-limit <N>     Maximum category suggestions [default: 8]
-      --template-limit <N>     Maximum template summaries [default: 16]
-      --format <FORMAT>        Output format: text|json [default: json]
-      --diversify              Enable lexical chunk de-duplication and diversification
-      --no-diversify           Disable lexical chunk de-duplication and diversification
-  -h, --help                   Print help
+      --project-root <PATH>     
+      --yes                     Assume yes; do not prompt for confirmation
+      --data-dir <PATH>         
+      --templates               Create templates/ during initialization (default: true)
+      --config <PATH>           
+      --no-templates            Do not create templates/ during initialization
+      --diagnostics             Print resolved runtime diagnostics
+      --skip-reference          Skip docs reference generation
+      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-mw-1.44]
+  -h, --help                    Print help
 ```
 
 ## release

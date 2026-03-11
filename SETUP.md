@@ -42,6 +42,7 @@ wikitool pull --categories
 
 ```bash
 wikitool status
+wikitool knowledge status
 wikitool index stats
 ```
 
@@ -49,8 +50,8 @@ Useful authoring retrieval checks:
 
 ```bash
 wikitool index chunks --across-pages --query "network spirituality remilia" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
-wikitool workflow authoring-pack "Remilia Corporation" --format json
-wikitool workflow ask "write an article on Remilia Corporation" --format json
+wikitool knowledge build
+wikitool knowledge pack "Remilia Corporation" --format json
 ```
 
 ## 5) Optional: configure credentials and API target
@@ -99,9 +100,9 @@ AI companion source assets are maintained under `ai-pack/` in this repository.
 Release AI pack includes setup/docs/instructions outside the binary. Bootstrap the pinned MediaWiki docs profile with:
 
 ```bash
-wikitool docs import-profile remilia-mw-1.44
-wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
-wikitool workflow ask "write an article on Remilia Corporation" --format json
+wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge pack "Remilia Corporation" --docs-profile remilia-mw-1.44 --format json
 ```
 
 If live installed-extension discovery is blocked or unconfigured, `remilia-mw-1.44` still imports the pinned core corpus and reports the discovery skip in the command output instead of aborting the whole import.
@@ -137,6 +138,6 @@ Authoring retrieval is DB-first and AI-oriented: semantic page profiles, normali
 If runtime/schema changes break local state:
 
 1. Delete `.wikitool/data/wikitool.db`
-2. Run `wikitool pull --full --all` or `wikitool db sync`
+2. Run `wikitool pull --full --all` if content is missing, then run `wikitool knowledge build` or `wikitool knowledge warm --docs-profile remilia-mw-1.44`
 
 If push fails with auth errors, verify `WIKI_BOT_USER` and `WIKI_BOT_PASS` in project root `.env`.

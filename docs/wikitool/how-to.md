@@ -67,7 +67,7 @@ wikitool docs symbols "$wg" --profile remilia-mw-1.44
 wikitool docs update
 ```
 
-`remilia-mw-1.44` attempts installed-extension discovery when the configured wiki API allows it. If that discovery step is unavailable, the pinned core corpus still imports and can be used by `workflow ask` / `workflow authoring-pack`.
+`remilia-mw-1.44` attempts installed-extension discovery when the configured wiki API allows it. If that discovery step is unavailable, the pinned core corpus still imports and can be used by `knowledge warm` / `knowledge pack`.
 
 ## Fetch/export external sources
 
@@ -85,7 +85,8 @@ wikitool import cargo ./data.csv --table Items --mode upsert --write
 ## Index workflows
 
 ```bash
-wikitool index rebuild
+wikitool knowledge build
+wikitool knowledge status
 wikitool index stats
 wikitool index chunks "Main Page" --query "infobox" --limit 6 --token-budget 480
 wikitool index chunks --across-pages --query "foundational concepts" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
@@ -99,9 +100,9 @@ wikitool index prune-categories
 Generate a token-budgeted local context pack for writing new articles or upgrading stubs:
 
 ```bash
-wikitool workflow ask "write an article on Example Topic" --format json
-wikitool workflow authoring-pack "Example Topic" --format json
-wikitool workflow authoring-pack "Milady Maker" --stub-path wiki_content/Main/Milady_Draft.wiki --format json
+wikitool knowledge pack "Example Topic" --format json
+wikitool knowledge pack "Milady Maker" --stub-path wiki_content/Main/Milady_Draft.wiki --format json
+wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
 
 The pack includes:
@@ -173,7 +174,7 @@ wikitool release build-matrix --targets x86_64-unknown-linux-gnu --artifact-vers
 ```bash
 wikitool status
 wikitool db stats
-wikitool db sync
+wikitool knowledge status
 wikitool index stats
 ```
 
@@ -183,5 +184,6 @@ If local state drifts or schema changes:
 
 1. delete `.wikitool/data/wikitool.db`
 2. run `wikitool pull --full --all`
+3. rebuild retrieval state with `wikitool knowledge build` or `wikitool knowledge warm --docs-profile remilia-mw-1.44`
 
 If push/delete writes fail, verify `WIKI_BOT_USER` and `WIKI_BOT_PASS` in project root `.env`.

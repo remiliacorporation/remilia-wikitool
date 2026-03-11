@@ -8,6 +8,7 @@
 set -euo pipefail
 
 TIER="${TIER:-offline}"
+KNOWLEDGE_DOCS_PROFILE="${KNOWLEDGE_DOCS_PROFILE:-remilia-mw-1.44}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
 WIKITOOL_RAW="${WIKITOOL:-}"
@@ -202,9 +203,9 @@ else
     fail "status shows expected fields (got: $OUTPUT)"
 fi
 
-# --- index rebuild ---
-section "index rebuild"
-PROJ=$(setup_project index-rebuild)
+# --- knowledge status (pre-build) ---
+section "knowledge status (pre-build)"
+PROJ=$(setup_project knowledge-build)
 wt "$PROJ" init > /dev/null 2>&1
 mkdir -p "$PROJ/wiki_content/Main"
 cat > "$PROJ/wiki_content/Main/Alpha.wiki" << 'WIKIEOF'
@@ -231,11 +232,29 @@ cat > "$PROJ/wiki_content/Main/Beta.wiki" << 'WIKIEOF'
 
 [[Category:Test]]
 WIKIEOF
-OUTPUT=$(wt "$PROJ" index rebuild 2>&1)
-if echo "$OUTPUT" | grep -q "inserted_rows: 2"; then
-    pass "index rebuild inserts correct row count"
+OUTPUT=$(wt "$PROJ" knowledge status --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "knowledge.readiness: not_ready" && echo "$OUTPUT" | grep -q "knowledge.degradations: content_index_missing, docs_profile_missing"; then
+    pass "knowledge status reports missing content/docs readiness before build"
 else
-    fail "index rebuild inserts rows (got: $OUTPUT)"
+    fail "knowledge status reports missing content/docs readiness before build (got: $OUTPUT)"
+fi
+
+# --- knowledge build ---
+section "knowledge build"
+OUTPUT=$(wt "$PROJ" knowledge build 2>&1)
+if echo "$OUTPUT" | grep -q "rebuild.inserted_rows: 2" && echo "$OUTPUT" | grep -q "knowledge.readiness: content_ready"; then
+    pass "knowledge build indexes pages and reports content readiness"
+else
+    fail "knowledge build indexes pages and reports content readiness (got: $OUTPUT)"
+fi
+
+# --- knowledge status ---
+section "knowledge status"
+OUTPUT=$(wt "$PROJ" knowledge status --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "knowledge.docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" && echo "$OUTPUT" | grep -q "knowledge.readiness: content_ready" && echo "$OUTPUT" | grep -q "knowledge.degradations: docs_profile_missing"; then
+    pass "knowledge status reports content readiness and docs degradation after build"
+else
+    fail "knowledge status reports content readiness and docs degradation after build (got: $OUTPUT)"
 fi
 
 # --- index stats ---
@@ -268,7 +287,7 @@ fi
 # --- index backlinks ---
 section "index backlinks"
 OUTPUT=$(wt "$PROJ" index backlinks "Alpha" 2>&1)
-if echo "$OUTPUT" | grep -q "backlinks.source: Beta"; then
+if echo "$OUTPUT" | grep -Eq "backlink: Beta|backlinks.source: Beta"; then
     pass "index backlinks finds linking article"
 else
     fail "index backlinks finds linking article (got: $OUTPUT)"
@@ -276,7 +295,7 @@ fi
 
 # --- index orphans ---
 section "index orphans"
-# Alpha is linked by Beta, but nothing links to Beta → Beta is orphan
+# Alpha is linked by Beta, but nothing links to Beta -> Beta is orphan
 OUTPUT=$(wt "$PROJ" index orphans 2>&1 || true)
 if echo "$OUTPUT" | grep -qi "orphan\|Beta\|0 orphans\|no orphans"; then
     pass "index orphans detects or reports"
@@ -317,26 +336,17 @@ fi
 # --- db stats ---
 section "db stats"
 OUTPUT=$(wt "$PROJ" db stats 2>&1)
-if echo "$OUTPUT" | grep -qi "db\|size\|tables\|stats\|path"; then
-    pass "db stats shows database info"
+if echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" && echo "$OUTPUT" | grep -q "readiness: content_ready" && echo "$OUTPUT" | grep -q "knowledge_generation:"; then
+    pass "db stats includes knowledge readiness metadata"
 else
-    fail "db stats shows database info (got: $OUTPUT)"
-fi
-
-# --- db sync ---
-section "db sync"
-OUTPUT=$(wt "$PROJ" db sync 2>&1 || true)
-if echo "$OUTPUT" | grep -qi "sync\|ledger\|rows\|config"; then
-    pass "db sync produces output"
-else
-    fail "db sync produces output (got: $OUTPUT)"
+    fail "db stats includes knowledge readiness metadata (got: $OUTPUT)"
 fi
 
 # --- db reset ---
 section "db reset"
 PROJ_RESET=$(setup_project reset)
 wt "$PROJ_RESET" init > /dev/null 2>&1
-wt "$PROJ_RESET" db sync > /dev/null 2>&1
+wt "$PROJ_RESET" knowledge build > /dev/null 2>&1
 OUTPUT=$(wt "$PROJ_RESET" db reset --yes 2>&1)
 if echo "$OUTPUT" | grep -q "db reset" && echo "$OUTPUT" | grep -q "deleted: yes"; then
     pass "db reset deletes local db"
@@ -351,69 +361,78 @@ else
     fail "db reset is idempotent (got: $OUTPUT2)"
 fi
 
+# --- context requires knowledge build ---
+section "context requires knowledge build"
+PROJ_CONTEXT=$(setup_project context-unbuilt)
+wt "$PROJ_CONTEXT" init > /dev/null 2>&1
+mkdir -p "$PROJ_CONTEXT/wiki_content/Main"
+cat > "$PROJ_CONTEXT/wiki_content/Main/Alpha.wiki" << 'WIKIEOF'
+{{SHORTDESC:Alpha article}}
+
+'''Alpha''' is an article.
+WIKIEOF
+OUTPUT=$(wt "$PROJ_CONTEXT" context "Alpha" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "Run \`wikitool knowledge build\` first."; then
+    pass "context requires knowledge build before indexed retrieval"
+else
+    fail "context requires knowledge build before indexed retrieval (got: $OUTPUT)"
+fi
+
 # --- context ---
 section "context"
 OUTPUT=$(wt "$PROJ" context "Alpha" 2>&1)
-if echo "$OUTPUT" | grep -q "context.references.count:" && echo "$OUTPUT" | grep -q "context.media.count:"; then
-    pass "context returns data for known title"
+if echo "$OUTPUT" | grep -q "context.backend: indexed" && echo "$OUTPUT" | grep -q "context.references.count:" && echo "$OUTPUT" | grep -q "context.media.count:"; then
+    pass "context returns indexed data for known title"
 else
-    fail "context returns data for known title (got: $OUTPUT)"
+    fail "context returns indexed data for known title (got: $OUTPUT)"
 fi
 
-# --- workflow authoring-pack ---
-section "workflow authoring-pack"
+# --- knowledge pack ---
+section "knowledge pack"
 STUB_PATH="$PROJ/wiki_content/Main/Alpha_Stub.wiki"
 cat > "$STUB_PATH" << 'WIKIEOF'
 {{Infobox person|name=Alpha Draft}}
 '''Alpha Draft''' references [[Alpha]] and [[Missing Page]].
 WIKIEOF
-OUTPUT=$(wt "$PROJ" workflow authoring-pack "Alpha" --stub-path "$STUB_PATH" --related-limit 6 --chunk-limit 4 --token-budget 220 --max-pages 2 --template-limit 6 --format json 2>&1 || true)
-AUTHORING_PACK_JSON="$TMPDIR_ROOT/authoring-pack.json"
-printf '%s' "$OUTPUT" > "$AUTHORING_PACK_JSON"
-if python3 - "$AUTHORING_PACK_JSON" <<'PY'
+OUTPUT=$(wt "$PROJ" knowledge pack "Alpha" --stub-path "$STUB_PATH" --docs-profile "$KNOWLEDGE_DOCS_PROFILE" --related-limit 6 --chunk-limit 4 --token-budget 220 --max-pages 2 --template-limit 6 --format json 2>&1 || true)
+KNOWLEDGE_PACK_JSON="$TMPDIR_ROOT/knowledge-pack.json"
+printf '%s' "$OUTPUT" > "$KNOWLEDGE_PACK_JSON"
+if python3 - "$KNOWLEDGE_PACK_JSON" "$KNOWLEDGE_DOCS_PROFILE" <<'PY'
 import json
 import pathlib
 import sys
 
 payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
-report = payload.get("Found")
+if payload.get("docs_profile_requested") != sys.argv[2]:
+    raise SystemExit(1)
+if payload.get("readiness") != "content_ready":
+    raise SystemExit(1)
+if "docs_profile_missing" not in payload.get("degradations", []):
+    raise SystemExit(1)
+if not payload.get("knowledge_generation"):
+    raise SystemExit(1)
+report = payload.get("result")
 if not isinstance(report, dict):
     raise SystemExit(1)
-required = ("suggested_templates", "template_baseline", "stub_missing_links")
-required += ("suggested_references", "suggested_media")
-required += ("template_references", "module_patterns", "docs_context")
+required = (
+    "suggested_templates",
+    "template_baseline",
+    "stub_missing_links",
+    "suggested_references",
+    "suggested_media",
+    "template_references",
+    "module_patterns",
+    "docs_context",
+)
+if report.get("status") != "found":
+    raise SystemExit(1)
 if any(key not in report for key in required):
     raise SystemExit(1)
 PY
 then
-    pass "workflow authoring-pack emits authoring knowledge pack"
+    pass "knowledge pack emits authoring knowledge with readiness/degradation metadata"
 else
-    fail "workflow authoring-pack emits authoring knowledge pack (got: $OUTPUT)"
-fi
-
-# --- workflow ask ---
-section "workflow ask"
-OUTPUT=$(wt "$PROJ" workflow ask "write an article on Alpha" --format json 2>&1 || true)
-WORKFLOW_ASK_JSON="$TMPDIR_ROOT/workflow-ask.json"
-printf '%s' "$OUTPUT" > "$WORKFLOW_ASK_JSON"
-if python3 - "$WORKFLOW_ASK_JSON" <<'PY'
-import json
-import pathlib
-import sys
-
-payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
-report = payload.get("Found")
-if not isinstance(report, dict):
-    raise SystemExit(1)
-if report.get("topic") != "Alpha":
-    raise SystemExit(1)
-if report.get("query") != "Alpha":
-    raise SystemExit(1)
-PY
-then
-    pass "workflow ask resolves natural-language prompts into authoring retrieval"
-else
-    fail "workflow ask resolves natural-language prompts into authoring retrieval (got: $OUTPUT)"
+    fail "knowledge pack emits authoring knowledge with readiness/degradation metadata (got: $OUTPUT)"
 fi
 
 # --- index templates ---
@@ -447,7 +466,7 @@ WIKIEOF
 cat > "$PROJ_TEMPLATES/templates/infobox/_redirects/Template_Infobox_human.wiki" << 'WIKIEOF'
 #REDIRECT [[Template:Infobox person]]
 WIKIEOF
-wt "$PROJ_TEMPLATES" index rebuild > /dev/null 2>&1
+wt "$PROJ_TEMPLATES" knowledge build > /dev/null 2>&1
 OUTPUT=$(wt "$PROJ_TEMPLATES" index templates --limit 5 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Template:Infobox person" && echo "$OUTPUT" | grep -q "implementations="; then
     pass "index templates catalogs active template usage"
@@ -461,10 +480,27 @@ else
     fail "index templates returns implementation reference for a template (got: $OUTPUT)"
 fi
 
+# --- search requires knowledge build ---
+section "search requires knowledge build"
+PROJ_SEARCH=$(setup_project search-unbuilt)
+wt "$PROJ_SEARCH" init > /dev/null 2>&1
+mkdir -p "$PROJ_SEARCH/wiki_content/Main"
+cat > "$PROJ_SEARCH/wiki_content/Main/Alpha.wiki" << 'WIKIEOF'
+{{SHORTDESC:Alpha article}}
+
+'''Alpha''' is an article.
+WIKIEOF
+OUTPUT=$(wt "$PROJ_SEARCH" search "Alpha" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "Run \`wikitool knowledge build\` first."; then
+    pass "search requires knowledge build before indexed retrieval"
+else
+    fail "search requires knowledge build before indexed retrieval (got: $OUTPUT)"
+fi
+
 # --- search ---
 section "search"
 OUTPUT=$(wt "$PROJ" search "Alpha" 2>&1)
-if echo "$OUTPUT" | grep -q "search.hit: Alpha"; then
+if echo "$OUTPUT" | grep -q "search.backend: indexed" && echo "$OUTPUT" | grep -q "search.hit: Alpha"; then
     pass "search finds indexed article"
 else
     fail "search finds indexed article (got: $OUTPUT)"
@@ -606,10 +642,10 @@ cat > "$PROJ_FTS/wiki_content/Main/AlphaBeta.wiki" << 'WIKIEOF'
 
 [[Category:Test]]
 WIKIEOF
-wt "$PROJ_FTS" index rebuild > /dev/null 2>&1
+wt "$PROJ_FTS" knowledge build > /dev/null 2>&1
 BEFORE=$(wt "$PROJ_FTS" search "pha" 2>&1)
 wt "$PROJ_FTS" db reset --yes > /dev/null 2>&1
-wt "$PROJ_FTS" index rebuild > /dev/null 2>&1
+wt "$PROJ_FTS" knowledge build > /dev/null 2>&1
 AFTER=$(wt "$PROJ_FTS" search "pha" 2>&1)
 if echo "$BEFORE" | grep -q "search.hit: AlphaBeta" && echo "$AFTER" | grep -q "search.hit: AlphaBeta"; then
     pass "substring search works before and after disposable db rebuild"
@@ -729,18 +765,38 @@ if [ "$TIER" = "live" ]; then
         fail "export saves page locally (got: ${OUTPUT:0:300})"
     fi
 
-    # --- docs import-profile (live) ---
-    section "docs import-profile (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" docs import-profile mw-1.44-authoring --no-extension-subpages --limit 12 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "docs import-profile\|imported_pages:\|imported_corpora:"; then
-        pass "docs import-profile fetches pinned mediawiki docs"
+    # --- workflow bootstrap (live) ---
+    section "workflow bootstrap (live)"
+    PROJ_BOOTSTRAP_LIVE=$(setup_project workflow-bootstrap-live)
+    OUTPUT=$(wt "$PROJ_BOOTSTRAP_LIVE" workflow bootstrap --skip-reference --skip-git-hooks --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+    if echo "$OUTPUT" | grep -q "^knowledge warm$" && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE"; then
+        pass "workflow bootstrap invokes knowledge warm"
     else
-        fail "docs import-profile fetches pinned mediawiki docs (got: ${OUTPUT:0:300})"
+        fail "workflow bootstrap invokes knowledge warm (got: ${OUTPUT:0:300})"
+    fi
+
+    # --- workflow full-refresh (live) ---
+    section "workflow full-refresh (live)"
+    PROJ_FULL_REFRESH_LIVE=$(setup_project workflow-full-refresh-live)
+    OUTPUT=$(wt "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --skip-reference --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+    if echo "$OUTPUT" | grep -q "^knowledge warm$" && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE"; then
+        pass "workflow full-refresh invokes knowledge warm"
+    else
+        fail "workflow full-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
+    fi
+
+    # --- knowledge warm (live) ---
+    section "knowledge warm (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" knowledge warm --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+    if echo "$OUTPUT" | grep -q "knowledge.readiness: authoring_ready" && echo "$OUTPUT" | grep -q "knowledge.docs_profile_ready: yes"; then
+        pass "knowledge warm builds local content and hydrates docs profile"
+    else
+        fail "knowledge warm builds local content and hydrates docs profile (got: ${OUTPUT:0:300})"
     fi
 
     # --- docs context (live) ---
     section "docs context (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" docs context "parser function" --profile mw-1.44-authoring --format text 2>&1 || true)
+    OUTPUT=$(wt "$PROJ_LIVE" docs context "parser function" --profile "$KNOWLEDGE_DOCS_PROFILE" --format text 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "docs context\|pages.count:\|symbols.count:"; then
         pass "docs context returns live retrieval bundle"
     else

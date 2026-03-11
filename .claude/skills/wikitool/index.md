@@ -1,6 +1,6 @@
 ﻿---
 name: index
-description: Run index rebuild/stats/backlinks/orphans workflows.
+description: Run index stats/backlinks/templates/orphans workflows. Use `knowledge build` for rebuilds.
 allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: <subcommand> [options]
 ---

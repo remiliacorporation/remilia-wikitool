@@ -45,8 +45,9 @@ wikitool docs list --outdated
 ```bash
 wikitool pull --full --all
 wikitool context "Template:Infobox person"
-wikitool workflow ask "write an article on Topic" --format json
-wikitool workflow authoring-pack "Topic" --format json
+wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge status --docs-profile remilia-mw-1.44
+wikitool knowledge pack "Topic" --format json
 wikitool index chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool search "Category:"
 wikitool docs import-profile remilia-mw-1.44
@@ -57,7 +58,7 @@ wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
 ## Retrieval guidance
 
 1. Treat local files as the human editing surface and SQLite as the AI retrieval layer.
-2. Prefer `workflow ask` for natural-language entry, then `workflow authoring-pack` and `index chunks --across-pages` when you need more explicit control over article context.
+2. Prefer `knowledge pack` for authoring retrieval, and use `knowledge status` to confirm whether docs-bridged context is available before relying on it.
 3. Describe references using their source metadata, authority/identifier matches, and retrieval signals; do not imply that wikitool assigns authoritative quality ratings.
 4. Use `index templates TEMPLATE` when you need the implementation bundle for an active template, including `/doc` and `Module:` pages when present.
 5. When `remilia-mw-1.44` docs are imported, authoring retrieval can bridge pinned MediaWiki docs with local template/module patterns; use that before falling back to generic web docs.
@@ -68,4 +69,4 @@ wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
 2. Do not use `--force` without explicit user approval.
 3. For delete flows, require `--reason` and prefer `--dry-run` first.
 4. Treat infrastructure/release operations as out of scope unless explicitly requested.
-5. If the local DB is stale or incompatible, run `db reset --yes` and rebuild it with `pull --full --all`, `db sync`, or the relevant import command.
+5. If the local DB is stale or incompatible, run `db reset --yes`, then rerun `pull --full --all` if needed and rebuild it with `knowledge build` or `knowledge warm`.

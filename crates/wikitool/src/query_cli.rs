@@ -1,9 +1,7 @@
 use anyhow::{Result, bail};
 use clap::Args;
-use wikitool_core::filesystem::{ScanOptions, scan_files};
 use wikitool_core::index::{
-    LocalContextBundle, LocalSearchHit, build_local_context, load_stored_index_stats,
-    query_search_local,
+    LocalContextBundle, LocalSearchHit, build_local_context, query_search_local,
 };
 use wikitool_core::sync::{
     ExternalSearchHit, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE,
@@ -14,7 +12,7 @@ use crate::cli_support::{
     normalize_path, normalize_title_query, print_string_list, resolve_runtime_paths,
     resolve_runtime_with_config,
 };
-use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions, index_cli};
+use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct ContextArgs {
@@ -41,24 +39,14 @@ pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result
     println!("context");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("title: {title}");
-    if let Some(bundle) = build_local_context(&paths, &title)? {
-        println!("context.backend: indexed");
-        print_context_bundle("context", &bundle);
-    } else {
-        let has_index = load_stored_index_stats(&paths)?.is_some();
-        if let Some(bundle) = index_cli::build_context_from_scan(&paths, &title)? {
-            println!("context.backend: fallback-filesystem");
-            if !has_index {
-                println!(
-                    "index.storage: <not built> (run `wikitool index rebuild` for richer context)"
-                );
-            }
+    match build_local_context(&paths, &title)? {
+        Some(bundle) => {
+            println!("context.backend: indexed");
             print_context_bundle("context", &bundle);
-        } else if has_index {
-            bail!("page not found in local index: {title}");
-        } else {
+        }
+        None => {
             bail!(
-                "local index is not built and page was not found by filesystem scan: {title}\nRun `wikitool index rebuild` after `wikitool pull`."
+                "local knowledge index is not ready or page was not found: {title}\nRun `wikitool knowledge build` first."
             );
         }
     }
@@ -86,24 +74,7 @@ pub(crate) fn run_search(runtime: &RuntimeOptions, args: SearchArgs) -> Result<(
             print_search_hits("search", &results);
         }
         None => {
-            println!("search.backend: fallback-filesystem");
-            println!("index.storage: <not built> (run `wikitool index rebuild` for faster search)");
-            let mut results = scan_files(&paths, &ScanOptions::default())?
-                .into_iter()
-                .filter(|file| {
-                    file.title
-                        .to_ascii_lowercase()
-                        .contains(&query.to_ascii_lowercase())
-                })
-                .map(|file| LocalSearchHit {
-                    title: file.title,
-                    namespace: file.namespace,
-                    is_redirect: file.is_redirect,
-                })
-                .collect::<Vec<_>>();
-            results.sort_by(|left, right| left.title.cmp(&right.title));
-            results.truncate(20);
-            print_search_hits("search", &results);
+            bail!("local knowledge index is not ready.\nRun `wikitool knowledge build` first.");
         }
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -261,114 +232,10 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
             if invocation.parameter_keys.is_empty() {
                 "<none>".to_string()
             } else {
-                invocation.parameter_keys.join(",")
+                invocation.parameter_keys.join(", ")
             }
         );
     }
     println!("{prefix}.references.count: {}", bundle.references.len());
-    for reference in &bundle.references {
-        println!(
-            "{prefix}.reference: section={} name={} group={} profile={} family={} template={} type={} origin={} source_family={} authority_kind={} authority={} title={} container={} author={} domain={} date={} url={} summary={} templates={} links={} identifiers={} identifier_entries={} urls={} signals={} tokens={}",
-            reference.section_heading.as_deref().unwrap_or("<lead>"),
-            reference.reference_name.as_deref().unwrap_or("<none>"),
-            reference.reference_group.as_deref().unwrap_or("<none>"),
-            reference.citation_profile,
-            reference.citation_family,
-            reference
-                .primary_template_title
-                .as_deref()
-                .unwrap_or("<none>"),
-            reference.source_type,
-            reference.source_origin,
-            reference.source_family,
-            reference.authority_kind,
-            if reference.source_authority.is_empty() {
-                "<none>"
-            } else {
-                &reference.source_authority
-            },
-            if reference.reference_title.is_empty() {
-                "<none>"
-            } else {
-                &reference.reference_title
-            },
-            if reference.source_container.is_empty() {
-                "<none>"
-            } else {
-                &reference.source_container
-            },
-            if reference.source_author.is_empty() {
-                "<none>"
-            } else {
-                &reference.source_author
-            },
-            if reference.source_domain.is_empty() {
-                "<none>"
-            } else {
-                &reference.source_domain
-            },
-            if reference.source_date.is_empty() {
-                "<none>"
-            } else {
-                &reference.source_date
-            },
-            if reference.canonical_url.is_empty() {
-                "<none>"
-            } else {
-                &reference.canonical_url
-            },
-            reference.summary_text,
-            if reference.template_titles.is_empty() {
-                "<none>".to_string()
-            } else {
-                reference.template_titles.join(",")
-            },
-            if reference.link_titles.is_empty() {
-                "<none>".to_string()
-            } else {
-                reference.link_titles.join(",")
-            },
-            if reference.identifier_keys.is_empty() {
-                "<none>".to_string()
-            } else {
-                reference.identifier_keys.join(",")
-            },
-            if reference.identifier_entries.is_empty() {
-                "<none>".to_string()
-            } else {
-                reference.identifier_entries.join(",")
-            },
-            if reference.source_urls.is_empty() {
-                "<none>".to_string()
-            } else {
-                reference.source_urls.join(",")
-            },
-            if reference.retrieval_signals.is_empty() {
-                "<none>".to_string()
-            } else {
-                reference.retrieval_signals.join(",")
-            },
-            reference.token_estimate
-        );
-    }
     println!("{prefix}.media.count: {}", bundle.media.len());
-    for media in &bundle.media {
-        println!(
-            "{prefix}.media_usage: section={} file={} kind={} tokens={} caption={} options={}",
-            media.section_heading.as_deref().unwrap_or("<lead>"),
-            media.file_title,
-            media.media_kind,
-            media.token_estimate,
-            if media.caption_text.is_empty() {
-                "<none>"
-            } else {
-                &media.caption_text
-            },
-            if media.options.is_empty() {
-                "<none>".to_string()
-            } else {
-                media.options.join(", ")
-            }
-        );
-    }
 }

@@ -6,10 +6,12 @@ use anyhow::{Context, Result};
 use reqwest::Url;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde::Serialize;
+use serde_json::json;
 
 use crate::filesystem::{
     Namespace, ScanOptions, ScanStats, ScannedFile, scan_files, validate_scoped_path,
 };
+use crate::knowledge::status::{DEFAULT_DOCS_PROFILE, record_content_index_artifact};
 use crate::runtime::ResolvedPaths;
 use crate::schema::open_initialized_database_connection;
 use crate::support::{normalize_path, table_exists, unix_timestamp};
@@ -30,9 +32,6 @@ const MODULE_REFERENCE_EXAMPLE_LIMIT: usize = 4;
 const AUTHORING_MODULE_FUNCTION_LIMIT: usize = 8;
 const AUTHORING_TEMPLATE_REFERENCE_LIMIT: usize = 4;
 const AUTHORING_MODULE_PATTERN_LIMIT: usize = 6;
-const AUTHORING_DOCS_QUERY_LIMIT: usize = 4;
-const AUTHORING_DOCS_TOKEN_BUDGET: usize = 560;
-const AUTHORING_DOCS_PROFILE: &str = "remilia-mw-1.44";
 const AUTHORING_REFERENCE_LIMIT: usize = 8;
 const AUTHORING_REFERENCE_EXAMPLE_LIMIT: usize = 3;
 const AUTHORING_REFERENCE_AUTHORITY_LIMIT: usize = 8;
@@ -467,6 +466,7 @@ pub struct AuthoringKnowledgePackOptions {
     pub link_limit: usize,
     pub category_limit: usize,
     pub template_limit: usize,
+    pub docs_profile: String,
     pub diversify: bool,
 }
 
@@ -480,6 +480,7 @@ impl Default for AuthoringKnowledgePackOptions {
             link_limit: 18,
             category_limit: 8,
             template_limit: 16,
+            docs_profile: DEFAULT_DOCS_PROFILE.to_string(),
             diversify: true,
         }
     }
@@ -1136,6 +1137,20 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
 
     // Rebuild FTS5 index if the virtual table exists from schema bootstrap.
     rebuild_fts_index(&connection)?;
+    record_content_index_artifact(
+        &connection,
+        inserted_rows,
+        &json!({
+            "inserted_rows": inserted_rows,
+            "inserted_links": inserted_links,
+            "scan_total_files": scan.total_files,
+            "scan_content_files": scan.content_files,
+            "scan_template_files": scan.template_files,
+            "scan_redirects": scan.redirects,
+            "namespaces": scan.by_namespace.clone(),
+        })
+        .to_string(),
+    )?;
 
     Ok(RebuildReport {
         db_path: normalize_path(&paths.db_path),
@@ -1774,12 +1789,13 @@ pub fn build_authoring_knowledge_pack(
         &template_references,
         AUTHORING_MODULE_PATTERN_LIMIT,
     )?;
-    let docs_context = build_authoring_docs_context(
+    let docs_context = crate::knowledge::docs_bridge::build_authoring_docs_context(
         paths,
         &topic,
         &query_terms,
         &template_references,
         &module_patterns,
+        &options.docs_profile,
     )?;
     if !template_references.is_empty() {
         retrieval_mode.push_str("+template-guides");
@@ -2028,201 +2044,6 @@ fn build_authoring_module_patterns(
     });
     out.truncate(limit);
     Ok(out)
-}
-
-fn build_authoring_docs_context(
-    paths: &ResolvedPaths,
-    topic: &str,
-    query_terms: &[String],
-    template_references: &[TemplateReference],
-    module_patterns: &[ModuleUsageSummary],
-) -> Result<Option<AuthoringDocsContext>> {
-    let queries =
-        build_authoring_docs_queries(topic, query_terms, template_references, module_patterns);
-    if queries.is_empty() {
-        return Ok(None);
-    }
-
-    let mut pages = Vec::new();
-    let mut sections = Vec::new();
-    let mut symbols = Vec::new();
-    let mut examples = Vec::new();
-    let mut seen_pages = BTreeSet::new();
-    let mut seen_sections = BTreeSet::new();
-    let mut seen_symbols = BTreeSet::new();
-    let mut seen_examples = BTreeSet::new();
-
-    for query in &queries {
-        let report = crate::docs::build_docs_context(
-            paths,
-            query,
-            &crate::docs::DocsContextOptions {
-                profile: Some(AUTHORING_DOCS_PROFILE.to_string()),
-                limit: 4,
-                token_budget: AUTHORING_DOCS_TOKEN_BUDGET,
-            },
-        )?;
-
-        for page in report.pages {
-            let key = format!(
-                "{}|{}|{}|{}",
-                page.corpus_id,
-                page.tier,
-                page.page_title,
-                page.section_heading.as_deref().unwrap_or("")
-            );
-            if seen_pages.insert(key) {
-                pages.push(page);
-            }
-        }
-        for section in report.sections {
-            let key = format!(
-                "{}|{}|{}",
-                section.corpus_id,
-                section.page_title,
-                section.section_heading.as_deref().unwrap_or("")
-            );
-            if seen_sections.insert(key) {
-                sections.push(section);
-            }
-        }
-        for symbol in report.symbols {
-            let key = format!(
-                "{}|{}|{}|{}",
-                symbol.corpus_id, symbol.page_title, symbol.symbol_kind, symbol.symbol_name
-            );
-            if seen_symbols.insert(key) {
-                symbols.push(symbol);
-            }
-        }
-        for example in report.examples {
-            let key = format!(
-                "{}|{}|{}|{}",
-                example.corpus_id,
-                example.page_title,
-                example.example_kind,
-                example.section_heading.as_deref().unwrap_or("")
-            );
-            if seen_examples.insert(key) {
-                examples.push(example);
-            }
-        }
-    }
-
-    pages.sort_by(|left, right| {
-        right
-            .retrieval_weight
-            .cmp(&left.retrieval_weight)
-            .then_with(|| left.title.cmp(&right.title))
-    });
-    sections.sort_by(|left, right| {
-        right
-            .retrieval_weight
-            .cmp(&left.retrieval_weight)
-            .then_with(|| left.page_title.cmp(&right.page_title))
-    });
-    symbols.sort_by(|left, right| {
-        right
-            .retrieval_weight
-            .cmp(&left.retrieval_weight)
-            .then_with(|| left.symbol_name.cmp(&right.symbol_name))
-    });
-    examples.sort_by(|left, right| {
-        right
-            .retrieval_weight
-            .cmp(&left.retrieval_weight)
-            .then_with(|| left.page_title.cmp(&right.page_title))
-    });
-
-    pages.truncate(AUTHORING_DOCS_QUERY_LIMIT * 2);
-    sections.truncate(AUTHORING_DOCS_QUERY_LIMIT * 3);
-    symbols.truncate(AUTHORING_DOCS_QUERY_LIMIT * 3);
-    examples.truncate(AUTHORING_DOCS_QUERY_LIMIT * 2);
-
-    if pages.is_empty() && sections.is_empty() && symbols.is_empty() && examples.is_empty() {
-        return Ok(None);
-    }
-
-    let token_estimate_total = pages
-        .iter()
-        .map(|page| estimate_tokens(&page.snippet).max(1))
-        .sum::<usize>()
-        .saturating_add(
-            sections
-                .iter()
-                .map(|section| section.token_estimate.max(1))
-                .sum::<usize>(),
-        )
-        .saturating_add(
-            symbols
-                .iter()
-                .map(|symbol| {
-                    estimate_tokens(&format!("{} {}", symbol.summary_text, symbol.detail_text))
-                        .max(1)
-                })
-                .sum::<usize>(),
-        )
-        .saturating_add(
-            examples
-                .iter()
-                .map(|example| example.token_estimate.max(1))
-                .sum::<usize>(),
-        );
-
-    Ok(Some(AuthoringDocsContext {
-        profile: AUTHORING_DOCS_PROFILE.to_string(),
-        queries,
-        pages,
-        sections,
-        symbols,
-        examples,
-        token_estimate_total,
-    }))
-}
-
-fn build_authoring_docs_queries(
-    topic: &str,
-    query_terms: &[String],
-    template_references: &[TemplateReference],
-    module_patterns: &[ModuleUsageSummary],
-) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut seen = BTreeSet::new();
-
-    push_authoring_docs_query(&mut out, &mut seen, topic);
-    for term in query_terms.iter().take(2) {
-        push_authoring_docs_query(&mut out, &mut seen, term);
-    }
-    for template_title in template_references
-        .iter()
-        .map(|reference| reference.template.template_title.as_str())
-    {
-        if let Some(tail) = template_title.split_once(':').map(|(_, tail)| tail) {
-            push_authoring_docs_query(&mut out, &mut seen, tail);
-        }
-        if out.len() >= AUTHORING_DOCS_QUERY_LIMIT {
-            break;
-        }
-    }
-    if !template_references.is_empty() {
-        push_authoring_docs_query(&mut out, &mut seen, "template parameters");
-    }
-    if !module_patterns.is_empty() {
-        push_authoring_docs_query(&mut out, &mut seen, "Scribunto #invoke");
-    }
-    out.truncate(AUTHORING_DOCS_QUERY_LIMIT);
-    out
-}
-
-fn push_authoring_docs_query(queries: &mut Vec<String>, seen: &mut BTreeSet<String>, value: &str) {
-    let normalized = normalize_spaces(&value.replace('_', " "));
-    if normalized.is_empty() {
-        return;
-    }
-    let key = normalized.to_ascii_lowercase();
-    if seen.insert(key) {
-        queries.push(normalized);
-    }
 }
 
 pub fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
@@ -8335,30 +8156,26 @@ fn build_reference_citation_profile(
 }
 
 fn extract_first_url(value: &str) -> Option<String> {
-    let bytes = value.as_bytes();
-    let mut cursor = 0usize;
-    while cursor < bytes.len() {
-        let starts_http = value[cursor..].starts_with("http://");
-        let starts_https = value[cursor..].starts_with("https://");
-        let starts_protocol_relative = value[cursor..].starts_with("//");
+    for (start, _) in value.char_indices() {
+        let rest = &value[start..];
+        let starts_http = rest.starts_with("http://");
+        let starts_https = rest.starts_with("https://");
+        let starts_protocol_relative = rest.starts_with("//");
         if !(starts_http || starts_https || starts_protocol_relative) {
-            cursor += 1;
             continue;
         }
-        let start = cursor;
-        let mut end = cursor;
-        while end < bytes.len() {
-            let ch = bytes[end] as char;
+
+        let mut end = value.len();
+        for (offset, ch) in rest.char_indices() {
             if ch.is_whitespace() || matches!(ch, '|' | '}' | ']' | '<' | '"' | '\'') {
+                end = start + offset;
                 break;
             }
-            end += 1;
         }
         let candidate = normalize_spaces(&value[start..end]);
         if !candidate.is_empty() {
             return Some(candidate);
         }
-        cursor = end.saturating_add(1);
     }
     None
 }
@@ -9793,6 +9610,7 @@ mod tests {
             link_limit: 8,
             category_limit: 4,
             template_limit: 6,
+            docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
             diversify: true,
         };
         let report = build_authoring_knowledge_pack(
@@ -9892,6 +9710,7 @@ mod tests {
             link_limit: 4,
             category_limit: 4,
             template_limit: 4,
+            docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
             diversify: true,
         };
         let report = build_authoring_knowledge_pack(
@@ -10107,6 +9926,7 @@ mod tests {
                 link_limit: 8,
                 category_limit: 4,
                 template_limit: 6,
+                docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
                 diversify: true,
             },
         )
@@ -10207,5 +10027,14 @@ mod tests {
 
         let stored = load_stored_index_stats(&paths).expect("load stats");
         assert!(stored.is_none());
+    }
+
+    #[test]
+    fn extract_first_url_handles_multibyte_prefix_text() {
+        let value = "👽 recap https://example.org/path?query=1|rest";
+        assert_eq!(
+            super::extract_first_url(value),
+            Some("https://example.org/path?query=1".to_string())
+        );
     }
 }

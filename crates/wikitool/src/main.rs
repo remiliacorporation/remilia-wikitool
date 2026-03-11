@@ -14,6 +14,7 @@ mod export_cli;
 mod import_cli;
 mod index_cli;
 mod inspect_cli;
+mod knowledge_cli;
 mod lsp_cli;
 mod quality_cli;
 mod query_cli;
@@ -84,6 +85,7 @@ enum Commands {
     Perf(inspect_cli::PerfArgs),
     Import(import_cli::ImportArgs),
     Index(index_cli::IndexArgs),
+    Knowledge(knowledge_cli::KnowledgeArgs),
     #[command(name = "lsp:generate-config")]
     LspGenerateConfig(lsp_cli::LspGenerateConfigArgs),
     #[command(name = "lsp:status")]
@@ -137,6 +139,7 @@ fn main() -> Result<()> {
         Some(Commands::Perf(args)) => inspect_cli::run_perf(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
         Some(Commands::Index(args)) => index_cli::run_index(&runtime, args),
+        Some(Commands::Knowledge(args)) => knowledge_cli::run_knowledge(&runtime, args),
         Some(Commands::LspGenerateConfig(args)) => lsp_cli::run_lsp_generate_config(&runtime, args),
         Some(Commands::LspStatus) => lsp_cli::run_lsp_status(&runtime),
         Some(Commands::LspInfo) => lsp_cli::run_lsp_info(),

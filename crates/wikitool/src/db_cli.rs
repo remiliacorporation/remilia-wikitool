@@ -2,13 +2,13 @@ use std::fs;
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
-use wikitool_core::filesystem::ScanOptions;
-use wikitool_core::index::{load_stored_index_stats, rebuild_index};
-use wikitool_core::runtime::{ensure_runtime_ready_for_sync, inspect_runtime};
+use wikitool_core::knowledge::content_index::load_stored_index_stats;
+use wikitool_core::knowledge::status::{DEFAULT_DOCS_PROFILE, knowledge_status};
+use wikitool_core::runtime::inspect_runtime;
 
 use crate::cli_support::{
-    format_flag, normalize_path, print_database_schema_status, print_scan_stats,
-    print_stored_index_stats, prompt_yes_no, resolve_runtime_paths,
+    format_flag, normalize_path, print_database_schema_status, print_stored_index_stats,
+    prompt_yes_no, resolve_runtime_paths,
 };
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -21,7 +21,6 @@ pub(crate) struct DbArgs {
 #[derive(Debug, Subcommand)]
 enum DbSubcommand {
     Stats,
-    Sync,
     Reset {
         #[arg(
             long,
@@ -34,7 +33,6 @@ enum DbSubcommand {
 pub(crate) fn run_db(runtime: &RuntimeOptions, args: DbArgs) -> Result<()> {
     match args.command {
         DbSubcommand::Stats => run_db_stats(runtime),
-        DbSubcommand::Sync => run_db_sync(runtime),
         DbSubcommand::Reset { yes } => run_db_reset(runtime, yes),
     }
 }
@@ -43,6 +41,7 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let status = inspect_runtime(&paths)?;
     let stored = load_stored_index_stats(&paths)?;
+    let knowledge = knowledge_status(&paths, DEFAULT_DOCS_PROFILE)?;
 
     println!("db stats");
     println!("db_path: {}", normalize_path(&paths.db_path));
@@ -57,30 +56,33 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
     );
     match stored {
         Some(stored) => print_stored_index_stats("index", &stored),
-        None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
+        None => println!("index.storage: <not built> (run `wikitool knowledge build`)"),
     }
-    print_database_schema_status(&paths);
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-
-    Ok(())
-}
-
-fn run_db_sync(runtime: &RuntimeOptions) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let status = inspect_runtime(&paths)?;
-    ensure_runtime_ready_for_sync(&paths, &status)?;
-
-    let report = rebuild_index(&paths, &ScanOptions::default())?;
-
-    println!("db sync");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("db_path: {}", normalize_path(&paths.db_path));
-    println!("synced_rows: {}", report.inserted_rows);
-    println!("synced_links: {}", report.inserted_links);
-    print_scan_stats("scan", &report.scan);
+    println!(
+        "docs_profile_requested: {}",
+        knowledge.docs_profile_requested
+    );
+    println!(
+        "readiness: {}",
+        match knowledge.readiness {
+            wikitool_core::knowledge::status::KnowledgeReadinessLevel::NotReady => "not_ready",
+            wikitool_core::knowledge::status::KnowledgeReadinessLevel::ContentReady => {
+                "content_ready"
+            }
+            wikitool_core::knowledge::status::KnowledgeReadinessLevel::AuthoringReady => {
+                "authoring_ready"
+            }
+        }
+    );
+    println!(
+        "degradations: {}",
+        if knowledge.degradations.is_empty() {
+            "<none>".to_string()
+        } else {
+            knowledge.degradations.join(", ")
+        }
+    );
+    println!("knowledge_generation: {}", knowledge.knowledge_generation);
     print_database_schema_status(&paths);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
@@ -112,7 +114,7 @@ fn run_db_reset(runtime: &RuntimeOptions, yes: bool) -> Result<()> {
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("db_path: {normalized_path}");
     println!("deleted: {}", format_flag(deleted));
-    println!("next_step: run `wikitool db sync` or `wikitool pull --full --all`");
+    println!("next_step: run `wikitool knowledge build` or `wikitool knowledge warm`");
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());

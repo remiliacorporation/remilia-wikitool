@@ -666,3 +666,17 @@ CREATE INDEX IF NOT EXISTS idx_docs_links_target
     ON docs_links(target_title);
 CREATE INDEX IF NOT EXISTS idx_docs_links_kind
     ON docs_links(relation_kind);
+
+CREATE TABLE IF NOT EXISTS knowledge_artifacts (
+    artifact_key TEXT PRIMARY KEY,
+    artifact_kind TEXT NOT NULL,
+    profile TEXT,
+    schema_generation TEXT NOT NULL,
+    built_at_unix INTEGER NOT NULL,
+    row_count INTEGER NOT NULL,
+    metadata_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_artifacts_kind
+    ON knowledge_artifacts(artifact_kind);
+CREATE INDEX IF NOT EXISTS idx_knowledge_artifacts_profile
+    ON knowledge_artifacts(profile);

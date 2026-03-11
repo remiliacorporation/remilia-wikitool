@@ -7,6 +7,7 @@ pub mod filesystem;
 pub mod import_cargo;
 pub mod index;
 pub mod inspect;
+pub mod knowledge;
 pub mod lint;
 pub mod runtime;
 pub mod schema;

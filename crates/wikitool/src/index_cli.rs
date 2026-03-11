@@ -1,20 +1,17 @@
-use std::fs;
-
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
-use wikitool_core::filesystem::{ScanOptions, scan_files, scan_stats};
+use wikitool_core::filesystem::{ScanOptions, scan_stats};
 use wikitool_core::index::{
     ActiveTemplateCatalogLookup, LocalChunkAcrossRetrieval, LocalChunkRetrieval,
-    LocalContextBundle, TemplateParameterUsage, TemplateReferenceLookup, TemplateUsageSummary,
-    load_stored_index_stats, query_active_template_catalog, query_backlinks,
-    query_empty_categories, query_orphans, query_template_reference, rebuild_index,
-    retrieve_local_context_chunks_across_pages, retrieve_local_context_chunks_with_options,
+    TemplateParameterUsage, TemplateReferenceLookup, TemplateUsageSummary, load_stored_index_stats,
+    query_active_template_catalog, query_backlinks, query_empty_categories, query_orphans,
+    query_template_reference, retrieve_local_context_chunks_across_pages,
+    retrieve_local_context_chunks_with_options,
 };
-use wikitool_core::runtime::{ResolvedPaths, ensure_runtime_ready_for_sync, inspect_runtime};
 
 use crate::cli_support::{
-    collapse_whitespace, normalize_path, normalize_title_query, print_database_schema_status,
-    print_scan_stats, print_stored_index_stats, resolve_runtime_paths,
+    normalize_path, normalize_title_query, print_scan_stats, print_stored_index_stats,
+    resolve_runtime_paths,
 };
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -26,8 +23,6 @@ pub(crate) struct IndexArgs {
 
 #[derive(Debug, Subcommand)]
 enum IndexSubcommand {
-    /// Rebuild the local search index from wiki_content and templates
-    Rebuild,
     /// Show index statistics
     Stats,
     /// Retrieve token-budgeted content chunks from indexed pages
@@ -108,7 +103,6 @@ enum IndexSubcommand {
 
 pub(crate) fn run_index(runtime: &RuntimeOptions, args: IndexArgs) -> Result<()> {
     match args.command {
-        IndexSubcommand::Rebuild => run_index_rebuild(runtime),
         IndexSubcommand::Stats => run_index_stats(runtime),
         IndexSubcommand::Chunks {
             title,
@@ -144,86 +138,6 @@ pub(crate) fn run_index(runtime: &RuntimeOptions, args: IndexArgs) -> Result<()>
     }
 }
 
-pub(crate) fn build_context_from_scan(
-    paths: &ResolvedPaths,
-    title: &str,
-) -> Result<Option<LocalContextBundle>> {
-    let normalized = normalize_title_query(title);
-    let files = scan_files(paths, &ScanOptions::default())?;
-    let file = match files
-        .into_iter()
-        .find(|item| item.title.eq_ignore_ascii_case(&normalized))
-    {
-        Some(file) => file,
-        None => return Ok(None),
-    };
-
-    let mut absolute = paths.project_root.clone();
-    for segment in file.relative_path.split('/') {
-        if !segment.is_empty() {
-            absolute.push(segment);
-        }
-    }
-    let content = fs::read_to_string(&absolute)
-        .with_context(|| format!("failed to read {}", normalize_path(&absolute)))?;
-    let content_preview = collapse_whitespace(&content)
-        .chars()
-        .take(280)
-        .collect::<String>();
-
-    Ok(Some(LocalContextBundle {
-        title: file.title,
-        namespace: file.namespace,
-        is_redirect: file.is_redirect,
-        redirect_target: file.redirect_target,
-        relative_path: file.relative_path,
-        bytes: file.bytes,
-        word_count: content
-            .split_whitespace()
-            .filter(|token| !token.is_empty())
-            .count(),
-        content_preview: if content_preview.is_empty() {
-            String::new()
-        } else {
-            format!("{content_preview}...")
-        },
-        sections: Vec::new(),
-        section_summaries: Vec::new(),
-        context_chunks: Vec::new(),
-        context_tokens_estimate: 0,
-        outgoing_links: Vec::new(),
-        backlinks: Vec::new(),
-        categories: Vec::new(),
-        templates: Vec::new(),
-        modules: Vec::new(),
-        template_invocations: Vec::new(),
-        references: Vec::new(),
-        media: Vec::new(),
-    }))
-}
-
-fn run_index_rebuild(runtime: &RuntimeOptions) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let status = inspect_runtime(&paths)?;
-    ensure_runtime_ready_for_sync(&paths, &status)?;
-
-    let report = rebuild_index(&paths, &ScanOptions::default())?;
-
-    println!("index rebuild");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("db_path: {}", normalize_path(&paths.db_path));
-    println!("inserted_rows: {}", report.inserted_rows);
-    println!("inserted_links: {}", report.inserted_links);
-    print_scan_stats("scan", &report.scan);
-    print_database_schema_status(&paths);
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-
-    Ok(())
-}
-
 #[allow(clippy::too_many_arguments)]
 fn run_index_chunks(
     runtime: &RuntimeOptions,
@@ -246,16 +160,12 @@ fn run_index_chunks(
     if max_pages == 0 {
         bail!("index chunks requires --max-pages >= 1");
     }
-
-    let format = format.to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!("unsupported format: {} (expected text|json)", format);
-    }
     if diversify && no_diversify {
         bail!("cannot use --diversify and --no-diversify together");
     }
-    let use_diversify = !no_diversify;
 
+    let format = normalize_format(format)?;
+    let use_diversify = !no_diversify;
     let paths = resolve_runtime_paths(runtime)?;
 
     if across_pages {
@@ -266,7 +176,6 @@ fn run_index_chunks(
         if query.is_empty() {
             bail!("index chunks --across-pages requires --query");
         }
-
         let retrieval = retrieve_local_context_chunks_across_pages(
             &paths,
             query,
@@ -277,39 +186,40 @@ fn run_index_chunks(
         )?;
         if format == "json" {
             println!("{}", serde_json::to_string_pretty(&retrieval)?);
-        } else {
-            println!("index chunks");
-            println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("target: <across-pages>");
-            println!("query: {query}");
-            println!("limit: {limit}");
-            println!("token_budget: {token_budget}");
-            println!("max_pages: {max_pages}");
-            println!("diversify: {use_diversify}");
-            match retrieval {
-                LocalChunkAcrossRetrieval::IndexMissing => {
-                    println!("index.storage: <not built> (run `wikitool index rebuild`)");
-                }
-                LocalChunkAcrossRetrieval::QueryMissing => {
-                    bail!("query is required for across-pages chunk retrieval");
-                }
-                LocalChunkAcrossRetrieval::Found(report) => {
-                    println!("chunks.retrieval_mode: {}", report.retrieval_mode);
-                    println!("chunks.count: {}", report.chunks.len());
-                    println!("chunks.source_page_count: {}", report.source_page_count);
+            return Ok(());
+        }
+
+        println!("index chunks");
+        println!("project_root: {}", normalize_path(&paths.project_root));
+        println!("target: <across-pages>");
+        println!("query: {query}");
+        println!("limit: {limit}");
+        println!("token_budget: {token_budget}");
+        println!("max_pages: {max_pages}");
+        println!("diversify: {use_diversify}");
+        match retrieval {
+            LocalChunkAcrossRetrieval::IndexMissing => {
+                println!("index.storage: <not built> (run `wikitool knowledge build`)");
+            }
+            LocalChunkAcrossRetrieval::QueryMissing => {
+                bail!("query is required for across-pages chunk retrieval");
+            }
+            LocalChunkAcrossRetrieval::Found(report) => {
+                println!("chunks.retrieval_mode: {}", report.retrieval_mode);
+                println!("chunks.count: {}", report.chunks.len());
+                println!("chunks.source_page_count: {}", report.source_page_count);
+                println!(
+                    "chunks.tokens_estimate_total: {}",
+                    report.token_estimate_total
+                );
+                for chunk in &report.chunks {
                     println!(
-                        "chunks.tokens_estimate_total: {}",
-                        report.token_estimate_total
+                        "chunk: source={} section={} tokens={} text={}",
+                        chunk.source_title,
+                        chunk.section_heading.as_deref().unwrap_or("<lead>"),
+                        chunk.token_estimate,
+                        chunk.chunk_text
                     );
-                    for chunk in &report.chunks {
-                        println!(
-                            "chunk: source={} section={} tokens={} text={}",
-                            chunk.source_title,
-                            chunk.section_heading.as_deref().unwrap_or("<lead>"),
-                            chunk.token_estimate,
-                            chunk.chunk_text
-                        );
-                    }
                 }
             }
         }
@@ -318,54 +228,51 @@ fn run_index_chunks(
         if title.is_empty() {
             bail!("index chunks requires a non-empty TITLE unless --across-pages is set");
         }
-
         let retrieval = retrieve_local_context_chunks_with_options(
             &paths,
             title,
-            query,
+            query.map(str::trim).filter(|value| !value.is_empty()),
             limit,
             token_budget,
             use_diversify,
         )?;
         if format == "json" {
             println!("{}", serde_json::to_string_pretty(&retrieval)?);
-        } else {
-            println!("index chunks");
-            println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("target: {title}");
-            println!("query: {}", query.unwrap_or("<none>"));
-            println!("limit: {limit}");
-            println!("token_budget: {token_budget}");
-            println!("diversify: {use_diversify}");
-            match retrieval {
-                LocalChunkRetrieval::IndexMissing => {
-                    println!("index.storage: <not built> (run `wikitool index rebuild`)");
-                }
-                LocalChunkRetrieval::TitleMissing { title } => {
-                    bail!("page not found in local index: {title}");
-                }
-                LocalChunkRetrieval::Found(report) => {
-                    println!("chunks.title: {}", report.title);
-                    println!("chunks.namespace: {}", report.namespace);
-                    println!("chunks.relative_path: {}", report.relative_path);
-                    println!("chunks.retrieval_mode: {}", report.retrieval_mode);
-                    println!("chunks.count: {}", report.chunks.len());
+            return Ok(());
+        }
+
+        println!("index chunks");
+        println!("project_root: {}", normalize_path(&paths.project_root));
+        println!("target: {}", normalize_title_query(title));
+        println!("query: {}", query.unwrap_or("<none>").trim());
+        println!("limit: {limit}");
+        println!("token_budget: {token_budget}");
+        match retrieval {
+            LocalChunkRetrieval::IndexMissing => {
+                println!("index.storage: <not built> (run `wikitool knowledge build`)");
+            }
+            LocalChunkRetrieval::TitleMissing { title } => {
+                bail!("page not found in local index: {title}");
+            }
+            LocalChunkRetrieval::Found(report) => {
+                println!("chunks.retrieval_mode: {}", report.retrieval_mode);
+                println!("chunks.count: {}", report.chunks.len());
+                println!(
+                    "chunks.tokens_estimate_total: {}",
+                    report.token_estimate_total
+                );
+                for chunk in &report.chunks {
                     println!(
-                        "chunks.tokens_estimate_total: {}",
-                        report.token_estimate_total
+                        "chunk: section={} tokens={} text={}",
+                        chunk.section_heading.as_deref().unwrap_or("<lead>"),
+                        chunk.token_estimate,
+                        chunk.chunk_text
                     );
-                    for chunk in &report.chunks {
-                        println!(
-                            "chunk: section={} tokens={} text={}",
-                            chunk.section_heading.as_deref().unwrap_or("<lead>"),
-                            chunk.token_estimate,
-                            chunk.chunk_text
-                        );
-                    }
                 }
             }
         }
     }
+
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -375,28 +282,27 @@ fn run_index_chunks(
 
 fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let normalized_title = title.trim();
+    let normalized = normalize_title_query(title);
+    if normalized.is_empty() {
+        bail!("index backlinks requires a non-empty TITLE");
+    }
 
     println!("index backlinks");
     println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("target: {normalized_title}");
-    if normalized_title.is_empty() {
-        bail!("index backlinks requires a non-empty title");
-    }
-
-    match query_backlinks(&paths, normalized_title)? {
+    println!("title: {normalized}");
+    match query_backlinks(&paths, &normalized)? {
         Some(backlinks) => {
             println!("backlinks.count: {}", backlinks.len());
             if backlinks.is_empty() {
                 println!("backlinks: <none>");
             } else {
-                for source in backlinks {
-                    println!("backlinks.source: {source}");
+                for link in backlinks {
+                    println!("backlink: {link}");
                 }
             }
         }
         None => {
-            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+            println!("index.storage: <not built> (run `wikitool knowledge build`)");
         }
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -416,107 +322,78 @@ fn run_index_templates(
     if limit == 0 {
         bail!("index templates requires --limit >= 1");
     }
-    if all && template.is_some() {
+    if template.is_some() && all {
         bail!("cannot use `index templates TEMPLATE --all`; omit TEMPLATE in catalog mode");
     }
-
-    let format = format.to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!("unsupported format: {} (expected text|json)", format);
-    }
-
+    let format = normalize_format(format)?;
     let paths = resolve_runtime_paths(runtime)?;
-    let catalog_limit = if all { usize::MAX } else { limit };
 
-    if let Some(template) = template {
-        let lookup = query_template_reference(&paths, template)?;
+    if let Some(template_title) = template {
+        let lookup = query_template_reference(&paths, template_title)?;
         if format == "json" {
             println!("{}", serde_json::to_string_pretty(&lookup)?);
-        } else {
-            println!("index templates");
-            println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("mode: reference");
-            println!("template: {template}");
-            match lookup {
-                TemplateReferenceLookup::IndexMissing => {
-                    println!("index.storage: <not built> (run `wikitool index rebuild`)");
-                }
-                TemplateReferenceLookup::TemplateMissing { template_title } => {
-                    bail!("template not found in active template index: {template_title}");
-                }
-                TemplateReferenceLookup::Found(reference) => {
-                    print_template_summary("template", &reference.template);
+            return Ok(());
+        }
+
+        println!("index templates");
+        println!("project_root: {}", normalize_path(&paths.project_root));
+        println!("template: {}", normalize_title_query(template_title));
+        match lookup {
+            TemplateReferenceLookup::IndexMissing => {
+                println!("index.storage: <not built> (run `wikitool knowledge build`)");
+            }
+            TemplateReferenceLookup::TemplateMissing { template_title } => {
+                println!("template.reference: <missing>");
+                println!("template.title: {template_title}");
+            }
+            TemplateReferenceLookup::Found(reference) => {
+                let reference = *reference;
+                print_template_summary("template", &reference.template);
+                println!(
+                    "template.implementation_pages.count: {}",
+                    reference.implementation_pages.len()
+                );
+                for page in &reference.implementation_pages {
                     println!(
-                        "template.implementation_pages.count: {}",
-                        reference.implementation_pages.len()
+                        "template.implementation_page: role={} page={} summary={}",
+                        page.role,
+                        page.page_title,
+                        if page.summary_text.is_empty() {
+                            "<none>"
+                        } else {
+                            &page.summary_text
+                        }
                     );
-                    for page in &reference.implementation_pages {
-                        println!(
-                            "template.implementation_page: title={} namespace={} role={} summary={}",
-                            page.page_title,
-                            page.namespace,
-                            page.role,
-                            if page.summary_text.is_empty() {
-                                "<none>"
-                            } else {
-                                &page.summary_text
-                            }
-                        );
-                    }
-                    println!(
-                        "template.implementation_sections.count: {}",
-                        reference.implementation_sections.len()
-                    );
-                    for section in &reference.implementation_sections {
-                        println!(
-                            "template.implementation_section: level={} heading={} tokens={} summary={}",
-                            section.section_level,
-                            section.section_heading.as_deref().unwrap_or("<lead>"),
-                            section.token_estimate,
-                            section.summary_text
-                        );
-                    }
-                    println!(
-                        "template.implementation_chunks.count: {}",
-                        reference.implementation_chunks.len()
-                    );
-                    for chunk in &reference.implementation_chunks {
-                        println!(
-                            "template.implementation_chunk: section={} tokens={} text={}",
-                            chunk.section_heading.as_deref().unwrap_or("<lead>"),
-                            chunk.token_estimate,
-                            chunk.chunk_text
-                        );
-                    }
                 }
+                println!(
+                    "template.implementation_chunks.count: {}",
+                    reference.implementation_chunks.len()
+                );
             }
         }
     } else {
-        let catalog = query_active_template_catalog(&paths, catalog_limit)?;
+        let lookup = query_active_template_catalog(&paths, if all { limit.max(1) } else { limit })?;
         if format == "json" {
-            println!("{}", serde_json::to_string_pretty(&catalog)?);
-        } else {
-            println!("index templates");
-            println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("mode: catalog");
-            println!(
-                "limit: {}",
-                if all {
-                    "<all>".to_string()
-                } else {
-                    limit.to_string()
-                }
-            );
-            match catalog {
-                ActiveTemplateCatalogLookup::IndexMissing => {
-                    println!("index.storage: <not built> (run `wikitool index rebuild`)");
-                }
-                ActiveTemplateCatalogLookup::Found(catalog) => {
-                    println!("templates.active_count: {}", catalog.active_template_count);
-                    println!("templates.returned: {}", catalog.templates.len());
-                    for template in &catalog.templates {
-                        print_template_summary("template", template);
-                    }
+            println!("{}", serde_json::to_string_pretty(&lookup)?);
+            return Ok(());
+        }
+
+        println!("index templates");
+        println!("project_root: {}", normalize_path(&paths.project_root));
+        println!("limit: {limit}");
+        println!("all: {}", if all { "yes" } else { "no" });
+        match lookup {
+            ActiveTemplateCatalogLookup::IndexMissing => {
+                println!("index.storage: <not built> (run `wikitool knowledge build`)");
+            }
+            ActiveTemplateCatalogLookup::Found(catalog) => {
+                println!(
+                    "templates.active_template_count: {}",
+                    catalog.active_template_count
+                );
+                println!("templates.count: {}", catalog.templates.len());
+                for template in &catalog.templates {
+                    print_template_summary("template", template);
                 }
             }
         }
@@ -534,6 +411,7 @@ fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
 
     println!("index orphans");
     println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("mode: report-only");
     match query_orphans(&paths)? {
         Some(orphans) => {
             println!("orphans.count: {}", orphans.len());
@@ -541,12 +419,12 @@ fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
                 println!("orphans: <none>");
             } else {
                 for title in orphans {
-                    println!("orphans.title: {title}");
+                    println!("orphan.title: {title}");
                 }
             }
         }
         None => {
-            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+            println!("index.storage: <not built> (run `wikitool knowledge build`)");
         }
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -574,7 +452,7 @@ fn run_index_prune_categories(runtime: &RuntimeOptions) -> Result<()> {
             }
         }
         None => {
-            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+            println!("index.storage: <not built> (run `wikitool knowledge build`)");
         }
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -599,7 +477,7 @@ fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
     print_scan_stats("scan", &scan);
     match stored {
         Some(stored) => print_stored_index_stats("index", &stored),
-        None => println!("index.storage: <not built> (run `wikitool index rebuild`)"),
+        None => println!("index.storage: <not built> (run `wikitool knowledge build`)"),
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
@@ -673,4 +551,12 @@ fn format_parameter_stats(stats: &[TemplateParameterUsage]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn normalize_format(value: &str) -> Result<String> {
+    let format = value.trim().to_ascii_lowercase();
+    if format != "text" && format != "json" {
+        bail!("unsupported format: {} (expected text|json)", value);
+    }
+    Ok(format)
 }

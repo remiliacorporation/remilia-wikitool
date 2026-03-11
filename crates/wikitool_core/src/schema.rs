@@ -230,6 +230,16 @@ const REQUIRED_DOCS_LINK_COLUMNS: &[&str] = &[
     "display_text",
 ];
 
+const REQUIRED_KNOWLEDGE_ARTIFACT_COLUMNS: &[&str] = &[
+    "artifact_key",
+    "artifact_kind",
+    "profile",
+    "schema_generation",
+    "built_at_unix",
+    "row_count",
+    "metadata_json",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DatabaseSchemaState {
     Missing,
@@ -335,10 +345,19 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
     require_columns(connection, "docs_sections", REQUIRED_DOCS_SECTION_COLUMNS)?;
     require_columns(connection, "docs_symbols", REQUIRED_DOCS_SYMBOL_COLUMNS)?;
     require_columns(connection, "docs_examples", REQUIRED_DOCS_EXAMPLE_COLUMNS)?;
-    require_columns(connection, "docs_links", REQUIRED_DOCS_LINK_COLUMNS)
+    require_columns(connection, "docs_links", REQUIRED_DOCS_LINK_COLUMNS)?;
+    require_columns(
+        connection,
+        "knowledge_artifacts",
+        REQUIRED_KNOWLEDGE_ARTIFACT_COLUMNS,
+    )
 }
 
 fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()> {
+    if !has_user_tables(connection)? {
+        return Ok(());
+    }
+
     require_columns_if_table_exists(connection, "indexed_page_aliases", REQUIRED_ALIAS_COLUMNS)?;
     require_columns_if_table_exists(
         connection,
@@ -386,7 +405,12 @@ fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()>
     require_columns_if_table_exists(connection, "docs_sections", REQUIRED_DOCS_SECTION_COLUMNS)?;
     require_columns_if_table_exists(connection, "docs_symbols", REQUIRED_DOCS_SYMBOL_COLUMNS)?;
     require_columns_if_table_exists(connection, "docs_examples", REQUIRED_DOCS_EXAMPLE_COLUMNS)?;
-    require_columns_if_table_exists(connection, "docs_links", REQUIRED_DOCS_LINK_COLUMNS)
+    require_columns_if_table_exists(connection, "docs_links", REQUIRED_DOCS_LINK_COLUMNS)?;
+    require_columns(
+        connection,
+        "knowledge_artifacts",
+        REQUIRED_KNOWLEDGE_ARTIFACT_COLUMNS,
+    )
 }
 
 fn require_columns_if_table_exists(
@@ -433,6 +457,20 @@ fn require_columns(
     }
 
     Ok(())
+}
+
+fn has_user_tables(connection: &Connection) -> Result<bool> {
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*)
+             FROM sqlite_master
+             WHERE type = 'table'
+               AND name NOT LIKE 'sqlite_%'",
+            [],
+            |row| row.get(0),
+        )
+        .context("failed to inspect sqlite_master for existing tables")?;
+    Ok(count > 0)
 }
 
 fn table_exists(connection: &Connection, table_name: &str) -> Result<bool> {

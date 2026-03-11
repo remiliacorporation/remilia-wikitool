@@ -462,7 +462,7 @@ fn reject_legacy_layout(project_root: &Path) -> Result<()> {
         .join("\n");
 
     bail!(
-        "Legacy runtime layout detected under custom/*:\n{found_lines}\nOnly project-root runtime layout is supported (wiki_content/, templates/, .wikitool/).\nRecommended recovery steps:\n  1) Initialize a clean project root: wikitool init --project-root <new-root> --templates\n  2) Pull fresh state from live wiki: wikitool pull --full --all\n  3) Rebuild derived local data when needed: wikitool db sync"
+        "Legacy runtime layout detected under custom/*:\n{found_lines}\nOnly project-root runtime layout is supported (wiki_content/, templates/, .wikitool/).\nRecommended recovery steps:\n  1) Initialize a clean project root: wikitool init --project-root <new-root> --templates\n  2) Pull fresh state from live wiki: wikitool pull --full --all\n  3) Rebuild derived local data when needed: wikitool knowledge build"
     );
 }
 

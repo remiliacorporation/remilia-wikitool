@@ -30,7 +30,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
     let report = match run_validation_checks(&paths)? {
         Some(report) => report,
         None => {
-            println!("index.storage: <not built> (run `wikitool index rebuild`)");
+            println!("index.storage: <not built> (run `wikitool knowledge build`)");
             println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
             if runtime.diagnostics {
                 println!("\n[diagnostics]\n{}", paths.diagnostics());

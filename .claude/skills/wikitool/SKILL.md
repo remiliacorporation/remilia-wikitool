@@ -42,8 +42,9 @@ Canonical behavior is defined by runbooks and live CLI help.
 ```bash
 wikitool workflow bootstrap
 wikitool workflow full-refresh --yes
-wikitool workflow ask "write an article on Topic" --format json
-wikitool workflow authoring-pack "Topic" --format json
+wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge status --docs-profile remilia-mw-1.44
+wikitool knowledge pack "Topic" --format json
 wikitool index chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool docs generate-reference
 wikitool dev install-git-hooks
@@ -57,4 +58,4 @@ wikitool release build-matrix
 1. Treat local files as the editor-facing source of truth.
 2. Treat SQLite as an AI retrieval index: semantic page profiles, sections, templates, module invocation patterns, references, source authorities, identifiers, template implementation bundles, pinned docs corpora, links, and media.
 3. Do not describe reference rows as quality scored; use the stored retrieval signals, authority/identifier data, and source metadata directly.
-4. Prefer `workflow ask` as the natural-language front door; it resolves into the same authoring-pack substrate while keeping the retrieval surface explicit.
+4. Prefer `knowledge pack` as the authoring retrieval front door, and use `knowledge status` to verify readiness before depending on local context.

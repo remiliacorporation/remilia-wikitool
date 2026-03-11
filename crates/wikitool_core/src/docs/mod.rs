@@ -7,6 +7,7 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
 use crate::config::WikiConfig;
+use crate::knowledge::status::record_docs_profile_artifact;
 use crate::runtime::ResolvedPaths;
 use crate::schema::open_initialized_database_connection;
 use crate::support::{compute_hash, unix_timestamp};
@@ -854,6 +855,23 @@ pub fn import_docs_profile_with_api<A: DocsApi>(
     }
 
     rebuild_docs_fts_indexes(paths)?;
+    let connection = open_initialized_database_connection(&paths.db_path)?;
+    record_docs_profile_artifact(
+        &connection,
+        definition.id,
+        stats.pages,
+        &serde_json::json!({
+            "profile": definition.id,
+            "imported_corpora": 1 + imported_extensions,
+            "imported_extensions": imported_extensions,
+            "imported_pages": stats.pages,
+            "imported_sections": stats.sections,
+            "imported_symbols": stats.symbols,
+            "imported_examples": stats.examples,
+            "failures": failures.clone(),
+        })
+        .to_string(),
+    )?;
 
     Ok(DocsImportProfileReport {
         profile: definition.id.to_string(),

@@ -2,6 +2,34 @@
 
 Chronological release notes for tagged wikitool versions.
 
+## Unreleased (target: v0.2.0)
+
+Breaking release focused on the knowledge-index cutover for high-performance local authoring retrieval.
+
+### What's new
+
+The local retrieval path now centers on a dedicated `knowledge` command family. The SQLite database remains disposable, but knowledge readiness is now explicit and manifest-backed so agents can tell the difference between missing content, missing docs corpora, and fully warmed authoring context.
+
+### Highlights
+
+**Knowledge cutover**
+- Added `knowledge build`, `knowledge warm`, `knowledge status`, and `knowledge pack`
+- Removed legacy retrieval entry points: `workflow ask`, `workflow authoring-pack`, `db sync`, and `index rebuild`
+- `workflow bootstrap` and `workflow full-refresh` now hydrate knowledge via `knowledge warm`
+- `context` and `search` are indexed-only and report readiness errors when the local knowledge index is missing
+- Pre-manifest populated databases are treated as incompatible cutover state; reset and rebuild instead of attempting in-place migration
+
+**Retrieval internals**
+- Split monolithic retrieval code into `knowledge::{content_index,references,templates,retrieval,authoring,docs_bridge,status}`
+- Added `knowledge_artifacts` manifest rows for `content_index` and per-profile docs hydration
+- Replaced the hard-coded docs profile path with explicit `--docs-profile` plumbing through build and pack flows
+- Removed the orphaned duplicate docs implementation and kept `wikitool_core::docs` focused on docs import/search/context
+
+**Operator visibility**
+- `knowledge pack`, `knowledge status`, and `db stats` now expose `docs_profile_requested`, `readiness`, `degradations`, and `knowledge_generation`
+- Missing docs corpora now surface as `docs_profile_missing` instead of silently degrading behind `docs_context: null`
+- Fresh-runtime cutover is validated from `db reset --yes` through `knowledge warm --docs-profile remilia-mw-1.44`
+
 ## v0.1.0
 
 Date: 2026-02-21

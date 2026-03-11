@@ -12,7 +12,7 @@ Create or edit wiki articles with current Remilia Wiki rules.
 
 ```bash
 wikitool pull
-wikitool workflow authoring-pack "Topic" --format json
+wikitool knowledge pack "Topic" --format json
 wikitool search "topic"
 wikitool context "Template:Infobox person"
 wikitool search "Category:"
