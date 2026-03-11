@@ -1,4 +1,4 @@
-pub use crate::index::{
+pub use super::model::{
     LocalMediaUsage, LocalReferenceUsage, MediaUsageExample, MediaUsageSummary,
     ReferenceUsageExample, ReferenceUsageSummary,
 };

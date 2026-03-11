@@ -1,7 +1,8 @@
 use super::*;
+use super::{model::*, parsing::*};
 use crate::index::retrieval::{load_context_chunks_for_bundle, load_section_records_for_bundle};
 
-pub(super) fn query_active_template_catalog(
+pub(crate) fn query_active_template_catalog(
     paths: &ResolvedPaths,
     limit: usize,
 ) -> Result<ActiveTemplateCatalogLookup> {
@@ -25,7 +26,7 @@ pub(super) fn query_active_template_catalog(
     }))
 }
 
-pub(super) fn query_template_reference(
+pub(crate) fn query_template_reference(
     paths: &ResolvedPaths,
     template_title: &str,
 ) -> Result<TemplateReferenceLookup> {
@@ -52,7 +53,7 @@ pub(super) fn query_template_reference(
     Ok(TemplateReferenceLookup::Found(Box::new(reference)))
 }
 
-fn load_template_reference_for_connection(
+pub(crate) fn load_template_reference_for_connection(
     connection: &Connection,
     template_title: &str,
 ) -> Result<Option<TemplateReference>> {
@@ -102,7 +103,7 @@ fn load_template_reference_for_connection(
     }))
 }
 
-pub(super) fn collect_authoring_template_reference_titles(
+pub(crate) fn collect_authoring_template_reference_titles(
     stub_detected_templates: &[StubTemplateHint],
     suggested_templates: &[TemplateUsageSummary],
     template_baseline: &[TemplateUsageSummary],
@@ -138,7 +139,7 @@ pub(super) fn collect_authoring_template_reference_titles(
     out
 }
 
-pub(super) fn load_authoring_template_references(
+pub(crate) fn load_authoring_template_references(
     connection: &Connection,
     template_titles: &[String],
     limit: usize,
@@ -153,7 +154,7 @@ pub(super) fn load_authoring_template_references(
     Ok(out)
 }
 
-pub(super) fn build_authoring_module_patterns(
+pub(crate) fn build_authoring_module_patterns(
     connection: &Connection,
     source_titles: &[String],
     template_references: &[TemplateReference],
@@ -223,7 +224,7 @@ struct IndexedModuleInvocationRow {
     token_estimate: usize,
 }
 
-pub(super) fn summarize_template_usage_for_sources(
+pub(crate) fn summarize_template_usage_for_sources(
     connection: &Connection,
     source_titles: Option<&[String]>,
     limit: usize,
@@ -275,7 +276,7 @@ pub(super) fn summarize_template_usage_for_sources(
         .collect()
 }
 
-fn load_template_invocation_rows_for_sources(
+pub(crate) fn load_template_invocation_rows_for_sources(
     connection: &Connection,
     source_titles: Option<&[String]>,
 ) -> Result<Vec<(String, String, String)>> {
@@ -322,7 +323,7 @@ fn load_template_invocation_rows_for_sources(
     Ok(out)
 }
 
-pub(super) fn summarize_module_usage_for_sources(
+pub(crate) fn summarize_module_usage_for_sources(
     connection: &Connection,
     source_titles: &[String],
     limit: usize,
@@ -385,7 +386,7 @@ pub(super) fn summarize_module_usage_for_sources(
         .collect())
 }
 
-pub(super) fn load_module_usage_summary_for_connection(
+pub(crate) fn load_module_usage_summary_for_connection(
     connection: &Connection,
     module_title: &str,
 ) -> Result<Option<ModuleUsageSummary>> {
@@ -564,7 +565,7 @@ fn materialize_module_usage_summary(
     }
 }
 
-fn load_template_usage_summary_for_connection(
+pub(crate) fn load_template_usage_summary_for_connection(
     connection: &Connection,
     template_title: &str,
 ) -> Result<Option<TemplateUsageSummary>> {
@@ -591,7 +592,7 @@ fn load_template_usage_summary_for_connection(
         .map(Some)
 }
 
-pub(super) fn load_template_invocation_rows_for_template(
+pub(crate) fn load_template_invocation_rows_for_template(
     connection: &Connection,
     template_title: &str,
 ) -> Result<Vec<(String, String)>> {
@@ -664,7 +665,7 @@ fn materialize_template_usage_summary(
     })
 }
 
-pub(super) fn normalize_template_lookup_title(value: &str) -> String {
+pub(crate) fn normalize_template_lookup_title(value: &str) -> String {
     let normalized = normalize_spaces(&value.replace('_', " "));
     if normalized.is_empty() {
         return String::new();
@@ -672,7 +673,7 @@ pub(super) fn normalize_template_lookup_title(value: &str) -> String {
     canonical_template_title(&normalized).unwrap_or_else(|| normalize_query_title(&normalized))
 }
 
-pub(super) fn normalize_module_lookup_title(value: &str) -> String {
+pub(crate) fn normalize_module_lookup_title(value: &str) -> String {
     let normalized = normalize_spaces(&value.replace('_', " "));
     if normalized.is_empty() {
         return String::new();
@@ -686,7 +687,7 @@ pub(super) fn normalize_module_lookup_title(value: &str) -> String {
     format!("Module:{normalized}")
 }
 
-pub(super) fn load_page_summary_for_connection(
+pub(crate) fn load_page_summary_for_connection(
     connection: &Connection,
     source_relative_path: &str,
 ) -> Result<String> {
@@ -737,7 +738,7 @@ pub(super) fn load_page_summary_for_connection(
     Ok(String::new())
 }
 
-fn load_template_aliases(connection: &Connection, template_title: &str) -> Result<Vec<String>> {
+pub(crate) fn load_template_aliases(connection: &Connection, template_title: &str) -> Result<Vec<String>> {
     if !table_exists(connection, "indexed_page_aliases")? {
         return Ok(Vec::new());
     }
@@ -762,7 +763,7 @@ fn load_template_aliases(connection: &Connection, template_title: &str) -> Resul
     Ok(out)
 }
 
-fn load_template_implementation_preview(
+pub(crate) fn load_template_implementation_preview(
     connection: &Connection,
     template_title: &str,
 ) -> Result<Option<String>> {
@@ -785,7 +786,7 @@ struct TemplateImplementationRecord {
     role: String,
 }
 
-fn load_template_implementation_titles(
+pub(crate) fn load_template_implementation_titles(
     connection: &Connection,
     template_title: &str,
 ) -> Result<Vec<String>> {
@@ -847,7 +848,7 @@ fn load_template_implementation_pages_for_connection(
     }])
 }
 
-fn load_template_examples_for_connection(
+pub(crate) fn load_template_examples_for_connection(
     connection: &Connection,
     template_title: &str,
     limit: usize,
@@ -886,7 +887,7 @@ fn load_template_examples_for_connection(
     Ok(out)
 }
 
-fn collect_template_parameter_value_examples(
+pub(crate) fn collect_template_parameter_value_examples(
     examples: &[TemplateInvocationExample],
     per_key_limit: usize,
 ) -> BTreeMap<String, Vec<String>> {
@@ -907,7 +908,7 @@ fn collect_template_parameter_value_examples(
     out
 }
 
-fn parse_template_parameter_examples(invocation_text: &str) -> Vec<(String, String)> {
+pub(crate) fn parse_template_parameter_examples(invocation_text: &str) -> Vec<(String, String)> {
     let Some(inner) = invocation_text
         .strip_prefix("{{")
         .and_then(|value| value.strip_suffix("}}"))
@@ -941,3 +942,6 @@ fn parse_template_parameter_examples(invocation_text: &str) -> Vec<(String, Stri
     }
     out
 }
+
+
+

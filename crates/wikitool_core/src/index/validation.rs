@@ -1,6 +1,7 @@
 use super::*;
+use super::parsing::*;
 
-pub(super) fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
+pub(crate) fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<ValidationReport>> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
         None => return Ok(None),
@@ -14,7 +15,7 @@ pub(super) fn run_validation_checks(paths: &ResolvedPaths) -> Result<Option<Vali
     }))
 }
 
-pub(super) fn query_backlinks(paths: &ResolvedPaths, title: &str) -> Result<Option<Vec<String>>> {
+pub(crate) fn query_backlinks(paths: &ResolvedPaths, title: &str) -> Result<Option<Vec<String>>> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
         None => return Ok(None),
@@ -29,7 +30,7 @@ pub(super) fn query_backlinks(paths: &ResolvedPaths, title: &str) -> Result<Opti
     )?))
 }
 
-pub(super) fn query_orphans(paths: &ResolvedPaths) -> Result<Option<Vec<String>>> {
+pub(crate) fn query_orphans(paths: &ResolvedPaths) -> Result<Option<Vec<String>>> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
         None => return Ok(None),
@@ -37,7 +38,7 @@ pub(super) fn query_orphans(paths: &ResolvedPaths) -> Result<Option<Vec<String>>
     Ok(Some(query_orphans_for_connection(&connection)?))
 }
 
-pub(super) fn query_empty_categories(paths: &ResolvedPaths) -> Result<Option<Vec<String>>> {
+pub(crate) fn query_empty_categories(paths: &ResolvedPaths) -> Result<Option<Vec<String>>> {
     let connection = match open_indexed_connection(paths)? {
         Some(connection) => connection,
         None => return Ok(None),
@@ -67,3 +68,4 @@ pub(super) fn query_empty_categories(paths: &ResolvedPaths) -> Result<Option<Vec
     }
     Ok(Some(out))
 }
+

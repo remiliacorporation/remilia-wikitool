@@ -1,4 +1,5 @@
 use super::*;
+use super::{model::*, parsing::*};
 
 pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<RebuildReport> {
     let files = scan_files(paths, options)?;
@@ -678,3 +679,4 @@ pub fn load_stored_index_stats(paths: &ResolvedPaths) -> Result<Option<StoredInd
         by_namespace,
     }))
 }
+

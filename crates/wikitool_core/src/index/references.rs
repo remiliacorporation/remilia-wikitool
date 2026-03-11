@@ -1,4 +1,5 @@
 use super::*;
+use super::{model::*, parsing::*};
 
 #[derive(Default)]
 struct ReferenceUsageAccumulator {
@@ -50,7 +51,7 @@ struct IndexedReferenceUsageRow {
     token_estimate: usize,
 }
 
-pub(super) fn summarize_reference_usage_for_sources(
+pub(crate) fn summarize_reference_usage_for_sources(
     connection: &Connection,
     source_titles: &[String],
     limit: usize,
@@ -310,7 +311,7 @@ struct IndexedMediaUsageRow {
     token_estimate: usize,
 }
 
-pub(super) fn summarize_media_usage_for_sources(
+pub(crate) fn summarize_media_usage_for_sources(
     connection: &Connection,
     source_titles: &[String],
     limit: usize,
@@ -426,7 +427,7 @@ fn load_media_rows_for_sources(
     Ok(out)
 }
 
-fn top_counted_keys(counts: &BTreeMap<String, usize>, limit: usize) -> Vec<String> {
+pub(crate) fn top_counted_keys(counts: &BTreeMap<String, usize>, limit: usize) -> Vec<String> {
     let mut ranked = counts
         .iter()
         .map(|(key, count)| (key.clone(), *count))
@@ -439,7 +440,7 @@ fn top_counted_keys(counts: &BTreeMap<String, usize>, limit: usize) -> Vec<Strin
     ranked.into_iter().take(limit).map(|(key, _)| key).collect()
 }
 
-fn reference_example_rank_key(
+pub(crate) fn reference_example_rank_key(
     example: Option<&ReferenceUsageExample>,
 ) -> (
     usize,
@@ -470,3 +471,6 @@ fn reference_example_rank_key(
         example.link_titles.len(),
     )
 }
+
+
+

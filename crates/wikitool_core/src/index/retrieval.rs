@@ -1,4 +1,5 @@
 use super::*;
+use super::{model::*, parsing::*, storage::*};
 use crate::index::authoring::push_authoring_query_term;
 use crate::index::templates::{
     load_template_invocation_rows_for_template, normalize_template_lookup_title,
@@ -30,7 +31,7 @@ pub fn query_search_local(
     query_search_like(&connection, &normalized, limit).map(Some)
 }
 
-pub(super) fn query_search_fts(
+pub(crate) fn query_search_fts(
     connection: &Connection,
     normalized: &str,
     limit: usize,
@@ -68,7 +69,7 @@ pub(super) fn query_search_fts(
     Ok(out)
 }
 
-pub(super) fn query_search_like(
+pub(crate) fn query_search_like(
     connection: &Connection,
     normalized: &str,
     limit: usize,
@@ -415,7 +416,7 @@ pub fn retrieve_local_context_chunks_across_pages(
     Ok(LocalChunkAcrossRetrieval::Found(report))
 }
 
-pub(super) fn load_context_chunks_for_bundle(
+pub(crate) fn load_context_chunks_for_bundle(
     connection: &Connection,
     source_relative_path: &str,
     content: Option<&str>,
@@ -434,7 +435,7 @@ pub(super) fn load_context_chunks_for_bundle(
     Ok(content.map(fallback_context_chunks_from_content))
 }
 
-fn load_template_invocations_for_bundle(
+pub(crate) fn load_template_invocations_for_bundle(
     connection: &Connection,
     source_relative_path: &str,
 ) -> Result<Option<Vec<LocalTemplateInvocation>>> {
@@ -451,7 +452,7 @@ fn load_template_invocations_for_bundle(
     Ok(None)
 }
 
-fn load_references_for_bundle(
+pub(crate) fn load_references_for_bundle(
     connection: &Connection,
     source_relative_path: &str,
 ) -> Result<Option<Vec<LocalReferenceUsage>>> {
@@ -470,7 +471,7 @@ fn load_references_for_bundle(
     }
 }
 
-fn load_media_for_bundle(
+pub(crate) fn load_media_for_bundle(
     connection: &Connection,
     source_relative_path: &str,
 ) -> Result<Option<Vec<LocalMediaUsage>>> {
@@ -489,7 +490,7 @@ fn load_media_for_bundle(
     }
 }
 
-pub(super) fn load_section_records_for_bundle(
+pub(crate) fn load_section_records_for_bundle(
     connection: &Connection,
     source_relative_path: &str,
 ) -> Result<Option<Vec<IndexedSectionRecord>>> {
@@ -508,7 +509,7 @@ pub(super) fn load_section_records_for_bundle(
     }
 }
 
-fn fallback_context_chunks_from_content(content: &str) -> Vec<LocalContextChunk> {
+pub(crate) fn fallback_context_chunks_from_content(content: &str) -> Vec<LocalContextChunk> {
     let fallback_rows = chunk_article_context(content);
     apply_context_chunk_budget(
         fallback_rows
@@ -524,7 +525,7 @@ fn fallback_context_chunks_from_content(content: &str) -> Vec<LocalContextChunk>
     )
 }
 
-fn load_indexed_section_rows_for_connection(
+pub(crate) fn load_indexed_section_rows_for_connection(
     connection: &Connection,
     source_relative_path: &str,
     limit: usize,
@@ -560,14 +561,14 @@ fn load_indexed_section_rows_for_connection(
     Ok(out)
 }
 
-fn load_page_content(paths: &ResolvedPaths, source_relative_path: &str) -> Result<String> {
+pub(crate) fn load_page_content(paths: &ResolvedPaths, source_relative_path: &str) -> Result<String> {
     let absolute = absolute_path_from_relative(paths, source_relative_path);
     validate_scoped_path(paths, &absolute)?;
     fs::read_to_string(&absolute)
         .with_context(|| format!("failed to read indexed source file {}", absolute.display()))
 }
 
-fn load_chunks_for_query(
+pub(crate) fn load_chunks_for_query(
     paths: &ResolvedPaths,
     connection: &Connection,
     source_relative_path: &str,
@@ -626,13 +627,7 @@ fn load_chunks_for_query(
     Ok((chunks, "scan-ordered".to_string()))
 }
 
-pub(super) fn candidate_limit(limit: usize, multiplier: usize) -> usize {
-    limit
-        .saturating_mul(multiplier.max(1))
-        .clamp(limit.max(1), 512)
-}
-
-fn select_retrieved_chunks(
+pub(crate) fn select_retrieved_chunks(
     candidates: Vec<RetrievedChunk>,
     limit: usize,
     token_budget: usize,
@@ -703,7 +698,7 @@ fn select_retrieved_chunks(
     out
 }
 
-fn round_robin_by_source(
+pub(crate) fn round_robin_by_source(
     candidates: Vec<RetrievedChunkCandidate>,
     max_pages: usize,
 ) -> Vec<RetrievedChunkCandidate> {
@@ -739,11 +734,11 @@ fn round_robin_by_source(
     out
 }
 
-fn lexical_signature_from_terms(terms: &BTreeSet<String>) -> String {
+pub(crate) fn lexical_signature_from_terms(terms: &BTreeSet<String>) -> String {
     terms.iter().cloned().collect::<Vec<_>>().join(" ")
 }
 
-fn lexical_terms(value: &str) -> BTreeSet<String> {
+pub(crate) fn lexical_terms(value: &str) -> BTreeSet<String> {
     value
         .split_whitespace()
         .map(|token| {
@@ -757,7 +752,7 @@ fn lexical_terms(value: &str) -> BTreeSet<String> {
         .collect()
 }
 
-fn lexical_similarity_terms(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f32 {
+pub(crate) fn lexical_similarity_terms(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f32 {
     if left.is_empty() || right.is_empty() {
         return 0.0;
     }
@@ -769,7 +764,7 @@ fn lexical_similarity_terms(left: &BTreeSet<String>, right: &BTreeSet<String>) -
     intersection as f32 / union as f32
 }
 
-fn query_chunks_fts_across_pages_for_connection(
+pub(crate) fn query_chunks_fts_across_pages_for_connection(
     connection: &Connection,
     normalized_query: &str,
     limit: usize,
@@ -807,7 +802,7 @@ fn query_chunks_fts_across_pages_for_connection(
     Ok(out)
 }
 
-fn query_chunks_like_across_pages_for_connection(
+pub(crate) fn query_chunks_like_across_pages_for_connection(
     connection: &Connection,
     normalized_query: &str,
     limit: usize,
@@ -851,7 +846,7 @@ fn query_chunks_like_across_pages_for_connection(
     Ok(out)
 }
 
-fn query_chunks_scan_across_pages(
+pub(crate) fn query_chunks_scan_across_pages(
     paths: &ResolvedPaths,
     normalized_query: &str,
     limit: usize,
@@ -885,7 +880,7 @@ fn query_chunks_scan_across_pages(
     Ok(out)
 }
 
-fn expand_retrieval_query_terms(query: &str) -> Vec<String> {
+pub(crate) fn expand_retrieval_query_terms(query: &str) -> Vec<String> {
     let normalized = normalize_spaces(&query.replace('_', " "));
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
@@ -901,7 +896,7 @@ fn expand_retrieval_query_terms(query: &str) -> Vec<String> {
     out
 }
 
-fn collect_chunk_candidates_across_pages(
+pub(crate) fn collect_chunk_candidates_across_pages(
     connection: &Connection,
     paths: &ResolvedPaths,
     query_terms: &[String],
@@ -950,7 +945,7 @@ fn collect_chunk_candidates_across_pages(
     Ok((candidates, retrieval_mode))
 }
 
-pub(super) fn build_related_page_weight_map(
+pub(crate) fn build_related_page_weight_map(
     related_pages: &[AuthoringPageCandidate],
     seed_titles: &[String],
 ) -> BTreeMap<String, usize> {
@@ -967,7 +962,7 @@ pub(super) fn build_related_page_weight_map(
     out
 }
 
-pub(super) fn build_template_match_score_map(
+pub(crate) fn build_template_match_score_map(
     connection: &Connection,
     stub_templates: &[StubTemplateHint],
 ) -> Result<BTreeMap<String, usize>> {
@@ -1013,7 +1008,7 @@ pub(super) fn build_template_match_score_map(
     Ok(out)
 }
 
-fn query_page_records_from_reference_authorities_for_connection(
+pub(crate) fn query_page_records_from_reference_authorities_for_connection(
     connection: &Connection,
     query: &str,
     limit: usize,
@@ -1092,7 +1087,7 @@ fn query_page_records_from_reference_authorities_for_connection(
     Ok(out)
 }
 
-pub(super) fn load_reference_authority_page_hits(
+pub(crate) fn load_reference_authority_page_hits(
     connection: &Connection,
     query_terms: &[String],
     limit: usize,
@@ -1127,7 +1122,7 @@ pub(super) fn load_reference_authority_page_hits(
     materialize_page_hits(weights, titles, limit)
 }
 
-fn query_page_records_from_reference_identifiers_for_connection(
+pub(crate) fn query_page_records_from_reference_identifiers_for_connection(
     connection: &Connection,
     query: &str,
     limit: usize,
@@ -1177,7 +1172,7 @@ fn query_page_records_from_reference_identifiers_for_connection(
     Ok(out)
 }
 
-pub(super) fn load_reference_identifier_page_hits(
+pub(crate) fn load_reference_identifier_page_hits(
     connection: &Connection,
     query_terms: &[String],
     limit: usize,
@@ -1212,7 +1207,7 @@ pub(super) fn load_reference_identifier_page_hits(
     materialize_page_hits(weights, titles, limit)
 }
 
-fn normalize_reference_identifier_search_term(query: &str) -> String {
+pub(crate) fn normalize_reference_identifier_search_term(query: &str) -> String {
     let normalized = normalize_spaces(&query.replace('_', " "));
     if normalized.is_empty() {
         return String::new();
@@ -1230,7 +1225,7 @@ fn normalize_reference_identifier_search_term(query: &str) -> String {
     normalize_reference_identifier_token(&normalized, true)
 }
 
-fn load_seed_chunks_for_related_pages(
+pub(crate) fn load_seed_chunks_for_related_pages(
     connection: &Connection,
     related_page_titles: &[String],
     per_page_limit: usize,
@@ -1267,7 +1262,7 @@ fn load_seed_chunks_for_related_pages(
     Ok(out)
 }
 
-pub(super) fn section_authoring_bias(section_heading: Option<&str>, chunk_text: &str) -> i64 {
+pub(crate) fn section_authoring_bias(section_heading: Option<&str>, chunk_text: &str) -> i64 {
     let heading = section_heading.unwrap_or_default().to_ascii_lowercase();
     let text = chunk_text.to_ascii_lowercase();
 
@@ -1305,7 +1300,7 @@ pub(super) fn section_authoring_bias(section_heading: Option<&str>, chunk_text: 
     score
 }
 
-fn rerank_retrieved_chunks(
+pub(crate) fn rerank_retrieved_chunks(
     candidates: Vec<RetrievedChunk>,
     query: &str,
     query_terms: &[String],
@@ -1442,7 +1437,7 @@ fn rerank_retrieved_chunks(
     scored.into_iter().map(|(_, chunk)| chunk).collect()
 }
 
-pub(super) fn retrieve_reranked_chunks_across_pages(
+pub(crate) fn retrieve_reranked_chunks_across_pages(
     connection: &Connection,
     paths: &ResolvedPaths,
     query: &str,
@@ -1508,3 +1503,6 @@ pub(super) fn retrieve_reranked_chunks_across_pages(
         token_estimate_total,
     })
 }
+
+
+
