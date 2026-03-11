@@ -7,8 +7,8 @@ Fix style drift, broken structure, and category/link hygiene.
 ```bash
 wikitool pull
 wikitool validate
-wikitool index orphans
-wikitool index prune-categories
+wikitool knowledge inspect orphans
+wikitool knowledge inspect empty-categories
 wikitool diff
 ```
 
@@ -16,8 +16,8 @@ wikitool diff
 
 ```bash
 wikitool search "Category:"
-wikitool index backlinks "Article Title"
-wikitool index chunks --across-pages --query "topic" --format json --diversify
+wikitool knowledge inspect backlinks "Article Title"
+wikitool knowledge inspect chunks --across-pages --query "topic" --format json --diversify
 ```
 
 ## Push gate

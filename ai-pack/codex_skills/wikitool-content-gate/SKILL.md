@@ -18,9 +18,9 @@ wikitool diff
 ## Link, category, and index signals
 
 ```bash
-wikitool index orphans
-wikitool index backlinks "Title"
-wikitool index prune-categories
+wikitool knowledge inspect orphans
+wikitool knowledge inspect backlinks "Title"
+wikitool knowledge inspect empty-categories
 wikitool search "Category:"
 ```
 

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use wikitool_core::config::{WikiConfig, load_config};
 use wikitool_core::filesystem::ScanStats;
-use wikitool_core::index::StoredIndexStats;
+use wikitool_core::knowledge::content_index::StoredIndexStats;
 use wikitool_core::runtime::{PathOverrides, ResolutionContext, ResolvedPaths, resolve_paths};
 use wikitool_core::schema::{DatabaseSchemaState, schema_state};
 

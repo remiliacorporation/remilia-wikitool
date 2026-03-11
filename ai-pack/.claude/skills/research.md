@@ -16,8 +16,8 @@ wikitool search-external "topic"
 
 ```bash
 wikitool knowledge pack "Topic" --format json
-wikitool index chunks "Title" --query "aspect" --limit 6 --token-budget 480
-wikitool index chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify
+wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480
+wikitool knowledge inspect chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify
 ```
 
 ## Live wiki verification

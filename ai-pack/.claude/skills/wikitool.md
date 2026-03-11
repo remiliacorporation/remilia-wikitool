@@ -23,7 +23,7 @@ wikitool push --dry-run --summary "Summary"
 wikitool status
 wikitool knowledge status
 wikitool db stats
-wikitool index stats
+wikitool knowledge inspect stats
 wikitool docs list --outdated
 ```
 
@@ -35,5 +35,5 @@ wikitool docs list --outdated
 
 ## Retrieval guidance
 
-1. Use `knowledge warm`, `knowledge status`, `knowledge pack`, and `index chunks --across-pages` for AI-facing article retrieval.
+1. Use `knowledge warm`, `knowledge status`, `knowledge pack`, and `knowledge inspect chunks --across-pages` for AI-facing article retrieval.
 2. The DB stores semantic retrieval signals, normalized source authorities, identifier rows, template implementation bundles, module invocation patterns, pinned docs corpora, and source metadata, not opaque quality scores.

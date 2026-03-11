@@ -1,12 +1,15 @@
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use wikitool_core::filesystem::{ScanOptions, scan_stats};
-use wikitool_core::index::{
-    ActiveTemplateCatalogLookup, LocalChunkAcrossRetrieval, LocalChunkRetrieval,
-    TemplateParameterUsage, TemplateReferenceLookup, TemplateUsageSummary, load_stored_index_stats,
-    query_active_template_catalog, query_backlinks, query_empty_categories, query_orphans,
-    query_template_reference, retrieve_local_context_chunks_across_pages,
+use wikitool_core::knowledge::content_index::load_stored_index_stats;
+use wikitool_core::knowledge::inspect::{query_backlinks, query_empty_categories, query_orphans};
+use wikitool_core::knowledge::retrieval::{
+    LocalChunkAcrossRetrieval, LocalChunkRetrieval, retrieve_local_context_chunks_across_pages,
     retrieve_local_context_chunks_with_options,
+};
+use wikitool_core::knowledge::templates::{
+    ActiveTemplateCatalogLookup, TemplateParameterUsage, TemplateReferenceLookup,
+    TemplateUsageSummary, query_active_template_catalog, query_template_reference,
 };
 
 use crate::cli_support::{
@@ -16,13 +19,13 @@ use crate::cli_support::{
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
-pub(crate) struct IndexArgs {
+pub(crate) struct KnowledgeInspectArgs {
     #[command(subcommand)]
-    command: IndexSubcommand,
+    command: KnowledgeInspectSubcommand,
 }
 
 #[derive(Debug, Subcommand)]
-enum IndexSubcommand {
+enum KnowledgeInspectSubcommand {
     /// Show index statistics
     Stats,
     /// Retrieve token-budgeted content chunks from indexed pages
@@ -72,9 +75,8 @@ enum IndexSubcommand {
         #[arg(long, help = "Disable lexical de-duplication and diversification")]
         no_diversify: bool,
     },
-    Backlinks {
-        title: String,
-    },
+    /// Show indexed pages that link to a title
+    Backlinks { title: String },
     /// Inspect active template usage and implementation references
     Templates {
         #[arg(value_name = "TEMPLATE", help = "Optional specific template title")]
@@ -96,15 +98,20 @@ enum IndexSubcommand {
         )]
         format: String,
     },
+    /// Show indexed pages with no backlinks
     Orphans,
-    #[command(name = "prune-categories")]
-    PruneCategories,
+    #[command(name = "empty-categories")]
+    /// Show categories with no indexed members
+    EmptyCategories,
 }
 
-pub(crate) fn run_index(runtime: &RuntimeOptions, args: IndexArgs) -> Result<()> {
+pub(crate) fn run_knowledge_inspect(
+    runtime: &RuntimeOptions,
+    args: KnowledgeInspectArgs,
+) -> Result<()> {
     match args.command {
-        IndexSubcommand::Stats => run_index_stats(runtime),
-        IndexSubcommand::Chunks {
+        KnowledgeInspectSubcommand::Stats => run_inspect_stats(runtime),
+        KnowledgeInspectSubcommand::Chunks {
             title,
             query,
             across_pages,
@@ -114,7 +121,7 @@ pub(crate) fn run_index(runtime: &RuntimeOptions, args: IndexArgs) -> Result<()>
             format,
             diversify,
             no_diversify,
-        } => run_index_chunks(
+        } => run_inspect_chunks(
             runtime,
             title.as_deref(),
             query.as_deref(),
@@ -126,20 +133,20 @@ pub(crate) fn run_index(runtime: &RuntimeOptions, args: IndexArgs) -> Result<()>
             diversify,
             no_diversify,
         ),
-        IndexSubcommand::Backlinks { title } => run_index_backlinks(runtime, &title),
-        IndexSubcommand::Templates {
+        KnowledgeInspectSubcommand::Backlinks { title } => run_inspect_backlinks(runtime, &title),
+        KnowledgeInspectSubcommand::Templates {
             template,
             limit,
             all,
             format,
-        } => run_index_templates(runtime, template.as_deref(), limit, all, &format),
-        IndexSubcommand::Orphans => run_index_orphans(runtime),
-        IndexSubcommand::PruneCategories => run_index_prune_categories(runtime),
+        } => run_inspect_templates(runtime, template.as_deref(), limit, all, &format),
+        KnowledgeInspectSubcommand::Orphans => run_inspect_orphans(runtime),
+        KnowledgeInspectSubcommand::EmptyCategories => run_inspect_empty_categories(runtime),
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_index_chunks(
+fn run_inspect_chunks(
     runtime: &RuntimeOptions,
     title: Option<&str>,
     query: Option<&str>,
@@ -152,13 +159,13 @@ fn run_index_chunks(
     no_diversify: bool,
 ) -> Result<()> {
     if limit == 0 {
-        bail!("index chunks requires --limit >= 1");
+        bail!("knowledge inspect chunks requires --limit >= 1");
     }
     if token_budget == 0 {
-        bail!("index chunks requires --token-budget >= 1");
+        bail!("knowledge inspect chunks requires --token-budget >= 1");
     }
     if max_pages == 0 {
-        bail!("index chunks requires --max-pages >= 1");
+        bail!("knowledge inspect chunks requires --max-pages >= 1");
     }
     if diversify && no_diversify {
         bail!("cannot use --diversify and --no-diversify together");
@@ -174,7 +181,7 @@ fn run_index_chunks(
         }
         let query = query.unwrap_or_default().trim();
         if query.is_empty() {
-            bail!("index chunks --across-pages requires --query");
+            bail!("knowledge inspect chunks --across-pages requires --query");
         }
         let retrieval = retrieve_local_context_chunks_across_pages(
             &paths,
@@ -189,7 +196,7 @@ fn run_index_chunks(
             return Ok(());
         }
 
-        println!("index chunks");
+        println!("knowledge inspect chunks");
         println!("project_root: {}", normalize_path(&paths.project_root));
         println!("target: <across-pages>");
         println!("query: {query}");
@@ -199,7 +206,7 @@ fn run_index_chunks(
         println!("diversify: {use_diversify}");
         match retrieval {
             LocalChunkAcrossRetrieval::IndexMissing => {
-                println!("index.storage: <not built> (run `wikitool knowledge build`)");
+                println!("knowledge.inspect.storage: <not built> (run `wikitool knowledge build`)");
             }
             LocalChunkAcrossRetrieval::QueryMissing => {
                 bail!("query is required for across-pages chunk retrieval");
@@ -226,7 +233,9 @@ fn run_index_chunks(
     } else {
         let title = title.unwrap_or_default().trim();
         if title.is_empty() {
-            bail!("index chunks requires a non-empty TITLE unless --across-pages is set");
+            bail!(
+                "knowledge inspect chunks requires a non-empty TITLE unless --across-pages is set"
+            );
         }
         let retrieval = retrieve_local_context_chunks_with_options(
             &paths,
@@ -241,7 +250,7 @@ fn run_index_chunks(
             return Ok(());
         }
 
-        println!("index chunks");
+        println!("knowledge inspect chunks");
         println!("project_root: {}", normalize_path(&paths.project_root));
         println!("target: {}", normalize_title_query(title));
         println!("query: {}", query.unwrap_or("<none>").trim());
@@ -249,7 +258,7 @@ fn run_index_chunks(
         println!("token_budget: {token_budget}");
         match retrieval {
             LocalChunkRetrieval::IndexMissing => {
-                println!("index.storage: <not built> (run `wikitool knowledge build`)");
+                println!("knowledge.inspect.storage: <not built> (run `wikitool knowledge build`)");
             }
             LocalChunkRetrieval::TitleMissing { title } => {
                 bail!("page not found in local index: {title}");
@@ -280,14 +289,14 @@ fn run_index_chunks(
     Ok(())
 }
 
-fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
+fn run_inspect_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let normalized = normalize_title_query(title);
     if normalized.is_empty() {
-        bail!("index backlinks requires a non-empty TITLE");
+        bail!("knowledge inspect backlinks requires a non-empty TITLE");
     }
 
-    println!("index backlinks");
+    println!("knowledge inspect backlinks");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("title: {normalized}");
     match query_backlinks(&paths, &normalized)? {
@@ -302,7 +311,7 @@ fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
             }
         }
         None => {
-            println!("index.storage: <not built> (run `wikitool knowledge build`)");
+            println!("knowledge.inspect.storage: <not built> (run `wikitool knowledge build`)");
         }
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -312,7 +321,7 @@ fn run_index_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_index_templates(
+fn run_inspect_templates(
     runtime: &RuntimeOptions,
     template: Option<&str>,
     limit: usize,
@@ -320,10 +329,12 @@ fn run_index_templates(
     format: &str,
 ) -> Result<()> {
     if limit == 0 {
-        bail!("index templates requires --limit >= 1");
+        bail!("knowledge inspect templates requires --limit >= 1");
     }
     if template.is_some() && all {
-        bail!("cannot use `index templates TEMPLATE --all`; omit TEMPLATE in catalog mode");
+        bail!(
+            "cannot use `knowledge inspect templates TEMPLATE --all`; omit TEMPLATE in catalog mode"
+        );
     }
     let format = normalize_format(format)?;
     let paths = resolve_runtime_paths(runtime)?;
@@ -335,12 +346,12 @@ fn run_index_templates(
             return Ok(());
         }
 
-        println!("index templates");
+        println!("knowledge inspect templates");
         println!("project_root: {}", normalize_path(&paths.project_root));
         println!("template: {}", normalize_title_query(template_title));
         match lookup {
             TemplateReferenceLookup::IndexMissing => {
-                println!("index.storage: <not built> (run `wikitool knowledge build`)");
+                println!("knowledge.inspect.storage: <not built> (run `wikitool knowledge build`)");
             }
             TemplateReferenceLookup::TemplateMissing { template_title } => {
                 println!("template.reference: <missing>");
@@ -378,13 +389,13 @@ fn run_index_templates(
             return Ok(());
         }
 
-        println!("index templates");
+        println!("knowledge inspect templates");
         println!("project_root: {}", normalize_path(&paths.project_root));
         println!("limit: {limit}");
         println!("all: {}", if all { "yes" } else { "no" });
         match lookup {
             ActiveTemplateCatalogLookup::IndexMissing => {
-                println!("index.storage: <not built> (run `wikitool knowledge build`)");
+                println!("knowledge.inspect.storage: <not built> (run `wikitool knowledge build`)");
             }
             ActiveTemplateCatalogLookup::Found(catalog) => {
                 println!(
@@ -406,10 +417,10 @@ fn run_index_templates(
     Ok(())
 }
 
-fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
+fn run_inspect_orphans(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
 
-    println!("index orphans");
+    println!("knowledge inspect orphans");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("mode: report-only");
     match query_orphans(&paths)? {
@@ -424,7 +435,7 @@ fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
             }
         }
         None => {
-            println!("index.storage: <not built> (run `wikitool knowledge build`)");
+            println!("knowledge.inspect.storage: <not built> (run `wikitool knowledge build`)");
         }
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -434,10 +445,10 @@ fn run_index_orphans(runtime: &RuntimeOptions) -> Result<()> {
     Ok(())
 }
 
-fn run_index_prune_categories(runtime: &RuntimeOptions) -> Result<()> {
+fn run_inspect_empty_categories(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
 
-    println!("index prune-categories");
+    println!("knowledge inspect empty-categories");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("mode: report-only");
     match query_empty_categories(&paths)? {
@@ -452,7 +463,7 @@ fn run_index_prune_categories(runtime: &RuntimeOptions) -> Result<()> {
             }
         }
         None => {
-            println!("index.storage: <not built> (run `wikitool knowledge build`)");
+            println!("knowledge.inspect.storage: <not built> (run `wikitool knowledge build`)");
         }
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -462,12 +473,12 @@ fn run_index_prune_categories(runtime: &RuntimeOptions) -> Result<()> {
     Ok(())
 }
 
-fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
+fn run_inspect_stats(runtime: &RuntimeOptions) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let scan = scan_stats(&paths, &ScanOptions::default())?;
     let stored = load_stored_index_stats(&paths)?;
 
-    println!("index stats");
+    println!("knowledge inspect stats");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!(
         "wiki_content_dir: {}",
@@ -476,8 +487,8 @@ fn run_index_stats(runtime: &RuntimeOptions) -> Result<()> {
     println!("templates_dir: {}", normalize_path(&paths.templates_dir));
     print_scan_stats("scan", &scan);
     match stored {
-        Some(stored) => print_stored_index_stats("index", &stored),
-        None => println!("index.storage: <not built> (run `wikitool knowledge build`)"),
+        Some(stored) => print_stored_index_stats("content_index", &stored),
+        None => println!("knowledge.inspect.storage: <not built> (run `wikitool knowledge build`)"),
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {

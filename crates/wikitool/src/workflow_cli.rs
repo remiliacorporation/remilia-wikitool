@@ -21,8 +21,12 @@ pub(crate) struct WorkflowArgs {
 
 #[derive(Debug, Subcommand)]
 enum WorkflowSubcommand {
+    #[command(about = "Initialize runtime, optionally pull content, and warm knowledge")]
     Bootstrap(WorkflowBootstrapArgs),
-    #[command(name = "full-refresh")]
+    #[command(
+        name = "full-refresh",
+        about = "Rebuild local runtime from scratch and re-warm knowledge"
+    )]
     FullRefresh(WorkflowFullRefreshArgs),
 }
 

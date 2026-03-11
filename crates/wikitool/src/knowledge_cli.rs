@@ -23,6 +23,7 @@ use crate::cli_support::{
     print_database_schema_status, print_scan_stats, resolve_runtime_paths,
     resolve_runtime_with_config,
 };
+use crate::knowledge_inspect_cli;
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -33,10 +34,16 @@ pub(crate) struct KnowledgeArgs {
 
 #[derive(Debug, Subcommand)]
 enum KnowledgeSubcommand {
+    #[command(about = "Rebuild the local content knowledge index")]
     Build(KnowledgeBuildArgs),
+    #[command(about = "Build content knowledge and hydrate a docs profile")]
     Warm(KnowledgeWarmArgs),
+    #[command(about = "Report knowledge readiness and degradations")]
     Status(KnowledgeStatusArgs),
+    #[command(about = "Assemble the authoring knowledge pack")]
     Pack(KnowledgePackArgs),
+    #[command(about = "Inspect indexed knowledge structures directly")]
+    Inspect(knowledge_inspect_cli::KnowledgeInspectArgs),
 }
 
 #[derive(Debug, Args)]
@@ -207,6 +214,9 @@ pub(crate) fn run_knowledge(runtime: &RuntimeOptions, args: KnowledgeArgs) -> Re
         KnowledgeSubcommand::Warm(args) => run_knowledge_warm(runtime, args),
         KnowledgeSubcommand::Status(args) => run_knowledge_status(runtime, args),
         KnowledgeSubcommand::Pack(args) => run_knowledge_pack(runtime, args),
+        KnowledgeSubcommand::Inspect(args) => {
+            knowledge_inspect_cli::run_knowledge_inspect(runtime, args)
+        }
     }
 }
 

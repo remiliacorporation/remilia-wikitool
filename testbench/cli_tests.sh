@@ -257,59 +257,59 @@ else
     fail "knowledge status reports content readiness and docs degradation after build (got: $OUTPUT)"
 fi
 
-# --- index stats ---
-section "index stats"
-OUTPUT=$(wt "$PROJ" index stats 2>&1)
+# --- knowledge inspect stats ---
+section "knowledge inspect stats"
+OUTPUT=$(wt "$PROJ" knowledge inspect stats 2>&1)
 if echo "$OUTPUT" | grep -qi "indexed\|rows\|pages"; then
-    pass "index stats reports data"
+    pass "knowledge inspect stats reports data"
 else
-    fail "index stats reports data (got: $OUTPUT)"
+    fail "knowledge inspect stats reports data (got: $OUTPUT)"
 fi
 
-# --- index chunks ---
-section "index chunks"
-OUTPUT=$(wt "$PROJ" index chunks "Alpha" --query "Alpha" --limit 2 --token-budget 120 2>&1 || true)
+# --- knowledge inspect chunks ---
+section "knowledge inspect chunks"
+OUTPUT=$(wt "$PROJ" knowledge inspect chunks "Alpha" --query "Alpha" --limit 2 --token-budget 120 2>&1 || true)
 if echo "$OUTPUT" | grep -q "chunks.count:" && echo "$OUTPUT" | grep -q "chunks.retrieval_mode:"; then
-    pass "index chunks returns chunked retrieval output"
+    pass "knowledge inspect chunks returns chunked retrieval output"
 else
-    fail "index chunks returns chunked retrieval output (got: $OUTPUT)"
+    fail "knowledge inspect chunks returns chunked retrieval output (got: $OUTPUT)"
 fi
 
-# --- index chunks (across-pages json) ---
-section "index chunks across-pages json"
-OUTPUT=$(wt "$PROJ" index chunks --across-pages --query "article" --limit 3 --max-pages 2 --token-budget 140 --format json 2>&1 || true)
+# --- knowledge inspect chunks (across-pages json) ---
+section "knowledge inspect chunks across-pages json"
+OUTPUT=$(wt "$PROJ" knowledge inspect chunks --across-pages --query "article" --limit 3 --max-pages 2 --token-budget 140 --format json 2>&1 || true)
 if echo "$OUTPUT" | grep -q '"Found"' && echo "$OUTPUT" | grep -q '"retrieval_mode"' && echo "$OUTPUT" | grep -q '"source_page_count"'; then
-    pass "index chunks across-pages emits JSON report"
+    pass "knowledge inspect chunks across-pages emits JSON report"
 else
-    fail "index chunks across-pages emits JSON report (got: $OUTPUT)"
+    fail "knowledge inspect chunks across-pages emits JSON report (got: $OUTPUT)"
 fi
 
-# --- index backlinks ---
-section "index backlinks"
-OUTPUT=$(wt "$PROJ" index backlinks "Alpha" 2>&1)
+# --- knowledge inspect backlinks ---
+section "knowledge inspect backlinks"
+OUTPUT=$(wt "$PROJ" knowledge inspect backlinks "Alpha" 2>&1)
 if echo "$OUTPUT" | grep -Eq "backlink: Beta|backlinks.source: Beta"; then
-    pass "index backlinks finds linking article"
+    pass "knowledge inspect backlinks finds linking article"
 else
-    fail "index backlinks finds linking article (got: $OUTPUT)"
+    fail "knowledge inspect backlinks finds linking article (got: $OUTPUT)"
 fi
 
-# --- index orphans ---
-section "index orphans"
+# --- knowledge inspect orphans ---
+section "knowledge inspect orphans"
 # Alpha is linked by Beta, but nothing links to Beta -> Beta is orphan
-OUTPUT=$(wt "$PROJ" index orphans 2>&1 || true)
+OUTPUT=$(wt "$PROJ" knowledge inspect orphans 2>&1 || true)
 if echo "$OUTPUT" | grep -qi "orphan\|Beta\|0 orphans\|no orphans"; then
-    pass "index orphans detects or reports"
+    pass "knowledge inspect orphans detects or reports"
 else
-    fail "index orphans detects or reports (got: $OUTPUT)"
+    fail "knowledge inspect orphans detects or reports (got: $OUTPUT)"
 fi
 
-# --- index prune-categories ---
-section "index prune-categories"
-OUTPUT=$(wt "$PROJ" index prune-categories 2>&1 || true)
-if [ $? -eq 0 ] || echo "$OUTPUT" | grep -qi "category\|prune\|empty\|0"; then
-    pass "index prune-categories runs"
+# --- knowledge inspect empty-categories ---
+section "knowledge inspect empty-categories"
+OUTPUT=$(wt "$PROJ" knowledge inspect empty-categories 2>&1 || true)
+if [ $? -eq 0 ] || echo "$OUTPUT" | grep -qi "category\|empty\|0"; then
+    pass "knowledge inspect empty-categories runs"
 else
-    fail "index prune-categories runs (got: $OUTPUT)"
+    fail "knowledge inspect empty-categories runs (got: $OUTPUT)"
 fi
 
 # --- validate ---
@@ -435,8 +435,8 @@ else
     fail "knowledge pack emits authoring knowledge with readiness/degradation metadata (got: $OUTPUT)"
 fi
 
-# --- index templates ---
-section "index templates"
+# --- knowledge inspect templates ---
+section "knowledge inspect templates"
 PROJ_TEMPLATES=$(setup_project index-templates)
 wt "$PROJ_TEMPLATES" init --templates > /dev/null 2>&1
 mkdir -p "$PROJ_TEMPLATES/wiki_content/Main"
@@ -467,17 +467,17 @@ cat > "$PROJ_TEMPLATES/templates/infobox/_redirects/Template_Infobox_human.wiki"
 #REDIRECT [[Template:Infobox person]]
 WIKIEOF
 wt "$PROJ_TEMPLATES" knowledge build > /dev/null 2>&1
-OUTPUT=$(wt "$PROJ_TEMPLATES" index templates --limit 5 2>&1 || true)
+OUTPUT=$(wt "$PROJ_TEMPLATES" knowledge inspect templates --limit 5 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Template:Infobox person" && echo "$OUTPUT" | grep -q "implementations="; then
-    pass "index templates catalogs active template usage"
+    pass "knowledge inspect templates catalogs active template usage"
 else
-    fail "index templates catalogs active template usage (got: $OUTPUT)"
+    fail "knowledge inspect templates catalogs active template usage (got: $OUTPUT)"
 fi
-OUTPUT=$(wt "$PROJ_TEMPLATES" index templates "Infobox person" 2>&1 || true)
+OUTPUT=$(wt "$PROJ_TEMPLATES" knowledge inspect templates "Infobox person" 2>&1 || true)
 if echo "$OUTPUT" | grep -q "template.implementation_pages.count:" && echo "$OUTPUT" | grep -q "role=module" && echo "$OUTPUT" | grep -q "role=documentation"; then
-    pass "index templates returns implementation reference for a template"
+    pass "knowledge inspect templates returns implementation reference for a template"
 else
-    fail "index templates returns implementation reference for a template (got: $OUTPUT)"
+    fail "knowledge inspect templates returns implementation reference for a template (got: $OUTPUT)"
 fi
 
 # --- search requires knowledge build ---

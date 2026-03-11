@@ -36,7 +36,7 @@ wikitool push --summary "Summary"
 ```bash
 wikitool status
 wikitool db stats
-wikitool index stats
+wikitool knowledge inspect stats
 wikitool docs list --outdated
 ```
 
@@ -48,7 +48,7 @@ wikitool context "Template:Infobox person"
 wikitool knowledge warm --docs-profile remilia-mw-1.44
 wikitool knowledge status --docs-profile remilia-mw-1.44
 wikitool knowledge pack "Topic" --format json
-wikitool index chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
+wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool search "Category:"
 wikitool docs import-profile remilia-mw-1.44
 wikitool docs search "extension feature" --profile remilia-mw-1.44
@@ -60,7 +60,7 @@ wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
 1. Treat local files as the human editing surface and SQLite as the AI retrieval layer.
 2. Prefer `knowledge pack` for authoring retrieval, and use `knowledge status` to confirm whether docs-bridged context is available before relying on it.
 3. Describe references using their source metadata, authority/identifier matches, and retrieval signals; do not imply that wikitool assigns authoritative quality ratings.
-4. Use `index templates TEMPLATE` when you need the implementation bundle for an active template, including `/doc` and `Module:` pages when present.
+4. Use `knowledge inspect templates TEMPLATE` when you need the implementation bundle for an active template, including `/doc` and `Module:` pages when present.
 5. When `remilia-mw-1.44` docs are imported, authoring retrieval can bridge pinned MediaWiki docs with local template/module patterns; use that before falling back to generic web docs.
 
 ## Safety constraints

@@ -125,8 +125,8 @@ wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 wikitool knowledge pack "Topic" --format json
 wikitool context "Template:Infobox person"
 wikitool search "Category:"
-wikitool index chunks "Title" --query "aspect" --limit 6 --token-budget 480
-wikitool index chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify
+wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480
+wikitool knowledge inspect chunks --across-pages --query "topic" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
 wikitool docs import-profile remilia-mw-1.44
 wikitool docs context "extension name" --profile remilia-mw-1.44 --format json
 wikitool fetch "https://www.mediawiki.org/wiki/Manual:Hooks"

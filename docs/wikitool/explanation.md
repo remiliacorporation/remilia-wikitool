@@ -22,6 +22,7 @@ Wikitool is a Rust CLI that synchronizes MediaWiki content with local files and 
 - Authoring retrieval uses semantic page profiles plus explicit template/link/reference/media signals, normalized source authorities, identifier rows, and template implementation bundles to narrow context for agents
 - Authoring retrieval can also bridge a pinned MediaWiki docs corpus with local template/module usage so agents can compare upstream behavior with live wiki implementation patterns
 - Knowledge readiness is tracked in manifest-backed `knowledge_artifacts` rows so `knowledge status`, `knowledge pack`, and `db stats` can distinguish missing content index state from missing docs-profile hydration
+- The public retrieval surface is intentionally split by role: `knowledge build` for content indexing, `knowledge warm` for content plus docs hydration, `knowledge status` for readiness checks, `knowledge pack` for authoring context assembly, and `knowledge inspect ...` for low-level inspection
 - `context` and `search` now depend on built local knowledge state instead of falling back to ad hoc filesystem scans
 - The DB does not assign opaque reference quality scores; it stores inspectable source metadata, authority/identifier matches, and retrieval signals so ranking stays transparent
 

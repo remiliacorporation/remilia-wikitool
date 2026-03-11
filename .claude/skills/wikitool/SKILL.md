@@ -45,7 +45,7 @@ wikitool workflow full-refresh --yes
 wikitool knowledge warm --docs-profile remilia-mw-1.44
 wikitool knowledge status --docs-profile remilia-mw-1.44
 wikitool knowledge pack "Topic" --format json
-wikitool index chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
+wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool docs generate-reference
 wikitool dev install-git-hooks
 wikitool release build-ai-pack

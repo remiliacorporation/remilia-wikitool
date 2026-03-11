@@ -21,26 +21,25 @@ Commands:
   push                 
   diff                 
   status               
-  context              
-  search               
-  search-external      
+  context              Show indexed local page context for one title
+  search               Search indexed local page titles
+  search-external      Search the remote wiki API without using the local index
   validate             
   lint                 
   fetch                
   export               
   delete               
-  db                   
-  docs                 
+  db                   Inspect or reset the local runtime database
+  docs                 Manage and query pinned MediaWiki docs corpora
   seo                  
   net                  
   perf                 
   import               
-  index                
-  knowledge            
+  knowledge            Build and query the local knowledge layer
   lsp:generate-config  
   lsp:status           
   lsp:info             
-  workflow             
+  workflow             Run end-to-end setup and refresh workflows
   release              
   dev                  
   contracts            Contract bootstrap and differential harness helpers
@@ -145,6 +144,8 @@ Options:
 ## context
 
 ```text
+Show indexed local page context for one title
+
 Usage: wikitool context [OPTIONS] <TITLE>
 
 Arguments:
@@ -161,6 +162,8 @@ Options:
 ## search
 
 ```text
+Search indexed local page titles
+
 Usage: wikitool search [OPTIONS] <QUERY>
 
 Arguments:
@@ -177,6 +180,8 @@ Options:
 ## search-external
 
 ```text
+Search the remote wiki API without using the local index
+
 Usage: wikitool search-external [OPTIONS] <QUERY>
 
 Arguments:
@@ -286,11 +291,13 @@ Options:
 ## db
 
 ```text
+Inspect or reset the local runtime database
+
 Usage: wikitool db [OPTIONS] <COMMAND>
 
 Commands:
-  stats  
-  reset  
+  stats  Show local database state and knowledge readiness
+  reset  Delete the local runtime database
   help   Print this message or the help of the given subcommand(s)
 
 Options:
@@ -304,6 +311,8 @@ Options:
 ## db stats
 
 ```text
+Show local database state and knowledge readiness
+
 Usage: wikitool db stats [OPTIONS]
 
 Options:
@@ -317,6 +326,8 @@ Options:
 ## db reset
 
 ```text
+Delete the local runtime database
+
 Usage: wikitool db reset [OPTIONS]
 
 Options:
@@ -331,19 +342,21 @@ Options:
 ## docs
 
 ```text
+Manage and query pinned MediaWiki docs corpora
+
 Usage: wikitool docs [OPTIONS] <COMMAND>
 
 Commands:
-  import              
-  import-technical    
-  import-profile      
-  generate-reference  
-  list                
-  update              
-  remove              
-  search              
-  context             
-  symbols             
+  import              Import docs from a bundle or extension source
+  import-technical    Import a targeted technical docs slice
+  import-profile      Hydrate a named docs profile
+  generate-reference  Generate CLI reference docs from help text
+  list                List imported docs corpora
+  update              Refresh outdated imported docs corpora
+  remove              Remove an imported docs corpus
+  search              Search pinned docs corpora by text
+  context             Build focused docs context from pinned corpora
+  symbols             Lookup docs symbols such as hooks, config vars, and APIs
   help                Print this message or the help of the given subcommand(s)
 
 Options:
@@ -357,6 +370,8 @@ Options:
 ## docs import
 
 ```text
+Import docs from a bundle or extension source
+
 Usage: wikitool docs import [OPTIONS] [EXTENSION]...
 
 Arguments:
@@ -376,6 +391,8 @@ Options:
 ## docs import-technical
 
 ```text
+Import a targeted technical docs slice
+
 Usage: wikitool docs import-technical [OPTIONS] [PAGE]...
 
 Arguments:
@@ -397,6 +414,8 @@ Options:
 ## docs import-profile
 
 ```text
+Hydrate a named docs profile
+
 Usage: wikitool docs import-profile [OPTIONS] [PROFILE]
 
 Arguments:
@@ -417,6 +436,8 @@ Options:
 ## docs generate-reference
 
 ```text
+Generate CLI reference docs from help text
+
 Usage: wikitool docs generate-reference [OPTIONS]
 
 Options:
@@ -431,6 +452,8 @@ Options:
 ## docs list
 
 ```text
+List imported docs corpora
+
 Usage: wikitool docs list [OPTIONS]
 
 Options:
@@ -448,6 +471,8 @@ Options:
 ## docs update
 
 ```text
+Refresh outdated imported docs corpora
+
 Usage: wikitool docs update [OPTIONS]
 
 Options:
@@ -461,6 +486,8 @@ Options:
 ## docs remove
 
 ```text
+Remove an imported docs corpus
+
 Usage: wikitool docs remove [OPTIONS] <TARGET>
 
 Arguments:
@@ -477,6 +504,8 @@ Options:
 ## docs search
 
 ```text
+Search pinned docs corpora by text
+
 Usage: wikitool docs search [OPTIONS] <QUERY>
 
 Arguments:
@@ -497,6 +526,8 @@ Options:
 ## docs context
 
 ```text
+Build focused docs context from pinned corpora
+
 Usage: wikitool docs context [OPTIONS] <QUERY>
 
 Arguments:
@@ -517,6 +548,8 @@ Options:
 ## docs symbols
 
 ```text
+Lookup docs symbols such as hooks, config vars, and APIs
+
 Usage: wikitool docs symbols [OPTIONS] <QUERY>
 
 Arguments:
@@ -693,143 +726,20 @@ Options:
   -h, --help                   Print help
 ```
 
-## index
-
-```text
-Usage: wikitool index [OPTIONS] <COMMAND>
-
-Commands:
-  stats             Show index statistics
-  chunks            Retrieve token-budgeted content chunks from indexed pages
-  backlinks         
-  templates         Inspect active template usage and implementation references
-  orphans           
-  prune-categories  
-  help              Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## index stats
-
-```text
-Show index statistics
-
-Usage: wikitool index stats [OPTIONS]
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## index chunks
-
-```text
-Retrieve token-budgeted content chunks from indexed pages
-
-Usage: wikitool index chunks [OPTIONS] [TITLE]
-
-Arguments:
-  [TITLE]  
-
-Options:
-      --project-root <PATH>    
-      --query <QUERY>          Optional relevance query applied to chunk retrieval
-      --across-pages           Retrieve chunks across indexed pages (query required, omit TITLE)
-      --data-dir <PATH>        
-      --config <PATH>          
-      --limit <N>              Maximum number of chunks to return [default: 8]
-      --diagnostics            Print resolved runtime diagnostics
-      --token-budget <TOKENS>  Token budget across returned chunks [default: 720]
-      --max-pages <N>          Maximum distinct source pages in across-pages mode [default: 12]
-      --format <FORMAT>        Output format: text|json [default: text]
-      --diversify              Enable lexical de-duplication and diversification
-      --no-diversify           Disable lexical de-duplication and diversification
-  -h, --help                   Print help
-```
-
-## index backlinks
-
-```text
-Usage: wikitool index backlinks [OPTIONS] <TITLE>
-
-Arguments:
-  <TITLE>  
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## index templates
-
-```text
-Inspect active template usage and implementation references
-
-Usage: wikitool index templates [OPTIONS] [TEMPLATE]
-
-Arguments:
-  [TEMPLATE]  Optional specific template title
-
-Options:
-      --limit <N>            Maximum templates to return in catalog mode [default: 40]
-      --project-root <PATH>  
-      --all                  Return the full active template catalog
-      --data-dir <PATH>      
-      --config <PATH>        
-      --format <FORMAT>      Output format: text|json [default: text]
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## index orphans
-
-```text
-Usage: wikitool index orphans [OPTIONS]
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## index prune-categories
-
-```text
-Usage: wikitool index prune-categories [OPTIONS]
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
 ## knowledge
 
 ```text
+Build and query the local knowledge layer
+
 Usage: wikitool knowledge [OPTIONS] <COMMAND>
 
 Commands:
-  build   
-  warm    
-  status  
-  pack    
-  help    Print this message or the help of the given subcommand(s)
+  build    Rebuild the local content knowledge index
+  warm     Build content knowledge and hydrate a docs profile
+  status   Report knowledge readiness and degradations
+  pack     Assemble the authoring knowledge pack
+  inspect  Inspect indexed knowledge structures directly
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>  
@@ -842,6 +752,8 @@ Options:
 ## knowledge build
 
 ```text
+Rebuild the local content knowledge index
+
 Usage: wikitool knowledge build [OPTIONS]
 
 Options:
@@ -856,6 +768,8 @@ Options:
 ## knowledge warm
 
 ```text
+Build content knowledge and hydrate a docs profile
+
 Usage: wikitool knowledge warm [OPTIONS]
 
 Options:
@@ -871,6 +785,8 @@ Options:
 ## knowledge status
 
 ```text
+Report knowledge readiness and degradations
+
 Usage: wikitool knowledge status [OPTIONS]
 
 Options:
@@ -886,6 +802,8 @@ Options:
 ## knowledge pack
 
 ```text
+Assemble the authoring knowledge pack
+
 Usage: wikitool knowledge pack [OPTIONS] [TOPIC]
 
 Arguments:
@@ -909,6 +827,140 @@ Options:
       --diversify               Enable lexical chunk de-duplication and diversification
       --no-diversify            Disable lexical chunk de-duplication and diversification
   -h, --help                    Print help
+```
+
+## knowledge inspect
+
+```text
+Inspect indexed knowledge structures directly
+
+Usage: wikitool knowledge inspect [OPTIONS] <COMMAND>
+
+Commands:
+  stats             Show index statistics
+  chunks            Retrieve token-budgeted content chunks from indexed pages
+  backlinks         Show indexed pages that link to a title
+  templates         Inspect active template usage and implementation references
+  orphans           Show indexed pages with no backlinks
+  empty-categories  Show categories with no indexed members
+  help              Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge inspect stats
+
+```text
+Show index statistics
+
+Usage: wikitool knowledge inspect stats [OPTIONS]
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge inspect chunks
+
+```text
+Retrieve token-budgeted content chunks from indexed pages
+
+Usage: wikitool knowledge inspect chunks [OPTIONS] [TITLE]
+
+Arguments:
+  [TITLE]  
+
+Options:
+      --project-root <PATH>    
+      --query <QUERY>          Optional relevance query applied to chunk retrieval
+      --across-pages           Retrieve chunks across indexed pages (query required, omit TITLE)
+      --data-dir <PATH>        
+      --config <PATH>          
+      --limit <N>              Maximum number of chunks to return [default: 8]
+      --diagnostics            Print resolved runtime diagnostics
+      --token-budget <TOKENS>  Token budget across returned chunks [default: 720]
+      --max-pages <N>          Maximum distinct source pages in across-pages mode [default: 12]
+      --format <FORMAT>        Output format: text|json [default: text]
+      --diversify              Enable lexical de-duplication and diversification
+      --no-diversify           Disable lexical de-duplication and diversification
+  -h, --help                   Print help
+```
+
+## knowledge inspect backlinks
+
+```text
+Show indexed pages that link to a title
+
+Usage: wikitool knowledge inspect backlinks [OPTIONS] <TITLE>
+
+Arguments:
+  <TITLE>  
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge inspect templates
+
+```text
+Inspect active template usage and implementation references
+
+Usage: wikitool knowledge inspect templates [OPTIONS] [TEMPLATE]
+
+Arguments:
+  [TEMPLATE]  Optional specific template title
+
+Options:
+      --limit <N>            Maximum templates to return in catalog mode [default: 40]
+      --project-root <PATH>  
+      --all                  Return the full active template catalog
+      --data-dir <PATH>      
+      --config <PATH>        
+      --format <FORMAT>      Output format: text|json [default: text]
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge inspect orphans
+
+```text
+Show indexed pages with no backlinks
+
+Usage: wikitool knowledge inspect orphans [OPTIONS]
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge inspect empty-categories
+
+```text
+Show categories with no indexed members
+
+Usage: wikitool knowledge inspect empty-categories [OPTIONS]
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
 ```
 
 ## lsp:generate-config
@@ -954,11 +1006,13 @@ Options:
 ## workflow
 
 ```text
+Run end-to-end setup and refresh workflows
+
 Usage: wikitool workflow [OPTIONS] <COMMAND>
 
 Commands:
-  bootstrap     
-  full-refresh  
+  bootstrap     Initialize runtime, optionally pull content, and warm knowledge
+  full-refresh  Rebuild local runtime from scratch and re-warm knowledge
   help          Print this message or the help of the given subcommand(s)
 
 Options:
@@ -972,6 +1026,8 @@ Options:
 ## workflow bootstrap
 
 ```text
+Initialize runtime, optionally pull content, and warm knowledge
+
 Usage: wikitool workflow bootstrap [OPTIONS]
 
 Options:
@@ -992,6 +1048,8 @@ Options:
 ## workflow full-refresh
 
 ```text
+Rebuild local runtime from scratch and re-warm knowledge
+
 Usage: wikitool workflow full-refresh [OPTIONS]
 
 Options:

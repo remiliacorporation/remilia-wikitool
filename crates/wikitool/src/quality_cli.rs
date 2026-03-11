@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use clap::Args;
-use wikitool_core::index::{ValidationReport, run_validation_checks};
+use wikitool_core::knowledge::inspect::{ValidationReport, run_validation_checks};
 use wikitool_core::lint::lint_modules;
 
 use crate::cli_support::{normalize_path, print_string_list, resolve_runtime_paths};
@@ -30,7 +30,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
     let report = match run_validation_checks(&paths)? {
         Some(report) => report,
         None => {
-            println!("index.storage: <not built> (run `wikitool knowledge build`)");
+            println!("content_index.storage: <not built> (run `wikitool knowledge build`)");
             println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
             if runtime.diagnostics {
                 println!("\n[diagnostics]\n{}", paths.diagnostics());

@@ -69,6 +69,16 @@ wikitool docs update
 
 `remilia-mw-1.44` attempts installed-extension discovery when the configured wiki API allows it. If that discovery step is unavailable, the pinned core corpus still imports and can be used by `knowledge warm` / `knowledge pack`.
 
+## Knowledge command chooser
+
+- `knowledge build` for a content-only rebuild
+- `knowledge warm --docs-profile ...` for content indexing plus pinned docs hydration
+- `knowledge status --docs-profile ...` before depending on local authoring retrieval
+- `knowledge pack "Topic"` for the main authoring or agent context bundle
+- `knowledge inspect ...` for low-level chunk/template/backlink/orphan inspection
+- `context` and `search` for quick indexed lookups
+- `docs ...` for direct docs administration and direct docs queries
+
 ## Fetch/export external sources
 
 ```bash
@@ -82,18 +92,38 @@ wikitool export "https://www.mediawiki.org/wiki/Manual:Hooks" --subpages --combi
 wikitool import cargo ./data.csv --table Items --mode upsert --write
 ```
 
-## Index workflows
+## Knowledge Inspect Workflows
 
 ```bash
 wikitool knowledge build
 wikitool knowledge status
-wikitool index stats
-wikitool index chunks "Main Page" --query "infobox" --limit 6 --token-budget 480
-wikitool index chunks --across-pages --query "foundational concepts" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
-wikitool index backlinks "Main Page"
-wikitool index orphans
-wikitool index prune-categories
+wikitool knowledge inspect stats
+wikitool knowledge inspect chunks "Main Page" --query "infobox" --limit 6 --token-budget 480
+wikitool knowledge inspect chunks --across-pages --query "foundational concepts" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
+wikitool knowledge inspect backlinks "Main Page"
+wikitool knowledge inspect orphans
+wikitool knowledge inspect empty-categories
 ```
+
+Command chooser:
+
+- Use `knowledge build` when you only need the local content index
+- Use `knowledge warm` when authoring retrieval also needs pinned MediaWiki docs
+- Use `knowledge status` to check readiness and degradations first
+- Use `knowledge pack` for the AI-facing authoring bundle
+- Use `knowledge inspect ...` for low-level chunk/template/backlink/orphan/empty-category inspection
+- Use top-level `context` or `search` for quick indexed lookups against local wiki content
+- Use `docs context` or `docs search` when you need pinned MediaWiki docs retrieval
+- Use `docs ...` when you are managing or querying docs corpora directly
+
+Legacy command mapping:
+
+- `wikitool index stats` -> `wikitool knowledge inspect stats`
+- `wikitool index chunks ...` -> `wikitool knowledge inspect chunks ...`
+- `wikitool index backlinks ...` -> `wikitool knowledge inspect backlinks ...`
+- `wikitool index templates ...` -> `wikitool knowledge inspect templates ...`
+- `wikitool index orphans` -> `wikitool knowledge inspect orphans`
+- `wikitool index prune-categories` -> `wikitool knowledge inspect empty-categories`
 
 ## AI authoring knowledge pack
 
@@ -175,7 +205,7 @@ wikitool release build-matrix --targets x86_64-unknown-linux-gnu --artifact-vers
 wikitool status
 wikitool db stats
 wikitool knowledge status
-wikitool index stats
+wikitool knowledge inspect stats
 ```
 
 ## Troubleshooting

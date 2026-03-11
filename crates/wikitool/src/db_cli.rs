@@ -20,7 +20,9 @@ pub(crate) struct DbArgs {
 
 #[derive(Debug, Subcommand)]
 enum DbSubcommand {
+    #[command(about = "Show local database state and knowledge readiness")]
     Stats,
+    #[command(about = "Delete the local runtime database")]
     Reset {
         #[arg(
             long,
@@ -55,8 +57,8 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
             .unwrap_or_else(|| "n/a".to_string())
     );
     match stored {
-        Some(stored) => print_stored_index_stats("index", &stored),
-        None => println!("index.storage: <not built> (run `wikitool knowledge build`)"),
+        Some(stored) => print_stored_index_stats("content_index", &stored),
+        None => println!("content_index.storage: <not built> (run `wikitool knowledge build`)"),
     }
     println!(
         "docs_profile_requested: {}",

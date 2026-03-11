@@ -43,16 +43,29 @@ wikitool pull --categories
 ```bash
 wikitool status
 wikitool knowledge status
-wikitool index stats
+wikitool knowledge inspect stats
 ```
 
 Useful authoring retrieval checks:
 
 ```bash
-wikitool index chunks --across-pages --query "network spirituality remilia" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
+wikitool knowledge inspect chunks --across-pages --query "network spirituality remilia" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool knowledge build
 wikitool knowledge pack "Remilia Corporation" --format json
 ```
+
+Command chooser:
+
+- `knowledge build` for content-only local indexing
+- `knowledge warm` for content indexing plus pinned docs hydration
+- `knowledge status` to confirm readiness before depending on local retrieval
+- `knowledge pack` for authoring/agent context assembly
+- `knowledge inspect ...` for low-level retrieval or graph inspection
+- `context` and `search` for quick indexed lookups against local wiki content
+- `docs context` and `docs search` for pinned MediaWiki docs retrieval
+- `docs ...` for direct docs import/search/context workflows
+
+If you used older prerelease builds, replace `wikitool index ...` with `wikitool knowledge inspect ...`.
 
 ## 5) Optional: configure credentials and API target
 

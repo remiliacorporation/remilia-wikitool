@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use clap::Args;
-use wikitool_core::index::{
+use wikitool_core::knowledge::retrieval::{
     LocalContextBundle, LocalSearchHit, build_local_context, query_search_local,
 };
 use wikitool_core::sync::{

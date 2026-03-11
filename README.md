@@ -114,10 +114,30 @@ wikitool knowledge warm --docs-profile remilia-mw-1.44
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 wikitool knowledge pack "Remilia Corporation" --docs-profile remilia-mw-1.44 --format json
 wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
-wikitool index templates "Infobox person"
+wikitool knowledge inspect templates "Infobox person"
 ```
 
 `remilia-mw-1.44` will try to enrich the corpus with installed extensions from the configured wiki when that API is available. If extension discovery is unavailable, the core pinned corpus still imports and remains usable for authoring retrieval.
+
+Command chooser:
+
+- `wikitool knowledge build` rebuilds only the local content index when docs hydration is unnecessary
+- `wikitool knowledge warm` builds the local knowledge index and hydrates a docs profile in one pass
+- `wikitool knowledge status` reports readiness, degradations, requested docs profile, and generation
+- `wikitool knowledge pack` is the primary AI/operator authoring retrieval surface
+- `wikitool knowledge inspect ...` is the low-level inspection lane for chunks, backlinks, templates, orphan pages, or empty categories
+- `wikitool context` and `wikitool search` are quick indexed lookups against the local wiki knowledge index
+- `wikitool docs context` and `wikitool docs search` query pinned MediaWiki docs corpora rather than local wiki pages
+- `wikitool docs ...` remains the expert/admin surface for importing and managing pinned MediaWiki docs corpora directly
+
+Legacy command mapping:
+
+- `wikitool index stats` -> `wikitool knowledge inspect stats`
+- `wikitool index chunks ...` -> `wikitool knowledge inspect chunks ...`
+- `wikitool index backlinks ...` -> `wikitool knowledge inspect backlinks ...`
+- `wikitool index templates ...` -> `wikitool knowledge inspect templates ...`
+- `wikitool index orphans` -> `wikitool knowledge inspect orphans`
+- `wikitool index prune-categories` -> `wikitool knowledge inspect empty-categories`
 
 Use bundle import only when you need an offline preload:
 

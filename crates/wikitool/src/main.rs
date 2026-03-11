@@ -12,9 +12,9 @@ mod dev_cli;
 mod docs_cli;
 mod export_cli;
 mod import_cli;
-mod index_cli;
 mod inspect_cli;
 mod knowledge_cli;
+mod knowledge_inspect_cli;
 mod lsp_cli;
 mod quality_cli;
 mod query_cli;
@@ -69,22 +69,29 @@ enum Commands {
     Push(sync_cli::PushArgs),
     Diff(sync_cli::DiffArgs),
     Status(sync_cli::StatusArgs),
+    #[command(about = "Show indexed local page context for one title")]
     Context(query_cli::ContextArgs),
+    #[command(about = "Search indexed local page titles")]
     Search(query_cli::SearchArgs),
-    #[command(name = "search-external")]
+    #[command(
+        name = "search-external",
+        about = "Search the remote wiki API without using the local index"
+    )]
     SearchExternal(query_cli::SearchExternalArgs),
     Validate,
     Lint(quality_cli::LintArgs),
     Fetch(export_cli::FetchArgs),
     Export(export_cli::ExportArgs),
     Delete(sync_cli::DeleteArgs),
+    #[command(about = "Inspect or reset the local runtime database")]
     Db(db_cli::DbArgs),
+    #[command(about = "Manage and query pinned MediaWiki docs corpora")]
     Docs(docs_cli::DocsArgs),
     Seo(inspect_cli::SeoArgs),
     Net(inspect_cli::NetArgs),
     Perf(inspect_cli::PerfArgs),
     Import(import_cli::ImportArgs),
-    Index(index_cli::IndexArgs),
+    #[command(about = "Build and query the local knowledge layer")]
     Knowledge(knowledge_cli::KnowledgeArgs),
     #[command(name = "lsp:generate-config")]
     LspGenerateConfig(lsp_cli::LspGenerateConfigArgs),
@@ -92,6 +99,7 @@ enum Commands {
     LspStatus,
     #[command(name = "lsp:info")]
     LspInfo,
+    #[command(about = "Run end-to-end setup and refresh workflows")]
     Workflow(workflow_cli::WorkflowArgs),
     Release(release::ReleaseArgs),
     Dev(dev_cli::DevArgs),
@@ -138,7 +146,6 @@ fn main() -> Result<()> {
         Some(Commands::Net(args)) => inspect_cli::run_net(&runtime, args),
         Some(Commands::Perf(args)) => inspect_cli::run_perf(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
-        Some(Commands::Index(args)) => index_cli::run_index(&runtime, args),
         Some(Commands::Knowledge(args)) => knowledge_cli::run_knowledge(&runtime, args),
         Some(Commands::LspGenerateConfig(args)) => lsp_cli::run_lsp_generate_config(&runtime, args),
         Some(Commands::LspStatus) => lsp_cli::run_lsp_status(&runtime),
