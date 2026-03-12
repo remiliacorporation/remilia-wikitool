@@ -2058,7 +2058,7 @@ pub(super) struct ReferenceSignalInputs<'a> {
     reference_body: &'a str,
 }
 
-pub(crate) fn collect_reference_signals(input: ReferenceSignalInputs<'_>) -> Vec<String> {
+fn collect_reference_signals(input: ReferenceSignalInputs<'_>) -> Vec<String> {
     let mut flags = BTreeSet::new();
     if input.primary_template_title.is_some() {
         flags.insert("citation-template".to_string());

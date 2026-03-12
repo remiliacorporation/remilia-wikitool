@@ -4,35 +4,21 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use reqwest::Url;
-use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
-use serde_json::json;
+use rusqlite::{Connection, params};
 
 use crate::filesystem::{
-    Namespace, ScanOptions, ScanStats, ScannedFile, scan_files, validate_scoped_path,
+    Namespace, ScanOptions, ScanStats, ScannedFile,
 };
-use crate::knowledge::status::record_content_index_artifact;
 use crate::runtime::ResolvedPaths;
 use crate::schema::open_initialized_database_connection;
-use crate::support::{normalize_path, table_exists, unix_timestamp};
+use crate::support::table_exists;
 
-#[path = "index/authoring.rs"]
-pub(crate) mod authoring;
-#[path = "index/ingest.rs"]
-pub(crate) mod ingest;
 #[path = "index/model.rs"]
-mod model;
+pub(crate) mod model;
 #[path = "index/parsing.rs"]
-mod parsing;
-#[path = "index/references.rs"]
-mod references;
-#[path = "index/retrieval.rs"]
-pub(crate) mod retrieval;
+pub(crate) mod parsing;
 #[path = "index/storage.rs"]
-mod storage;
-#[path = "index/templates.rs"]
-pub(crate) mod templates;
-#[path = "index/validation.rs"]
-pub(crate) mod validation;
+pub(crate) mod storage;
 #[cfg(test)]
 #[path = "index/tests.rs"]
 mod tests;

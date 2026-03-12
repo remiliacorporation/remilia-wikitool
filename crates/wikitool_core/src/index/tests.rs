@@ -399,11 +399,11 @@ fn extract_reference_records_parses_named_refs_and_template_summaries() {
 
 #[test]
 fn section_authoring_bias_prefers_content_sections_over_reference_tail() {
-    let history_score = super::retrieval::section_authoring_bias(
+    let history_score = crate::knowledge::retrieval::section_authoring_bias(
         Some("History"),
         "Alpha biography summary with useful prose.",
     );
-    let references_score = super::retrieval::section_authoring_bias(
+    let references_score = crate::knowledge::retrieval::section_authoring_bias(
         Some("References"),
         "{{Reflist}}\n[[Category:Test]]",
     );

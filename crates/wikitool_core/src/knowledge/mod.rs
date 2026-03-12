@@ -3,6 +3,7 @@ pub mod content_index;
 pub(crate) mod docs_bridge;
 pub mod inspect;
 pub(crate) mod model;
+pub(crate) mod prelude;
 pub mod references;
 pub mod retrieval;
 pub mod status;
