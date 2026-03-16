@@ -74,13 +74,11 @@ Create `.env` in project root (next to `wiki_content/`) and set:
 ```bash
 WIKI_BOT_USER=Username@BotName
 WIKI_BOT_PASS=your-bot-password
-```
-
-If your API URL is not set in `.wikitool/config.toml`:
-
-```bash
+WIKI_URL=https://your-wiki.example.org/
 WIKI_API_URL=https://your-wiki.example.org/api.php
 ```
+
+Prefer `.env` for shared repo-local settings. Treat `.wikitool/config.toml` as local materialized runtime state; it is often gitignored because it also records absolute local paths and accompanies the disposable DB.
 
 Bot password setup:
 
@@ -154,3 +152,4 @@ If runtime/schema changes break local state:
 2. Run `wikitool pull --full --all` if content is missing, then run `wikitool knowledge build` or `wikitool knowledge warm --docs-profile remilia-mw-1.44`
 
 If push fails with auth errors, verify `WIKI_BOT_USER` and `WIKI_BOT_PASS` in project root `.env`.
+If installed-extension discovery or API-backed commands fail, verify `WIKI_URL` and `WIKI_API_URL` there first.

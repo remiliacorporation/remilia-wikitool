@@ -29,6 +29,7 @@ Wikitool resolves paths from project root and uses `.wikitool/` for local runtim
 - `templates/` local template/module files
 - `.wikitool/config.toml` runtime config
 - `.wikitool/data/wikitool.db` local index/sync database
+- project root `.env` shared runtime overrides loaded automatically when present
 
 The local SQLite DB is disposable and is created automatically on first use. If binary/schema changes make it stale, run `wikitool db reset --yes` or delete `.wikitool/data/wikitool.db`, then rerun `wikitool pull --full --all` if needed and rebuild retrieval state with `wikitool knowledge build` or `wikitool knowledge warm`.
 
@@ -167,6 +168,8 @@ wikitool docs generate-reference
 
 Set these in `.env` at your project root (next to `wiki_content/`).
 
+Prefer keeping shared project target settings in `.env` and treat `.wikitool/config.toml` as local materialized runtime state. `.wikitool/` is commonly gitignored because it also contains absolute local paths and the disposable SQLite DB.
+
 Required for push/delete:
 
 ```bash
@@ -174,11 +177,14 @@ WIKI_BOT_USER=Username@BotName
 WIKI_BOT_PASS=your-bot-password
 ```
 
-Recommended for read/write API access when not set in `.wikitool/config.toml`:
+Recommended for portable read/write API access:
 
 ```bash
+WIKI_URL=https://your-wiki.example.org/
 WIKI_API_URL=https://your-wiki.example.org/api.php
 ```
+
+Environment variables override `.wikitool/config.toml`, so the same `wikitool` build can be reused across different MediaWiki projects without baking a specific domain into the repo or binary.
 
 Optional tuning:
 
