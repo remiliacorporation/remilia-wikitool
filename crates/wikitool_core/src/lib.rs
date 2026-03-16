@@ -6,7 +6,6 @@ pub mod docs;
 pub mod external;
 pub mod filesystem;
 pub mod import_cargo;
-pub mod index;
 pub mod inspect;
 pub mod knowledge;
 pub mod lint;

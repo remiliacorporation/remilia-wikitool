@@ -4,19 +4,26 @@ use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;
 
-use super::{
-    ActiveTemplateCatalogLookup, AuthoringKnowledgePack, AuthoringKnowledgePackOptions,
-    BrokenLinkIssue, LocalChunkAcrossRetrieval, LocalChunkRetrieval, TemplateReferenceLookup,
-    build_authoring_knowledge_pack, build_local_context, load_stored_index_stats,
-    query_active_template_catalog, query_backlinks, query_empty_categories, query_orphans,
-    query_search_local, query_template_reference, rebuild_index, retrieve_local_context_chunks,
-    retrieve_local_context_chunks_across_pages, run_validation_checks,
-};
 use crate::content_store::parsing::{
     extract_first_url, extract_media_records, extract_module_invocations,
     extract_reference_records, extract_template_invocations, extract_wikilinks,
 };
 use crate::filesystem::{Namespace, ScanOptions};
+use crate::knowledge::authoring::{
+    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, build_authoring_knowledge_pack,
+};
+use crate::knowledge::content_index::{load_stored_index_stats, rebuild_index};
+use crate::knowledge::inspect::{
+    BrokenLinkIssue, query_backlinks, query_empty_categories, query_orphans, run_validation_checks,
+};
+use crate::knowledge::retrieval::{
+    LocalChunkAcrossRetrieval, LocalChunkRetrieval, build_local_context, query_search_local,
+    retrieve_local_context_chunks, retrieve_local_context_chunks_across_pages,
+};
+use crate::knowledge::templates::{
+    ActiveTemplateCatalogLookup, TemplateReferenceLookup, query_active_template_catalog,
+    query_template_reference,
+};
 use crate::runtime::{ResolvedPaths, ValueSource};
 
 fn write_file(path: &Path, content: &str) {
@@ -842,6 +849,99 @@ fn build_authoring_knowledge_pack_uses_template_matches_for_related_pages() {
             .any(|chunk| chunk.source_title == "Alpha")
     );
     assert!(report.retrieval_mode.contains("seed-pages"));
+}
+
+#[test]
+fn build_authoring_knowledge_pack_filters_redirect_category_and_fragment_noise() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "'''Alpha''' is the coherent NoiseSignal article with grounded history and context.",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("NoiseSignal.wiki"),
+        "#REDIRECT [[Alpha]]",
+    );
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("NoiseSignal___ko.wiki"),
+        "'''NoiseSignal''' 한국어 번역 문서.",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+        "NoiseSignal 2025}}</ref>",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+        "{{SHORTDESC:NoiseSignal metadata}}\n{{Infobox organization|name=NoiseSignal}}",
+    );
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Category")
+            .join("NoiseSignal.wiki"),
+        "Category landing text for NoiseSignal.",
+    );
+
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let report = build_authoring_knowledge_pack(
+        &paths,
+        Some("NoiseSignal"),
+        None,
+        &AuthoringKnowledgePackOptions {
+            related_page_limit: 6,
+            chunk_limit: 4,
+            token_budget: 240,
+            max_pages: 3,
+            link_limit: 4,
+            category_limit: 4,
+            template_limit: 4,
+            docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
+            diversify: true,
+        },
+    )
+    .expect("authoring pack");
+    let report = match report {
+        AuthoringKnowledgePack::Found(report) => *report,
+        other => panic!("expected found authoring pack, got {other:?}"),
+    };
+
+    assert!(report.retrieval_mode.contains("authoring-curated"));
+    assert!(
+        report
+            .related_pages
+            .iter()
+            .all(|entry| entry.namespace == Namespace::Main.as_str() && !entry.is_redirect)
+    );
+    assert!(report.related_pages.iter().all(|entry| {
+        entry.title != "Category:NoiseSignal"
+            && entry.title != "NoiseSignal"
+            && entry.title != "NoiseSignal/ko"
+    }));
+    assert!(report.chunks.iter().all(|chunk| {
+        chunk.source_namespace == Namespace::Main.as_str()
+            && !chunk.chunk_text.contains("2025}}</ref>")
+            && !chunk.chunk_text.starts_with("{{")
+    }));
+    assert!(
+        report
+            .chunks
+            .iter()
+            .all(|chunk| chunk.source_title != "Gamma")
+    );
+    assert!(
+        report
+            .chunks
+            .iter()
+            .any(|chunk| chunk.source_title == "Alpha")
+    );
 }
 
 #[test]

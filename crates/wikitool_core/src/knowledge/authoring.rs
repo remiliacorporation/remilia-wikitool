@@ -85,11 +85,15 @@ pub fn build_authoring_knowledge_pack(
     )?;
 
     let mut stub_existing_links = Vec::new();
+    let mut stub_seed_titles = Vec::new();
     let mut stub_missing_links = Vec::new();
     for link in stub_link_titles {
         if let Some(page) =
             parsing::load_page_record(&connection, &parsing::normalize_query_title(&link))?
         {
+            if authoring_page_allowed(&page) {
+                stub_seed_titles.push(page.title.clone());
+            }
             stub_existing_links.push(page.title);
         } else {
             stub_missing_links.push(link);
@@ -97,11 +101,13 @@ pub fn build_authoring_knowledge_pack(
     }
     stub_existing_links.sort();
     stub_existing_links.dedup();
+    stub_seed_titles.sort();
+    stub_seed_titles.dedup();
     stub_missing_links.sort();
     stub_missing_links.dedup();
 
     let stub_detected_templates = stub_template_titles;
-    let related_page_weights = build_related_page_weight_map(&related_pages, &stub_existing_links);
+    let related_page_weights = build_related_page_weight_map(&related_pages, &stub_seed_titles);
     let chunk_report = retrieve_reranked_chunks_across_pages(
         &connection,
         paths,
@@ -112,6 +118,7 @@ pub fn build_authoring_knowledge_pack(
             token_budget,
             max_pages,
             diversify: options.diversify,
+            audience: RetrievalAudience::Authoring,
         },
         &related_pages
             .iter()
@@ -141,7 +148,7 @@ pub fn build_authoring_knowledge_pack(
             source_titles.push(chunk.source_title.clone());
         }
     }
-    for link in &stub_existing_links {
+    for link in &stub_seed_titles {
         if seen_source_titles.insert(link.to_ascii_lowercase()) {
             source_titles.push(link.clone());
         }
@@ -277,6 +284,19 @@ pub fn build_authoring_knowledge_pack(
     )))
 }
 
+fn authoring_page_allowed(page: &IndexedPageRecord) -> bool {
+    page.namespace == Namespace::Main.as_str()
+        && !page.is_redirect
+        && !title_looks_like_translation_subpage(&page.title)
+}
+
+fn title_looks_like_translation_subpage(title: &str) -> bool {
+    let Some((_, suffix)) = title.rsplit_once('/') else {
+        return false;
+    };
+    suffix.len() == 2 && suffix.chars().all(|ch| ch.is_ascii_lowercase())
+}
+
 fn analyze_stub_hints(stub_content: Option<&str>) -> (Vec<String>, Vec<StubTemplateHint>) {
     let Some(content) = stub_content else {
         return (Vec::new(), Vec::new());
@@ -360,7 +380,9 @@ fn collect_related_pages_for_authoring(
         if normalized.is_empty() {
             continue;
         }
-        if let Some(page) = parsing::load_page_record(connection, &normalized)? {
+        if let Some(page) = parsing::load_page_record(connection, &normalized)?
+            && authoring_page_allowed(&page)
+        {
             add_authoring_page_candidate(&mut candidates, page, "stub-link", 400);
         }
     }
@@ -372,7 +394,9 @@ fn collect_related_pages_for_authoring(
             .then_with(|| left_title.cmp(right_title))
     });
     for (title, score) in ranked_template_matches.into_iter().take(search_limit) {
-        if let Some(page) = parsing::load_page_record(connection, title)? {
+        if let Some(page) = parsing::load_page_record(connection, title)?
+            && authoring_page_allowed(&page)
+        {
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
@@ -383,7 +407,9 @@ fn collect_related_pages_for_authoring(
     }
 
     for semantic_hit in inputs.semantic_page_hits {
-        if let Some(page) = parsing::load_page_record(connection, &semantic_hit.title)? {
+        if let Some(page) = parsing::load_page_record(connection, &semantic_hit.title)?
+            && authoring_page_allowed(&page)
+        {
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
@@ -394,7 +420,9 @@ fn collect_related_pages_for_authoring(
     }
 
     for authority_hit in inputs.authority_page_hits {
-        if let Some(page) = parsing::load_page_record(connection, &authority_hit.title)? {
+        if let Some(page) = parsing::load_page_record(connection, &authority_hit.title)?
+            && authoring_page_allowed(&page)
+        {
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
@@ -405,7 +433,9 @@ fn collect_related_pages_for_authoring(
     }
 
     for identifier_hit in inputs.identifier_page_hits {
-        if let Some(page) = parsing::load_page_record(connection, &identifier_hit.title)? {
+        if let Some(page) = parsing::load_page_record(connection, &identifier_hit.title)?
+            && authoring_page_allowed(&page)
+        {
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
@@ -425,7 +455,9 @@ fn collect_related_pages_for_authoring(
             if normalized.is_empty() {
                 continue;
             }
-            if let Some(page) = parsing::load_page_record(connection, &normalized)? {
+            if let Some(page) = parsing::load_page_record(connection, &normalized)?
+                && authoring_page_allowed(&page)
+            {
                 let score = title_search_score
                     .saturating_sub(rank.saturating_mul(12))
                     .max(24);
@@ -439,10 +471,12 @@ fn collect_related_pages_for_authoring(
                 .into_iter()
                 .enumerate()
         {
-            let score = alias_search_score
-                .saturating_sub(rank.saturating_mul(10))
-                .max(20);
-            add_authoring_page_candidate(&mut candidates, page, "alias-search", score);
+            if authoring_page_allowed(&page) {
+                let score = alias_search_score
+                    .saturating_sub(rank.saturating_mul(10))
+                    .max(20);
+                add_authoring_page_candidate(&mut candidates, page, "alias-search", score);
+            }
         }
 
         let section_search_score = 160usize.saturating_sub(query_index.saturating_mul(12));
@@ -451,10 +485,12 @@ fn collect_related_pages_for_authoring(
                 .into_iter()
                 .enumerate()
         {
-            let score = section_search_score
-                .saturating_sub(rank.saturating_mul(8))
-                .max(16);
-            add_authoring_page_candidate(&mut candidates, page, "section-search", score);
+            if authoring_page_allowed(&page) {
+                let score = section_search_score
+                    .saturating_sub(rank.saturating_mul(8))
+                    .max(16);
+                add_authoring_page_candidate(&mut candidates, page, "section-search", score);
+            }
         }
     }
 

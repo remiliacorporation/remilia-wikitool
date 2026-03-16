@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::filesystem::{NamespaceMapper, ScanOptions, scan_files, validate_scoped_path};
-use crate::index::{RebuildReport, rebuild_index};
+use crate::knowledge::content_index::{RebuildReport, rebuild_index};
 use crate::runtime::ResolvedPaths;
 use crate::schema::{ensure_database_schema_connection, open_initialized_database_connection};
 use crate::support::{

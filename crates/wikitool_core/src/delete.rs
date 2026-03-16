@@ -183,7 +183,7 @@ mod tests {
 
     use super::{DeleteOptions, delete_local_page};
     use crate::filesystem::ScanOptions;
-    use crate::index::{load_stored_index_stats, rebuild_index};
+    use crate::knowledge::content_index::{load_stored_index_stats, rebuild_index};
     use crate::runtime::{ResolvedPaths, ValueSource};
 
     fn write_file(path: &Path, content: &str) {

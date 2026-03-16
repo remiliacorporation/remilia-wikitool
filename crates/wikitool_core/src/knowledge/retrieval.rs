@@ -410,6 +410,7 @@ pub fn retrieve_local_context_chunks_across_pages(
             token_budget,
             max_pages,
             diversify,
+            audience: RetrievalAudience::General,
         },
         &related_page_titles,
         ChunkRerankSignals {
@@ -1238,6 +1239,7 @@ pub(crate) fn load_seed_chunks_for_related_pages(
     connection: &Connection,
     related_page_titles: &[String],
     per_page_limit: usize,
+    audience: RetrievalAudience,
 ) -> Result<Vec<RetrievedChunk>> {
     if related_page_titles.is_empty()
         || per_page_limit == 0
@@ -1258,17 +1260,233 @@ pub(crate) fn load_seed_chunks_for_related_pages(
             usize::MAX,
         )?;
         for chunk in rows {
-            out.push(RetrievedChunk {
+            let chunk = RetrievedChunk {
                 source_title: page.title.clone(),
                 source_namespace: page.namespace.clone(),
                 source_relative_path: page.relative_path.clone(),
                 section_heading: chunk.section_heading,
                 token_estimate: chunk.token_estimate,
                 chunk_text: chunk.chunk_text,
-            });
+            };
+            if chunk_allowed_for_audience(&chunk, audience) {
+                out.push(chunk);
+            }
         }
     }
     Ok(out)
+}
+
+fn chunk_word_like_count(value: &str) -> usize {
+    value
+        .split_whitespace()
+        .map(|token| {
+            token
+                .chars()
+                .filter(|ch| ch.is_alphanumeric())
+                .collect::<String>()
+        })
+        .filter(|token| token.chars().count() >= 2)
+        .count()
+}
+
+fn chunk_markup_char_count(value: &str) -> usize {
+    value
+        .chars()
+        .filter(|ch| matches!(ch, '[' | ']' | '{' | '}' | '<' | '>' | '|' | '='))
+        .count()
+}
+
+fn title_looks_like_translation_subpage(title: &str) -> bool {
+    let Some((_, suffix)) = title.rsplit_once('/') else {
+        return false;
+    };
+    suffix.len() == 2 && suffix.chars().all(|ch| ch.is_ascii_lowercase())
+}
+
+fn consume_balanced_template_prefix(value: &str) -> Option<usize> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 2 || bytes[0] != b'{' || bytes[1] != b'{' {
+        return None;
+    }
+
+    let mut depth = 0usize;
+    let mut cursor = 0usize;
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] == b'{' && bytes[cursor + 1] == b'{' {
+            depth = depth.saturating_add(1);
+            cursor += 2;
+            continue;
+        }
+        if bytes[cursor] == b'}' && bytes[cursor + 1] == b'}' {
+            if depth == 0 {
+                return None;
+            }
+            depth -= 1;
+            cursor += 2;
+            if depth == 0 {
+                return Some(cursor);
+            }
+            continue;
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn consume_balanced_link_prefix(value: &str) -> Option<usize> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 2 || bytes[0] != b'[' || bytes[1] != b'[' {
+        return None;
+    }
+
+    let mut cursor = 2usize;
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] == b']' && bytes[cursor + 1] == b']' {
+            return Some(cursor + 2);
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn strip_leading_authoring_metadata(chunk_text: &str) -> &str {
+    let mut remainder = chunk_text.trim_start();
+    loop {
+        if let Some(stripped) = remainder.strip_prefix("__") {
+            remainder = stripped.trim_start();
+            continue;
+        }
+
+        if let Some(end) = consume_balanced_template_prefix(remainder) {
+            remainder = remainder[end..].trim_start();
+            continue;
+        }
+
+        let lowered = remainder.to_ascii_lowercase();
+        let starts_with_meta_link = lowered.starts_with("[[file:")
+            || lowered.starts_with("[[image:")
+            || lowered.starts_with("[[category:");
+        if starts_with_meta_link && let Some(end) = consume_balanced_link_prefix(remainder) {
+            remainder = remainder[end..].trim_start();
+            continue;
+        }
+
+        return remainder;
+    }
+}
+
+pub(crate) fn chunk_looks_like_noise(chunk_text: &str) -> bool {
+    let normalized = normalize_spaces(chunk_text);
+    if normalized.is_empty() {
+        return true;
+    }
+
+    let lowered = normalized.to_ascii_lowercase();
+    if lowered.starts_with("#redirect") {
+        return true;
+    }
+
+    let char_count = normalized.chars().count();
+    let alphanumeric_count = normalized.chars().filter(|ch| ch.is_alphanumeric()).count();
+    let word_like_count = chunk_word_like_count(&normalized);
+    let markup_char_count = chunk_markup_char_count(&normalized);
+
+    if alphanumeric_count < 10 {
+        return true;
+    }
+    if word_like_count < 3 && alphanumeric_count < 24 {
+        return true;
+    }
+    if normalized.ends_with("</ref>") && word_like_count < 5 {
+        return true;
+    }
+    if normalized.contains('|') && normalized.ends_with("}}</ref>") {
+        let prefix = normalized.split('|').next().unwrap_or_default();
+        if chunk_word_like_count(prefix) < 5 {
+            return true;
+        }
+    }
+    markup_char_count.saturating_mul(3) >= char_count.saturating_mul(2) && word_like_count < 6
+}
+
+fn section_heading_is_low_signal(section_heading: Option<&str>) -> bool {
+    let heading = section_heading.unwrap_or_default().to_ascii_lowercase();
+    if heading.is_empty() {
+        return false;
+    }
+    [
+        "references",
+        "notes",
+        "external links",
+        "further reading",
+        "bibliography",
+        "gallery",
+        "see also",
+    ]
+    .iter()
+    .any(|low_signal| heading.contains(low_signal))
+}
+
+fn chunk_allowed_for_audience(chunk: &RetrievedChunk, audience: RetrievalAudience) -> bool {
+    if chunk_looks_like_noise(&chunk.chunk_text) {
+        return false;
+    }
+
+    if audience != RetrievalAudience::Authoring {
+        return true;
+    }
+
+    if chunk.source_namespace != Namespace::Main.as_str() {
+        return false;
+    }
+    if title_looks_like_translation_subpage(&chunk.source_title) {
+        return false;
+    }
+
+    if section_heading_is_low_signal(chunk.section_heading.as_deref()) {
+        return false;
+    }
+
+    let normalized = normalize_spaces(&chunk.chunk_text);
+    let lowered = normalized.to_ascii_lowercase();
+    if lowered.contains("{{reflist") {
+        return false;
+    }
+    if lowered.starts_with("[[category:") {
+        return false;
+    }
+    if lowered.matches("[[category:").count() >= 2 && chunk_word_like_count(&normalized) < 12 {
+        return false;
+    }
+    if lowered.starts_with("{{see also|") {
+        return false;
+    }
+
+    let prose_tail = normalize_spaces(strip_leading_authoring_metadata(&normalized));
+    if prose_tail.is_empty() || chunk_word_like_count(&prose_tail) < 5 {
+        return false;
+    }
+
+    true
+}
+
+fn sanitize_chunk_for_audience(
+    mut chunk: RetrievedChunk,
+    audience: RetrievalAudience,
+) -> Option<RetrievedChunk> {
+    if !chunk_allowed_for_audience(&chunk, audience) {
+        return None;
+    }
+
+    if audience == RetrievalAudience::Authoring {
+        let stripped = normalize_spaces(strip_leading_authoring_metadata(&chunk.chunk_text));
+        if !stripped.is_empty() {
+            chunk.token_estimate = estimate_tokens(&stripped);
+            chunk.chunk_text = stripped;
+        }
+    }
+
+    Some(chunk)
 }
 
 pub(crate) fn section_authoring_bias(section_heading: Option<&str>, chunk_text: &str) -> i64 {
@@ -1314,6 +1532,7 @@ pub(crate) fn rerank_retrieved_chunks(
     query: &str,
     query_terms: &[String],
     signals: &ChunkRerankSignals,
+    audience: RetrievalAudience,
 ) -> Vec<RetrievedChunk> {
     let normalized_query = query.to_ascii_lowercase();
     let mut deduped = BTreeMap::<String, RetrievedChunk>::new();
@@ -1384,11 +1603,24 @@ pub(crate) fn rerank_retrieved_chunks(
             if !query_terms.is_empty() && coverage >= query_terms.len().min(3) {
                 score += 60;
             }
-            if chunk.source_namespace == Namespace::Main.as_str() {
-                score += 18;
-            } else {
-                score -= 20;
-            }
+            score += match audience {
+                RetrievalAudience::Authoring => {
+                    if chunk.source_namespace == Namespace::Main.as_str() {
+                        48
+                    } else {
+                        -120
+                    }
+                }
+                RetrievalAudience::General => {
+                    if chunk.source_namespace == Namespace::Main.as_str() {
+                        18
+                    } else if chunk.source_namespace == Namespace::Category.as_str() {
+                        -28
+                    } else {
+                        0
+                    }
+                }
+            };
             score += i64::try_from(
                 signals
                     .related_page_weights
@@ -1431,7 +1663,10 @@ pub(crate) fn rerank_retrieved_chunks(
             .unwrap_or(0);
             score +=
                 i64::try_from(48usize.saturating_sub(chunk.token_estimate.min(48))).unwrap_or(0);
-            score += section_authoring_bias(chunk.section_heading.as_deref(), &chunk.chunk_text);
+            if audience == RetrievalAudience::Authoring {
+                score +=
+                    section_authoring_bias(chunk.section_heading.as_deref(), &chunk.chunk_text);
+            }
             (score, chunk)
         })
         .collect::<Vec<_>>();
@@ -1458,6 +1693,7 @@ pub(crate) fn retrieve_reranked_chunks_across_pages(
     let max_chunks = plan.limit.max(1);
     let max_tokens = plan.token_budget.max(1);
     let capped_max_pages = plan.max_pages.max(1);
+    let audience = plan.audience;
     let candidate_cap = candidate_limit(
         max_chunks.saturating_mul(query_terms.len().max(1)),
         CHUNK_CANDIDATE_MULTIPLIER_ACROSS,
@@ -1468,8 +1704,13 @@ pub(crate) fn retrieve_reranked_chunks_across_pages(
         connection,
         related_page_titles,
         AUTHORING_SEED_CHUNKS_PER_PAGE,
+        audience,
     )?);
-    let reranked = rerank_retrieved_chunks(candidates, query, query_terms, &signals);
+    let candidates = candidates
+        .into_iter()
+        .filter_map(|chunk| sanitize_chunk_for_audience(chunk, audience))
+        .collect::<Vec<_>>();
+    let reranked = rerank_retrieved_chunks(candidates, query, query_terms, &signals, audience);
     let chunks = select_retrieved_chunks(
         reranked,
         max_chunks,
@@ -1503,6 +1744,8 @@ pub(crate) fn retrieve_reranked_chunks_across_pages(
         query: query.to_string(),
         retrieval_mode: if related_page_titles.is_empty() {
             retrieval_mode
+        } else if audience == RetrievalAudience::Authoring {
+            format!("{retrieval_mode}+seed-pages+authoring-curated")
         } else {
             format!("{retrieval_mode}+seed-pages")
         },

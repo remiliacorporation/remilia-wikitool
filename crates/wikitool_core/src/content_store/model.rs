@@ -195,6 +195,13 @@ pub(crate) struct ChunkRetrievalPlan {
     pub(crate) token_budget: usize,
     pub(crate) max_pages: usize,
     pub(crate) diversify: bool,
+    pub(crate) audience: RetrievalAudience,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RetrievalAudience {
+    General,
+    Authoring,
 }
 
 #[derive(Debug, Clone, Default)]

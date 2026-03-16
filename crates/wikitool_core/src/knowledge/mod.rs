@@ -8,3 +8,5 @@ pub mod references;
 pub mod retrieval;
 pub mod status;
 pub mod templates;
+#[cfg(test)]
+mod tests;
