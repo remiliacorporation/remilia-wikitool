@@ -7,7 +7,6 @@ globals:
   frame:
     any: true
   getArgs:
-    args:
-      - any: true
+    any: true
   libraryUtil:
     any: true

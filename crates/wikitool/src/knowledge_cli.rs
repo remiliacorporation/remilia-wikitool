@@ -413,6 +413,43 @@ fn run_knowledge_pack(runtime: &RuntimeOptions, args: KnowledgePackArgs) -> Resu
         KnowledgePackPayload::Found(report) => {
             println!("pack.query: {}", report.query);
             println!("pack.query_terms: {}", format_list(&report.query_terms));
+            println!(
+                "pack.topic_state.title_exists_locally: {}",
+                format_flag(report.topic_assessment.title_exists_locally)
+            );
+            println!(
+                "pack.topic_state.should_create_new_article: {}",
+                format_flag(report.topic_assessment.should_create_new_article)
+            );
+            if let Some(exact_page) = &report.topic_assessment.exact_page {
+                println!(
+                    "pack.topic_state.exact_page: {} (namespace={} redirect={})",
+                    exact_page.title,
+                    exact_page.namespace,
+                    format_flag(exact_page.is_redirect)
+                );
+            } else {
+                println!("pack.topic_state.exact_page: <none>");
+            }
+            println!(
+                "pack.topic_state.local_title_hits.count: {}",
+                report.topic_assessment.local_title_hit_count
+            );
+            for hit in report.topic_assessment.local_title_hits.iter().take(8) {
+                println!(
+                    "pack.topic_state.local_title_hit: {} (namespace={} redirect={})",
+                    hit.title,
+                    hit.namespace,
+                    format_flag(hit.is_redirect)
+                );
+            }
+            println!(
+                "pack.topic_state.backlinks.count: {}",
+                report.topic_assessment.backlink_count
+            );
+            for backlink in report.topic_assessment.backlinks.iter().take(8) {
+                println!("pack.topic_state.backlink: {backlink}");
+            }
             println!("pack.related_pages.count: {}", report.related_pages.len());
             for page in report.related_pages.iter().take(8) {
                 println!(

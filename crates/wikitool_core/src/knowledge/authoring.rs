@@ -1,8 +1,8 @@
 pub use super::model::{
     AuthoringDocsContext, AuthoringInventory, AuthoringKnowledgePack,
     AuthoringKnowledgePackOptions, AuthoringKnowledgePackResult, AuthoringPageCandidate,
-    AuthoringSuggestion, ModuleFunctionUsage, ModuleInvocationExample, ModuleUsageSummary,
-    StubTemplateHint,
+    AuthoringSuggestion, AuthoringTopicAssessment, ModuleFunctionUsage, ModuleInvocationExample,
+    ModuleUsageSummary, StubTemplateHint,
 };
 use super::prelude::*;
 use crate::content_store::parsing;
@@ -20,6 +20,8 @@ use crate::knowledge::templates::{
     collect_authoring_template_reference_titles, load_authoring_template_references,
     load_page_summary_for_connection, summarize_template_usage_for_sources,
 };
+
+const AUTHORING_TOPIC_SIGNAL_LIMIT: usize = 8;
 
 pub fn build_authoring_knowledge_pack(
     paths: &ResolvedPaths,
@@ -61,6 +63,7 @@ pub fn build_authoring_knowledge_pack(
         return Ok(AuthoringKnowledgePack::QueryMissing);
     }
     let query = query_terms[0].clone();
+    let topic_assessment = build_topic_assessment(&connection, &topic)?;
     let template_page_weights = build_template_match_score_map(&connection, &stub_template_titles)?;
     let semantic_page_hits = load_semantic_page_hits(&connection, &query_terms, related_limit)?;
     let authority_page_hits =
@@ -224,10 +227,9 @@ pub fn build_authoring_knowledge_pack(
     )?;
     let docs_context = crate::knowledge::docs_bridge::build_authoring_docs_context(
         paths,
-        &topic,
-        &query_terms,
         &template_references,
         &module_patterns,
+        &stub_detected_templates,
         &options.docs_profile,
     )?;
     if !template_references.is_empty() {
@@ -261,6 +263,7 @@ pub fn build_authoring_knowledge_pack(
             topic,
             query,
             query_terms,
+            topic_assessment,
             inventory,
             pack_token_budget: token_budget,
             pack_token_estimate_total,
@@ -282,6 +285,44 @@ pub fn build_authoring_knowledge_pack(
             token_estimate_total,
         },
     )))
+}
+
+fn build_topic_assessment(
+    connection: &Connection,
+    topic: &str,
+) -> Result<AuthoringTopicAssessment> {
+    let normalized_topic = parsing::normalize_query_title(topic);
+    let exact_page =
+        parsing::load_page_record(connection, &normalized_topic)?.map(|page| LocalSearchHit {
+            title: page.title,
+            namespace: page.namespace,
+            is_redirect: page.is_redirect,
+        });
+    let mut local_title_hits = query_local_search_for_connection(
+        connection,
+        &normalized_topic,
+        AUTHORING_TOPIC_SIGNAL_LIMIT,
+    )?;
+    let local_title_hit_count = local_title_hits.len();
+    if let Some(exact_page) = &exact_page {
+        local_title_hits
+            .retain(|hit| hit.title != exact_page.title || hit.namespace != exact_page.namespace);
+    }
+    local_title_hits.truncate(AUTHORING_TOPIC_SIGNAL_LIMIT);
+
+    let mut backlinks = parsing::query_backlinks_for_connection(connection, &normalized_topic)?;
+    let backlink_count = backlinks.len();
+    backlinks.truncate(AUTHORING_TOPIC_SIGNAL_LIMIT);
+
+    Ok(AuthoringTopicAssessment {
+        title_exists_locally: exact_page.is_some(),
+        should_create_new_article: exact_page.is_none(),
+        exact_page,
+        local_title_hit_count,
+        local_title_hits,
+        backlink_count,
+        backlinks,
+    })
 }
 
 fn authoring_page_allowed(page: &IndexedPageRecord) -> bool {

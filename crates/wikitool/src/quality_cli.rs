@@ -73,11 +73,6 @@ pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
 
     if format == "json" {
         println!("{}", serde_json::to_string_pretty(&report)?);
-    } else if !report.selene_available {
-        println!("lint");
-        println!("selene: missing");
-        println!("warning: Selene not found");
-        println!("hint: install Selene manually or set SELENE_PATH");
     } else {
         println!("lint");
         println!(
@@ -117,9 +112,7 @@ pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
 
-    if report.selene_available
-        && (report.total_errors > 0 || (args.strict && report.total_warnings > 0))
-    {
+    if report.total_errors > 0 || (args.strict && report.total_warnings > 0) {
         bail!(
             "lint found {} error(s) and {} warning(s)",
             report.total_errors,

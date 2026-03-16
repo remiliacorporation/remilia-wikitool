@@ -737,6 +737,8 @@ fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
     assert_eq!(report.topic, "Alpha");
     assert_eq!(report.query, "Alpha");
     assert!(report.query_terms.contains(&"Alpha".to_string()));
+    assert!(report.topic_assessment.title_exists_locally);
+    assert!(!report.topic_assessment.should_create_new_article);
     assert_eq!(report.pack_token_budget, 420);
     assert!(report.pack_token_estimate_total >= report.token_estimate_total);
     assert!(report.inventory.indexed_pages_total >= 3);
@@ -791,6 +793,52 @@ fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
     assert!(report.retrieval_mode.contains("hybrid"));
     assert!(report.retrieval_mode.contains("across"));
     assert!(report.token_estimate_total <= 420);
+}
+
+#[test]
+fn build_authoring_knowledge_pack_reports_article_gap_signals() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Hyperrealtime.wiki"),
+        "'''Hyperrealtime''' mentions [[Miladychan]] in the context of chen2 revival.",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Tim_Clancy.wiki"),
+        "'''Tim Clancy''' created [[Miladychan]] for distributed chat experiments.",
+    );
+
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let report = build_authoring_knowledge_pack(
+        &paths,
+        Some("Miladychan"),
+        None,
+        &AuthoringKnowledgePackOptions::default(),
+    )
+    .expect("authoring pack");
+    let report = match report {
+        AuthoringKnowledgePack::Found(report) => *report,
+        other => panic!("expected found authoring pack, got {other:?}"),
+    };
+
+    assert!(!report.topic_assessment.title_exists_locally);
+    assert!(report.topic_assessment.should_create_new_article);
+    assert!(report.topic_assessment.exact_page.is_none());
+    assert_eq!(report.topic_assessment.local_title_hit_count, 0);
+    assert_eq!(report.topic_assessment.backlink_count, 2);
+    assert_eq!(
+        report.topic_assessment.backlinks,
+        vec!["Hyperrealtime".to_string(), "Tim Clancy".to_string()]
+    );
+    assert!(report.docs_context.is_none());
+    assert!(!report.retrieval_mode.contains("docs-bridge"));
 }
 
 #[test]
@@ -1121,7 +1169,7 @@ fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
     let report = build_authoring_knowledge_pack(
         &paths,
         Some("Alpha"),
-        None,
+        Some("{{Infobox person|name=Draft|occupation=Archivist}}\nDraft prose."),
         &AuthoringKnowledgePackOptions {
             related_page_limit: 6,
             chunk_limit: 6,
@@ -1168,6 +1216,32 @@ fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
     assert!(report.retrieval_mode.contains("template-guides"));
     assert!(report.retrieval_mode.contains("module-patterns"));
     assert!(report.retrieval_mode.contains("docs-bridge"));
+}
+
+#[test]
+fn build_local_context_prefers_prose_over_leading_metadata() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "{{SHORTDESC:Metadata only}}\n{{Infobox person|name=Alpha}}\n'''Alpha''' is the first prose sentence with grounded context.\n== History ==\nAlpha history sentence.",
+    );
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let context = build_local_context(&paths, "Alpha")
+        .expect("context query")
+        .expect("alpha context exists");
+    assert!(context.content_preview.starts_with("'''Alpha'''"));
+    assert!(!context.context_chunks.is_empty());
+    assert!(
+        context
+            .context_chunks
+            .iter()
+            .all(|chunk| !chunk.chunk_text.starts_with("{{SHORTDESC"))
+    );
 }
 
 #[test]

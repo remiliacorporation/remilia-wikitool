@@ -3,7 +3,9 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 
 use crate::docs::{DocsContextOptions, build_docs_context};
-use crate::knowledge::model::{AuthoringDocsContext, ModuleUsageSummary, TemplateReference};
+use crate::knowledge::model::{
+    AuthoringDocsContext, ModuleUsageSummary, StubTemplateHint, TemplateReference,
+};
 use crate::runtime::ResolvedPaths;
 
 const AUTHORING_DOCS_QUERY_LIMIT: usize = 4;
@@ -11,19 +13,24 @@ const AUTHORING_DOCS_TOKEN_BUDGET: usize = 560;
 
 pub(crate) fn build_authoring_docs_context(
     paths: &ResolvedPaths,
-    topic: &str,
-    query_terms: &[String],
     template_references: &[TemplateReference],
     module_patterns: &[ModuleUsageSummary],
+    stub_detected_templates: &[StubTemplateHint],
     docs_profile: &str,
 ) -> Result<Option<AuthoringDocsContext>> {
     let normalized_profile = normalize_spaces(&docs_profile.replace('_', " "));
     if normalized_profile.is_empty() {
         return Ok(None);
     }
+    if stub_detected_templates.is_empty() {
+        return Ok(None);
+    }
 
-    let queries =
-        build_authoring_docs_queries(topic, query_terms, template_references, module_patterns);
+    let queries = build_authoring_docs_queries(
+        template_references,
+        module_patterns,
+        stub_detected_templates,
+    );
     if queries.is_empty() {
         return Ok(None);
     }
@@ -166,21 +173,21 @@ pub(crate) fn build_authoring_docs_context(
 }
 
 fn build_authoring_docs_queries(
-    topic: &str,
-    query_terms: &[String],
     template_references: &[TemplateReference],
     module_patterns: &[ModuleUsageSummary],
+    stub_detected_templates: &[StubTemplateHint],
 ) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
 
-    push_authoring_docs_query(&mut out, &mut seen, topic);
-    for term in query_terms.iter().take(2) {
-        push_authoring_docs_query(&mut out, &mut seen, term);
-    }
-    for template_title in template_references
+    for template_title in stub_detected_templates
         .iter()
-        .map(|reference| reference.template.template_title.as_str())
+        .map(|template| template.template_title.as_str())
+        .chain(
+            template_references
+                .iter()
+                .map(|reference| reference.template.template_title.as_str()),
+        )
     {
         if let Some(tail) = template_title.split_once(':').map(|(_, tail)| tail) {
             push_authoring_docs_query(&mut out, &mut seen, tail);
@@ -189,7 +196,7 @@ fn build_authoring_docs_queries(
             break;
         }
     }
-    if !template_references.is_empty() {
+    if !stub_detected_templates.is_empty() {
         push_authoring_docs_query(&mut out, &mut seen, "template parameters");
     }
     if !module_patterns.is_empty() {

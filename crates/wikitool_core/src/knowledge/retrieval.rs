@@ -173,21 +173,8 @@ pub fn build_local_context(
         .iter()
         .map(|section| count_words(&section.section_text))
         .sum::<usize>();
-    let content_preview = section_rows
-        .iter()
-        .find_map(|section| {
-            let summary = normalize_spaces(&section.summary_text);
-            if summary.is_empty() {
-                None
-            } else {
-                Some(summary)
-            }
-        })
-        .unwrap_or_else(|| {
-            let loaded = content.get_or_insert(String::new());
-            make_content_preview(loaded, 280)
-        });
-    let context_chunks =
+    let prefer_main_namespace_prose = page.namespace == Namespace::Main.as_str();
+    let raw_context_chunks =
         match load_context_chunks_for_bundle(&connection, &page.relative_path, content.as_deref())?
         {
             Some(chunks) => chunks,
@@ -196,6 +183,23 @@ pub fn build_local_context(
                 fallback_context_chunks_from_content(loaded)
             }
         };
+    let context_chunks =
+        sanitize_context_chunks_for_display(raw_context_chunks, prefer_main_namespace_prose);
+    let content_preview = if let Some(preview) = context_chunks
+        .first()
+        .map(|chunk| make_content_preview(&chunk.chunk_text, 280))
+        .or_else(|| best_context_preview(&section_rows, prefer_main_namespace_prose))
+    {
+        preview
+    } else {
+        let loaded = content.get_or_insert(load_page_content(paths, &page.relative_path)?);
+        let preview = make_content_preview(loaded, 280);
+        if prefer_main_namespace_prose {
+            sanitize_main_namespace_prose(&preview).unwrap_or(preview)
+        } else {
+            preview
+        }
+    };
     let context_tokens_estimate = context_chunks
         .iter()
         .map(|chunk| chunk.token_estimate)
@@ -1375,6 +1379,67 @@ fn strip_leading_authoring_metadata(chunk_text: &str) -> &str {
     }
 }
 
+fn sanitize_main_namespace_prose(value: &str) -> Option<String> {
+    let normalized = normalize_spaces(value);
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let stripped = normalize_spaces(strip_leading_authoring_metadata(&normalized));
+    if stripped == normalized {
+        return Some(normalized);
+    }
+    if stripped.is_empty() || chunk_word_like_count(&stripped) < 5 {
+        return None;
+    }
+    Some(stripped)
+}
+
+fn best_context_preview(
+    section_rows: &[IndexedSectionRecord],
+    prefer_main_namespace_prose: bool,
+) -> Option<String> {
+    for section in section_rows {
+        let summary = normalize_spaces(&section.summary_text);
+        if summary.is_empty() {
+            continue;
+        }
+        if prefer_main_namespace_prose {
+            if let Some(sanitized) = sanitize_main_namespace_prose(&summary) {
+                return Some(sanitized);
+            }
+            continue;
+        }
+        return Some(summary);
+    }
+    None
+}
+
+fn sanitize_context_chunks_for_display(
+    chunks: Vec<LocalContextChunk>,
+    prefer_main_namespace_prose: bool,
+) -> Vec<LocalContextChunk> {
+    if !prefer_main_namespace_prose {
+        return chunks;
+    }
+
+    let mut sanitized = Vec::with_capacity(chunks.len());
+    for mut chunk in chunks {
+        let Some(chunk_text) = sanitize_main_namespace_prose(&chunk.chunk_text) else {
+            continue;
+        };
+        chunk.token_estimate = estimate_tokens(&chunk_text);
+        chunk.chunk_text = chunk_text;
+        sanitized.push(chunk);
+    }
+
+    if sanitized.is_empty() {
+        Vec::new()
+    } else {
+        sanitized
+    }
+}
+
 pub(crate) fn chunk_looks_like_noise(chunk_text: &str) -> bool {
     let normalized = normalize_spaces(chunk_text);
     if normalized.is_empty() {
@@ -1474,16 +1539,21 @@ fn sanitize_chunk_for_audience(
     mut chunk: RetrievedChunk,
     audience: RetrievalAudience,
 ) -> Option<RetrievedChunk> {
-    if !chunk_allowed_for_audience(&chunk, audience) {
-        return None;
+    if chunk.source_namespace == Namespace::Main.as_str() {
+        let chunk_text = sanitize_main_namespace_prose(&chunk.chunk_text)?;
+        chunk.token_estimate = estimate_tokens(&chunk_text);
+        chunk.chunk_text = chunk_text;
+    } else {
+        let normalized = normalize_spaces(&chunk.chunk_text);
+        if normalized.is_empty() {
+            return None;
+        }
+        chunk.token_estimate = estimate_tokens(&normalized);
+        chunk.chunk_text = normalized;
     }
 
-    if audience == RetrievalAudience::Authoring {
-        let stripped = normalize_spaces(strip_leading_authoring_metadata(&chunk.chunk_text));
-        if !stripped.is_empty() {
-            chunk.token_estimate = estimate_tokens(&stripped);
-            chunk.chunk_text = stripped;
-        }
+    if !chunk_allowed_for_audience(&chunk, audience) {
+        return None;
     }
 
     Some(chunk)

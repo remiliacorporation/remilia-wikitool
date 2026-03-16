@@ -20,7 +20,7 @@ pub struct StoredIndexStats {
     pub by_namespace: BTreeMap<String, usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LocalSearchHit {
     pub title: String,
     pub namespace: String,
@@ -197,6 +197,17 @@ pub struct AuthoringSuggestion {
     pub title: String,
     pub support_count: usize,
     pub evidence_titles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringTopicAssessment {
+    pub title_exists_locally: bool,
+    pub should_create_new_article: bool,
+    pub exact_page: Option<LocalSearchHit>,
+    pub local_title_hit_count: usize,
+    pub local_title_hits: Vec<LocalSearchHit>,
+    pub backlink_count: usize,
+    pub backlinks: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -385,6 +396,7 @@ pub struct AuthoringKnowledgePackResult {
     pub topic: String,
     pub query: String,
     pub query_terms: Vec<String>,
+    pub topic_assessment: AuthoringTopicAssessment,
     pub inventory: AuthoringInventory,
     pub pack_token_budget: usize,
     pub pack_token_estimate_total: usize,
