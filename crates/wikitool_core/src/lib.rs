@@ -1,4 +1,5 @@
 pub mod config;
+pub mod content_store;
 pub mod contracts;
 pub mod delete;
 pub mod docs;

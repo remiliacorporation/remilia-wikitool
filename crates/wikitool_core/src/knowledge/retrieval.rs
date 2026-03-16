@@ -1,14 +1,14 @@
-use super::prelude::*;
-use crate::knowledge::model::{AuthoringPageCandidate, StubTemplateHint};
-use crate::knowledge::authoring::push_authoring_query_term;
-use crate::knowledge::references::{LocalMediaUsage, LocalReferenceUsage};
-use crate::knowledge::templates::{
-    load_template_invocation_rows_for_template, normalize_template_lookup_title,
-};
 pub use super::model::{
     LocalChunkAcrossPagesResult, LocalChunkAcrossRetrieval, LocalChunkRetrieval,
     LocalChunkRetrievalResult, LocalContextBundle, LocalContextChunk, LocalContextHeading,
     LocalSearchHit, LocalSectionSummary, LocalTemplateInvocation, RetrievedChunk,
+};
+use super::prelude::*;
+use crate::knowledge::authoring::push_authoring_query_term;
+use crate::knowledge::model::{AuthoringPageCandidate, StubTemplateHint};
+use crate::knowledge::references::{LocalMediaUsage, LocalReferenceUsage};
+use crate::knowledge::templates::{
+    load_template_invocation_rows_for_template, normalize_template_lookup_title,
 };
 
 pub fn query_search_local(
@@ -567,7 +567,10 @@ pub(crate) fn load_indexed_section_rows_for_connection(
     Ok(out)
 }
 
-pub(crate) fn load_page_content(paths: &ResolvedPaths, source_relative_path: &str) -> Result<String> {
+pub(crate) fn load_page_content(
+    paths: &ResolvedPaths,
+    source_relative_path: &str,
+) -> Result<String> {
     let absolute = absolute_path_from_relative(paths, source_relative_path);
     validate_scoped_path(paths, &absolute)?;
     fs::read_to_string(&absolute)
@@ -1509,6 +1512,3 @@ pub(crate) fn retrieve_reranked_chunks_across_pages(
         token_estimate_total,
     })
 }
-
-
-

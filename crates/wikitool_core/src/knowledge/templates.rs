@@ -1,12 +1,14 @@
-use super::prelude::*;
-use crate::knowledge::model::StubTemplateHint;
-use crate::knowledge::retrieval::LocalSectionSummary;
-use crate::knowledge::retrieval::{load_context_chunks_for_bundle, load_section_records_for_bundle};
 pub use super::model::{
     ActiveTemplateCatalog, ActiveTemplateCatalogLookup, ModuleFunctionUsage,
     ModuleInvocationExample, ModuleUsageSummary, TemplateImplementationPage,
     TemplateInvocationExample, TemplateParameterUsage, TemplateReference, TemplateReferenceLookup,
     TemplateUsageSummary,
+};
+use super::prelude::*;
+use crate::knowledge::model::StubTemplateHint;
+use crate::knowledge::retrieval::LocalSectionSummary;
+use crate::knowledge::retrieval::{
+    load_context_chunks_for_bundle, load_section_records_for_bundle,
 };
 
 pub fn query_active_template_catalog(
@@ -745,7 +747,10 @@ pub(crate) fn load_page_summary_for_connection(
     Ok(String::new())
 }
 
-pub(crate) fn load_template_aliases(connection: &Connection, template_title: &str) -> Result<Vec<String>> {
+pub(crate) fn load_template_aliases(
+    connection: &Connection,
+    template_title: &str,
+) -> Result<Vec<String>> {
     if !table_exists(connection, "indexed_page_aliases")? {
         return Ok(Vec::new());
     }
@@ -949,6 +954,3 @@ pub(crate) fn parse_template_parameter_examples(invocation_text: &str) -> Vec<(S
     }
     out
 }
-
-
-

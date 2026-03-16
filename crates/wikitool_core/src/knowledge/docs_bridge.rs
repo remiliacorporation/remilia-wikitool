@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 
 use crate::docs::{DocsContextOptions, build_docs_context};
-use crate::index::{AuthoringDocsContext, ModuleUsageSummary, TemplateReference};
+use crate::knowledge::model::{AuthoringDocsContext, ModuleUsageSummary, TemplateReference};
 use crate::runtime::ResolvedPaths;
 
 const AUTHORING_DOCS_QUERY_LIMIT: usize = 4;

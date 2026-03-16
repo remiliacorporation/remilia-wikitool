@@ -680,4 +680,3 @@ pub fn load_stored_index_stats(paths: &ResolvedPaths) -> Result<Option<StoredInd
         by_namespace,
     }))
 }
-

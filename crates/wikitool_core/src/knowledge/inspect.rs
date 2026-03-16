@@ -69,4 +69,3 @@ pub fn query_empty_categories(paths: &ResolvedPaths) -> Result<Option<Vec<String
     }
     Ok(Some(out))
 }
-

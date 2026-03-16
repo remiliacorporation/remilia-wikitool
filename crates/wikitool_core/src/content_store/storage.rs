@@ -1,5 +1,5 @@
-use super::*;
 use super::model::*;
+use super::*;
 
 pub(crate) fn query_page_records_from_sections_for_connection(
     connection: &Connection,
@@ -11,8 +11,11 @@ pub(crate) fn query_page_records_from_sections_for_connection(
     }
 
     let limit_i64 = i64::try_from(limit).context("section query limit does not fit into i64")?;
-    if crate::index::parsing::fts_table_exists(connection, "indexed_page_sections_fts") {
-        let fts_query = format!("\"{}\" *", crate::index::parsing::normalize_spaces(&query.replace('_', " ")));
+    if super::parsing::fts_table_exists(connection, "indexed_page_sections_fts") {
+        let fts_query = format!(
+            "\"{}\" *",
+            super::parsing::normalize_spaces(&query.replace('_', " "))
+        );
         let mut statement = connection
             .prepare(
                 "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
@@ -83,8 +86,11 @@ pub(crate) fn query_page_records_from_semantics_for_connection(
     }
 
     let limit_i64 = i64::try_from(limit).context("semantic query limit does not fit into i64")?;
-    if crate::index::parsing::fts_table_exists(connection, "indexed_page_semantics_fts") {
-        let fts_query = format!("\"{}\" *", crate::index::parsing::normalize_spaces(&query.replace('_', " ")));
+    if super::parsing::fts_table_exists(connection, "indexed_page_semantics_fts") {
+        let fts_query = format!(
+            "\"{}\" *",
+            super::parsing::normalize_spaces(&query.replace('_', " "))
+        );
         let mut statement = connection
             .prepare(
                 "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
@@ -150,7 +156,7 @@ pub(crate) fn load_semantic_page_hits(
         return Ok(Vec::new());
     }
 
-    let search_limit = crate::index::model::candidate_limit(limit.max(1), 2);
+    let search_limit = candidate_limit(limit.max(1), 2);
     let mut weights = BTreeMap::<String, usize>::new();
     let mut titles = BTreeMap::<String, String>::new();
     for (query_index, term) in query_terms.iter().enumerate() {
@@ -197,7 +203,9 @@ pub(crate) fn materialize_page_hits(
     Ok(hits)
 }
 
-pub(crate) fn build_semantic_page_weight_map(semantic_hits: &[SemanticPageHit]) -> BTreeMap<String, usize> {
+pub(crate) fn build_semantic_page_weight_map(
+    semantic_hits: &[SemanticPageHit],
+) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for hit in semantic_hits {
         out.insert(hit.title.to_ascii_lowercase(), hit.retrieval_weight);
@@ -213,7 +221,9 @@ pub(crate) fn build_authority_page_weight_map(hits: &[SemanticPageHit]) -> BTree
     out
 }
 
-pub(crate) fn build_identifier_page_weight_map(hits: &[SemanticPageHit]) -> BTreeMap<String, usize> {
+pub(crate) fn build_identifier_page_weight_map(
+    hits: &[SemanticPageHit],
+) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for hit in hits {
         out.insert(hit.title.to_ascii_lowercase(), hit.retrieval_weight);
@@ -264,7 +274,9 @@ pub(crate) fn query_page_records_from_aliases_for_connection(
     Ok(out)
 }
 
-pub(crate) fn decode_page_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<IndexedPageRecord> {
+pub(crate) fn decode_page_record_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<IndexedPageRecord> {
     let bytes_i64: i64 = row.get(5)?;
     Ok(IndexedPageRecord {
         title: row.get(0)?,
@@ -310,7 +322,11 @@ pub(crate) fn load_indexed_context_chunks_for_connection(
             chunk_text: row.chunk_text,
         });
     }
-    Ok(crate::index::parsing::apply_context_chunk_budget(out, max_chunks, token_budget))
+    Ok(super::parsing::apply_context_chunk_budget(
+        out,
+        max_chunks,
+        token_budget,
+    ))
 }
 
 pub(crate) fn query_page_chunks_fts_for_connection(
@@ -417,7 +433,7 @@ pub(crate) fn load_indexed_template_invocations_for_connection(
             let parameter_keys: String = row.get(1)?;
             Ok(LocalTemplateInvocation {
                 template_title,
-                parameter_keys: crate::index::parsing::parse_parameter_key_list(&parameter_keys),
+                parameter_keys: super::parsing::parse_parameter_key_list(&parameter_keys),
             })
         })
         .context("failed to run indexed_template_invocations query")?;
@@ -457,7 +473,9 @@ pub(crate) fn load_indexed_reference_rows_for_connection(
                 reference_group: row.get(2)?,
                 citation_profile: row.get(3)?,
                 citation_family: row.get(4)?,
-                primary_template_title: crate::index::parsing::normalize_non_empty_string(row.get::<_, String>(5)?),
+                primary_template_title: super::parsing::normalize_non_empty_string(
+                    row.get::<_, String>(5)?,
+                ),
                 source_type: row.get(6)?,
                 source_origin: row.get(7)?,
                 source_family: row.get(8)?,
@@ -469,13 +487,13 @@ pub(crate) fn load_indexed_reference_rows_for_connection(
                 source_domain: row.get(14)?,
                 source_date: row.get(15)?,
                 canonical_url: row.get(16)?,
-                identifier_keys: crate::index::parsing::parse_string_list(&row.get::<_, String>(17)?),
-                identifier_entries: crate::index::parsing::parse_string_list(&row.get::<_, String>(18)?),
-                source_urls: crate::index::parsing::parse_string_list(&row.get::<_, String>(19)?),
-                retrieval_signals: crate::index::parsing::parse_string_list(&row.get::<_, String>(20)?),
+                identifier_keys: super::parsing::parse_string_list(&row.get::<_, String>(17)?),
+                identifier_entries: super::parsing::parse_string_list(&row.get::<_, String>(18)?),
+                source_urls: super::parsing::parse_string_list(&row.get::<_, String>(19)?),
+                retrieval_signals: super::parsing::parse_string_list(&row.get::<_, String>(20)?),
                 summary_text: row.get(21)?,
-                template_titles: crate::index::parsing::parse_string_list(&row.get::<_, String>(22)?),
-                link_titles: crate::index::parsing::parse_string_list(&row.get::<_, String>(23)?),
+                template_titles: super::parsing::parse_string_list(&row.get::<_, String>(22)?),
+                link_titles: super::parsing::parse_string_list(&row.get::<_, String>(23)?),
                 token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
             })
         })
@@ -511,7 +529,7 @@ pub(crate) fn load_indexed_media_rows_for_connection(
                 file_title: row.get(1)?,
                 media_kind: row.get(2)?,
                 caption_text: row.get(3)?,
-                options: crate::index::parsing::parse_string_list(&row.get::<_, String>(4)?),
+                options: super::parsing::parse_string_list(&row.get::<_, String>(4)?),
                 token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
             })
         })
@@ -523,8 +541,3 @@ pub(crate) fn load_indexed_media_rows_for_connection(
     }
     Ok(out)
 }
-
-
-
-
-

@@ -6,7 +6,7 @@ pub(crate) use self::parse_common::{
 use self::parse_examples::extract_examples_for_section;
 use self::parse_markup::{dedupe_strings, extract_link_titles, extract_template_titles};
 use self::parse_sections::{
-    build_page_aliases, build_section_semantic_text, build_semantic_text, build_page_links,
+    build_page_aliases, build_page_links, build_section_semantic_text, build_semantic_text,
     split_into_sections,
 };
 use self::parse_symbols::{dedupe_symbols, extract_content_symbols, extract_title_symbols};
@@ -115,7 +115,6 @@ pub(crate) struct DocsPageParseInput {
     pub source_parent_revision_id: Option<i64>,
     pub source_timestamp: Option<String>,
 }
-
 
 pub(crate) fn parse_docs_page(input: DocsPageParseInput) -> ParsedDocsPage {
     let page_kind = classify_docs_page_kind(&input.page_title);
@@ -247,7 +246,6 @@ pub(crate) fn parse_docs_page(input: DocsPageParseInput) -> ParsedDocsPage {
         links,
     }
 }
-
 
 #[cfg(test)]
 mod tests {

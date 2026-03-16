@@ -1,24 +1,24 @@
-use super::prelude::*;
-use crate::knowledge::references::{
-    MediaUsageSummary, ReferenceUsageSummary, summarize_media_usage_for_sources,
-    summarize_reference_usage_for_sources,
-};
-use crate::knowledge::retrieval::{
-    build_related_page_weight_map, build_template_match_score_map,
-    load_reference_authority_page_hits, load_reference_identifier_page_hits, query_search_fts,
-    query_search_like, retrieve_reranked_chunks_across_pages, LocalSearchHit, RetrievedChunk,
-};
-use crate::knowledge::templates::{
-    TemplateReference, TemplateUsageSummary,
-    build_authoring_module_patterns, collect_authoring_template_reference_titles,
-    load_authoring_template_references, load_page_summary_for_connection,
-    summarize_template_usage_for_sources,
-};
 pub use super::model::{
     AuthoringDocsContext, AuthoringInventory, AuthoringKnowledgePack,
     AuthoringKnowledgePackOptions, AuthoringKnowledgePackResult, AuthoringPageCandidate,
     AuthoringSuggestion, ModuleFunctionUsage, ModuleInvocationExample, ModuleUsageSummary,
     StubTemplateHint,
+};
+use super::prelude::*;
+use crate::content_store::parsing;
+use crate::knowledge::references::{
+    MediaUsageSummary, ReferenceUsageSummary, summarize_media_usage_for_sources,
+    summarize_reference_usage_for_sources,
+};
+use crate::knowledge::retrieval::{
+    LocalSearchHit, RetrievedChunk, build_related_page_weight_map, build_template_match_score_map,
+    load_reference_authority_page_hits, load_reference_identifier_page_hits, query_search_fts,
+    query_search_like, retrieve_reranked_chunks_across_pages,
+};
+use crate::knowledge::templates::{
+    TemplateReference, TemplateUsageSummary, build_authoring_module_patterns,
+    collect_authoring_template_reference_titles, load_authoring_template_references,
+    load_page_summary_for_connection, summarize_template_usage_for_sources,
 };
 
 pub fn build_authoring_knowledge_pack(
@@ -27,13 +27,13 @@ pub fn build_authoring_knowledge_pack(
     stub_content: Option<&str>,
     options: &AuthoringKnowledgePackOptions,
 ) -> Result<AuthoringKnowledgePack> {
-    let connection = match crate::index::parsing::open_indexed_connection(paths)? {
+    let connection = match parsing::open_indexed_connection(paths)? {
         Some(connection) => connection,
         None => return Ok(AuthoringKnowledgePack::IndexMissing),
     };
 
     let normalized_topic = topic
-        .map(|value| crate::index::parsing::normalize_spaces(&value.replace('_', " ")))
+        .map(|value| parsing::normalize_spaces(&value.replace('_', " ")))
         .unwrap_or_default();
     let (stub_link_titles, stub_template_titles) = analyze_stub_hints(stub_content);
 
@@ -87,7 +87,9 @@ pub fn build_authoring_knowledge_pack(
     let mut stub_existing_links = Vec::new();
     let mut stub_missing_links = Vec::new();
     for link in stub_link_titles {
-        if let Some(page) = crate::index::parsing::load_page_record(&connection, &crate::index::parsing::normalize_query_title(&link))? {
+        if let Some(page) =
+            parsing::load_page_record(&connection, &parsing::normalize_query_title(&link))?
+        {
             stub_existing_links.push(page.title);
         } else {
             stub_missing_links.push(link);
@@ -281,15 +283,15 @@ fn analyze_stub_hints(stub_content: Option<&str>) -> (Vec<String>, Vec<StubTempl
     };
 
     let mut links = BTreeSet::new();
-    for link in crate::index::parsing::extract_wikilinks(content) {
-        let normalized = crate::index::parsing::normalize_query_title(&link.target_title);
+    for link in parsing::extract_wikilinks(content) {
+        let normalized = parsing::normalize_query_title(&link.target_title);
         if !normalized.is_empty() {
             links.insert(normalized);
         }
     }
 
     let mut templates = BTreeMap::<String, BTreeSet<String>>::new();
-    for invocation in crate::index::parsing::extract_template_invocations(content) {
+    for invocation in parsing::extract_template_invocations(content) {
         let entry = templates.entry(invocation.template_title).or_default();
         for key in invocation.parameter_keys {
             entry.insert(key);
@@ -313,11 +315,11 @@ fn query_local_search_for_connection(
     query: &str,
     limit: usize,
 ) -> Result<Vec<LocalSearchHit>> {
-    let normalized = crate::index::parsing::normalize_spaces(&query.replace('_', " "));
+    let normalized = parsing::normalize_spaces(&query.replace('_', " "));
     if normalized.is_empty() {
         return Ok(Vec::new());
     }
-    if crate::index::parsing::fts_table_exists(connection, "indexed_pages_fts")
+    if parsing::fts_table_exists(connection, "indexed_pages_fts")
         && let Ok(hits) = query_search_fts(connection, &normalized, limit)
         && !hits.is_empty()
     {
@@ -354,11 +356,11 @@ fn collect_related_pages_for_authoring(
     let search_limit = candidate_limit(inputs.limit.max(1), 2);
 
     for title in inputs.stub_link_titles {
-        let normalized = crate::index::parsing::normalize_query_title(title);
+        let normalized = parsing::normalize_query_title(title);
         if normalized.is_empty() {
             continue;
         }
-        if let Some(page) = crate::index::parsing::load_page_record(connection, &normalized)? {
+        if let Some(page) = parsing::load_page_record(connection, &normalized)? {
             add_authoring_page_candidate(&mut candidates, page, "stub-link", 400);
         }
     }
@@ -370,7 +372,7 @@ fn collect_related_pages_for_authoring(
             .then_with(|| left_title.cmp(right_title))
     });
     for (title, score) in ranked_template_matches.into_iter().take(search_limit) {
-        if let Some(page) = crate::index::parsing::load_page_record(connection, title)? {
+        if let Some(page) = parsing::load_page_record(connection, title)? {
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
@@ -381,7 +383,7 @@ fn collect_related_pages_for_authoring(
     }
 
     for semantic_hit in inputs.semantic_page_hits {
-        if let Some(page) = crate::index::parsing::load_page_record(connection, &semantic_hit.title)? {
+        if let Some(page) = parsing::load_page_record(connection, &semantic_hit.title)? {
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
@@ -392,7 +394,7 @@ fn collect_related_pages_for_authoring(
     }
 
     for authority_hit in inputs.authority_page_hits {
-        if let Some(page) = crate::index::parsing::load_page_record(connection, &authority_hit.title)? {
+        if let Some(page) = parsing::load_page_record(connection, &authority_hit.title)? {
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
@@ -403,7 +405,7 @@ fn collect_related_pages_for_authoring(
     }
 
     for identifier_hit in inputs.identifier_page_hits {
-        if let Some(page) = crate::index::parsing::load_page_record(connection, &identifier_hit.title)? {
+        if let Some(page) = parsing::load_page_record(connection, &identifier_hit.title)? {
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
@@ -419,11 +421,11 @@ fn collect_related_pages_for_authoring(
             .into_iter()
             .enumerate()
         {
-            let normalized = crate::index::parsing::normalize_query_title(&hit.title);
+            let normalized = parsing::normalize_query_title(&hit.title);
             if normalized.is_empty() {
                 continue;
             }
-            if let Some(page) = crate::index::parsing::load_page_record(connection, &normalized)? {
+            if let Some(page) = parsing::load_page_record(connection, &normalized)? {
                 let score = title_search_score
                     .saturating_sub(rank.saturating_mul(12))
                     .max(24);
@@ -506,7 +508,7 @@ fn expand_authoring_query_terms(topic: &str, stub_link_titles: &[String]) -> Vec
     if let Some((_, body)) = topic.split_once(':') {
         push_authoring_query_term(&mut out, &mut seen, body);
     }
-    for token in crate::index::parsing::normalize_spaces(&topic.replace('_', " ")).split_whitespace() {
+    for token in parsing::normalize_spaces(&topic.replace('_', " ")).split_whitespace() {
         if token.len() >= 4 {
             push_authoring_query_term(&mut out, &mut seen, token);
         }
@@ -532,7 +534,7 @@ pub(crate) fn push_authoring_query_term(
     if out.len() >= AUTHORING_QUERY_EXPANSION_LIMIT {
         return;
     }
-    let normalized = crate::index::parsing::normalize_spaces(&value.replace('_', " "));
+    let normalized = parsing::normalize_spaces(&value.replace('_', " "));
     if normalized.is_empty() {
         return;
     }
@@ -669,40 +671,40 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
     let page_summary_tokens = inputs
         .related_pages
         .iter()
-        .map(|page| crate::index::parsing::estimate_tokens(&page.summary))
+        .map(|page| parsing::estimate_tokens(&page.summary))
         .sum::<usize>();
     let link_tokens = inputs
         .suggested_links
         .iter()
-        .map(|suggestion| crate::index::parsing::estimate_tokens(&suggestion.title))
+        .map(|suggestion| parsing::estimate_tokens(&suggestion.title))
         .sum::<usize>();
     let category_tokens = inputs
         .suggested_categories
         .iter()
-        .map(|suggestion| crate::index::parsing::estimate_tokens(&suggestion.title))
+        .map(|suggestion| parsing::estimate_tokens(&suggestion.title))
         .sum::<usize>();
     let template_tokens = inputs
         .suggested_templates
         .iter()
         .chain(inputs.template_baseline.iter())
         .map(|template| {
-            crate::index::parsing::estimate_tokens(&template.template_title)
+            parsing::estimate_tokens(&template.template_title)
                 + template
                     .parameter_stats
                     .iter()
                     .map(|stat| {
-                        crate::index::parsing::estimate_tokens(&stat.key)
+                        parsing::estimate_tokens(&stat.key)
                             + stat
                                 .example_values
                                 .iter()
-                                .map(|value| crate::index::parsing::estimate_tokens(value))
+                                .map(|value| parsing::estimate_tokens(value))
                                 .sum::<usize>()
                     })
                     .sum::<usize>()
                 + template
                     .implementation_titles
                     .iter()
-                    .map(|title| crate::index::parsing::estimate_tokens(title))
+                    .map(|title| parsing::estimate_tokens(title))
                     .sum::<usize>()
                 + template
                     .implementation_preview
@@ -720,13 +722,13 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
         .template_references
         .iter()
         .map(|reference| {
-            crate::index::parsing::estimate_tokens(&reference.template.template_title)
+            parsing::estimate_tokens(&reference.template.template_title)
                 + reference
                     .implementation_pages
                     .iter()
                     .map(|page| {
-                        crate::index::parsing::estimate_tokens(&page.page_title)
-                            + crate::index::parsing::estimate_tokens(&page.summary_text)
+                        parsing::estimate_tokens(&page.page_title)
+                            + parsing::estimate_tokens(&page.summary_text)
                             + page
                                 .context_chunks
                                 .iter()
@@ -740,16 +742,16 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
         .module_patterns
         .iter()
         .map(|module| {
-            crate::index::parsing::estimate_tokens(&module.module_title)
+            parsing::estimate_tokens(&module.module_title)
                 + module
                     .function_stats
                     .iter()
                     .map(|function| {
-                        crate::index::parsing::estimate_tokens(&function.function_name)
+                        parsing::estimate_tokens(&function.function_name)
                             + function
                                 .example_parameter_keys
                                 .iter()
-                                .map(|key| crate::index::parsing::estimate_tokens(key))
+                                .map(|key| parsing::estimate_tokens(key))
                                 .sum::<usize>()
                     })
                     .sum::<usize>()
@@ -764,45 +766,45 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
         .suggested_references
         .iter()
         .map(|reference| {
-            crate::index::parsing::estimate_tokens(&reference.citation_profile)
-                + crate::index::parsing::estimate_tokens(&reference.citation_family)
-                + crate::index::parsing::estimate_tokens(&reference.source_type)
-                + crate::index::parsing::estimate_tokens(&reference.source_origin)
-                + crate::index::parsing::estimate_tokens(&reference.source_family)
+            parsing::estimate_tokens(&reference.citation_profile)
+                + parsing::estimate_tokens(&reference.citation_family)
+                + parsing::estimate_tokens(&reference.source_type)
+                + parsing::estimate_tokens(&reference.source_origin)
+                + parsing::estimate_tokens(&reference.source_family)
                 + reference
                     .common_templates
                     .iter()
-                    .map(|template| crate::index::parsing::estimate_tokens(template))
+                    .map(|template| parsing::estimate_tokens(template))
                     .sum::<usize>()
                 + reference
                     .common_links
                     .iter()
-                    .map(|title| crate::index::parsing::estimate_tokens(title))
+                    .map(|title| parsing::estimate_tokens(title))
                     .sum::<usize>()
                 + reference
                     .common_domains
                     .iter()
-                    .map(|domain| crate::index::parsing::estimate_tokens(domain))
+                    .map(|domain| parsing::estimate_tokens(domain))
                     .sum::<usize>()
                 + reference
                     .common_authorities
                     .iter()
-                    .map(|authority| crate::index::parsing::estimate_tokens(authority))
+                    .map(|authority| parsing::estimate_tokens(authority))
                     .sum::<usize>()
                 + reference
                     .common_identifier_keys
                     .iter()
-                    .map(|identifier| crate::index::parsing::estimate_tokens(identifier))
+                    .map(|identifier| parsing::estimate_tokens(identifier))
                     .sum::<usize>()
                 + reference
                     .common_identifier_entries
                     .iter()
-                    .map(|identifier| crate::index::parsing::estimate_tokens(identifier))
+                    .map(|identifier| parsing::estimate_tokens(identifier))
                     .sum::<usize>()
                 + reference
                     .common_retrieval_signals
                     .iter()
-                    .map(|flag| crate::index::parsing::estimate_tokens(flag))
+                    .map(|flag| parsing::estimate_tokens(flag))
                     .sum::<usize>()
                 + reference
                     .example_references
@@ -815,7 +817,7 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
         .suggested_media
         .iter()
         .map(|media| {
-            crate::index::parsing::estimate_tokens(&media.file_title)
+            parsing::estimate_tokens(&media.file_title)
                 + media
                     .example_usages
                     .iter()
@@ -827,11 +829,11 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
         .stub_detected_templates
         .iter()
         .map(|template| {
-            crate::index::parsing::estimate_tokens(&template.template_title)
+            parsing::estimate_tokens(&template.template_title)
                 + template
                     .parameter_keys
                     .iter()
-                    .map(|key| crate::index::parsing::estimate_tokens(key))
+                    .map(|key| parsing::estimate_tokens(key))
                     .sum::<usize>()
         })
         .sum::<usize>();
@@ -859,26 +861,27 @@ fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usi
 }
 
 fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventory> {
-    let indexed_pages_total = crate::index::parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_pages")
-        .context("failed to count indexed pages for authoring inventory")?;
+    let indexed_pages_total =
+        parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_pages")
+            .context("failed to count indexed pages for authoring inventory")?;
     let semantic_profiles_total = if table_exists(connection, "indexed_page_semantics")? {
-        crate::index::parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_semantics")
+        parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_semantics")
             .context("failed to count semantic profiles for authoring inventory")?
     } else {
         0
     };
-    let main_pages = crate::index::parsing::count_query(
+    let main_pages = parsing::count_query(
         connection,
         "SELECT COUNT(*) FROM indexed_pages WHERE namespace = 'Main'",
     )
     .context("failed to count main pages for authoring inventory")?;
-    let template_pages = crate::index::parsing::count_query(
+    let template_pages = parsing::count_query(
         connection,
         "SELECT COUNT(*) FROM indexed_pages WHERE namespace = 'Template'",
     )
     .context("failed to count template pages for authoring inventory")?;
     let indexed_links_total = if table_exists(connection, "indexed_links")? {
-        crate::index::parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_links")
+        parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_links")
             .context("failed to count indexed links for authoring inventory")?
     } else {
         0
@@ -887,12 +890,12 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
     let (template_invocation_rows, distinct_templates_invoked) =
         if table_exists(connection, "indexed_template_invocations")? {
             (
-                crate::index::parsing::count_query(
+                parsing::count_query(
                     connection,
                     "SELECT COUNT(*) FROM indexed_template_invocations",
                 )
                 .context("failed to count template invocation rows for authoring inventory")?,
-                crate::index::parsing::count_query(
+                parsing::count_query(
                     connection,
                     "SELECT COUNT(DISTINCT template_title) FROM indexed_template_invocations",
                 )
@@ -904,12 +907,12 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
     let (module_invocation_rows_total, distinct_modules_invoked) =
         if table_exists(connection, "indexed_module_invocations")? {
             (
-                crate::index::parsing::count_query(
+                parsing::count_query(
                     connection,
                     "SELECT COUNT(*) FROM indexed_module_invocations",
                 )
                 .context("failed to count module invocation rows for authoring inventory")?,
-                crate::index::parsing::count_query(
+                parsing::count_query(
                     connection,
                     "SELECT COUNT(DISTINCT module_title) FROM indexed_module_invocations",
                 )
@@ -921,9 +924,9 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
     let (reference_rows_total, distinct_reference_profiles) =
         if table_exists(connection, "indexed_page_references")? {
             (
-                crate::index::parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_references")
+                parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_references")
                     .context("failed to count reference rows for authoring inventory")?,
-                crate::index::parsing::count_query(
+                parsing::count_query(
                     connection,
                     "SELECT COUNT(DISTINCT citation_profile) FROM indexed_page_references",
                 )
@@ -934,7 +937,7 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         };
     let reference_authority_rows_total =
         if table_exists(connection, "indexed_reference_authorities")? {
-            crate::index::parsing::count_query(
+            parsing::count_query(
                 connection,
                 "SELECT COUNT(*) FROM indexed_reference_authorities",
             )
@@ -944,7 +947,7 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         };
     let reference_identifier_rows_total =
         if table_exists(connection, "indexed_reference_identifiers")? {
-            crate::index::parsing::count_query(
+            parsing::count_query(
                 connection,
                 "SELECT COUNT(*) FROM indexed_reference_identifiers",
             )
@@ -955,9 +958,9 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
     let (media_rows_total, distinct_media_files) =
         if table_exists(connection, "indexed_page_media")? {
             (
-                crate::index::parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_media")
+                parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_media")
                     .context("failed to count media rows for authoring inventory")?,
-                crate::index::parsing::count_query(
+                parsing::count_query(
                     connection,
                     "SELECT COUNT(DISTINCT file_title) FROM indexed_page_media",
                 )
@@ -968,7 +971,7 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         };
     let template_implementation_rows_total =
         if table_exists(connection, "indexed_template_implementation_pages")? {
-            crate::index::parsing::count_query(
+            parsing::count_query(
                 connection,
                 "SELECT COUNT(*) FROM indexed_template_implementation_pages",
             )
@@ -996,5 +999,3 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         template_implementation_rows_total,
     })
 }
-
-

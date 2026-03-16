@@ -9,11 +9,10 @@ use super::{
     BrokenLinkIssue, LocalChunkAcrossRetrieval, LocalChunkRetrieval, TemplateReferenceLookup,
     build_authoring_knowledge_pack, build_local_context, load_stored_index_stats,
     query_active_template_catalog, query_backlinks, query_empty_categories, query_orphans,
-    query_search_local, query_template_reference, rebuild_index,
-    retrieve_local_context_chunks, retrieve_local_context_chunks_across_pages,
-    run_validation_checks,
+    query_search_local, query_template_reference, rebuild_index, retrieve_local_context_chunks,
+    retrieve_local_context_chunks_across_pages, run_validation_checks,
 };
-use super::parsing::{
+use crate::content_store::parsing::{
     extract_first_url, extract_media_records, extract_module_invocations,
     extract_reference_records, extract_template_invocations, extract_wikilinks,
 };
@@ -819,7 +818,9 @@ fn build_authoring_knowledge_pack_uses_template_matches_for_related_pages() {
     let report = build_authoring_knowledge_pack(
         &paths,
         Some("Unmatched Draft Topic"),
-        Some("{{Infobox person|name=Draft|occupation=Archivist}}\nDraft body without direct links."),
+        Some(
+            "{{Infobox person|name=Draft|occupation=Archivist}}\nDraft body without direct links.",
+        ),
         &options,
     )
     .expect("authoring pack");

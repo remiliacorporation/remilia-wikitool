@@ -1,5 +1,5 @@
-use super::*;
 use super::model::*;
+use super::*;
 
 pub(crate) fn parse_parameter_key_list(value: &str) -> Vec<String> {
     if value.trim().is_empty() || value == NO_PARAMETER_KEYS_SENTINEL {
@@ -1280,7 +1280,11 @@ pub(crate) fn starts_with_html_tag(bytes: &[u8], cursor: usize, tag_name: &str) 
     )
 }
 
-pub(crate) fn parse_open_tag(content: &str, start: usize, tag_name: &str) -> Option<(usize, String, bool)> {
+pub(crate) fn parse_open_tag(
+    content: &str,
+    start: usize,
+    tag_name: &str,
+) -> Option<(usize, String, bool)> {
     let bytes = content.as_bytes();
     if !starts_with_html_tag(bytes, start, tag_name) {
         return None;
@@ -1318,7 +1322,11 @@ pub(crate) fn parse_open_tag(content: &str, start: usize, tag_name: &str) -> Opt
     None
 }
 
-pub(crate) fn find_closing_html_tag(content: &str, start: usize, tag_name: &str) -> Option<(usize, usize)> {
+pub(crate) fn find_closing_html_tag(
+    content: &str,
+    start: usize,
+    tag_name: &str,
+) -> Option<(usize, usize)> {
     let bytes = content.as_bytes();
     let needle = format!("</{tag_name}");
     let needle_bytes = needle.as_bytes();
@@ -2006,7 +2014,10 @@ pub(crate) fn parse_identifier_entries(entries: &[String]) -> Vec<ParsedIdentifi
     out
 }
 
-pub(crate) fn build_reference_authority_key(authority_kind: &str, source_authority: &str) -> String {
+pub(crate) fn build_reference_authority_key(
+    authority_kind: &str,
+    source_authority: &str,
+) -> String {
     let normalized_authority = normalize_spaces(source_authority);
     if normalized_authority.is_empty() {
         return authority_kind.to_string();
@@ -2018,7 +2029,9 @@ pub(crate) fn build_reference_authority_key(authority_kind: &str, source_authori
     )
 }
 
-pub(crate) fn build_reference_authority_retrieval_text(reference: &IndexedReferenceRecord) -> String {
+pub(crate) fn build_reference_authority_retrieval_text(
+    reference: &IndexedReferenceRecord,
+) -> String {
     let mut values = vec![
         reference.source_authority.clone(),
         reference.reference_title.clone(),
@@ -2566,7 +2579,10 @@ pub(crate) fn normalize_spaces(value: &str) -> String {
     output.trim().to_string()
 }
 
-pub(crate) fn load_page_record(connection: &Connection, title: &str) -> Result<Option<IndexedPageRecord>> {
+pub(crate) fn load_page_record(
+    connection: &Connection,
+    title: &str,
+) -> Result<Option<IndexedPageRecord>> {
     if let Some(record) = load_page_record_exact(connection, title)? {
         return Ok(Some(record));
     }
@@ -2619,7 +2635,11 @@ pub(crate) fn load_page_record_exact(
     }))
 }
 
-pub(crate) fn resolve_alias_title(connection: &Connection, title: &str, max_hops: usize) -> Result<String> {
+pub(crate) fn resolve_alias_title(
+    connection: &Connection,
+    title: &str,
+    max_hops: usize,
+) -> Result<String> {
     let mut current = normalize_query_title(title);
     if current.is_empty() {
         return Ok(current);
@@ -2690,7 +2710,10 @@ pub(crate) fn load_outgoing_link_rows(
     Ok(out)
 }
 
-pub(crate) fn query_backlinks_for_connection(connection: &Connection, title: &str) -> Result<Vec<String>> {
+pub(crate) fn query_backlinks_for_connection(
+    connection: &Connection,
+    title: &str,
+) -> Result<Vec<String>> {
     let mut statement = connection
         .prepare(
             "SELECT DISTINCT source_title
@@ -2740,7 +2763,9 @@ pub(crate) fn query_orphans_for_connection(connection: &Connection) -> Result<Ve
     Ok(out)
 }
 
-pub(crate) fn query_broken_links_for_connection(connection: &Connection) -> Result<Vec<BrokenLinkIssue>> {
+pub(crate) fn query_broken_links_for_connection(
+    connection: &Connection,
+) -> Result<Vec<BrokenLinkIssue>> {
     let mut statement = connection
         .prepare(
             "SELECT DISTINCT l.source_title, l.target_title
@@ -2802,7 +2827,9 @@ pub(crate) fn query_double_redirects_for_connection(
     Ok(out)
 }
 
-pub(crate) fn query_uncategorized_pages_for_connection(connection: &Connection) -> Result<Vec<String>> {
+pub(crate) fn query_uncategorized_pages_for_connection(
+    connection: &Connection,
+) -> Result<Vec<String>> {
     let mut statement = connection
         .prepare(
             "SELECT p.title
@@ -2879,7 +2906,10 @@ pub(crate) fn summarize_files(files: &[ScannedFile]) -> ScanStats {
     }
 }
 
-pub(crate) fn load_scanned_file_content(paths: &ResolvedPaths, file: &ScannedFile) -> Result<String> {
+pub(crate) fn load_scanned_file_content(
+    paths: &ResolvedPaths,
+    file: &ScannedFile,
+) -> Result<String> {
     let absolute = absolute_path_from_relative(paths, &file.relative_path);
     fs::read_to_string(&absolute)
         .with_context(|| format!("failed to read indexed source file {}", absolute.display()))
@@ -3015,7 +3045,3 @@ pub(crate) fn rebuild_fts_index(connection: &Connection) -> Result<()> {
     }
     Ok(())
 }
-
-
-
-

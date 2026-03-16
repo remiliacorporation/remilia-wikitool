@@ -1,6 +1,6 @@
-use super::*;
 use super::parse_markup::{decamelize, dedupe_strings};
 use super::parse_sections::RawSection;
+use super::*;
 use std::collections::BTreeSet;
 
 pub(super) fn extract_content_symbols(
@@ -313,7 +313,6 @@ fn extract_tag_symbols(page_title: &str, page_kind: &str, content: &str) -> Vec<
         })
         .collect()
 }
-
 
 fn build_symbol(
     page_title: &str,

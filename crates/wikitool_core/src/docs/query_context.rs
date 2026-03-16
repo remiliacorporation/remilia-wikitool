@@ -1,6 +1,6 @@
-use super::*;
 use super::query_common::{SearchContext, fts_position_bonus};
 use super::query_search::{search_page_hits, search_symbol_hits};
+use super::*;
 
 pub fn build_docs_context(
     paths: &ResolvedPaths,

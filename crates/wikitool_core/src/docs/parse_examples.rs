@@ -1,8 +1,11 @@
-use super::*;
 use super::parse_markup::{find_case_insensitive, find_tag_end};
 use super::parse_sections::RawSection;
+use super::*;
 
-pub(super) fn extract_examples_for_section(page_title: &str, section: &RawSection) -> Vec<ParsedDocsExample> {
+pub(super) fn extract_examples_for_section(
+    page_title: &str,
+    section: &RawSection,
+) -> Vec<ParsedDocsExample> {
     let mut examples = Vec::new();
     for tag_name in ["syntaxhighlight", "source", "pre", "code"] {
         for (language, body) in extract_tagged_examples(&section.text, tag_name) {
@@ -43,7 +46,6 @@ pub(super) fn extract_examples_for_section(page_title: &str, section: &RawSectio
     }
     examples
 }
-
 
 fn extract_tagged_examples(content: &str, tag_name: &str) -> Vec<(Option<String>, String)> {
     let mut out = Vec::new();

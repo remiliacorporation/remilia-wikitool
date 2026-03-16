@@ -475,6 +475,3 @@ pub(crate) fn reference_example_rank_key(
         example.link_titles.len(),
     )
 }
-
-
-

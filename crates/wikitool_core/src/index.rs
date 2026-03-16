@@ -1,24 +1,6 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::path::PathBuf;
-
-use anyhow::{Context, Result};
-use reqwest::Url;
-use rusqlite::{Connection, params};
-
-use crate::filesystem::{
-    Namespace, ScanOptions, ScanStats, ScannedFile,
-};
+use crate::filesystem::ScanOptions;
 use crate::runtime::ResolvedPaths;
-use crate::schema::open_initialized_database_connection;
-use crate::support::table_exists;
-
-#[path = "index/model.rs"]
-pub(crate) mod model;
-#[path = "index/parsing.rs"]
-pub(crate) mod parsing;
-#[path = "index/storage.rs"]
-pub(crate) mod storage;
+use anyhow::Result;
 #[cfg(test)]
 #[path = "index/tests.rs"]
 mod tests;
@@ -29,9 +11,7 @@ pub use crate::knowledge::authoring::{
     AuthoringSuggestion, StubTemplateHint,
 };
 pub use crate::knowledge::content_index::{RebuildReport, StoredIndexStats};
-pub use crate::knowledge::inspect::{
-    BrokenLinkIssue, DoubleRedirectIssue, ValidationReport,
-};
+pub use crate::knowledge::inspect::{BrokenLinkIssue, DoubleRedirectIssue, ValidationReport};
 pub use crate::knowledge::references::{
     LocalMediaUsage, LocalReferenceUsage, MediaUsageExample, MediaUsageSummary,
     ReferenceUsageExample, ReferenceUsageSummary,
@@ -44,8 +24,8 @@ pub use crate::knowledge::retrieval::{
 pub use crate::knowledge::templates::{
     ActiveTemplateCatalog, ActiveTemplateCatalogLookup, ModuleFunctionUsage,
     ModuleInvocationExample, ModuleUsageSummary, TemplateImplementationPage,
-    TemplateInvocationExample, TemplateParameterUsage, TemplateReference,
-    TemplateReferenceLookup, TemplateUsageSummary,
+    TemplateInvocationExample, TemplateParameterUsage, TemplateReference, TemplateReferenceLookup,
+    TemplateUsageSummary,
 };
 
 pub fn query_active_template_catalog(

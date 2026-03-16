@@ -263,7 +263,7 @@ mod tests {
 
     use super::*;
     use crate::filesystem::ScanOptions;
-    use crate::index::rebuild_index;
+    use crate::knowledge::content_index::rebuild_index;
     use crate::runtime::{ResolvedPaths, ValueSource};
 
     fn test_paths() -> (tempfile::TempDir, ResolvedPaths) {

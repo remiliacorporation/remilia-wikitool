@@ -1,8 +1,8 @@
-use super::*;
 use super::parse_markup::{
     decamelize, dedupe_strings, find_balanced_braces, find_delimited, find_tag_end,
     strip_tagged_block,
 };
+use super::*;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone)]
@@ -220,7 +220,10 @@ pub(super) fn build_section_semantic_text(
     collapse_whitespace(&terms.join(" | "))
 }
 
-pub(super) fn build_page_links(link_titles: &[String], template_titles: &[String]) -> Vec<ParsedDocsLink> {
+pub(super) fn build_page_links(
+    link_titles: &[String],
+    template_titles: &[String],
+) -> Vec<ParsedDocsLink> {
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
     for title in link_titles {

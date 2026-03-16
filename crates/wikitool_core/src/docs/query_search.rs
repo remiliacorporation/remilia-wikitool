@@ -1,6 +1,6 @@
-use super::*;
 use super::query_common::{SearchContext, SearchScope, fts_position_bonus, make_snippet};
 use super::query_context::load_context_examples;
+use super::*;
 
 pub fn search_docs(
     paths: &ResolvedPaths,

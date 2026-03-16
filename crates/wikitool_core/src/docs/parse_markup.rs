@@ -65,7 +65,6 @@ pub(super) fn extract_template_titles(content: &str) -> Vec<String> {
     titles
 }
 
-
 pub(super) fn decamelize(value: &str) -> String {
     let mut output = String::with_capacity(value.len() + 8);
     let mut previous_lower_or_digit = false;
@@ -167,11 +166,7 @@ pub(super) fn find_tag_end(bytes: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-pub(super) fn find_case_insensitive(
-    haystack: &[u8],
-    start: usize,
-    needle: &[u8],
-) -> Option<usize> {
+pub(super) fn find_case_insensitive(haystack: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
     let mut cursor = start;
     while cursor + needle.len() <= haystack.len() {
         if haystack[cursor..].starts_with(needle) {

@@ -144,7 +144,7 @@ pub(crate) struct IndexedMediaRecord {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RetrievedChunkCandidate {
-    pub(crate) chunk: crate::knowledge::retrieval::RetrievedChunk,
+    pub(crate) chunk: crate::knowledge::model::RetrievedChunk,
     pub(crate) lexical_signature: String,
     pub(crate) lexical_terms: BTreeSet<String>,
 }
@@ -255,10 +255,3 @@ pub(crate) struct ReferenceAnalysis {
     pub(crate) retrieval_signals: Vec<String>,
     pub(crate) summary_hint: String,
 }
-
-
-
-
-
-
-
