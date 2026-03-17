@@ -186,6 +186,9 @@ pub(crate) fn fetch_web_url(url: &str, max_bytes: usize) -> Result<ExternalFetch
         } else {
             "text".to_string()
         },
+        revision_id: None,
+        display_title: None,
+        rendered_fetch_mode: None,
     })
 }
 

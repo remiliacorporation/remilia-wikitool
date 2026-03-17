@@ -19,7 +19,7 @@ pub(crate) struct FetchArgs {
         long,
         default_value = "wikitext",
         value_name = "FORMAT",
-        help = "Output format: wikitext|html"
+        help = "Output format: wikitext|html|rendered-html"
     )]
     format: String,
     #[arg(long, help = "Save output under reference/<source>/ in project root")]
@@ -83,6 +83,15 @@ pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()>
     println!("source_wiki: {}", result.source_wiki);
     println!("source_domain: {}", result.source_domain);
     println!("content_format: {}", result.content_format);
+    if let Some(value) = result.revision_id {
+        println!("revision_id: {value}");
+    }
+    if let Some(value) = result.display_title.as_deref() {
+        println!("display_title: {value}");
+    }
+    if let Some(value) = result.rendered_fetch_mode {
+        println!("rendered_fetch_mode: {}", format_rendered_fetch_mode(value));
+    }
     println!("content_length: {}", result.content.len());
 
     if args.save {
@@ -386,4 +395,10 @@ fn now_timestamp_string() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|value| value.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_string())
+}
+
+fn format_rendered_fetch_mode(mode: wikitool_core::external::RenderedFetchMode) -> &'static str {
+    match mode {
+        wikitool_core::external::RenderedFetchMode::ParseApi => "parse_api",
+    }
 }

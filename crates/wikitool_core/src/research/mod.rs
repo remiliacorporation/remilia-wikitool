@@ -12,7 +12,7 @@ pub use export::{
 pub use mediawiki_fetch::{fetch_mediawiki_page, fetch_pages_by_titles, list_subpages};
 pub use model::{
     DEFAULT_EXPORTS_DIR, ExportFormat, ExternalFetchFormat, ExternalFetchOptions,
-    ExternalFetchResult, ParsedWikiUrl,
+    ExternalFetchResult, ParsedWikiUrl, RenderedFetchMode,
 };
 pub use url::parse_wiki_url;
 

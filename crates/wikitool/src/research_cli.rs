@@ -41,7 +41,12 @@ pub(crate) struct ResearchSearchArgs {
 #[derive(Debug, Args)]
 pub(crate) struct ResearchFetchArgs {
     url: String,
-    #[arg(long, default_value = "html", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "html",
+        value_name = "FORMAT",
+        help = "Output format: wikitext|html|rendered-html"
+    )]
     format: String,
     #[arg(long, default_value = "json", value_name = "FORMAT")]
     output: String,
@@ -137,6 +142,15 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     println!("resolved_url: {}", result.url);
     println!("title: {}", result.title);
     println!("content_format: {}", result.content_format);
+    if let Some(value) = result.revision_id {
+        println!("revision_id: {value}");
+    }
+    if let Some(value) = result.display_title.as_deref() {
+        println!("display_title: {value}");
+    }
+    if let Some(value) = result.rendered_fetch_mode {
+        println!("rendered_fetch_mode: {}", format_rendered_fetch_mode(value));
+    }
     println!("content_length: {}", result.content.len());
     println!("content:");
     println!("{}", result.content);
@@ -171,5 +185,11 @@ impl From<ExternalSearchReport> for ResearchSearchOutput {
             rewritten_query,
             hits,
         }
+    }
+}
+
+fn format_rendered_fetch_mode(mode: wikitool_core::research::RenderedFetchMode) -> &'static str {
+    match mode {
+        wikitool_core::research::RenderedFetchMode::ParseApi => "parse_api",
     }
 }

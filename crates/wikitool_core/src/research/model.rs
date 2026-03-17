@@ -14,10 +14,13 @@ impl ExternalFetchFormat {
         if value.eq_ignore_ascii_case("wikitext") {
             return Ok(Self::Wikitext);
         }
-        if value.eq_ignore_ascii_case("html") {
+        if value.eq_ignore_ascii_case("html")
+            || value.eq_ignore_ascii_case("rendered-html")
+            || value.eq_ignore_ascii_case("rendered_html")
+        {
             return Ok(Self::Html);
         }
-        bail!("unsupported fetch format: {value} (expected wikitext|html)")
+        bail!("unsupported fetch format: {value} (expected wikitext|html|rendered-html)")
     }
 }
 
@@ -46,6 +49,12 @@ impl ExportFormat {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RenderedFetchMode {
+    ParseApi,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ParsedWikiUrl {
     pub domain: String,
@@ -64,6 +73,12 @@ pub struct ExternalFetchResult {
     pub source_wiki: String,
     pub source_domain: String,
     pub content_format: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rendered_fetch_mode: Option<RenderedFetchMode>,
 }
 
 #[derive(Debug, Clone)]
