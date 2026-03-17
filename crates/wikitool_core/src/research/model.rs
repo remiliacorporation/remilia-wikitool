@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_EXPORTS_DIR: &str = "wikitool_exports";
 
@@ -49,19 +49,19 @@ impl ExportFormat {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RenderedFetchMode {
     ParseApi,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FetchMode {
     Static,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionQuality {
     Low,
@@ -75,7 +75,7 @@ pub enum ExternalFetchProfile {
     Research,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedWikiUrl {
     pub domain: String,
     pub title: String,
@@ -83,7 +83,7 @@ pub struct ParsedWikiUrl {
     pub base_url: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalFetchResult {
     pub title: String,
     pub content: String,

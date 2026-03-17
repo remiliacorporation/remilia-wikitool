@@ -3,7 +3,7 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 use wikitool_core::research::{
     ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
-    fetch_page_by_url,
+    ResearchCacheOptions, ResearchCacheStatus, fetch_page_by_url_cached,
 };
 use wikitool_core::sync::{
     ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN,
@@ -51,6 +51,13 @@ pub(crate) struct ResearchFetchArgs {
     format: String,
     #[arg(long, default_value = "json", value_name = "FORMAT")]
     output: String,
+    #[arg(
+        long,
+        help = "Refresh the research cache entry before returning output"
+    )]
+    refresh: bool,
+    #[arg(long, help = "Bypass the research cache for this fetch")]
+    no_cache: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +79,9 @@ struct ResearchSearchOutput {
 #[derive(Debug, Serialize)]
 struct ResearchFetchOutput {
     schema_version: String,
+    cache_status: ResearchCacheStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_path: Option<String>,
     result: ExternalFetchResult,
 }
 
@@ -116,22 +126,35 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
 }
 
 fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Result<()> {
+    if args.refresh && args.no_cache {
+        bail!("research fetch does not allow --refresh together with --no-cache");
+    }
     let output_format = normalize_output(&args.output)?;
     let fetch_format = ExternalFetchFormat::parse(&args.format)?;
     let (paths, _) = resolve_runtime_with_config(runtime)?;
-    let result = fetch_page_by_url(
+    let cached = fetch_page_by_url_cached(
+        &paths,
         &args.url,
         &ExternalFetchOptions {
             format: fetch_format,
             max_bytes: 1_000_000,
             profile: ExternalFetchProfile::Research,
         },
+        &ResearchCacheOptions {
+            use_cache: !args.no_cache,
+            refresh: args.refresh,
+        },
     )?
     .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
+    let cache_status = cached.status;
+    let cache_path = cached.cache_path.as_deref().map(normalize_path);
+    let result = cached.result;
 
     if output_format == "json" {
         let output = ResearchFetchOutput {
             schema_version: "research_document_v1".to_string(),
+            cache_status,
+            cache_path,
             result,
         };
         println!("{}", serde_json::to_string_pretty(&output)?);
@@ -144,6 +167,10 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     println!("resolved_url: {}", result.url);
     println!("title: {}", result.title);
     println!("content_format: {}", result.content_format);
+    println!("cache_status: {}", format_cache_status(cache_status));
+    if let Some(value) = cache_path.as_deref() {
+        println!("cache_path: {value}");
+    }
     println!("content_hash: {}", result.content_hash);
     if let Some(value) = result.revision_id {
         println!("revision_id: {value}");
@@ -226,5 +253,14 @@ fn format_extraction_quality(quality: wikitool_core::research::ExtractionQuality
         wikitool_core::research::ExtractionQuality::Low => "low",
         wikitool_core::research::ExtractionQuality::Medium => "medium",
         wikitool_core::research::ExtractionQuality::High => "high",
+    }
+}
+
+fn format_cache_status(status: ResearchCacheStatus) -> &'static str {
+    match status {
+        ResearchCacheStatus::Hit => "hit",
+        ResearchCacheStatus::Miss => "miss",
+        ResearchCacheStatus::Refresh => "refresh",
+        ResearchCacheStatus::Bypass => "bypass",
     }
 }

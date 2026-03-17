@@ -102,6 +102,10 @@ impl ResolvedPaths {
             LOCAL_DB_POLICY_MESSAGE
         )
     }
+
+    pub fn research_cache_dir(&self) -> PathBuf {
+        self.state_dir.join("cache").join("research")
+    }
 }
 
 pub fn inspect_runtime(paths: &ResolvedPaths) -> Result<RuntimeStatus> {

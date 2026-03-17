@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod export;
 pub mod mediawiki_fetch;
 pub mod model;
@@ -6,6 +7,9 @@ pub mod web_fetch;
 
 use anyhow::Result;
 
+pub use cache::{
+    CachedFetchResult, ResearchCacheOptions, ResearchCacheStatus, fetch_page_by_url_cached,
+};
 pub use export::{
     default_export_path, generate_frontmatter, sanitize_filename, wikitext_to_markdown,
 };
