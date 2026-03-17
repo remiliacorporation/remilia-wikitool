@@ -4,9 +4,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use wikitool_core::external::{
-    ExportFormat, ExternalFetchFormat, ExternalFetchOptions, ExternalFetchResult, ParsedWikiUrl,
-    default_export_path, fetch_mediawiki_page, fetch_page_by_url, fetch_pages_by_titles,
-    generate_frontmatter, list_subpages, parse_wiki_url, sanitize_filename, wikitext_to_markdown,
+    ExportFormat, ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile,
+    ExternalFetchResult, ParsedWikiUrl, default_export_path, fetch_mediawiki_page,
+    fetch_page_by_url, fetch_pages_by_titles, generate_frontmatter, list_subpages, parse_wiki_url,
+    sanitize_filename, wikitext_to_markdown,
 };
 
 use crate::cli_support::{normalize_path, resolve_runtime_paths};
@@ -71,6 +72,7 @@ pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()>
         &ExternalFetchOptions {
             format,
             max_bytes: 1_000_000,
+            profile: ExternalFetchProfile::Legacy,
         },
     )?
     .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
@@ -137,6 +139,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
     let fetch_options = ExternalFetchOptions {
         format: ExternalFetchFormat::Wikitext,
         max_bytes: 1_000_000,
+        profile: ExternalFetchProfile::Legacy,
     };
 
     if args.subpages {

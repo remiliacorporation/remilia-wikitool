@@ -2,7 +2,8 @@ use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 use wikitool_core::research::{
-    ExternalFetchFormat, ExternalFetchOptions, ExternalFetchResult, fetch_page_by_url,
+    ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
+    fetch_page_by_url,
 };
 use wikitool_core::sync::{
     ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN,
@@ -123,6 +124,7 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
         &ExternalFetchOptions {
             format: fetch_format,
             max_bytes: 1_000_000,
+            profile: ExternalFetchProfile::Research,
         },
     )?
     .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
@@ -142,6 +144,7 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     println!("resolved_url: {}", result.url);
     println!("title: {}", result.title);
     println!("content_format: {}", result.content_format);
+    println!("content_hash: {}", result.content_hash);
     if let Some(value) = result.revision_id {
         println!("revision_id: {value}");
     }
@@ -150,6 +153,24 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     }
     if let Some(value) = result.rendered_fetch_mode {
         println!("rendered_fetch_mode: {}", format_rendered_fetch_mode(value));
+    }
+    if let Some(value) = result.canonical_url.as_deref() {
+        println!("canonical_url: {value}");
+    }
+    if let Some(value) = result.site_name.as_deref() {
+        println!("site_name: {value}");
+    }
+    if let Some(value) = result.byline.as_deref() {
+        println!("byline: {value}");
+    }
+    if let Some(value) = result.published_at.as_deref() {
+        println!("published_at: {value}");
+    }
+    if let Some(value) = result.fetch_mode {
+        println!("fetch_mode: {}", format_fetch_mode(value));
+    }
+    if let Some(value) = result.extraction_quality {
+        println!("extraction_quality: {}", format_extraction_quality(value));
     }
     println!("content_length: {}", result.content.len());
     println!("content:");
@@ -191,5 +212,19 @@ impl From<ExternalSearchReport> for ResearchSearchOutput {
 fn format_rendered_fetch_mode(mode: wikitool_core::research::RenderedFetchMode) -> &'static str {
     match mode {
         wikitool_core::research::RenderedFetchMode::ParseApi => "parse_api",
+    }
+}
+
+fn format_fetch_mode(mode: wikitool_core::research::FetchMode) -> &'static str {
+    match mode {
+        wikitool_core::research::FetchMode::Static => "static",
+    }
+}
+
+fn format_extraction_quality(quality: wikitool_core::research::ExtractionQuality) -> &'static str {
+    match quality {
+        wikitool_core::research::ExtractionQuality::Low => "low",
+        wikitool_core::research::ExtractionQuality::Medium => "medium",
+        wikitool_core::research::ExtractionQuality::High => "high",
     }
 }

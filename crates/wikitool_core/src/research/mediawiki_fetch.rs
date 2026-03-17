@@ -10,6 +10,7 @@ use super::web_fetch::{
     ExternalClient, external_client, now_timestamp_string, truncate_to_byte_limit,
 };
 use crate::mw::render::{RenderedPageHtml, decode_rendered_page_payload};
+use crate::support::compute_hash;
 
 const DEFAULT_MEDIAWIKI_TITLE_BATCH_SIZE: usize = 50;
 
@@ -98,11 +99,13 @@ fn fetch_mediawiki_page_with_client(
         match response {
             Ok(MediaWikiFetchOutcome::Found(result)) => {
                 let result = *result;
+                let url = format!("{}{}", parsed.base_url, encode_title(&result.title));
                 return Ok(MediaWikiFetchOutcome::Found(Box::new(
                     ExternalFetchResult {
                         source_wiki: "mediawiki".to_string(),
                         source_domain: parsed.domain.clone(),
-                        url: format!("{}{}", parsed.base_url, encode_title(&result.title)),
+                        url: url.clone(),
+                        canonical_url: Some(url),
                         ..result
                     },
                 )));
@@ -151,10 +154,12 @@ fn fetch_mediawiki_pages_with_client(
                     .map(|outcome| match outcome {
                         MediaWikiFetchOutcome::Found(result) => {
                             let result = *result;
+                            let url = format!("{}{}", parsed.base_url, encode_title(&result.title));
                             MediaWikiFetchOutcome::Found(Box::new(ExternalFetchResult {
                                 source_wiki: "mediawiki".to_string(),
                                 source_domain: parsed.domain.clone(),
-                                url: format!("{}{}", parsed.base_url, encode_title(&result.title)),
+                                url: url.clone(),
+                                canonical_url: Some(url),
                                 ..result
                             }))
                         }
@@ -260,6 +265,7 @@ fn apply_rendered_page(
     base.title = rendered.title;
     base.content = truncate_to_byte_limit(&rendered.html, max_bytes);
     base.content_format = "html".to_string();
+    base.content_hash = compute_hash(&base.content);
     base.display_title = rendered.display_title;
     base.revision_id = rendered.revision_id.or(base.revision_id);
     base.rendered_fetch_mode = Some(RenderedFetchMode::ParseApi);
@@ -364,6 +370,7 @@ fn parse_mediawiki_content_page(
         .map(ToString::to_string)
         .unwrap_or_else(now_timestamp_string);
     let revision_id = revision.get("revid").and_then(Value::as_i64);
+    let content_hash = compute_hash(&content);
 
     Ok(MediaWikiFetchOutcome::Found(Box::new(
         ExternalFetchResult {
@@ -375,9 +382,16 @@ fn parse_mediawiki_content_page(
             source_wiki: String::new(),
             source_domain: String::new(),
             content_format: "wikitext".to_string(),
+            content_hash,
             revision_id,
             display_title: None,
             rendered_fetch_mode: None,
+            canonical_url: None,
+            site_name: None,
+            byline: None,
+            published_at: None,
+            fetch_mode: None,
+            extraction_quality: None,
         },
     )))
 }
@@ -449,7 +463,8 @@ mod tests {
     use super::{apply_rendered_page, parse_mediawiki_content_page};
     use crate::mw::render::RenderedPageHtml;
     use crate::research::model::{
-        ExternalFetchFormat, ExternalFetchOptions, ExternalFetchResult, RenderedFetchMode,
+        ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
+        RenderedFetchMode,
     };
 
     #[test]
@@ -476,6 +491,7 @@ mod tests {
             &ExternalFetchOptions {
                 format: ExternalFetchFormat::Wikitext,
                 max_bytes: 10_000,
+                profile: ExternalFetchProfile::Legacy,
             },
         )
         .expect("page should parse");
@@ -489,6 +505,7 @@ mod tests {
         assert_eq!(result.timestamp, "2026-03-17T10:00:00Z");
         assert_eq!(result.extract.as_deref(), Some("Lead summary"));
         assert_eq!(result.content_format, "wikitext");
+        assert!(!result.content_hash.is_empty());
         assert!(result.display_title.is_none());
         assert!(result.rendered_fetch_mode.is_none());
     }
@@ -504,9 +521,16 @@ mod tests {
             source_wiki: "mediawiki".to_string(),
             source_domain: "wiki.example.org".to_string(),
             content_format: "wikitext".to_string(),
+            content_hash: "old-hash".to_string(),
             revision_id: Some(55),
             display_title: None,
             rendered_fetch_mode: None,
+            canonical_url: Some("https://wiki.example.org/Main_Page".to_string()),
+            site_name: None,
+            byline: None,
+            published_at: None,
+            fetch_mode: None,
+            extraction_quality: None,
         };
 
         let rendered = RenderedPageHtml {
@@ -520,6 +544,7 @@ mod tests {
 
         assert_eq!(merged.content, "<p>Hello</p>");
         assert_eq!(merged.content_format, "html");
+        assert_ne!(merged.content_hash, "old-hash");
         assert_eq!(merged.revision_id, Some(56));
         assert_eq!(merged.display_title.as_deref(), Some("<i>Main Page</i>"));
         assert_eq!(

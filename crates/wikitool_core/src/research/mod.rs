@@ -12,7 +12,8 @@ pub use export::{
 pub use mediawiki_fetch::{fetch_mediawiki_page, fetch_pages_by_titles, list_subpages};
 pub use model::{
     DEFAULT_EXPORTS_DIR, ExportFormat, ExternalFetchFormat, ExternalFetchOptions,
-    ExternalFetchResult, ParsedWikiUrl, RenderedFetchMode,
+    ExternalFetchProfile, ExternalFetchResult, ExtractionQuality, FetchMode, ParsedWikiUrl,
+    RenderedFetchMode,
 };
 pub use url::parse_wiki_url;
 
@@ -27,7 +28,7 @@ pub fn fetch_page_by_url(
         return Ok(Some(result));
     }
 
-    web_fetch::fetch_web_url(url, options.max_bytes).map(Some)
+    web_fetch::fetch_web_url(url, options).map(Some)
 }
 
 fn title_or_url<'a>(parsed: &'a ParsedWikiUrl, _url: &'a str) -> &'a str {
