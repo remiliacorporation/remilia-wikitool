@@ -8,6 +8,7 @@ use wikitool_core::authoring::article_start::build_article_start;
 use wikitool_core::authoring::model::ArticleStartResult;
 use wikitool_core::docs::{
     DocsImportProfileOptions, DocsImportProfileReport, import_docs_profile_with_config,
+    is_transient_docs_error,
 };
 use wikitool_core::filesystem::{ScanOptions, validate_scoped_path};
 use wikitool_core::knowledge::authoring::{
@@ -336,14 +337,20 @@ pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmAr
     let format = normalize_format(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let rebuild = rebuild_knowledge_index(&paths)?;
-    let docs = import_docs_profile_with_config(
+    let docs = match import_docs_profile_with_config(
         &paths,
         &DocsImportProfileOptions {
             profile: args.docs_profile.clone(),
             ..DocsImportProfileOptions::default()
         },
         &config,
-    )?;
+    ) {
+        Ok(report) => report,
+        Err(error) if is_transient_docs_error(&error) => {
+            transient_docs_profile_report(&args.docs_profile, &error)
+        }
+        Err(error) => return Err(error),
+    };
     let status = knowledge_status(&paths, &args.docs_profile)?;
     let report = KnowledgeWarmReport {
         rebuild,
@@ -370,6 +377,10 @@ pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmAr
     println!("rebuild.inserted_links: {}", report.rebuild.inserted_links);
     println!("docs.imported_corpora: {}", report.docs.imported_corpora);
     println!("docs.imported_pages: {}", report.docs.imported_pages);
+    println!("docs.failures.count: {}", report.docs.failures.len());
+    for failure in &report.docs.failures {
+        println!("docs.failure: {failure}");
+    }
     print_scan_stats("scan", &report.rebuild.scan);
     print_knowledge_status("knowledge", &report.status);
     print_database_schema_status(&paths);
@@ -378,6 +389,20 @@ pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmAr
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+fn transient_docs_profile_report(profile: &str, error: &anyhow::Error) -> DocsImportProfileReport {
+    DocsImportProfileReport {
+        profile: profile.to_string(),
+        imported_corpora: 0,
+        imported_extensions: 0,
+        imported_pages: 0,
+        imported_sections: 0,
+        imported_symbols: 0,
+        imported_examples: 0,
+        failures: vec![format!("{error:#}")],
+        request_count: 0,
+    }
 }
 
 fn run_knowledge_build(runtime: &RuntimeOptions, args: KnowledgeBuildArgs) -> Result<()> {

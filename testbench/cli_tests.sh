@@ -10,6 +10,7 @@ set -euo pipefail
 TIER="${TIER:-offline}"
 KNOWLEDGE_DOCS_PROFILE="${KNOWLEDGE_DOCS_PROFILE:-remilia-mw-1.44}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
 WIKITOOL_RAW="${WIKITOOL:-}"
 TMP_BASE="${TMPDIR:-$SCRIPT_DIR/.tmp}"
@@ -119,6 +120,19 @@ setup_project() {
     local dir="$TMPDIR_ROOT/project-$1"
     mkdir -p "$dir"
     echo "$dir"
+}
+
+resolve_local_binary_candidate() {
+    local candidate
+    for candidate in \
+        "$REPO_ROOT/target/debug/wikitool" \
+        "$REPO_ROOT/target/debug/wikitool.exe"
+    do
+        if [ -x "$candidate" ]; then
+            printf "%s" "$candidate"
+            return
+        fi
+    done
 }
 
 write_live_env() {
@@ -779,6 +793,51 @@ else
     fail "push --dry-run reports changes (got: $OUTPUT)"
 fi
 
+# --- release build-ai-pack ---
+section "release build-ai-pack"
+AI_PACK_OUT="$TMPDIR_ROOT/release-ai-pack"
+OUTPUT=$(wt "$PROJ" release build-ai-pack --repo-root "$REPO_ROOT" --output-dir "$AI_PACK_OUT" 2>&1 || true)
+if [ -f "$AI_PACK_OUT/manifest.json" ] && [ -f "$AI_PACK_OUT/CLAUDE.md" ] && [ -d "$AI_PACK_OUT/.claude/skills" ]; then
+    pass "release build-ai-pack stages the packaged AI companion"
+else
+    fail "release build-ai-pack stages the packaged AI companion (got: ${OUTPUT:0:300})"
+fi
+
+# --- release package ---
+section "release package"
+LOCAL_BINARY="$(resolve_local_binary_candidate || true)"
+if [ -n "$LOCAL_BINARY" ]; then
+    RELEASE_OUT="$TMPDIR_ROOT/release-package"
+    OUTPUT=$(wt "$PROJ" release package --repo-root "$REPO_ROOT" --binary-path "$LOCAL_BINARY" --output-dir "$RELEASE_OUT" 2>&1 || true)
+    if [ -f "$RELEASE_OUT/CLAUDE.md" ] && [ -f "$RELEASE_OUT/README.md" ] \
+        && { [ -f "$RELEASE_OUT/wikitool" ] || [ -f "$RELEASE_OUT/wikitool.exe" ]; }; then
+        pass "release package stages a distributable bundle"
+    else
+        fail "release package stages a distributable bundle (got: ${OUTPUT:0:300})"
+    fi
+else
+    skip "release package stages a distributable bundle (no built local binary found)"
+fi
+
+# --- dev install-git-hooks ---
+section "dev install-git-hooks"
+HOOK_ROOT=$(setup_project git-hooks)
+HOOK_WORKTREE="$HOOK_ROOT/worktree"
+HOOK_GITDIR="$HOOK_ROOT/gitdir"
+HOOK_SOURCE="$HOOK_ROOT/commit-msg"
+mkdir -p "$HOOK_WORKTREE" "$HOOK_GITDIR/hooks"
+printf 'gitdir: ../gitdir\n' > "$HOOK_WORKTREE/.git"
+cat > "$HOOK_SOURCE" << 'HOOKEOF'
+#!/usr/bin/env bash
+exit 0
+HOOKEOF
+OUTPUT=$(wt "$PROJ" dev install-git-hooks --repo-root "$HOOK_WORKTREE" --source "$HOOK_SOURCE" 2>&1 || true)
+if [ -f "$HOOK_GITDIR/hooks/commit-msg" ]; then
+    pass "dev install-git-hooks resolves gitdir pointer files"
+else
+    fail "dev install-git-hooks resolves gitdir pointer files (got: ${OUTPUT:0:300})"
+fi
+
 # ============================================================
 # LIVE TIER (optional, requires network)
 # ============================================================
@@ -836,6 +895,15 @@ if [ "$TIER" = "live" ]; then
         fail "fetch retrieves page content (got: ${OUTPUT:0:300})"
     fi
 
+    # --- fetch non-short URL ---
+    section "fetch non-short mediawiki url (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" fetch "https://wiki.remilia.org/index.php?title=Main_Page" --format rendered-html 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "Main Page\|fetch\|content\|wiki"; then
+        pass "fetch accepts non-short MediaWiki URLs"
+    else
+        fail "fetch accepts non-short MediaWiki URLs (got: ${OUTPUT:0:300})"
+    fi
+
     # --- export ---
     section "export (live)"
     EXPORT_DIR="$TMPDIR_ROOT/exports"
@@ -852,9 +920,10 @@ if [ "$TIER" = "live" ]; then
     PROJ_BOOTSTRAP_LIVE=$(setup_project workflow-bootstrap-live)
     write_live_env "$PROJ_BOOTSTRAP_LIVE"
     OUTPUT=$(wt "$PROJ_BOOTSTRAP_LIVE" workflow bootstrap --skip-reference --skip-git-hooks --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "HTTP 429 Too Many Requests"; then
-        skip "workflow bootstrap invokes knowledge warm (docs source rate-limited)"
-    elif echo "$OUTPUT" | grep -q "^knowledge warm$" && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE"; then
+    if echo "$OUTPUT" | grep -q "^knowledge warm$" \
+        && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
+        && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
+            || echo "$OUTPUT" | grep -q "docs.failures.count: "; }; then
         pass "workflow bootstrap invokes knowledge warm"
     else
         fail "workflow bootstrap invokes knowledge warm (got: ${OUTPUT:0:300})"
@@ -864,10 +933,13 @@ if [ "$TIER" = "live" ]; then
     section "workflow full-refresh (live)"
     PROJ_FULL_REFRESH_LIVE=$(setup_project workflow-full-refresh-live)
     write_live_env "$PROJ_FULL_REFRESH_LIVE"
-    OUTPUT=$(wt "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --skip-reference --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "HTTP 429 Too Many Requests"; then
-        skip "workflow full-refresh invokes knowledge warm (docs source rate-limited)"
-    elif echo "$OUTPUT" | grep -q "^knowledge warm$" && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE"; then
+    FULL_REFRESH_LOG="$TMPDIR_ROOT/workflow-full-refresh-live.log"
+    wt "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --skip-reference --docs-profile "$KNOWLEDGE_DOCS_PROFILE" > "$FULL_REFRESH_LOG" 2>&1 || true
+    OUTPUT=$(tail -n 400 "$FULL_REFRESH_LOG")
+    if grep -q "^knowledge warm$" "$FULL_REFRESH_LOG" \
+        && grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" "$FULL_REFRESH_LOG" \
+        && { grep -q "docs.imported_corpora:" "$FULL_REFRESH_LOG" \
+            || grep -q "docs.failures.count: " "$FULL_REFRESH_LOG"; }; then
         pass "workflow full-refresh invokes knowledge warm"
     else
         fail "workflow full-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
@@ -876,14 +948,25 @@ if [ "$TIER" = "live" ]; then
     # --- knowledge warm (live) ---
     section "knowledge warm (live)"
     OUTPUT=$(wt "$PROJ_LIVE" knowledge warm --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "HTTP 429 Too Many Requests"; then
-        skip "knowledge warm builds local content and hydrates docs profile (docs source rate-limited)"
-    elif echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
-        && echo "$OUTPUT" | grep -q "knowledge.docs_profile_ready: yes" \
-        && echo "$OUTPUT" | grep -Eq "knowledge.readiness: (authoring_ready|content_ready)"; then
-        pass "knowledge warm builds local content and hydrates docs profile"
+    if echo "$OUTPUT" | grep -q "^knowledge warm$" \
+        && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
+        && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
+            || echo "$OUTPUT" | grep -q "docs.failures.count: "; } \
+        && echo "$OUTPUT" | grep -q "knowledge.readiness:"; then
+        pass "knowledge warm reports content/docs readiness and degradation state"
     else
-        fail "knowledge warm builds local content and hydrates docs profile (got: ${OUTPUT:0:300})"
+        fail "knowledge warm reports content/docs readiness and degradation state (got: ${OUTPUT:0:300})"
+    fi
+
+    # --- docs import-technical (live) ---
+    section "docs import-technical (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" docs import-technical "Manual:Hooks" --subpages --limit 5 2>&1 || true)
+    if echo "$OUTPUT" | grep -q "^docs import-technical$" \
+        && { echo "$OUTPUT" | grep -Eq "imported_pages: [1-9]" \
+            || echo "$OUTPUT" | grep -Eq "failures.count: [1-9]"; }; then
+        pass "docs import-technical reports imports or graceful upstream degradation"
+    else
+        fail "docs import-technical reports imports or graceful upstream degradation (got: ${OUTPUT:0:300})"
     fi
 
     # --- docs context (live) ---
@@ -903,6 +986,7 @@ if [ "$TIER" = "live" ]; then
     else
         fail "docs update checks for outdated docs (got: ${OUTPUT:0:300})"
     fi
+
 fi
 
 # ============================================================

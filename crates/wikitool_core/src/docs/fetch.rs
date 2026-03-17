@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 use std::env;
+use std::error::Error as StdError;
+use std::fmt;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -14,6 +16,33 @@ use crate::support::{env_value, env_value_u64, env_value_usize};
 
 const DEFAULT_DOCS_API_URL: &str = "https://www.mediawiki.org/w/api.php";
 const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
+
+#[derive(Debug, Clone)]
+pub struct DocsTransientError {
+    detail: String,
+}
+
+impl DocsTransientError {
+    fn http(status: StatusCode) -> Self {
+        Self {
+            detail: format!("docs upstream transient failure: HTTP {status}"),
+        }
+    }
+
+    fn transport(error: &reqwest::Error) -> Self {
+        Self {
+            detail: format!("docs upstream transient transport failure: {error}"),
+        }
+    }
+}
+
+impl fmt::Display for DocsTransientError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.detail)
+    }
+}
+
+impl StdError for DocsTransientError {}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RemoteDocsPage {
@@ -108,6 +137,9 @@ impl MediaWikiDocsClient {
                             self.wait_before_retry(attempt);
                             continue;
                         }
+                        if is_retryable_status(status) {
+                            return Err(DocsTransientError::http(status).into());
+                        }
                         bail!("docs API request failed with HTTP {status}");
                     }
                     let payload: Value = response
@@ -130,6 +162,9 @@ impl MediaWikiDocsClient {
                     if attempt < self.config.max_retries && is_retryable_error(&error) {
                         self.wait_before_retry(attempt);
                         continue;
+                    }
+                    if is_retryable_error(&error) {
+                        return Err(DocsTransientError::transport(&error).into());
                     }
                     return Err(error).context("failed to call docs API");
                 }
@@ -296,6 +331,9 @@ pub fn discover_installed_extensions_from_wiki_with_config(
                         wait_retry_delay(retry_delay_ms, attempt);
                         continue;
                     }
+                    if is_retryable_status(status) {
+                        return Err(DocsTransientError::http(status).into());
+                    }
                     bail!("installed-extensions request failed with HTTP {status}");
                 }
 
@@ -315,6 +353,9 @@ pub fn discover_installed_extensions_from_wiki_with_config(
                 if attempt < max_retries && is_retryable_error(&error) {
                     wait_retry_delay(retry_delay_ms, attempt);
                     continue;
+                }
+                if is_retryable_error(&error) {
+                    return Err(DocsTransientError::transport(&error).into());
                 }
                 return Err(error).context("failed to query installed extensions from wiki");
             }
@@ -355,6 +396,12 @@ fn is_retryable_status(status: StatusCode) -> bool {
 
 fn is_retryable_error(error: &reqwest::Error) -> bool {
     error.is_timeout() || error.is_connect() || error.is_request()
+}
+
+pub fn is_transient_docs_error(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.downcast_ref::<DocsTransientError>().is_some())
 }
 
 #[derive(Debug, Deserialize, Default)]

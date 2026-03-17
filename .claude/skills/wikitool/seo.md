@@ -1,6 +1,6 @@
 ﻿---
 name: seo
-description: Run SEO/net/perf inspection workflows.
+description: Run SEO/net inspection workflows.
 allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: inspect [target] [options]
 ---

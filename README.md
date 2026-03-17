@@ -37,6 +37,7 @@ wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
 ```
 
 Use `wikitool knowledge pack ...` when you need the deeper raw retrieval substrate behind `article-start`, not as the default first step.
+`wikitool fetch` and `wikitool export` accept `/wiki/...`, `index.php?title=...`, `/w/index.php?title=...`, and base-path MediaWiki URLs.
 
 ## Runtime Layout
 

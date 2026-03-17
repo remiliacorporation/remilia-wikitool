@@ -1,4 +1,7 @@
 use super::*;
+use wikitool_core::docs::{
+    DocsImportProfileReport, DocsImportReport, DocsImportTechnicalReport, is_transient_docs_error,
+};
 
 #[derive(Debug, Args)]
 pub(super) struct DocsImportArgs {
@@ -27,8 +30,8 @@ pub(super) struct DocsImportTechnicalArgs {
     subpages: bool,
     #[arg(long, help = "Import all hook documentation")]
     hooks: bool,
-    #[arg(long, help = "Import configuration variable docs")]
-    config: bool,
+    #[arg(long = "config-vars", help = "Import configuration variable docs")]
+    config_vars: bool,
     #[arg(long, help = "Import API documentation")]
     api: bool,
     #[arg(long = "help-docs", help = "Import Help: docs")]
@@ -109,52 +112,75 @@ pub(super) fn run_docs_import(runtime: &RuntimeOptions, args: DocsImportArgs) ->
     }
 
     let mut extensions = args.extensions;
+    let mut discovery_failures = Vec::new();
     if args.installed {
-        extensions.extend(
-            wikitool_core::docs::discover_installed_extensions_from_wiki_with_config(&config)
-                .context("failed to discover installed extensions from live wiki API")?,
-        );
+        match wikitool_core::docs::discover_installed_extensions_from_wiki_with_config(&config) {
+            Ok(discovered) => extensions.extend(discovered),
+            Err(error) if is_transient_docs_error(&error) => {
+                discovery_failures
+                    .push(format!("installed extension discovery skipped: {error:#}"));
+            }
+            Err(error) => {
+                return Err(error)
+                    .context("failed to discover installed extensions from live wiki API");
+            }
+        }
     }
 
     let normalized = normalize_title_list(extensions);
     if normalized.is_empty() {
+        if !discovery_failures.is_empty() {
+            let report = DocsImportReport {
+                requested_extensions: 0,
+                imported_extensions: 0,
+                imported_pages: 0,
+                imported_sections: 0,
+                imported_symbols: 0,
+                imported_examples: 0,
+                failures: discovery_failures,
+                request_count: 0,
+            };
+            print_docs_import_report(
+                runtime,
+                &paths,
+                &normalized,
+                args.installed,
+                args.no_subpages,
+                &report,
+            );
+            return Ok(());
+        }
         bail!(
             "no extensions specified. Use `docs import <Extension>` or `docs import --installed`"
         );
     }
 
-    let report = import_extension_docs(
+    let mut report = match import_extension_docs(
         &paths,
         &DocsImportOptions {
             extensions: normalized.clone(),
             include_subpages: !args.no_subpages,
         },
-    )?;
+    ) {
+        Ok(report) => report,
+        Err(error) if is_transient_docs_error(&error) => transient_docs_import_report(&error),
+        Err(error) => return Err(error),
+    };
+    report.failures.extend(discovery_failures);
 
-    println!("docs import");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("extensions.requested: {}", normalized.len());
-    println!(
-        "extensions.installed_discovery: {}",
-        format_flag(args.installed)
+    print_docs_import_report(
+        runtime,
+        &paths,
+        &normalized,
+        args.installed,
+        args.no_subpages,
+        &report,
     );
-    println!("subpages: {}", format_flag(!args.no_subpages));
-    println!("imported_extensions: {}", report.imported_extensions);
-    println!("imported_pages: {}", report.imported_pages);
-    println!("imported_sections: {}", report.imported_sections);
-    println!("imported_symbols: {}", report.imported_symbols);
-    println!("imported_examples: {}", report.imported_examples);
-    println!("request_count: {}", report.request_count);
-    println!("failures.count: {}", report.failures.len());
-    for failure in &report.failures {
-        println!("failure: {failure}");
-    }
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
 
     if report.imported_extensions == 0 {
+        if report.request_count == 0 && !report.failures.is_empty() {
+            return Ok(());
+        }
         bail!("docs import completed with no imported extensions")
     }
     Ok(())
@@ -185,7 +211,7 @@ pub(super) fn run_docs_import_technical(
             include_subpages: true,
         });
     }
-    if args.config {
+    if args.config_vars {
         tasks.push(TechnicalImportTask {
             doc_type: TechnicalDocType::Config,
             page_title: None,
@@ -209,14 +235,21 @@ pub(super) fn run_docs_import_technical(
     if tasks.is_empty() {
         bail!("no technical documentation specified");
     }
+    let requested_task_count = tasks.len();
 
-    let report = import_technical_docs(
+    let report = match import_technical_docs(
         &paths,
         &DocsImportTechnicalOptions {
             tasks,
             limit: args.limit.max(1),
         },
-    )?;
+    ) {
+        Ok(report) => report,
+        Err(error) if is_transient_docs_error(&error) => {
+            transient_docs_technical_report(requested_task_count, &error)
+        }
+        Err(error) => return Err(error),
+    };
 
     println!("docs import-technical");
     println!("project_root: {}", normalize_path(&paths.project_root));
@@ -240,6 +273,9 @@ pub(super) fn run_docs_import_technical(
     }
 
     if report.imported_pages == 0 {
+        if report.request_count == 0 && !report.failures.is_empty() {
+            return Ok(());
+        }
         bail!("docs import-technical completed with no imported pages")
     }
     Ok(())
@@ -250,7 +286,7 @@ pub(super) fn run_docs_import_profile(
     args: DocsImportProfileArgs,
 ) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let report = import_docs_profile_with_config(
+    let report = match import_docs_profile_with_config(
         &paths,
         &DocsImportProfileOptions {
             profile: normalize_title_query(&args.profile),
@@ -260,7 +296,13 @@ pub(super) fn run_docs_import_profile(
             limit: args.limit.max(1),
         },
         &config,
-    )?;
+    ) {
+        Ok(report) => report,
+        Err(error) if is_transient_docs_error(&error) => {
+            transient_docs_profile_report(&args.profile, &error)
+        }
+        Err(error) => return Err(error),
+    };
 
     println!("docs import-profile");
     println!("project_root: {}", normalize_path(&paths.project_root));
@@ -282,7 +324,83 @@ pub(super) fn run_docs_import_profile(
     }
 
     if report.imported_pages == 0 {
+        if report.request_count == 0 && !report.failures.is_empty() {
+            return Ok(());
+        }
         bail!("docs import-profile completed with no imported pages")
     }
     Ok(())
+}
+
+fn print_docs_import_report(
+    runtime: &RuntimeOptions,
+    paths: &wikitool_core::runtime::ResolvedPaths,
+    normalized: &[String],
+    installed: bool,
+    no_subpages: bool,
+    report: &DocsImportReport,
+) {
+    println!("docs import");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("extensions.requested: {}", normalized.len());
+    println!("extensions.installed_discovery: {}", format_flag(installed));
+    println!("subpages: {}", format_flag(!no_subpages));
+    println!("imported_extensions: {}", report.imported_extensions);
+    println!("imported_pages: {}", report.imported_pages);
+    println!("imported_sections: {}", report.imported_sections);
+    println!("imported_symbols: {}", report.imported_symbols);
+    println!("imported_examples: {}", report.imported_examples);
+    println!("request_count: {}", report.request_count);
+    println!("failures.count: {}", report.failures.len());
+    for failure in &report.failures {
+        println!("failure: {failure}");
+    }
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+}
+
+fn transient_docs_import_report(error: &anyhow::Error) -> DocsImportReport {
+    DocsImportReport {
+        requested_extensions: 0,
+        imported_extensions: 0,
+        imported_pages: 0,
+        imported_sections: 0,
+        imported_symbols: 0,
+        imported_examples: 0,
+        failures: vec![format!("{error:#}")],
+        request_count: 0,
+    }
+}
+
+fn transient_docs_technical_report(
+    requested_tasks: usize,
+    error: &anyhow::Error,
+) -> DocsImportTechnicalReport {
+    DocsImportTechnicalReport {
+        requested_tasks,
+        imported_corpora: 0,
+        imported_pages: 0,
+        imported_sections: 0,
+        imported_symbols: 0,
+        imported_examples: 0,
+        imported_by_type: std::collections::BTreeMap::new(),
+        failures: vec![format!("{error:#}")],
+        request_count: 0,
+    }
+}
+
+fn transient_docs_profile_report(profile: &str, error: &anyhow::Error) -> DocsImportProfileReport {
+    DocsImportProfileReport {
+        profile: normalize_title_query(profile),
+        imported_corpora: 0,
+        imported_extensions: 0,
+        imported_pages: 0,
+        imported_sections: 0,
+        imported_symbols: 0,
+        imported_examples: 0,
+        failures: vec![format!("{error:#}")],
+        request_count: 0,
+    }
 }

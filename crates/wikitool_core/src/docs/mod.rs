@@ -23,6 +23,7 @@ mod query;
 pub use fetch::{
     DocsApi, DocsClientConfig, MediaWikiDocsClient, RemoteDocsPage,
     discover_installed_extensions_from_wiki, discover_installed_extensions_from_wiki_with_config,
+    is_transient_docs_error,
 };
 pub use query::{build_docs_context, lookup_docs_symbols, search_docs};
 

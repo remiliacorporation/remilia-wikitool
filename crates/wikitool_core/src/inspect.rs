@@ -1,9 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use reqwest::Url;
@@ -11,7 +8,6 @@ use reqwest::blocking::Client;
 use serde::Serialize;
 
 const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
-const DEFAULT_EXPORTS_DIR: &str = "wikitool_exports";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SeoInspectResult {
@@ -67,79 +63,9 @@ impl Default for NetInspectOptions {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LighthouseOutputFormat {
-    Html,
-    Json,
-}
-
-impl LighthouseOutputFormat {
-    pub fn parse(value: &str) -> Result<Self> {
-        if value.eq_ignore_ascii_case("html") {
-            return Ok(Self::Html);
-        }
-        if value.eq_ignore_ascii_case("json") {
-            return Ok(Self::Json);
-        }
-        bail!("unsupported lighthouse output format: {value}")
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Html => "html",
-            Self::Json => "json",
-        }
-    }
-
-    fn extension(self) -> &'static str {
-        match self {
-            Self::Html => "html",
-            Self::Json => "json",
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct LighthouseRunOptions {
-    pub target: Option<String>,
-    pub target_url_override: Option<String>,
-    pub default_wiki_url: Option<String>,
-    pub article_path: Option<String>,
-    pub output_format: LighthouseOutputFormat,
-    pub output_path_override: Option<PathBuf>,
-    pub categories: Vec<String>,
-    pub chrome_flags: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LighthouseVersionInfo {
-    pub path: String,
-    pub version: Option<String>,
-    pub code: i32,
-    pub stderr: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LighthouseRunResult {
-    pub url: String,
-    pub format: String,
-    pub report_path: String,
-    pub report_bytes: Option<u64>,
-    pub categories: Vec<String>,
-    pub code: i32,
-    pub ignored_windows_cleanup_failure: bool,
-}
-
 #[derive(Debug, Clone)]
 struct TagMatch {
     attrs: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone)]
-struct ProcessOutput {
-    code: i32,
-    stdout: String,
-    stderr: String,
 }
 
 pub fn seo_inspect(
@@ -217,113 +143,6 @@ pub fn net_inspect(
         inspected: inspected.len(),
         summary,
         resources: inspected,
-    })
-}
-
-pub fn find_lighthouse_binary(_project_root: &Path) -> Option<PathBuf> {
-    if let Some(path) = env::var("LIGHTHOUSE_PATH")
-        .ok()
-        .map(|value| PathBuf::from(value.trim()))
-        .filter(|path| path.exists())
-    {
-        return Some(path);
-    }
-
-    let names = if cfg!(windows) {
-        vec!["lighthouse.cmd", "lighthouse.exe", "lighthouse"]
-    } else {
-        vec!["lighthouse"]
-    };
-
-    let path_var = env::var("PATH").ok()?;
-    let separator = if cfg!(windows) { ';' } else { ':' };
-    for part in path_var.split(separator) {
-        let dir = PathBuf::from(strip_wrapping_quotes(part.trim()));
-        if dir.as_os_str().is_empty() {
-            continue;
-        }
-        for name in &names {
-            let candidate = dir.join(name);
-            if candidate.exists() {
-                return Some(candidate);
-            }
-        }
-    }
-
-    None
-}
-
-pub fn lighthouse_version(binary: &Path) -> Result<LighthouseVersionInfo> {
-    let output = run_process(binary, &["--version".to_string()], true)?;
-    let version = output
-        .stdout
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map(ToString::to_string);
-    Ok(LighthouseVersionInfo {
-        path: normalize_path(binary),
-        version,
-        code: output.code,
-        stderr: output.stderr,
-    })
-}
-
-pub fn run_lighthouse(
-    project_root: &Path,
-    binary: &Path,
-    options: &LighthouseRunOptions,
-) -> Result<LighthouseRunResult> {
-    let target = options
-        .target
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("target is required unless --show-version is used"))?;
-    let url = resolve_target_url(
-        target,
-        options.target_url_override.as_deref(),
-        options.default_wiki_url.as_deref(),
-        options.article_path.as_deref(),
-    )?;
-    let output_path = resolve_lighthouse_output_path(
-        project_root,
-        target,
-        &url,
-        options.output_format,
-        options.output_path_override.as_deref(),
-    )?;
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", parent.display()))?;
-    }
-
-    let args = build_lighthouse_args(
-        &url,
-        options.output_format,
-        &output_path,
-        &options.categories,
-        options.chrome_flags.as_deref(),
-        resolve_windows_user_data_dir(project_root).as_deref(),
-    );
-    let output = run_process(binary, &args, false)?;
-    let ignored_windows_cleanup_failure =
-        output.code != 0 && is_ignorable_cleanup_failure(&output.stderr, &output_path);
-    if output.code != 0 && !ignored_windows_cleanup_failure {
-        let stderr = output.stderr.trim();
-        if stderr.is_empty() {
-            bail!("lighthouse exited with code {}", output.code);
-        }
-        bail!("lighthouse exited with code {}: {}", output.code, stderr);
-    }
-
-    let report_bytes = file_size(&output_path);
-    Ok(LighthouseRunResult {
-        url,
-        format: options.output_format.as_str().to_string(),
-        report_path: normalize_path(&output_path),
-        report_bytes,
-        categories: options.categories.clone(),
-        code: output.code,
-        ignored_windows_cleanup_failure,
     })
 }
 
@@ -711,183 +530,6 @@ fn build_net_summary(resources: &[NetResource]) -> NetSummary {
     }
 }
 
-fn resolve_lighthouse_output_path(
-    project_root: &Path,
-    target: &str,
-    url: &str,
-    format: LighthouseOutputFormat,
-    override_path: Option<&Path>,
-) -> Result<PathBuf> {
-    if let Some(path) = override_path {
-        if path.is_absolute() {
-            return Ok(path.to_path_buf());
-        }
-        let cwd = env::current_dir().context("failed to resolve current working directory")?;
-        return Ok(cwd.join(path));
-    }
-
-    let slug = sanitize_filename(&derive_label(target, url));
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before UNIX_EPOCH")?
-        .as_secs();
-    let filename = format!(
-        "lighthouse-{}-{}.{}",
-        if slug.is_empty() { "report" } else { &slug },
-        stamp,
-        format.extension()
-    );
-    if env::var("WIKITOOL_NO_DEFAULT_EXPORTS").is_ok() {
-        let cwd = env::current_dir().context("failed to resolve current working directory")?;
-        Ok(cwd.join(filename))
-    } else {
-        Ok(project_root.join(DEFAULT_EXPORTS_DIR).join(filename))
-    }
-}
-
-fn build_lighthouse_args(
-    url: &str,
-    output_format: LighthouseOutputFormat,
-    output_path: &Path,
-    categories: &[String],
-    chrome_flags: Option<&str>,
-    windows_user_data_dir: Option<&Path>,
-) -> Vec<String> {
-    let mut args = vec![
-        url.to_string(),
-        "--output".to_string(),
-        output_format.as_str().to_string(),
-        "--output-path".to_string(),
-        normalize_path(output_path),
-        "--quiet".to_string(),
-    ];
-    if !categories.is_empty() {
-        args.push(format!("--only-categories={}", categories.join(",")));
-    }
-
-    let mut flags = Vec::new();
-    if let Some(value) = chrome_flags {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            flags.push(trimmed.to_string());
-        }
-    }
-    let has_user_data_dir = chrome_flags
-        .map(|value| value.to_ascii_lowercase().contains("--user-data-dir"))
-        .unwrap_or(false);
-    if cfg!(windows)
-        && !has_user_data_dir
-        && let Some(dir) = windows_user_data_dir
-    {
-        flags.push(format!("--user-data-dir={}", normalize_path(dir)));
-        flags.push("--no-first-run".to_string());
-        flags.push("--no-default-browser-check".to_string());
-    }
-    if !flags.is_empty() {
-        args.push(format!("--chrome-flags={}", flags.join(" ")));
-    }
-    args
-}
-
-fn run_process(binary: &Path, args: &[String], suppress_output: bool) -> Result<ProcessOutput> {
-    let output = Command::new(binary)
-        .args(args)
-        .output()
-        .with_context(|| format!("failed to execute {}", binary.display()))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    if !suppress_output {
-        if !stdout.is_empty() {
-            print!("{stdout}");
-        }
-        if !stderr.is_empty() {
-            eprint!("{}", filter_chrome_launcher_output(&stderr));
-        }
-    }
-
-    Ok(ProcessOutput {
-        code: output.status.code().unwrap_or(1),
-        stdout,
-        stderr,
-    })
-}
-
-fn filter_chrome_launcher_output(stderr: &str) -> String {
-    if !cfg!(windows) || stderr.trim().is_empty() {
-        return stderr.to_string();
-    }
-    let mut output = Vec::new();
-    let mut suppressing = false;
-    for line in stderr.lines() {
-        if suppressing {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with("at ") {
-                continue;
-            }
-            suppressing = false;
-        }
-        if is_chrome_launcher_cleanup_line(line) {
-            suppressing = true;
-            continue;
-        }
-        output.push(line);
-    }
-    if output.is_empty() {
-        String::new()
-    } else {
-        format!("{}\n", output.join("\n"))
-    }
-}
-
-fn is_ignorable_cleanup_failure(stderr: &str, output_path: &Path) -> bool {
-    if !cfg!(windows) || stderr.trim().is_empty() {
-        return false;
-    }
-    let Some(size) = file_size(output_path) else {
-        return false;
-    };
-    if size == 0 {
-        return false;
-    }
-    let lower = stderr.to_ascii_lowercase();
-    lower.contains("eperm") && lower.contains("chrome-launcher") && lower.contains("lighthouse")
-}
-
-fn resolve_windows_user_data_dir(project_root: &Path) -> Option<PathBuf> {
-    if !cfg!(windows) {
-        return None;
-    }
-    if let Ok(value) = env::var("WIKITOOL_LIGHTHOUSE_USER_DATA_DIR") {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed));
-        }
-    }
-
-    let candidates = [
-        env::var("PUBLIC").ok(),
-        env::var("ProgramData").ok(),
-        env::var("LOCALAPPDATA").ok(),
-        env::var("TEMP").ok(),
-        env::var("TMP").ok(),
-        Some(project_root.to_string_lossy().to_string()),
-    ];
-    let mut base = candidates
-        .iter()
-        .flatten()
-        .find(|value| !value.trim().is_empty() && !value.chars().any(char::is_whitespace))
-        .cloned();
-    if base.is_none() {
-        base = candidates
-            .iter()
-            .flatten()
-            .find(|value| !value.trim().is_empty())
-            .cloned();
-    }
-    base.map(|value| PathBuf::from(value).join("wikitool-lighthouse"))
-}
-
 fn find_tag_start(html: &str, tag_name: &str, start: usize) -> Option<usize> {
     let mut index = start;
     while index < html.len() {
@@ -1090,49 +732,6 @@ fn extract_srcset(srcset: &str) -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
-fn derive_label(target: &str, url: &str) -> String {
-    if !is_http_url(target) {
-        return target.to_string();
-    }
-    if let Ok(parsed) = Url::parse(url) {
-        if let Some(segment) = parsed
-            .path_segments()
-            .and_then(|mut segments| segments.rfind(|segment| !segment.is_empty()))
-            && !segment.is_empty()
-        {
-            return segment.to_string();
-        }
-        if !parsed.host_str().unwrap_or_default().is_empty() {
-            return parsed.host_str().unwrap_or_default().to_string();
-        }
-    }
-    target.to_string()
-}
-
-fn sanitize_filename(value: &str) -> String {
-    let mut output = String::new();
-    let mut previous_dash = false;
-    for ch in value.chars() {
-        if ch.is_whitespace() || is_invalid_filename_char(ch) {
-            if !previous_dash && !output.is_empty() {
-                output.push('-');
-                previous_dash = true;
-            }
-            continue;
-        }
-        output.push(ch);
-        previous_dash = false;
-    }
-    while output.ends_with('-') {
-        output.pop();
-    }
-    output
-}
-
-fn is_invalid_filename_char(ch: char) -> bool {
-    matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '/' | '\\')
-}
-
 fn is_http_url(value: &str) -> bool {
     value.starts_with("http://") || value.starts_with("https://")
 }
@@ -1146,41 +745,9 @@ fn trim_trailing_slash(value: &str) -> &str {
     &value[..end]
 }
 
-fn file_size(path: &Path) -> Option<u64> {
-    fs::metadata(path).ok().map(|meta| meta.len())
-}
-
-fn normalize_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn strip_wrapping_quotes(value: &str) -> &str {
-    if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
-        &value[1..value.len() - 1]
-    } else {
-        value
-    }
-}
-
-fn is_chrome_launcher_cleanup_line(line: &str) -> bool {
-    let lower = line.to_ascii_lowercase();
-    if lower.contains("chrome-launcher")
-        && (lower.contains("eperm")
-            || lower.contains("cleanup")
-            || (lower.contains("failed") && lower.contains("remove"))
-            || (lower.contains("failed") && lower.contains("delete")))
-    {
-        return true;
-    }
-    (lower.contains("runtime error encountered")
-        && lower.contains("eperm")
-        && lower.contains("lighthouse"))
-        || (lower.contains("permission denied") && lower.contains("lighthouse"))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{extract_head, resolve_target_url, sanitize_filename, scan_tags};
+    use super::{extract_head, resolve_target_url, scan_tags};
 
     #[test]
     fn resolve_target_url_uses_override() {
@@ -1231,11 +798,5 @@ mod tests {
             meta[0].attrs.get("name").map(String::as_str),
             Some("description")
         );
-    }
-
-    #[test]
-    fn sanitize_filename_normalizes_problem_chars() {
-        assert_eq!(sanitize_filename("Alpha/Beta: test"), "Alpha-Beta-test");
-        assert_eq!(sanitize_filename("  A   B  "), "A-B");
     }
 }

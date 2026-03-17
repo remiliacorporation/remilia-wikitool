@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 
-use crate::cli_support::{copy_file, normalize_path, resolve_repo_root, set_executable_if_unix};
+use crate::cli_support::{
+    copy_file, normalize_path, resolve_git_hooks_dir, resolve_repo_root, set_executable_if_unix,
+};
 
 #[derive(Debug, Args)]
 pub(crate) struct DevArgs {
@@ -13,7 +15,10 @@ pub(crate) struct DevArgs {
 
 #[derive(Debug, Subcommand)]
 enum DevSubcommand {
-    #[command(name = "install-git-hooks")]
+    #[command(
+        name = "install-git-hooks",
+        about = "Install the commit-msg hook into the target Git worktree"
+    )]
     InstallGitHooks(InstallGitHooksArgs),
 }
 
@@ -46,20 +51,19 @@ pub(crate) fn run_dev(args: DevArgs) -> Result<()> {
 
 pub(crate) fn run_dev_install_git_hooks(args: InstallGitHooksArgs) -> Result<()> {
     let repo_root = resolve_repo_root(args.repo_root)?;
-    let hooks_dir = repo_root.join(".git/hooks");
-    if !hooks_dir.is_dir() {
+    let Some(hooks_dir) = resolve_git_hooks_dir(&repo_root)? else {
         if args.allow_missing_git {
             println!(
-                "No .git/hooks directory found at {}. Skipping hook install.",
-                normalize_path(&hooks_dir)
+                "No git hooks directory found under {}. Skipping hook install.",
+                normalize_path(&repo_root)
             );
             return Ok(());
         }
         bail!(
-            "no .git/hooks directory found at {}",
-            normalize_path(&hooks_dir)
+            "no git hooks directory found under {}",
+            normalize_path(&repo_root)
         );
-    }
+    };
 
     let source = args
         .source

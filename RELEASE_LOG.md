@@ -95,7 +95,6 @@ wikitool reduces AI context rot by storing pulled articles locally in a SQLite d
 **Inspection**
 - SEO metatag inspection on any page (not just your wiki)
 - Network resource and cache header analysis
-- Lighthouse performance audits with HTML/JSON reports
 
 **Editor setup**
 - Generate VS Code configuration for the Wikitext extension (wikiparser by Bhsd)

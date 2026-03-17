@@ -29,7 +29,7 @@ In scope:
 2. Template/module/category/linking workflows
 3. Research and source verification
 4. Pre-push quality gates
-5. SEO/network/perf page diagnostics
+5. SEO/network page diagnostics
 
 Out of scope by default:
 

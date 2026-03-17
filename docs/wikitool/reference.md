@@ -33,7 +33,6 @@ Commands:
   docs                 Manage and query pinned MediaWiki docs corpora
   seo                  
   net                  
-  perf                 
   import               
   knowledge            Build and query the local knowledge layer
   research             Search and fetch subject evidence without mutating the wiki
@@ -44,8 +43,8 @@ Commands:
   lsp:status           
   lsp:info             
   workflow             Run end-to-end setup and refresh workflows
-  release              
-  dev                  
+  release              Build AI companion packs and release bundles
+  dev                  Install local development helpers
   contracts            Contract bootstrap and differential harness helpers
   help                 Print this message or the help of the given subcommand(s)
 
@@ -410,7 +409,8 @@ Options:
       --subpages             Include subpages for selected pages/types
       --data-dir <PATH>      
       --hooks                Import all hook documentation
-      --config               Import configuration variable docs
+      --config <PATH>        
+      --config-vars          Import configuration variable docs
       --api                  Import API documentation
       --diagnostics          Print resolved runtime diagnostics
       --help-docs            Import Help: docs
@@ -646,47 +646,6 @@ Options:
       --no-meta              Omit metadata from JSON output
       --url <URL>            Override target URL
   -h, --help                 Print help
-```
-
-## perf
-
-```text
-Usage: wikitool perf [OPTIONS] <COMMAND>
-
-Commands:
-  lighthouse  
-  help        Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## perf lighthouse
-
-```text
-Usage: wikitool perf lighthouse [OPTIONS] [TARGET]
-
-Arguments:
-  [TARGET]  
-
-Options:
-      --output <FORMAT>       Output format: html|json [default: html]
-      --project-root <PATH>   
-      --data-dir <PATH>       
-      --out <PATH>            Report output path
-      --categories <LIST>     Comma-separated categories
-      --config <PATH>         
-      --chrome-flags <FLAGS>  Pass Chrome flags to Lighthouse
-      --diagnostics           Print resolved runtime diagnostics
-      --show-version          Print resolved Lighthouse binary + version and exit
-      --json                  Output JSON summary
-      --no-meta               Omit metadata from JSON output
-      --url <URL>             Override target URL
-  -h, --help                  Print help
 ```
 
 ## import
@@ -1487,12 +1446,14 @@ Options:
 ## release
 
 ```text
+Build AI companion packs and release bundles
+
 Usage: wikitool release [OPTIONS] <COMMAND>
 
 Commands:
-  build-ai-pack  
-  package        
-  build-matrix   
+  build-ai-pack  Stage the AI companion pack into a distributable folder
+  package        Stage one local binary together with the AI companion files
+  build-matrix   Build and package release bundles for one or more targets
   help           Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1506,6 +1467,8 @@ Options:
 ## release build-ai-pack
 
 ```text
+Stage the AI companion pack into a distributable folder
+
 Usage: wikitool release build-ai-pack [OPTIONS]
 
 Options:
@@ -1522,6 +1485,8 @@ Options:
 ## release package
 
 ```text
+Stage one local binary together with the AI companion files
+
 Usage: wikitool release package [OPTIONS]
 
 Options:
@@ -1539,6 +1504,8 @@ Options:
 ## release build-matrix
 
 ```text
+Build and package release bundles for one or more targets
+
 Usage: wikitool release build-matrix [OPTIONS]
 
 Options:
@@ -1562,10 +1529,12 @@ Options:
 ## dev
 
 ```text
+Install local development helpers
+
 Usage: wikitool dev [OPTIONS] <COMMAND>
 
 Commands:
-  install-git-hooks  
+  install-git-hooks  Install the commit-msg hook into the target Git worktree
   help               Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1579,6 +1548,8 @@ Options:
 ## dev install-git-hooks
 
 ```text
+Install the commit-msg hook into the target Git worktree
+
 Usage: wikitool dev install-git-hooks [OPTIONS]
 
 Options:

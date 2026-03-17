@@ -14,10 +14,15 @@ pub(crate) struct ReleaseArgs {
 
 #[derive(Debug, Subcommand)]
 enum ReleaseSubcommand {
-    #[command(name = "build-ai-pack")]
+    #[command(
+        name = "build-ai-pack",
+        about = "Stage the AI companion pack into a distributable folder"
+    )]
     BuildAiPack(ReleaseBuildAiPackArgs),
+    #[command(about = "Stage one local binary together with the AI companion files")]
     Package(ReleasePackageArgs),
     #[command(name = "build-matrix")]
+    #[command(about = "Build and package release bundles for one or more targets")]
     BuildMatrix(ReleaseBuildMatrixArgs),
 }
 

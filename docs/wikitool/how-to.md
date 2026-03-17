@@ -105,6 +105,8 @@ wikitool fetch "https://www.mediawiki.org/wiki/Manual:Hooks" --save
 wikitool export "https://www.mediawiki.org/wiki/Manual:Hooks" --subpages --combined
 ```
 
+`fetch` and `export` accept MediaWiki short URLs, `index.php?title=...` URLs, `/w/index.php?title=...` URLs, and subdirectory installs such as `/mediawiki/wiki/...`.
+
 ## Cargo import
 
 ```bash
@@ -201,7 +203,6 @@ Prefer `knowledge article-start` first. Use `knowledge pack` when you want the u
 wikitool lint --format text
 wikitool seo inspect "Main Page"
 wikitool net inspect "Main Page" --limit 25
-wikitool perf lighthouse "Main Page" --output html
 ```
 
 ## Build release bundles (manual)

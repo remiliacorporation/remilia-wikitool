@@ -59,6 +59,35 @@ pub(crate) fn detect_host_context_root(
     Ok(Some(root))
 }
 
+pub(crate) fn resolve_git_hooks_dir(repo_root: &Path) -> Result<Option<PathBuf>> {
+    let git_path = repo_root.join(".git");
+    if git_path.is_dir() {
+        let hooks_dir = git_path.join("hooks");
+        if hooks_dir.is_dir() {
+            return Ok(Some(hooks_dir));
+        }
+        return Ok(None);
+    }
+
+    if !git_path.is_file() {
+        return Ok(None);
+    }
+
+    let pointer = fs::read_to_string(&git_path)
+        .with_context(|| format!("failed to read {}", normalize_path(&git_path)))?;
+    let git_dir = parse_gitdir_pointer(repo_root, &pointer).ok_or_else(|| {
+        anyhow::anyhow!(
+            "unsupported .git pointer format in {}",
+            normalize_path(&git_path)
+        )
+    })?;
+    let hooks_dir = git_dir.join("hooks");
+    if hooks_dir.is_dir() {
+        return Ok(Some(hooks_dir));
+    }
+    Ok(None)
+}
+
 pub(crate) fn ensure_files_identical(left: &Path, right: &Path, label: &str) -> Result<()> {
     let left_bytes =
         fs::read(left).with_context(|| format!("failed to read {}", normalize_path(left)))?;
@@ -163,6 +192,16 @@ pub(crate) fn is_markdown_file(path: &Path) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.eq_ignore_ascii_case("md"))
         .unwrap_or(false)
+}
+
+fn parse_gitdir_pointer(repo_root: &Path, raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    let remainder = trimmed.strip_prefix("gitdir:")?.trim();
+    let candidate = PathBuf::from(remainder);
+    if candidate.is_absolute() {
+        return Some(candidate);
+    }
+    Some(repo_root.join(candidate))
 }
 
 #[cfg(unix)]

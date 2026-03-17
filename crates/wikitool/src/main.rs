@@ -12,6 +12,8 @@ mod db_cli;
 mod dev_cli;
 mod docs_cli;
 mod export_cli;
+#[cfg(test)]
+mod guidance_contracts;
 mod import_cli;
 mod inspect_cli;
 mod knowledge_cli;
@@ -93,7 +95,6 @@ enum Commands {
     Docs(docs_cli::DocsArgs),
     Seo(inspect_cli::SeoArgs),
     Net(inspect_cli::NetArgs),
-    Perf(inspect_cli::PerfArgs),
     Import(import_cli::ImportArgs),
     #[command(about = "Build and query the local knowledge layer")]
     Knowledge(knowledge_cli::KnowledgeArgs),
@@ -113,7 +114,9 @@ enum Commands {
     LspInfo,
     #[command(about = "Run end-to-end setup and refresh workflows")]
     Workflow(workflow_cli::WorkflowArgs),
+    #[command(about = "Build AI companion packs and release bundles")]
     Release(release::ReleaseArgs),
+    #[command(about = "Install local development helpers")]
     Dev(dev_cli::DevArgs),
     #[command(
         name = "contracts",
@@ -156,7 +159,6 @@ fn main() -> Result<()> {
         Some(Commands::Docs(args)) => docs_cli::run_docs(&runtime, args),
         Some(Commands::Seo(args)) => inspect_cli::run_seo(&runtime, args),
         Some(Commands::Net(args)) => inspect_cli::run_net(&runtime, args),
-        Some(Commands::Perf(args)) => inspect_cli::run_perf(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
         Some(Commands::Knowledge(args)) => knowledge_cli::run_knowledge(&runtime, args),
         Some(Commands::Research(args)) => research_cli::run_research(&runtime, args),
