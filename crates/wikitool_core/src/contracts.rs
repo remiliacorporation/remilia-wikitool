@@ -58,6 +58,12 @@ pub const COMMAND_SURFACE: &[&str] = &[
     "knowledge inspect empty-categories",
     "wiki capabilities sync",
     "wiki capabilities show",
+    "wiki profile sync",
+    "wiki profile show",
+    "wiki rules show",
+    "templates catalog build",
+    "templates show",
+    "templates examples",
     "workflow bootstrap",
     "workflow full-refresh",
 ];
