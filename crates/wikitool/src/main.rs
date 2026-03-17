@@ -21,6 +21,7 @@ mod query_cli;
 mod release;
 mod research_cli;
 mod sync_cli;
+mod wiki_cli;
 mod workflow_cli;
 
 const LICENSE_AGPL: &str = include_str!("../../../LICENSE");
@@ -96,6 +97,8 @@ enum Commands {
     Knowledge(knowledge_cli::KnowledgeArgs),
     #[command(about = "Search and fetch subject evidence without mutating the wiki")]
     Research(research_cli::ResearchArgs),
+    #[command(about = "Sync and inspect live wiki capability metadata")]
+    Wiki(wiki_cli::WikiArgs),
     #[command(name = "lsp:generate-config")]
     LspGenerateConfig(lsp_cli::LspGenerateConfigArgs),
     #[command(name = "lsp:status")]
@@ -151,6 +154,7 @@ fn main() -> Result<()> {
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
         Some(Commands::Knowledge(args)) => knowledge_cli::run_knowledge(&runtime, args),
         Some(Commands::Research(args)) => research_cli::run_research(&runtime, args),
+        Some(Commands::Wiki(args)) => wiki_cli::run_wiki(&runtime, args),
         Some(Commands::LspGenerateConfig(args)) => lsp_cli::run_lsp_generate_config(&runtime, args),
         Some(Commands::LspStatus) => lsp_cli::run_lsp_status(&runtime),
         Some(Commands::LspInfo) => lsp_cli::run_lsp_info(),

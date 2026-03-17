@@ -12,6 +12,7 @@ pub mod inspect;
 pub mod knowledge;
 pub mod lint;
 pub mod mw;
+pub mod profile;
 pub mod research;
 pub mod runtime;
 pub mod schema;

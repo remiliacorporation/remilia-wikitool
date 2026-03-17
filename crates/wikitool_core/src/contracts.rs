@@ -56,6 +56,8 @@ pub const COMMAND_SURFACE: &[&str] = &[
     "knowledge inspect backlinks",
     "knowledge inspect orphans",
     "knowledge inspect empty-categories",
+    "wiki capabilities sync",
+    "wiki capabilities show",
     "workflow bootstrap",
     "workflow full-refresh",
 ];
