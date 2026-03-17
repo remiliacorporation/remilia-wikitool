@@ -64,6 +64,8 @@ pub const COMMAND_SURFACE: &[&str] = &[
     "templates catalog build",
     "templates show",
     "templates examples",
+    "article lint",
+    "article fix",
     "workflow bootstrap",
     "workflow full-refresh",
 ];

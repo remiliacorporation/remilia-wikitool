@@ -257,6 +257,69 @@ else
     fail "knowledge status reports content readiness and docs degradation after build (got: $OUTPUT)"
 fi
 
+# --- article lint/fix ---
+section "article lint/fix"
+ARTICLE_PROJ=$(setup_project article-lint)
+wt "$ARTICLE_PROJ" init --templates > /dev/null 2>&1
+mkdir -p "$ARTICLE_PROJ/wiki_content/Main"
+mkdir -p "$ARTICLE_PROJ/templates/misc"
+mkdir -p "$ARTICLE_PROJ/tools/wikitool/ai-pack/llm_instructions"
+cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/llm_instructions/article_structure.md" << 'MDEOF'
+{{SHORTDESC:Example}}
+{{Article quality|unverified}}
+== References ==
+{{Reflist}}
+parent_group = Remilia
+MDEOF
+cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/llm_instructions/style_rules.md" << 'MDEOF'
+### No placeholder content
+- Never output: `INSERT_SOURCE_URL`
+Straight quotes only
+MDEOF
+cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/llm_instructions/writing_guide.md" << 'MDEOF'
+raw MediaWiki wikitext
+Never output Markdown
+Use 2-4 categories per article
+[[Category:Remilia]]
+{{Article quality|unverified}}
+parent_group = Remilia
+### Citation templates
+```wikitext
+{{Cite web|url=}}
+```
+## 6. Infobox selection
+| Subject type | Infobox |
+|---|---|
+| NFT Collection | `{{Infobox NFT collection}}` |
+MDEOF
+cat > "$ARTICLE_PROJ/templates/misc/Template_Article_quality.wiki" << 'WIKIEOF'
+<includeonly>{{{1|unverified}}}</includeonly>
+WIKIEOF
+cat > "$ARTICLE_PROJ/templates/misc/Template_Reflist.wiki" << 'WIKIEOF'
+<references />
+WIKIEOF
+cat > "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" << 'WIKIEOF'
+{{SHORTDESC:Draft article}}
+{{Article quality|unverified}}
+
+## History
+'''Article Draft''' is a test<ref>{{Cite web|title=Source}}</ref>.
+
+== References ==
+WIKIEOF
+OUTPUT=$(wt "$ARTICLE_PROJ" article lint "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "rule=structure.markdown_heading" && echo "$OUTPUT" | grep -q "rule=structure.require_reflist" && echo "$OUTPUT" | grep -q "rule=citation.after_punctuation"; then
+    pass "article lint reports markdown heading, reflist, and citation-order issues"
+else
+    fail "article lint reports markdown heading, reflist, and citation-order issues (got: $OUTPUT)"
+fi
+OUTPUT=$(wt "$ARTICLE_PROJ" article fix "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" --apply safe 2>&1 || true)
+if echo "$OUTPUT" | grep -q "applied_fix_count: 3" && grep -q "== History ==" "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" && grep -q "{{Reflist}}" "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" && grep -q "test.<ref>" "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki"; then
+    pass "article fix applies safe markdown, reflist, and citation-order fixes"
+else
+    fail "article fix applies safe markdown, reflist, and citation-order fixes (got: $OUTPUT)"
+fi
+
 # --- knowledge inspect stats ---
 section "knowledge inspect stats"
 OUTPUT=$(wt "$PROJ" knowledge inspect stats 2>&1)

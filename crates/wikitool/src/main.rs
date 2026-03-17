@@ -5,6 +5,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 
 pub(crate) use wikitool_core::schema::LOCAL_DB_POLICY_MESSAGE;
 
+mod article_cli;
 mod cli_support;
 mod contracts_cli;
 mod db_cli;
@@ -102,6 +103,8 @@ enum Commands {
     Wiki(wiki_cli::WikiArgs),
     #[command(about = "Build and inspect the local template catalog")]
     Templates(templates_cli::TemplatesArgs),
+    #[command(about = "Lint and mechanically remediate article drafts")]
+    Article(article_cli::ArticleArgs),
     #[command(name = "lsp:generate-config")]
     LspGenerateConfig(lsp_cli::LspGenerateConfigArgs),
     #[command(name = "lsp:status")]
@@ -159,6 +162,7 @@ fn main() -> Result<()> {
         Some(Commands::Research(args)) => research_cli::run_research(&runtime, args),
         Some(Commands::Wiki(args)) => wiki_cli::run_wiki(&runtime, args),
         Some(Commands::Templates(args)) => templates_cli::run_templates(&runtime, args),
+        Some(Commands::Article(args)) => article_cli::run_article(&runtime, args),
         Some(Commands::LspGenerateConfig(args)) => lsp_cli::run_lsp_generate_config(&runtime, args),
         Some(Commands::LspStatus) => lsp_cli::run_lsp_status(&runtime),
         Some(Commands::LspInfo) => lsp_cli::run_lsp_info(),

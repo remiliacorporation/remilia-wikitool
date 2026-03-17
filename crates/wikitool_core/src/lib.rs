@@ -1,3 +1,4 @@
+pub mod article_lint;
 pub mod authoring;
 pub mod config;
 pub mod content_store;
