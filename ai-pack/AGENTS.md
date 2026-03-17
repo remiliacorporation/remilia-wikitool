@@ -157,9 +157,9 @@ Use `knowledge pack` only when `article-start` is too collapsed and you need the
 When investigating redirects, missing pages, or conflicting claims, verify against live API:
 
 ```bash
-curl -s "https://wiki.remilia.org/w/api.php?action=query&list=search&srsearch=QUERY&format=json"
-curl -s "https://wiki.remilia.org/w/api.php?action=query&titles=PAGE&prop=revisions&rvprop=content&format=json"
-curl -s "https://wiki.remilia.org/w/api.php?action=query&titles=PAGE&redirects&format=json"
+curl -s "https://wiki.remilia.org/api.php?action=query&list=search&srsearch=QUERY&format=json"
+curl -s "https://wiki.remilia.org/api.php?action=query&titles=PAGE&prop=revisions&rvprop=content&format=json"
+curl -s "https://wiki.remilia.org/api.php?action=query&titles=PAGE&redirects&format=json"
 ```
 
 ## Host Overlay Behavior
