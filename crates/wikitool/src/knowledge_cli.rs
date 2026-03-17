@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use serde::Serialize;
+use wikitool_core::authoring::article_start::build_article_start;
+use wikitool_core::authoring::model::ArticleStartResult;
 use wikitool_core::docs::{
     DocsImportProfileOptions, DocsImportProfileReport, import_docs_profile_with_config,
 };
@@ -42,6 +44,8 @@ enum KnowledgeSubcommand {
     Status(KnowledgeStatusArgs),
     #[command(about = "Assemble the authoring knowledge pack")]
     Pack(KnowledgePackArgs),
+    #[command(about = "Assemble an interpreted authoring brief for a topic")]
+    ArticleStart(KnowledgeArticleStartArgs),
     #[command(about = "Inspect indexed knowledge structures directly")]
     Inspect(knowledge_inspect_cli::KnowledgeInspectArgs),
 }
@@ -178,6 +182,93 @@ pub(crate) struct KnowledgePackArgs {
     no_diversify: bool,
 }
 
+#[derive(Debug, Args, Clone)]
+pub(crate) struct KnowledgeArticleStartArgs {
+    #[arg(
+        value_name = "TOPIC",
+        help = "Primary article topic/title for retrieval"
+    )]
+    topic: Option<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Optional stub wikitext file used for link/template hint extraction"
+    )]
+    stub_path: Option<PathBuf>,
+    #[arg(
+        long,
+        default_value_t = 18,
+        value_name = "N",
+        help = "Maximum related pages in the brief"
+    )]
+    related_limit: usize,
+    #[arg(
+        long,
+        default_value_t = 10,
+        value_name = "N",
+        help = "Maximum retrieved context chunks"
+    )]
+    chunk_limit: usize,
+    #[arg(
+        long,
+        default_value_t = 1200,
+        value_name = "TOKENS",
+        help = "Token budget across retrieved chunks"
+    )]
+    token_budget: usize,
+    #[arg(
+        long,
+        default_value_t = 8,
+        value_name = "N",
+        help = "Maximum distinct source pages in chunk retrieval"
+    )]
+    max_pages: usize,
+    #[arg(
+        long,
+        default_value_t = 18,
+        value_name = "N",
+        help = "Maximum internal link suggestions"
+    )]
+    link_limit: usize,
+    #[arg(
+        long,
+        default_value_t = 8,
+        value_name = "N",
+        help = "Maximum category suggestions"
+    )]
+    category_limit: usize,
+    #[arg(
+        long,
+        default_value_t = 16,
+        value_name = "N",
+        help = "Maximum template summaries"
+    )]
+    template_limit: usize,
+    #[arg(
+        long,
+        default_value = DEFAULT_DOCS_PROFILE,
+        value_name = "PROFILE",
+        help = "Docs profile to use for bridged authoring retrieval"
+    )]
+    docs_profile: String,
+    #[arg(
+        long,
+        default_value = "json",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: String,
+    #[arg(long, help = "Include the raw knowledge pack in JSON output")]
+    include_pack: bool,
+    #[arg(long, help = "Enable lexical chunk de-duplication and diversification")]
+    diversify: bool,
+    #[arg(
+        long,
+        help = "Disable lexical chunk de-duplication and diversification"
+    )]
+    no_diversify: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct KnowledgeBuildReport {
     rebuild: RebuildReport,
@@ -208,12 +299,33 @@ enum KnowledgePackPayload {
     Found(Box<AuthoringKnowledgePackResult>),
 }
 
+#[derive(Debug, Serialize)]
+struct KnowledgeArticleStartOutput {
+    docs_profile_requested: String,
+    readiness: KnowledgeReadinessLevel,
+    degradations: Vec<String>,
+    knowledge_generation: String,
+    result: KnowledgeArticleStartPayload,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum KnowledgeArticleStartPayload {
+    IndexMissing,
+    QueryMissing,
+    Found {
+        article_start: Box<ArticleStartResult>,
+        raw_pack: Option<Box<AuthoringKnowledgePackResult>>,
+    },
+}
+
 pub(crate) fn run_knowledge(runtime: &RuntimeOptions, args: KnowledgeArgs) -> Result<()> {
     match args.command {
         KnowledgeSubcommand::Build(args) => run_knowledge_build(runtime, args),
         KnowledgeSubcommand::Warm(args) => run_knowledge_warm(runtime, args),
         KnowledgeSubcommand::Status(args) => run_knowledge_status(runtime, args),
         KnowledgeSubcommand::Pack(args) => run_knowledge_pack(runtime, args),
+        KnowledgeSubcommand::ArticleStart(args) => run_knowledge_article_start(runtime, args),
         KnowledgeSubcommand::Inspect(args) => {
             knowledge_inspect_cli::run_knowledge_inspect(runtime, args)
         }
@@ -512,6 +624,156 @@ fn run_knowledge_pack(runtime: &RuntimeOptions, args: KnowledgePackArgs) -> Resu
                     chunk.token_estimate,
                     chunk.chunk_text
                 );
+            }
+        }
+    }
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
+fn run_knowledge_article_start(
+    runtime: &RuntimeOptions,
+    args: KnowledgeArticleStartArgs,
+) -> Result<()> {
+    if args.related_limit == 0 {
+        bail!("knowledge article-start requires --related-limit >= 1");
+    }
+    if args.chunk_limit == 0 {
+        bail!("knowledge article-start requires --chunk-limit >= 1");
+    }
+    if args.token_budget == 0 {
+        bail!("knowledge article-start requires --token-budget >= 1");
+    }
+    if args.max_pages == 0 {
+        bail!("knowledge article-start requires --max-pages >= 1");
+    }
+    if args.link_limit == 0 {
+        bail!("knowledge article-start requires --link-limit >= 1");
+    }
+    if args.category_limit == 0 {
+        bail!("knowledge article-start requires --category-limit >= 1");
+    }
+    if args.template_limit == 0 {
+        bail!("knowledge article-start requires --template-limit >= 1");
+    }
+    if args.diversify && args.no_diversify {
+        bail!("cannot use --diversify and --no-diversify together");
+    }
+
+    let format = normalize_format(&args.format)?;
+    let use_diversify = !args.no_diversify;
+    let paths = resolve_runtime_paths(runtime)?;
+    let topic = normalize_option(args.topic.as_deref())
+        .or_else(|| derive_topic_from_stub_path(args.stub_path.as_deref()));
+    let stub_content = load_knowledge_stub_content(&paths, args.stub_path.as_deref())?;
+    let pack = build_authoring_knowledge_pack(
+        &paths,
+        topic.as_deref(),
+        stub_content.as_deref(),
+        &AuthoringKnowledgePackOptions {
+            related_page_limit: args.related_limit,
+            chunk_limit: args.chunk_limit,
+            token_budget: args.token_budget,
+            max_pages: args.max_pages,
+            link_limit: args.link_limit,
+            category_limit: args.category_limit,
+            template_limit: args.template_limit,
+            docs_profile: args.docs_profile.clone(),
+            diversify: use_diversify,
+        },
+    )?;
+    let status = knowledge_status(&paths, &args.docs_profile)?;
+    let output = match pack {
+        AuthoringKnowledgePack::IndexMissing => KnowledgeArticleStartOutput {
+            docs_profile_requested: status.docs_profile_requested.clone(),
+            readiness: status.readiness.clone(),
+            degradations: status.degradations.clone(),
+            knowledge_generation: status.knowledge_generation.clone(),
+            result: KnowledgeArticleStartPayload::IndexMissing,
+        },
+        AuthoringKnowledgePack::QueryMissing => KnowledgeArticleStartOutput {
+            docs_profile_requested: status.docs_profile_requested.clone(),
+            readiness: status.readiness.clone(),
+            degradations: status.degradations.clone(),
+            knowledge_generation: status.knowledge_generation.clone(),
+            result: KnowledgeArticleStartPayload::QueryMissing,
+        },
+        AuthoringKnowledgePack::Found(report) => {
+            let article_start = build_article_start(&report);
+            KnowledgeArticleStartOutput {
+                docs_profile_requested: status.docs_profile_requested.clone(),
+                readiness: status.readiness.clone(),
+                degradations: status.degradations.clone(),
+                knowledge_generation: status.knowledge_generation.clone(),
+                result: KnowledgeArticleStartPayload::Found {
+                    article_start: Box::new(article_start),
+                    raw_pack: if args.include_pack {
+                        Some(report)
+                    } else {
+                        None
+                    },
+                },
+            }
+        }
+    };
+
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    println!("knowledge article-start");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!(
+        "topic: {}",
+        topic.as_deref().unwrap_or("<derived-from-stub>")
+    );
+    println!("docs_profile_requested: {}", output.docs_profile_requested);
+    println!("knowledge_generation: {}", output.knowledge_generation);
+    println!("readiness: {}", format_readiness(&output.readiness));
+    println!("degradations: {}", format_list(&output.degradations));
+    match output.result {
+        KnowledgeArticleStartPayload::IndexMissing => {
+            bail!(
+                "knowledge article-start requires a built knowledge index; run `wikitool knowledge build`"
+            );
+        }
+        KnowledgeArticleStartPayload::QueryMissing => {
+            bail!(
+                "knowledge article-start requires a topic or a stub with at least one resolvable wikilink"
+            );
+        }
+        KnowledgeArticleStartPayload::Found { article_start, .. } => {
+            println!(
+                "article_start.schema_version: {}",
+                article_start.schema_version
+            );
+            println!("article_start.topic: {}", article_start.topic);
+            println!(
+                "article_start.article_type: {}",
+                serde_json::to_string(&article_start.article_type)?
+            );
+            println!(
+                "article_start.local_state: {}",
+                serde_json::to_string(&article_start.local_state)?
+            );
+            println!(
+                "article_start.comparable_pages: {}",
+                format_list(&article_start.local_integration.comparable_pages)
+            );
+            println!(
+                "article_start.docs_queries: {}",
+                format_list(&article_start.local_integration.docs_queries)
+            );
+            println!(
+                "article_start.open_questions.count: {}",
+                article_start.open_questions.len()
+            );
+            for question in article_start.open_questions.iter().take(6) {
+                println!("article_start.open_question: {}", question.question);
             }
         }
     }

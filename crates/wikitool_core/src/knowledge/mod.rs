@@ -1,6 +1,5 @@
 pub mod authoring;
 pub mod content_index;
-pub(crate) mod docs_bridge;
 pub mod inspect;
 pub(crate) mod model;
 pub(crate) mod prelude;

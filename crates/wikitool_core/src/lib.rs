@@ -1,3 +1,4 @@
+pub mod authoring;
 pub mod config;
 pub mod content_store;
 pub mod contracts;
@@ -5,10 +6,13 @@ pub mod delete;
 pub mod docs;
 pub mod external;
 pub mod filesystem;
+pub mod graph;
 pub mod import_cargo;
 pub mod inspect;
 pub mod knowledge;
 pub mod lint;
+pub mod mw;
+pub mod research;
 pub mod runtime;
 pub mod schema;
 pub mod support;

@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
-pub const DEFAULT_USER_AGENT: &str = "wikitool/0.1";
+pub const DEFAULT_USER_AGENT: &str = concat!("wikitool/", env!("CARGO_PKG_VERSION"));
 pub const DEFAULT_ARTICLE_PATH: &str = "/$1";
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
@@ -335,7 +335,7 @@ folder = "Custom"
     #[test]
     fn default_user_agent() {
         let config = WikiConfig::default();
-        assert_eq!(config.user_agent(), "wikitool/0.1");
+        assert_eq!(config.user_agent(), DEFAULT_USER_AGENT);
     }
 
     #[test]

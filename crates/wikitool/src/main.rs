@@ -19,6 +19,7 @@ mod lsp_cli;
 mod quality_cli;
 mod query_cli;
 mod release;
+mod research_cli;
 mod sync_cli;
 mod workflow_cli;
 
@@ -93,6 +94,8 @@ enum Commands {
     Import(import_cli::ImportArgs),
     #[command(about = "Build and query the local knowledge layer")]
     Knowledge(knowledge_cli::KnowledgeArgs),
+    #[command(about = "Search and fetch subject evidence without mutating the wiki")]
+    Research(research_cli::ResearchArgs),
     #[command(name = "lsp:generate-config")]
     LspGenerateConfig(lsp_cli::LspGenerateConfigArgs),
     #[command(name = "lsp:status")]
@@ -147,6 +150,7 @@ fn main() -> Result<()> {
         Some(Commands::Perf(args)) => inspect_cli::run_perf(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
         Some(Commands::Knowledge(args)) => knowledge_cli::run_knowledge(&runtime, args),
+        Some(Commands::Research(args)) => research_cli::run_research(&runtime, args),
         Some(Commands::LspGenerateConfig(args)) => lsp_cli::run_lsp_generate_config(&runtime, args),
         Some(Commands::LspStatus) => lsp_cli::run_lsp_status(&runtime),
         Some(Commands::LspInfo) => lsp_cli::run_lsp_info(),
