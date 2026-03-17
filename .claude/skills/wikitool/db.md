@@ -2,7 +2,7 @@
 name: db
 description: Run database maintenance and status commands.
 allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
-argument-hint: <stats|sync|migrate> [options]
+argument-hint: <stats|reset> [options]
 ---
 
 # /wikitool db
