@@ -11,6 +11,7 @@ Canonical command truth is CLI help and runbooks.
 ## Validation pass
 
 ```bash
+wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool validate
 wikitool diff
 ```
@@ -28,14 +29,16 @@ wikitool search "Category:"
 
 ```bash
 wikitool docs context "extension feature" --profile remilia-mw-1.44 --format json
-wikitool context "Template:Infobox person"
+wikitool wiki profile show --format json
+wikitool templates show "Template:Infobox person"
 ```
 
 ## Push-gate report contract
 
 Before any write push, report:
 
-1. Validation result (`pass` or explicit failures)
-2. Diff scope summary
-3. Risk notes (delete, force, template/category scope)
-4. Next command (`wikitool push --dry-run --summary ...`)
+1. Article lint result (`pass` or explicit rule hits)
+2. Validation result (`pass` or explicit failures)
+3. Diff scope summary
+4. Risk notes (delete, force, template/category scope)
+5. Next command (`wikitool push --dry-run --summary ...`)

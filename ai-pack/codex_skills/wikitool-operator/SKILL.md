@@ -19,6 +19,7 @@ Do not introduce flags or command shapes that only exist in this skill.
 ## Safe write sequence
 
 ```bash
+wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool pull --full --all
 wikitool diff
 wikitool validate
@@ -44,9 +45,17 @@ wikitool docs list --outdated
 
 ```bash
 wikitool pull --full --all
-wikitool context "Template:Infobox person"
 wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44
+wikitool knowledge article-start "Topic" --format json
+wikitool research search "Topic" --format json
+wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
+wikitool templates show "Template:Infobox person"
+wikitool templates examples "Template:Infobox person" --limit 2
+wikitool wiki profile show --format json
+wikitool article lint wiki_content/Main/Title.wiki --format json
+wikitool article fix wiki_content/Main/Title.wiki --apply safe
 wikitool knowledge pack "Topic" --format json
 wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
 wikitool search "Category:"
@@ -58,10 +67,11 @@ wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
 ## Retrieval guidance
 
 1. Treat local files as the human editing surface and SQLite as the AI retrieval layer.
-2. Prefer `knowledge pack` for authoring retrieval, and use `knowledge status` to confirm whether docs-bridged context is available before relying on it.
+2. Prefer `knowledge article-start` for authoring retrieval, and use `knowledge pack` only when the raw substrate is needed.
 3. Describe references using their source metadata, authority/identifier matches, and retrieval signals; do not imply that wikitool assigns authoritative quality ratings.
-4. Use `knowledge inspect templates TEMPLATE` when you need the implementation bundle for an active template, including `/doc` and `Module:` pages when present.
-5. When `remilia-mw-1.44` docs are imported, authoring retrieval can bridge pinned MediaWiki docs with local template/module patterns; use that before falling back to generic web docs.
+4. Use `templates show` and `templates examples` when you need the implementation bundle, parameter surface, and examples for an active template.
+5. Use `wiki profile show` when Remilia-specific capabilities, references, and template preferences affect the draft.
+6. When `remilia-mw-1.44` docs are imported, authoring retrieval can bridge pinned MediaWiki docs with local template/module patterns; use that before falling back to generic web docs.
 
 ## Safety constraints
 

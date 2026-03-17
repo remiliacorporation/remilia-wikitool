@@ -21,6 +21,23 @@ wikitool init --templates
 wikitool pull --full --all
 ```
 
+## Default Authoring Workflow
+
+For real authoring work, the recommended front door is now:
+
+```bash
+wikitool init --templates
+wikitool pull --full --all
+wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool wiki profile sync
+wikitool knowledge article-start "Remilia Corporation" --format json
+wikitool research search "Remilia Corporation" --format json
+wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
+wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
+```
+
+Use `wikitool knowledge pack ...` when you need the deeper raw retrieval substrate behind `article-start`, not as the default first step.
+
 ## Runtime Layout
 
 Wikitool resolves paths from project root and uses `.wikitool/` for local runtime state.
@@ -41,7 +58,7 @@ For authoring retrieval, the DB is optimized as an AI-facing index rather than a
 - active template lookup includes implementation bundles across template pages, `/doc` pages, helper templates, and `Module:` pages when present
 - authoring retrieval can bridge pinned MediaWiki 1.44 docs with local template/module usage so agents get both “how MediaWiki says it works” and “how this wiki uses it”
 
-## Core Workflow
+## Core Sync Workflow
 
 ```bash
 wikitool init --templates
@@ -112,10 +129,16 @@ Bootstrap the local knowledge index and pinned MediaWiki authoring corpus:
 
 ```bash
 wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge article-start "Remilia Corporation" --docs-profile remilia-mw-1.44 --format json
+wikitool research search "Remilia Corporation" --format json
+wikitool templates show "Template:Cite web"
+wikitool wiki profile show --format json
+wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
 wikitool knowledge pack "Remilia Corporation" --docs-profile remilia-mw-1.44 --format json
 wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
-wikitool knowledge inspect templates "Infobox person"
+wikitool templates examples "Template:Cite web" --limit 2
 ```
 
 `remilia-mw-1.44` will try to enrich the corpus with installed extensions from the configured wiki when that API is available. If extension discovery is unavailable, the core pinned corpus still imports and remains usable for authoring retrieval.
@@ -125,11 +148,17 @@ Command chooser:
 - `wikitool knowledge build` rebuilds only the local content index when docs hydration is unnecessary
 - `wikitool knowledge warm` builds the local knowledge index and hydrates a docs profile in one pass
 - `wikitool knowledge status` reports readiness, degradations, requested docs profile, and generation
-- `wikitool knowledge pack` is the primary AI/operator authoring retrieval surface
+- `wikitool knowledge article-start` is the primary AI/operator authoring front door
+- `wikitool research search` and `wikitool research fetch` are the supported external evidence layer
+- `wikitool article lint` and `wikitool article fix` are the draft quality loop
+- `wikitool knowledge pack` is the advanced/raw substrate behind `article-start`
+- `wikitool wiki profile sync|show` exposes the live capability plus Remilia overlay snapshot
+- `wikitool templates show|examples` exposes the local template catalog and examples
 - `wikitool knowledge inspect ...` is the low-level inspection lane for chunks, backlinks, templates, orphan pages, or empty categories
 - `wikitool context` and `wikitool search` are quick indexed lookups against the local wiki knowledge index
 - `wikitool docs context` and `wikitool docs search` query pinned MediaWiki docs corpora rather than local wiki pages
 - `wikitool docs ...` remains the expert/admin surface for importing and managing pinned MediaWiki docs corpora directly
+- `wikitool validate`, `wikitool diff`, and `wikitool push --dry-run` remain the low-level safety gates before writes
 
 Legacy command mapping:
 
@@ -157,6 +186,8 @@ If `--host-project-root` is provided, host context is layered on top and wikitoo
 - `docs/wikitool/explanation.md` architecture notes
 - `VERSIONING.md` version bump policy and release checklist
 - `RELEASE_LOG.md` release history
+- `testbench/cli_tests.sh` broad CLI regression harness
+- `testbench/acceptance_workflows.sh` focused authoring/workflow acceptance harness
 
 Regenerate reference docs:
 

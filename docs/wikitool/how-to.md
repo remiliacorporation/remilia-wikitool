@@ -9,6 +9,21 @@ wikitool init --templates
 wikitool pull --full --all
 ```
 
+## Default authoring workflow
+
+```bash
+wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool wiki profile sync
+wikitool knowledge article-start "Remilia Corporation" --format json
+wikitool research search "Remilia Corporation" --format json
+wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
+wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
+wikitool article fix wiki_content/Main/Remilia_Corporation.wiki --apply safe
+wikitool validate
+```
+
+Use `knowledge pack` after `article-start` only when you need the deeper raw retrieval payload.
+
 ## Pull latest content
 
 ```bash
@@ -67,14 +82,18 @@ wikitool docs symbols "$wg" --profile remilia-mw-1.44
 wikitool docs update
 ```
 
-`remilia-mw-1.44` attempts installed-extension discovery when the configured wiki API allows it. If that discovery step is unavailable, the pinned core corpus still imports and can be used by `knowledge warm` / `knowledge pack`.
+`remilia-mw-1.44` attempts installed-extension discovery when the configured wiki API allows it. If that discovery step is unavailable, the pinned core corpus still imports and can be used by `knowledge warm` / `knowledge article-start`.
 
 ## Knowledge command chooser
 
 - `knowledge build` for a content-only rebuild
 - `knowledge warm --docs-profile ...` for content indexing plus pinned docs hydration
 - `knowledge status --docs-profile ...` before depending on local authoring retrieval
-- `knowledge pack "Topic"` for the main authoring or agent context bundle
+- `knowledge article-start "Topic"` for the default interpreted authoring brief
+- `research search` / `research fetch` for external source discovery and extraction
+- `article lint` / `article fix` for the draft quality loop
+- `knowledge pack "Topic"` for the deeper raw context bundle behind `article-start`
+- `wiki profile sync|show` and `templates ...` for live capability/profile/template awareness
 - `knowledge inspect ...` for low-level chunk/template/backlink/orphan inspection
 - `context` and `search` for quick indexed lookups
 - `docs ...` for direct docs administration and direct docs queries
@@ -125,7 +144,36 @@ Legacy command mapping:
 - `wikitool index orphans` -> `wikitool knowledge inspect orphans`
 - `wikitool index prune-categories` -> `wikitool knowledge inspect empty-categories`
 
-## AI authoring knowledge pack
+## Research workflows
+
+```bash
+wikitool research search "network spirituality remilia" --format json
+wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
+wikitool research fetch "https://blog.rust-lang.org/2023/07/13/Rust-1.71.0/" --output json
+```
+
+## Wiki profile and template workflows
+
+```bash
+wikitool wiki capabilities sync --format json
+wikitool wiki profile sync --format json
+wikitool wiki rules show --format json
+wikitool templates catalog build --format json
+wikitool templates show "Template:Cite web"
+wikitool templates examples "Template:Cite web" --limit 2
+```
+
+## Article lint and fix
+
+```bash
+wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
+wikitool article fix wiki_content/Main/Remilia_Corporation.wiki --apply safe
+wikitool validate
+```
+
+`article lint` is article-aware and profile-aware. `validate` remains the lower-level index integrity check.
+
+## Advanced/raw authoring knowledge pack
 
 Generate a token-budgeted local context pack for writing new articles or upgrading stubs:
 
@@ -144,6 +192,8 @@ The pack includes:
 - bridged MediaWiki docs context from the pinned `remilia-mw-1.44` corpus when that profile is imported
 - chunked cross-page context under a strict token budget
 - stub diagnostics (existing links, missing links, templates already used)
+
+Prefer `knowledge article-start` first. Use `knowledge pack` when you want the uncollapsed substrate that `article-start` interprets.
 
 ## Inspection workflows
 
@@ -206,6 +256,7 @@ wikitool status
 wikitool db stats
 wikitool knowledge status
 wikitool knowledge inspect stats
+bash testbench/acceptance_workflows.sh
 ```
 
 ## Troubleshooting

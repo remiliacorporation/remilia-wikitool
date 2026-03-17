@@ -42,15 +42,19 @@ wikitool pull --categories
 
 ```bash
 wikitool status
-wikitool knowledge status
-wikitool knowledge inspect stats
+wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool wiki profile sync
+wikitool knowledge status --docs-profile remilia-mw-1.44
+wikitool knowledge article-start "Remilia Corporation" --format json
 ```
 
 Useful authoring retrieval checks:
 
 ```bash
-wikitool knowledge inspect chunks --across-pages --query "network spirituality remilia" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
-wikitool knowledge build
+wikitool knowledge article-start "Remilia Corporation" --format json
+wikitool research search "Remilia Corporation" --format json
+wikitool templates show "Template:Cite web"
+wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
 wikitool knowledge pack "Remilia Corporation" --format json
 ```
 
@@ -59,7 +63,11 @@ Command chooser:
 - `knowledge build` for content-only local indexing
 - `knowledge warm` for content indexing plus pinned docs hydration
 - `knowledge status` to confirm readiness before depending on local retrieval
-- `knowledge pack` for authoring/agent context assembly
+- `knowledge article-start` for the interpreted authoring brief
+- `research search` and `research fetch` for external source discovery and extraction
+- `article lint` and `article fix` for draft remediation
+- `knowledge pack` for advanced/raw context assembly
+- `wiki profile sync|show` and `templates ...` for wiki-aware authoring surfaces
 - `knowledge inspect ...` for low-level retrieval or graph inspection
 - `context` and `search` for quick indexed lookups against local wiki content
 - `docs context` and `docs search` for pinned MediaWiki docs retrieval
@@ -95,6 +103,16 @@ wikitool push --dry-run --summary "Summary"
 wikitool push --summary "Summary"
 ```
 
+Default authoring loop:
+
+```bash
+wikitool knowledge article-start "Topic" --docs-profile remilia-mw-1.44 --format json
+wikitool research search "Topic" --format json
+wikitool research fetch "https://example.org/source" --output json
+wikitool article lint wiki_content/Main/Topic.wiki --format json
+wikitool validate
+```
+
 ## 7) Docs and AI pack
 
 Canonical command docs:
@@ -112,8 +130,10 @@ Release AI pack includes setup/docs/instructions outside the binary. Bootstrap t
 
 ```bash
 wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
-wikitool knowledge pack "Remilia Corporation" --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge article-start "Remilia Corporation" --docs-profile remilia-mw-1.44 --format json
+wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
 ```
 
 If live installed-extension discovery is blocked or unconfigured, `remilia-mw-1.44` still imports the pinned core corpus and reports the discovery skip in the command output instead of aborting the whole import.
@@ -139,6 +159,7 @@ To layer host `.claude/rules`, host `.claude/skills`, and host `CLAUDE.md` on to
 When host overlay is used, wikitool-local guidance is preserved as `WIKITOOL_CLAUDE.md`.
 
 Codex skill templates are also included under `codex_skills/` and can be copied into `$CODEX_HOME/skills`.
+Focused acceptance checks also ship in `testbench/acceptance_workflows.sh`.
 
 ## 8) Troubleshooting
 

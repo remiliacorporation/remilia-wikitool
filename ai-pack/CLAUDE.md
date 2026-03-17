@@ -121,9 +121,16 @@ Codex skills must remain thin overlays that defer to runbooks and CLI help.
 ```bash
 wikitool pull --full --all
 wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge article-start "Topic" --format json
+wikitool research search "Topic" --format json
+wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
+wikitool templates show "Template:Infobox person"
+wikitool templates examples "Template:Infobox person" --limit 2
+wikitool wiki profile show --format json
+wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool knowledge pack "Topic" --format json
-wikitool context "Template:Infobox person"
 wikitool search "Category:"
 wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480
 wikitool knowledge inspect chunks --across-pages --query "topic" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
@@ -143,6 +150,7 @@ Docs bootstrap paths:
 4. Packaged offline bundle: `wikitool docs import --bundle ./ai/docs-bundle-v1.json`
 
 Use `knowledge status` before depending on docs-bridged local retrieval; it surfaces `readiness`, `degradations`, the requested docs profile, and the current `knowledge_generation`.
+Use `knowledge pack` only when `article-start` is too collapsed and you need the deeper raw retrieval payload.
 
 ## API Verification Rule
 

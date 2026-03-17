@@ -77,14 +77,22 @@ Packaged / distributable:
 2. Update version in `Cargo.toml` workspace package.
 3. Update `RELEASE_LOG.md` with dated entry and highlights.
 4. Run:
+   - `cargo build`
    - `cargo fmt --all`
-   - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-   - `cargo test --workspace`
+   - `cargo clippy --workspace --all-targets -- -D warnings`
+   - `cargo test -p wikitool_core`
+   - `cargo test -p wikitool`
+   - `bash testbench/cli_tests.sh`
+   - `TIER=live bash testbench/acceptance_workflows.sh`
 5. Validate the knowledge cutover from a fresh runtime:
    - `cargo run --package wikitool -- db reset --yes`
    - `cargo run --package wikitool -- knowledge warm --docs-profile remilia-mw-1.44`
+   - `cargo run --package wikitool -- wiki profile sync`
    - `cargo run --package wikitool -- knowledge status --docs-profile remilia-mw-1.44`
-   - `cargo run --package wikitool -- knowledge pack "Example Topic" --docs-profile remilia-mw-1.44 --format json`
+   - `cargo run --package wikitool -- knowledge article-start "Example Topic" --docs-profile remilia-mw-1.44 --format json`
+   - `cargo run --package wikitool -- research search "Example Topic" --format json`
+   - `cargo run --package wikitool -- article lint wiki_content/Main/Example_Topic.wiki --format json`
+   - `cargo run --package wikitool -- docs generate-reference`
 6. Build release bundles:
    - `cargo run --package wikitool -- release build-matrix --targets <triple>`
    - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=vX.Y.Z` for per-platform artifacts

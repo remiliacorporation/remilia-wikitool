@@ -36,6 +36,10 @@ Commands:
   perf                 
   import               
   knowledge            Build and query the local knowledge layer
+  research             Search and fetch subject evidence without mutating the wiki
+  wiki                 Sync and inspect live wiki capability metadata
+  templates            Build and inspect the local template catalog
+  article              Lint and mechanically remediate article drafts
   lsp:generate-config  
   lsp:status           
   lsp:info             
@@ -188,9 +192,12 @@ Arguments:
   <QUERY>  
 
 Options:
+      --limit <N>            [default: 20]
       --project-root <PATH>  
       --data-dir <PATH>      
+      --what <SCOPE>         [default: text]
       --config <PATH>        
+      --format <FORMAT>      [default: text]
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -236,7 +243,7 @@ Arguments:
   <URL>  
 
 Options:
-      --format <FORMAT>      Output format: wikitext|html [default: wikitext]
+      --format <FORMAT>      Output format: wikitext|html|rendered-html [default: wikitext]
       --project-root <PATH>  
       --data-dir <PATH>      
       --save                 Save output under reference/<source>/ in project root
@@ -734,12 +741,13 @@ Build and query the local knowledge layer
 Usage: wikitool knowledge [OPTIONS] <COMMAND>
 
 Commands:
-  build    Rebuild the local content knowledge index
-  warm     Build content knowledge and hydrate a docs profile
-  status   Report knowledge readiness and degradations
-  pack     Assemble the authoring knowledge pack
-  inspect  Inspect indexed knowledge structures directly
-  help     Print this message or the help of the given subcommand(s)
+  build          Rebuild the local content knowledge index
+  warm           Build content knowledge and hydrate a docs profile
+  status         Report knowledge readiness and degradations
+  pack           Assemble the authoring knowledge pack
+  article-start  Assemble an interpreted authoring brief for a topic
+  inspect        Inspect indexed knowledge structures directly
+  help           Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>  
@@ -824,6 +832,37 @@ Options:
       --template-limit <N>      Maximum template summaries [default: 16]
       --docs-profile <PROFILE>  Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
       --format <FORMAT>         Output format: text|json [default: json]
+      --diversify               Enable lexical chunk de-duplication and diversification
+      --no-diversify            Disable lexical chunk de-duplication and diversification
+  -h, --help                    Print help
+```
+
+## knowledge article-start
+
+```text
+Assemble an interpreted authoring brief for a topic
+
+Usage: wikitool knowledge article-start [OPTIONS] [TOPIC]
+
+Arguments:
+  [TOPIC]  Primary article topic/title for retrieval
+
+Options:
+      --project-root <PATH>     
+      --stub-path <PATH>        Optional stub wikitext file used for link/template hint extraction
+      --data-dir <PATH>         
+      --related-limit <N>       Maximum related pages in the brief [default: 18]
+      --chunk-limit <N>         Maximum retrieved context chunks [default: 10]
+      --config <PATH>           
+      --diagnostics             Print resolved runtime diagnostics
+      --token-budget <TOKENS>   Token budget across retrieved chunks [default: 1200]
+      --max-pages <N>           Maximum distinct source pages in chunk retrieval [default: 8]
+      --link-limit <N>          Maximum internal link suggestions [default: 18]
+      --category-limit <N>      Maximum category suggestions [default: 8]
+      --template-limit <N>      Maximum template summaries [default: 16]
+      --docs-profile <PROFILE>  Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
+      --format <FORMAT>         Output format: text|json [default: json]
+      --include-pack            Include the raw knowledge pack in JSON output
       --diversify               Enable lexical chunk de-duplication and diversification
       --no-diversify            Disable lexical chunk de-duplication and diversification
   -h, --help                    Print help
@@ -959,6 +998,386 @@ Options:
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## research
+
+```text
+Search and fetch subject evidence without mutating the wiki
+
+Usage: wikitool research [OPTIONS] <COMMAND>
+
+Commands:
+  search  Search the remote wiki API for subject evidence
+  fetch   Fetch readable reference material from a URL
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## research search
+
+```text
+Search the remote wiki API for subject evidence
+
+Usage: wikitool research search [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>  
+
+Options:
+      --limit <N>            [default: 20]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --what <SCOPE>         [default: text]
+      --config <PATH>        
+      --format <FORMAT>      [default: json]
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## research fetch
+
+```text
+Fetch readable reference material from a URL
+
+Usage: wikitool research fetch [OPTIONS] <URL>
+
+Arguments:
+  <URL>  
+
+Options:
+      --format <FORMAT>      Output format: wikitext|html|rendered-html [default: html]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --output <FORMAT>      [default: json]
+      --config <PATH>        
+      --refresh              Refresh the research cache entry before returning output
+      --diagnostics          Print resolved runtime diagnostics
+      --no-cache             Bypass the research cache for this fetch
+  -h, --help                 Print help
+```
+
+## wiki
+
+```text
+Sync and inspect live wiki capability metadata
+
+Usage: wikitool wiki [OPTIONS] <COMMAND>
+
+Commands:
+  capabilities  Sync and inspect live wiki capability manifests
+  profile       Show the combined live/profile-aware wiki surface
+  rules         Show the structured local editorial rules overlay
+  help          Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki capabilities
+
+```text
+Sync and inspect live wiki capability manifests
+
+Usage: wikitool wiki capabilities [OPTIONS] <COMMAND>
+
+Commands:
+  sync  Fetch and store the current live wiki capability manifest
+  show  Show the last stored wiki capability manifest
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki capabilities sync
+
+```text
+Fetch and store the current live wiki capability manifest
+
+Usage: wikitool wiki capabilities sync [OPTIONS]
+
+Options:
+      --format <FORMAT>      [default: text]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki capabilities show
+
+```text
+Show the last stored wiki capability manifest
+
+Usage: wikitool wiki capabilities show [OPTIONS]
+
+Options:
+      --format <FORMAT>      [default: text]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki profile
+
+```text
+Show the combined live/profile-aware wiki surface
+
+Usage: wikitool wiki profile [OPTIONS] <COMMAND>
+
+Commands:
+  sync  Refresh the local rules overlay and live capability snapshot
+  show  Show the current combined profile snapshot
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki profile sync
+
+```text
+Refresh the local rules overlay and live capability snapshot
+
+Usage: wikitool wiki profile sync [OPTIONS]
+
+Options:
+      --format <FORMAT>      [default: text]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki profile show
+
+```text
+Show the current combined profile snapshot
+
+Usage: wikitool wiki profile show [OPTIONS]
+
+Options:
+      --format <FORMAT>      [default: text]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki rules
+
+```text
+Show the structured local editorial rules overlay
+
+Usage: wikitool wiki rules [OPTIONS] <COMMAND>
+
+Commands:
+  show  Show the current Remilia rules overlay
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki rules show
+
+```text
+Show the current Remilia rules overlay
+
+Usage: wikitool wiki rules show [OPTIONS]
+
+Options:
+      --format <FORMAT>      [default: text]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates
+
+```text
+Build and inspect the local template catalog
+
+Usage: wikitool templates [OPTIONS] <COMMAND>
+
+Commands:
+  catalog   Build and store the local template catalog artifact
+  show      Show one template catalog entry
+  examples  Show example invocations for one template
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates catalog
+
+```text
+Build and store the local template catalog artifact
+
+Usage: wikitool templates catalog [OPTIONS] <COMMAND>
+
+Commands:
+  build  Build the catalog from tracked templates plus local index usage
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates catalog build
+
+```text
+Build the catalog from tracked templates plus local index usage
+
+Usage: wikitool templates catalog build [OPTIONS]
+
+Options:
+      --format <FORMAT>      [default: text]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates show
+
+```text
+Show one template catalog entry
+
+Usage: wikitool templates show [OPTIONS] <TEMPLATE>
+
+Arguments:
+  <TEMPLATE>  
+
+Options:
+      --format <FORMAT>      [default: text]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates examples
+
+```text
+Show example invocations for one template
+
+Usage: wikitool templates examples [OPTIONS] <TEMPLATE>
+
+Arguments:
+  <TEMPLATE>  
+
+Options:
+      --limit <N>            [default: 8]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --format <FORMAT>      [default: text]
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## article
+
+```text
+Lint and mechanically remediate article drafts
+
+Usage: wikitool article [OPTIONS] <COMMAND>
+
+Commands:
+  lint  Lint article wikitext against wiki/profile rules
+  fix   Apply safe mechanical fixes to article wikitext
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## article lint
+
+```text
+Lint article wikitext against wiki/profile rules
+
+Usage: wikitool article lint [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+      --profile <PROFILE>    [default: remilia]
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --format <FORMAT>      [default: text]
+      --config <PATH>        
+      --strict               Treat warnings as errors
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## article fix
+
+```text
+Apply safe mechanical fixes to article wikitext
+
+Usage: wikitool article fix [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+      --profile <PROFILE>    [default: remilia]
+      --project-root <PATH>  
+      --apply <MODE>         Apply mode: none|safe [default: none]
+      --data-dir <PATH>      
+      --config <PATH>        
+      --format <FORMAT>      [default: text]
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```

@@ -12,6 +12,13 @@ The local retrieval path now centers on a dedicated `knowledge` command family. 
 
 ### Highlights
 
+**Authoring workflow cutover**
+- Added `knowledge article-start` as the documented front door for greenfield and refactor authoring work
+- Added `research search` / `research fetch` as the supported external evidence layer
+- Added `article lint` / `article fix` for wiki-aware draft remediation
+- Added `wiki profile ...` and `templates ...` surfaces for live capability/profile/template introspection
+- Cut README, setup docs, how-to docs, explanation docs, and shipped AI-pack guidance over to the new default workflow
+
 **Knowledge cutover**
 - Added `knowledge build`, `knowledge warm`, `knowledge status`, and `knowledge pack`
 - Removed legacy retrieval entry points: `workflow ask`, `workflow authoring-pack`, `db sync`, and `index rebuild`
@@ -29,6 +36,11 @@ The local retrieval path now centers on a dedicated `knowledge` command family. 
 - `knowledge pack`, `knowledge status`, and `db stats` now expose `docs_profile_requested`, `readiness`, `degradations`, and `knowledge_generation`
 - Missing docs corpora now surface as `docs_profile_missing` instead of silently degrading behind `docs_context: null`
 - Fresh-runtime cutover is validated from `db reset --yes` through `knowledge warm --docs-profile remilia-mw-1.44`
+
+**Acceptance coverage**
+- `testbench/cli_tests.sh` now covers the article lint/fix surface inside the broad regression harness
+- `testbench/acceptance_workflows.sh` adds targeted acceptance checks for `knowledge article-start`, `research search`, `research fetch`, `article lint`, and `wiki capabilities sync`
+- `testbench/eval_matrix.md` records the workflow, quality, and latency eval cases used for operator usefulness review
 
 ## v0.1.0
 

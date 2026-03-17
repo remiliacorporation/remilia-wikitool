@@ -19,23 +19,27 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 
 ### Writing a new article
 
-1. **Research the topic** â€” search the web for reliable sources. Check the live wiki for existing content and related articles to link.
-2. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
-3. **Build local authoring context** â€” run `wikitool knowledge pack "<Topic>" --format json` to get related pages, template usage patterns, link/category suggestions, readiness/degradation signals, and token-budgeted context chunks from local index data.
-4. **Look up templates** â€” use `wikitool context "Template:Template Name"` to confirm parameters for templates you plan to invoke. See section 6 for common infobox mappings.
-5. **Write the article** following the structure in `article_structure.md`.
-6. **Self-check** against the quick checklist at the end of `style_rules.md`.
+1. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
+2. **Refresh local authoring state** â€” run `wikitool knowledge warm --docs-profile remilia-mw-1.44` and `wikitool wiki profile sync` so docs/profile/capability signals are current.
+3. **Build the interpreted authoring brief** â€” run `wikitool knowledge article-start "<Topic>" --format json`. This is the front door.
+4. **Fetch external evidence selectively** â€” use `wikitool research search "<Topic>" --format json`, then `wikitool research fetch "<URL>" --output json` only for sources you expect to cite.
+5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name"`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
+6. **Write the article** following the structure in `article_structure.md`.
 7. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
-8. **Validate** â€” run `wikitool validate` to catch structural issues.
+8. **Run article-aware lint** â€” `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`.
+9. **Validate** â€” run `wikitool validate` for the lower-level integrity checks before diff/push.
+
+Use `wikitool knowledge pack ... --format json` when you need the deeper raw retrieval bundle behind `article-start`.
 
 ### Editing an existing article
 
 1. Pull latest: `wikitool pull`
 2. Read the existing article.
 3. Make changes following all the same rules.
-4. Validate: `wikitool validate`
-5. Review: `wikitool diff`
-6. Push: `wikitool push --dry-run --summary "Summary"` then `wikitool push --summary "Summary"`
+4. Lint the draft: `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`
+5. Validate: `wikitool validate`
+6. Review: `wikitool diff`
+7. Push: `wikitool push --dry-run --summary "Summary"` then `wikitool push --summary "Summary"`
 
 ### Article length
 
@@ -197,11 +201,12 @@ General rules:
 To see all parameters for any template:
 
 ```bash
-wikitool context "Template:Infobox person"
-wikitool context "Template:Cite web"
+wikitool templates show "Template:Infobox person"
+wikitool templates examples "Template:Infobox person" --limit 2
+wikitool templates show "Template:Cite web"
 ```
 
-This reads the local knowledge index from your current pull. If the index is missing, run `wikitool knowledge build` first.
+This reads the local template catalog from your current pull. If the local index is missing, run `wikitool knowledge build` first; if the catalog is missing, run `wikitool templates catalog build`.
 
 ---
 
@@ -212,10 +217,13 @@ This reads the local knowledge index from your current pull. If the index is mis
 Use wikitool to inspect template context from your local pull:
 
 ```bash
+wikitool knowledge article-start "Topic Title" --format json
 wikitool knowledge pack "Topic Title" --format json
 wikitool knowledge pack --stub-path wiki_content/Main/Topic_Draft.wiki --format json
-wikitool context "Template:Template Name"   # Show params + usage stats
-wikitool search "infobox"                      # Find templates by name
+wikitool templates show "Template:Template Name"
+wikitool templates examples "Template:Template Name" --limit 2
+wikitool wiki profile show --format json
+wikitool search "infobox"
 ```
 
 This is always authoritative â€” it reflects what's actually deployed on the wiki.
