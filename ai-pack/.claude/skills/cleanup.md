@@ -1,11 +1,14 @@
 # /cleanup - Cleanup and Auditing
 
-Fix style drift, broken structure, and category/link hygiene.
+Thin wrapper for cleanup passes.
+Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 ## Audit workflow
 
 ```bash
 wikitool pull
+wikitool article lint wiki_content/Main/<Title>.wiki --format json
+wikitool article fix wiki_content/Main/<Title>.wiki --apply safe
 wikitool validate
 wikitool knowledge inspect orphans
 wikitool knowledge inspect empty-categories

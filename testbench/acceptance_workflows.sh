@@ -44,7 +44,17 @@ resolve_wikitool_cmd() {
     if [ -n "$WIKITOOL_RAW" ]; then
         # shellcheck disable=SC2206
         WIKITOOL_CMD=($WIKITOOL_RAW)
-        WIKITOOL_PATH_MODE="${WIKITOOL_PATH_MODE:-auto}"
+        if [ -n "${WIKITOOL_PATH_MODE:-}" ]; then
+            return
+        fi
+        case "$WIKITOOL_RAW" in
+            *.exe|[A-Za-z]:\\*|[A-Za-z]:/*)
+                WIKITOOL_PATH_MODE="windows"
+                ;;
+            *)
+                WIKITOOL_PATH_MODE="posix"
+                ;;
+        esac
         return
     fi
 

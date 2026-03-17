@@ -50,15 +50,65 @@ const COMMON_SENTENCE_CASE_HEADINGS: &[(&str, &str)] = &[
     ("notable works", "Notable works"),
     ("notable work", "Notable work"),
 ];
-const EXTENSION_TAGS_OF_INTEREST: &[&str] = &[
-    "math",
-    "syntaxhighlight",
-    "poem",
-    "tabber",
-    "score",
-    "timeline",
-    "chem",
-    "categorytree",
+const ALLOWED_SOURCE_HTML_TAGS: &[&str] = &[
+    "abbr",
+    "b",
+    "blockquote",
+    "br",
+    "caption",
+    "center",
+    "cite",
+    "code",
+    "dd",
+    "del",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "font",
+    "gallery",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "includeonly",
+    "ins",
+    "kbd",
+    "li",
+    "noinclude",
+    "ol",
+    "onlyinclude",
+    "p",
+    "pre",
+    "q",
+    "rb",
+    "rp",
+    "rt",
+    "rtc",
+    "ruby",
+    "s",
+    "samp",
+    "small",
+    "span",
+    "strike",
+    "strong",
+    "sub",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "th",
+    "thead",
+    "tr",
+    "tt",
+    "u",
+    "ul",
+    "var",
+    "wbr",
 ];
 
 #[derive(Debug, Clone)]
@@ -97,7 +147,6 @@ struct TemplateOccurrence {
 
 #[derive(Debug, Clone)]
 struct RefOccurrence {
-    raw_wikitext: String,
     start: usize,
     end: usize,
 }
@@ -332,7 +381,7 @@ fn load_article_document(
     let sections = parse_sections(&content, &lines);
     let templates = extract_template_occurrences(&content);
     let references = extract_ref_occurrences(&content);
-    let parser_tags = extract_parser_tags_of_interest(&content);
+    let parser_tags = extract_open_tag_occurrences(&content);
 
     Ok(ParsedArticleDocument {
         relative_path,
@@ -491,7 +540,6 @@ fn extract_ref_occurrences(content: &str) -> Vec<RefOccurrence> {
         };
         if self_closing {
             out.push(RefOccurrence {
-                raw_wikitext: content[cursor..tag_end].to_string(),
                 start: cursor,
                 end: tag_end,
             });
@@ -500,7 +548,6 @@ fn extract_ref_occurrences(content: &str) -> Vec<RefOccurrence> {
         }
         if let Some((_, close_end)) = find_closing_html_tag(content, tag_end, "ref") {
             out.push(RefOccurrence {
-                raw_wikitext: content[cursor..close_end].to_string(),
                 start: cursor,
                 end: close_end,
             });
@@ -508,7 +555,6 @@ fn extract_ref_occurrences(content: &str) -> Vec<RefOccurrence> {
             continue;
         }
         out.push(RefOccurrence {
-            raw_wikitext: content[cursor..tag_end].to_string(),
             start: cursor,
             end: tag_end,
         });
@@ -518,7 +564,7 @@ fn extract_ref_occurrences(content: &str) -> Vec<RefOccurrence> {
     out
 }
 
-fn extract_parser_tags_of_interest(content: &str) -> Vec<ParserTagOccurrence> {
+fn extract_open_tag_occurrences(content: &str) -> Vec<ParserTagOccurrence> {
     let bytes = content.as_bytes();
     let mut out = Vec::new();
     let mut cursor = 0usize;
@@ -543,9 +589,7 @@ fn extract_parser_tags_of_interest(content: &str) -> Vec<ParserTagOccurrence> {
             cursor += 1;
         }
         let tag_name = content[name_start..cursor].to_ascii_lowercase();
-        if EXTENSION_TAGS_OF_INTEREST.contains(&tag_name.as_str()) {
-            out.push(ParserTagOccurrence { tag_name, start });
-        }
+        out.push(ParserTagOccurrence { tag_name, start });
     }
 
     out
@@ -637,6 +681,25 @@ fn lint_article_quality_banner(
         .iter()
         .find(|line| line.text.trim_start().starts_with("{{Article quality|"));
     if banner_line.is_none() {
+        let insertion_offset = top_lines
+            .iter()
+            .find(|line| line_has_short_description(&line.text))
+            .map(|line| line.end)
+            .or_else(|| document.first_nonblank_line().map(|line| line.start))
+            .unwrap_or(0);
+        let replacement = if top_lines
+            .iter()
+            .any(|line| line_has_short_description(&line.text))
+        {
+            "\n{{Article quality|unverified}}".to_string()
+        } else {
+            "{{Article quality|unverified}}\n".to_string()
+        };
+        let edit = TextEdit {
+            start: insertion_offset,
+            end: insertion_offset,
+            replacement,
+        };
         matches.push(IssueMatch {
             issue: ArticleLintIssue {
                 rule_id: "structure.require_article_quality_banner".to_string(),
@@ -647,14 +710,18 @@ fn lint_article_quality_banner(
                 suggested_remediation: Some(
                     "Insert {{Article quality|unverified}} immediately below the short description.".to_string(),
                 ),
-                suggested_fixes: vec![SuggestedFix {
-                    label: "Insert article quality banner".to_string(),
-                    kind: SuggestedFixKind::AssistedFix,
-                    replacement_preview: Some("{{Article quality|unverified}}".to_string()),
-                    patch: None,
-                }],
+                suggested_fixes: vec![safe_fix_for_edit(
+                    document,
+                    &edit,
+                    "Insert article quality banner",
+                )],
             },
-            safe_fixes: Vec::new(),
+            safe_fixes: vec![SafeFixEdit {
+                rule_id: "structure.require_article_quality_banner".to_string(),
+                label: "Insert article quality banner".to_string(),
+                line: document.first_nonblank_line().map(|line| line.number),
+                edit,
+            }],
         });
         return;
     }
@@ -914,36 +981,25 @@ fn lint_missing_reflist(
         return;
     }
 
-    let mut safe_fixes = Vec::new();
-    let mut suggested_fixes = Vec::new();
-    if section.body_text.trim().is_empty() {
-        let edit = TextEdit {
-            start: section.body_start,
-            end: section.body_start,
-            replacement: "{{Reflist}}\n".to_string(),
-        };
-        suggested_fixes.push(safe_fix_for_edit(
-            document,
-            &edit,
-            "Insert {{Reflist}} into References section",
-        ));
-        safe_fixes.push(SafeFixEdit {
-            rule_id: "structure.require_reflist".to_string(),
-            label: "Insert {{Reflist}} into References section".to_string(),
-            line: section
-                .heading
-                .as_ref()
-                .map(|heading| heading.line.saturating_add(1)),
-            edit,
-        });
-    } else {
-        suggested_fixes.push(SuggestedFix {
-            label: "Add {{Reflist}} to References section".to_string(),
-            kind: SuggestedFixKind::AssistedFix,
-            replacement_preview: Some("{{Reflist}}".to_string()),
-            patch: None,
-        });
-    }
+    let edit = TextEdit {
+        start: section.body_start,
+        end: section.body_start,
+        replacement: "{{Reflist}}\n".to_string(),
+    };
+    let safe_fixes = vec![SafeFixEdit {
+        rule_id: "structure.require_reflist".to_string(),
+        label: "Insert {{Reflist}} into References section".to_string(),
+        line: section
+            .heading
+            .as_ref()
+            .map(|heading| heading.line.saturating_add(1)),
+        edit: edit.clone(),
+    }];
+    let suggested_fixes = vec![safe_fix_for_edit(
+        document,
+        &edit,
+        "Insert {{Reflist}} into References section",
+    )];
 
     matches.push(IssueMatch {
         issue: ArticleLintIssue {
@@ -968,19 +1024,38 @@ fn lint_citation_after_punctuation(
     document: &ParsedArticleDocument,
     matches: &mut Vec<IssueMatch>,
 ) {
-    for reference in &document.references {
-        let Some(punctuation) = document.content[reference.end..]
+    let mut index = 0usize;
+    while index < document.references.len() {
+        let cluster_start = index;
+        let mut cluster_end = index;
+        while cluster_end + 1 < document.references.len() {
+            let current = &document.references[cluster_end];
+            let next = &document.references[cluster_end + 1];
+            if !document.content[current.end..next.start]
+                .chars()
+                .all(char::is_whitespace)
+            {
+                break;
+            }
+            cluster_end += 1;
+        }
+
+        let first_reference = &document.references[cluster_start];
+        let last_reference = &document.references[cluster_end];
+        let Some(punctuation) = document.content[last_reference.end..]
             .chars()
             .next()
             .filter(|ch| matches!(ch, '.' | ',' | ';' | ':' | '!' | '?'))
         else {
+            index = cluster_end + 1;
             continue;
         };
-        let punctuation_end = reference.end + punctuation.len_utf8();
+        let punctuation_end = last_reference.end + punctuation.len_utf8();
+        let cluster_text = &document.content[first_reference.start..last_reference.end];
         let edit = TextEdit {
-            start: reference.start,
+            start: first_reference.start,
             end: punctuation_end,
-            replacement: format!("{punctuation}{}", reference.raw_wikitext),
+            replacement: format!("{punctuation}{cluster_text}"),
         };
         matches.push(IssueMatch {
             issue: ArticleLintIssue {
@@ -988,9 +1063,9 @@ fn lint_citation_after_punctuation(
                 severity: ArticleLintSeverity::Warning,
                 message: "Inline citations should come after punctuation, not before it."
                     .to_string(),
-                span: document.span_for_range(reference.start, punctuation_end),
+                span: document.span_for_range(first_reference.start, punctuation_end),
                 evidence: Some(make_content_preview(
-                    &document.content[reference.start..punctuation_end],
+                    &document.content[first_reference.start..punctuation_end],
                     96,
                 )),
                 suggested_remediation: Some(
@@ -1006,11 +1081,12 @@ fn lint_citation_after_punctuation(
                 rule_id: "citation.after_punctuation".to_string(),
                 label: "Move punctuation before reference tag".to_string(),
                 line: document
-                    .line_for_offset(reference.start)
+                    .line_for_offset(first_reference.start)
                     .map(|line| line.number),
                 edit,
             }],
         });
+        index = cluster_end + 1;
     }
 }
 
@@ -1292,22 +1368,24 @@ fn lint_capability_rules(
     let supported_tags = capabilities
         .parser_extension_tags
         .iter()
-        .map(|tag| tag.to_ascii_lowercase())
+        .map(|tag| normalize_tag_name(tag))
         .collect::<BTreeSet<_>>();
     for tag in &document.parser_tags {
-        if supported_tags.contains(&tag.tag_name) {
+        if supported_tags.contains(&tag.tag_name)
+            || ALLOWED_SOURCE_HTML_TAGS.contains(&tag.tag_name.as_str())
+        {
             continue;
         }
         matches.push(IssueMatch {
             issue: ArticleLintIssue {
                 rule_id: "capability.unsupported_extension_tag".to_string(),
                 severity: ArticleLintSeverity::Error,
-                message: "Draft uses an extension tag that is not present in the last synced wiki capability manifest."
+                message: "Draft uses an extension or HTML tag that is not present in the last synced wiki capability manifest or local source allowlist."
                     .to_string(),
                 span: document.span_for_range(tag.start, tag.start + tag.tag_name.len() + 1),
                 evidence: Some(format!("<{}>", tag.tag_name)),
                 suggested_remediation: Some(
-                    "Use only parser tags confirmed by `wikitool wiki capabilities show`."
+                    "Use only parser tags confirmed by `wikitool wiki capabilities show`, or source HTML tags that are known-safe on the target wiki."
                         .to_string(),
                 ),
                 suggested_fixes: Vec::new(),
@@ -1315,6 +1393,15 @@ fn lint_capability_rules(
             safe_fixes: Vec::new(),
         });
     }
+}
+
+fn normalize_tag_name(tag: &str) -> String {
+    tag.trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .trim_start_matches('/')
+        .trim()
+        .to_ascii_lowercase()
 }
 
 fn lint_graph_rules(
@@ -1950,6 +2037,26 @@ mod tests {
     }
 
     #[test]
+    fn inserts_missing_article_quality_banner_with_safe_fix() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let fixed =
+            fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        assert!(fixed.changed);
+        let content = fs::read_to_string(&article_path).expect("read article");
+        assert!(content.contains("{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n"));
+    }
+
+    #[test]
     fn detects_missing_reflist_and_applies_safe_fix() {
         let temp = tempdir().expect("tempdir");
         let project_root = temp.path().join("project");
@@ -1973,6 +2080,26 @@ mod tests {
     }
 
     #[test]
+    fn inserts_reflist_before_reference_section_trailing_categories() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.<ref>{{Cite web|title=Source}}</ref>\n\n== References ==\n[[Category:Ideas and Concepts]]\n",
+        );
+
+        let fixed =
+            fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        assert!(fixed.changed);
+        let content = fs::read_to_string(&article_path).expect("read article");
+        assert!(content.contains("== References ==\n{{Reflist}}\n[[Category:Ideas and Concepts]]"));
+    }
+
+    #[test]
     fn detects_citation_after_punctuation_and_applies_safe_fix() {
         let temp = tempdir().expect("tempdir");
         let project_root = temp.path().join("project");
@@ -1993,6 +2120,28 @@ mod tests {
         assert!(fixed.changed);
         let content = fs::read_to_string(&article_path).expect("read article");
         assert!(content.contains("page.<ref>{{Cite web|title=Source}}</ref>"));
+    }
+
+    #[test]
+    fn clustered_citations_move_punctuation_before_the_whole_cluster() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page<ref name=\"a\">{{Cite web|title=Source A}}</ref><ref name=\"b\">{{Cite web|title=Source B}}</ref>.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let fixed =
+            fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        assert!(fixed.changed);
+        let content = fs::read_to_string(&article_path).expect("read article");
+        assert!(content.contains("page.<ref name=\"a\">{{Cite web|title=Source A}}</ref><ref name=\"b\">{{Cite web|title=Source B}}</ref>"));
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+        assert!(!has_rule(&report, "citation.after_punctuation"));
     }
 
     #[test]
@@ -2112,6 +2261,53 @@ mod tests {
         write_file(
             &article_path,
             "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n<tabber>\n|-|One=Alpha\n</tabber>\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+        assert!(has_rule(&report, "capability.unsupported_extension_tag"));
+    }
+
+    #[test]
+    fn detects_suspicious_html_tags_even_when_they_are_not_known_extensions() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        write_capability_manifest(
+            &paths,
+            &WikiCapabilityManifest {
+                schema_version: "wiki_capabilities_v1".to_string(),
+                wiki_id: "wiki.remilia.org".to_string(),
+                wiki_url: "https://wiki.remilia.org".to_string(),
+                api_url: "https://wiki.remilia.org/api.php".to_string(),
+                rest_url: None,
+                article_path: "/$1".to_string(),
+                mediawiki_version: Some("1.44.3".to_string()),
+                namespaces: Vec::new(),
+                extensions: Vec::new(),
+                parser_extension_tags: vec!["<ref>".to_string(), "<references>".to_string()],
+                parser_function_hooks: Vec::new(),
+                special_pages: Vec::new(),
+                search_backend_hint: None,
+                has_visual_editor: false,
+                has_templatedata: false,
+                has_citoid: false,
+                has_cargo: false,
+                has_page_forms: false,
+                has_short_description: true,
+                has_scribunto: false,
+                has_timed_media_handler: false,
+                supports_parse_api_html: true,
+                supports_rest_html: false,
+                rest_html_path_template: None,
+                refreshed_at: "1".to_string(),
+            },
+        );
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n<blink>Alpha</blink>\n\n== References ==\n{{Reflist}}\n",
         );
 
         let report = lint_article(&paths, &article_path, None).expect("lint");

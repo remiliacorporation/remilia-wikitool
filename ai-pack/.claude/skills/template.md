@@ -1,12 +1,14 @@
 # /template - Template and Module Editing
 
-Work on templates/modules/CSS with safe wiki sync flow.
+Thin wrapper for template/module/CSS work.
+Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 ## Lookup context
 
 ```bash
-wikitool context "Template:Infobox person"
-wikitool context "Template:Cite web"
+wikitool templates show "Template:Infobox person"
+wikitool templates examples "Template:Cite web" --limit 2
+wikitool wiki profile show --format json
 wikitool docs import-profile remilia-mw-1.44
 wikitool docs context "Scribunto" --profile remilia-mw-1.44 --format json
 wikitool docs search "TemplateStyles" --profile remilia-mw-1.44 --tier extension

@@ -36,7 +36,10 @@ pub fn parse_wiki_url(url: &str) -> Option<ParsedWikiUrl> {
             .split('/')
             .filter(|segment| !segment.is_empty())
             .collect::<Vec<_>>();
-        if parsed.query().is_none() && segments.len() == 1 {
+        if parsed.query().is_none()
+            && segments.len() == 1
+            && host_likely_uses_root_article_paths(&domain)
+        {
             title = Some(decode_title(segments[0]));
             base_url = format!("{scheme}://{domain}/");
             api_candidates = vec![
@@ -85,4 +88,36 @@ fn api_candidates_for_domain(scheme: &str, domain: &str) -> Vec<String> {
         format!("{scheme}://{domain}/w/api.php"),
         format!("{scheme}://{domain}/api.php"),
     ]
+}
+
+fn host_likely_uses_root_article_paths(domain: &str) -> bool {
+    let lowered = domain.to_ascii_lowercase();
+    lowered.contains("wiki")
+        || lowered.ends_with("fandom.com")
+        || lowered.ends_with("wikimedia.org")
+        || lowered.ends_with("miraheze.org")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_wiki_url;
+
+    #[test]
+    fn parses_root_article_paths_for_wiki_like_hosts() {
+        let parsed = parse_wiki_url("https://wiki.remilia.org/Hypercitationalism")
+            .expect("wiki-like root article path");
+        assert_eq!(parsed.domain, "wiki.remilia.org");
+        assert_eq!(parsed.title, "Hypercitationalism");
+        assert_eq!(parsed.base_url, "https://wiki.remilia.org/");
+    }
+
+    #[test]
+    fn does_not_treat_generic_root_paths_as_mediawiki_pages() {
+        assert!(
+            parse_wiki_url(
+                "https://goldenlight.mirror.xyz/c3bZd7hLmn60CR-aDeVkzhiQfZcEKglbzZmP__e4JlI"
+            )
+            .is_none()
+        );
+    }
 }

@@ -1,12 +1,14 @@
 # /sync - Wiki Sync Operations
 
-Use safe pull/diff/validate/dry-run push flow for content sync.
+Thin wrapper for sync and refresh workflows.
+Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
-## Setup and pull
+## Setup and refresh
 
 ```bash
 wikitool init --templates
 wikitool pull --full --all
+wikitool workflow bootstrap
 ```
 
 ## Daily sequence

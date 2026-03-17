@@ -19,6 +19,7 @@ const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const DEFAULT_RETRIES: usize = 2;
 const DEFAULT_RETRY_DELAY_MS: u64 = 350;
+const MAX_CLIENT_REDIRECTS: usize = 1;
 
 pub(crate) struct ExternalClient {
     pub(crate) client: Client,
@@ -152,65 +153,81 @@ pub(crate) fn fetch_web_url(
     options: &ExternalFetchOptions,
 ) -> Result<ExternalFetchResult> {
     let client = external_client()?;
-    let response = client
-        .client
-        .get(url)
-        .header("User-Agent", DEFAULT_USER_AGENT)
-        .header(
-            "Accept",
-            "text/html, text/plain;q=0.9, text/markdown;q=0.9,*/*;q=0.1",
-        )
-        .send()
-        .with_context(|| format!("failed to fetch {url}"))?;
-    let status = response.status();
-    if !status.is_success() {
-        bail!("HTTP {} while fetching {}", status.as_u16(), url);
-    }
-    let final_url = response.url().to_string();
-    let content_type = response
-        .headers()
-        .get("content-type")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("")
-        .to_string();
-    let is_text = content_type.contains("text/html")
-        || content_type.contains("text/plain")
-        || content_type.contains("text/markdown");
-    if !is_text {
-        bail!("unsupported content-type: {content_type}");
-    }
-    let body = read_text_body_limited(response, options.max_bytes)?;
+    let mut current_url = url.to_string();
+    let mut client_redirects = 0usize;
 
-    let parsed_url = Url::parse(&final_url).ok();
-    let fallback_title = derive_title_from_url(parsed_url.as_ref(), &final_url);
-    let source_domain = parsed_url
-        .as_ref()
-        .and_then(|value| value.host_str())
-        .unwrap_or("web")
-        .to_string();
+    loop {
+        let response = client
+            .client
+            .get(&current_url)
+            .header("User-Agent", DEFAULT_USER_AGENT)
+            .header(
+                "Accept",
+                "text/html, text/plain;q=0.9, text/markdown;q=0.9,*/*;q=0.1",
+            )
+            .send()
+            .with_context(|| format!("failed to fetch {current_url}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            bail!("HTTP {} while fetching {}", status.as_u16(), current_url);
+        }
+        let final_url = response.url().to_string();
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let is_text = content_type.contains("text/html")
+            || content_type.contains("text/plain")
+            || content_type.contains("text/markdown");
+        if !is_text {
+            bail!("unsupported content-type: {content_type}");
+        }
+        let body = read_text_body_limited(response, options.max_bytes)?;
 
-    if content_type.contains("text/html") {
-        return Ok(build_html_fetch_result(
+        if content_type.contains("text/html")
+            && options.profile == ExternalFetchProfile::Research
+            && client_redirects < MAX_CLIENT_REDIRECTS
+            && let Some(redirect_url) = extract_client_redirect_url(&body, &final_url)
+            && redirect_url != final_url
+        {
+            current_url = redirect_url;
+            client_redirects += 1;
+            continue;
+        }
+
+        let parsed_url = Url::parse(&final_url).ok();
+        let fallback_title = derive_title_from_url(parsed_url.as_ref(), &final_url);
+        let source_domain = parsed_url
+            .as_ref()
+            .and_then(|value| value.host_str())
+            .unwrap_or("web")
+            .to_string();
+
+        if content_type.contains("text/html") {
+            return Ok(build_html_fetch_result(
+                &body,
+                &final_url,
+                &source_domain,
+                &fallback_title,
+                options,
+            ));
+        }
+
+        return Ok(build_text_fetch_result(
             &body,
             &final_url,
             &source_domain,
             &fallback_title,
+            if content_type.contains("text/markdown") {
+                "markdown"
+            } else {
+                "text"
+            },
             options,
         ));
     }
-
-    Ok(build_text_fetch_result(
-        &body,
-        &final_url,
-        &source_domain,
-        &fallback_title,
-        if content_type.contains("text/markdown") {
-            "markdown"
-        } else {
-            "text"
-        },
-        options,
-    ))
 }
 
 fn build_html_fetch_result(
@@ -229,6 +246,10 @@ fn build_html_fetch_result(
         .canonical_url
         .clone()
         .or_else(|| Some(final_url.to_string()));
+    let challenge_notice = detect_access_challenge(html)
+        .then(|| format!(
+            "Access challenge detected while fetching {final_url}. The site returned anti-bot HTML instead of readable article content."
+        ));
 
     match options.profile {
         ExternalFetchProfile::Legacy => {
@@ -258,12 +279,66 @@ fn build_html_fetch_result(
             }
         }
         ExternalFetchProfile::Research => {
+            if let Some(note) = challenge_notice {
+                let content_hash = compute_hash(&note);
+                return ExternalFetchResult {
+                    title,
+                    content: note.clone(),
+                    timestamp: now_timestamp_string(),
+                    extract: Some(note),
+                    url: final_url.to_string(),
+                    source_wiki: "web".to_string(),
+                    source_domain: source_domain.to_string(),
+                    content_format: "text".to_string(),
+                    content_hash,
+                    revision_id: None,
+                    display_title: None,
+                    rendered_fetch_mode: None,
+                    canonical_url,
+                    site_name: metadata.site_name,
+                    byline: None,
+                    published_at: None,
+                    fetch_mode: Some(FetchMode::Static),
+                    extraction_quality: Some(ExtractionQuality::Low),
+                };
+            }
             let extracted = extract_readable_text(html, options.max_bytes);
-            let content = if extracted.is_empty() {
-                truncate_to_byte_limit(html, options.max_bytes)
-            } else {
-                extracted
-            };
+            let app_shell = detect_app_shell_html(html);
+            if extracted.is_empty() {
+                let content = build_metadata_fallback_content(
+                    &metadata,
+                    final_url,
+                    app_shell,
+                    options.max_bytes,
+                );
+                let extract = metadata
+                    .description
+                    .clone()
+                    .or_else(|| summarize_text(&content, 280));
+                let content_hash = compute_hash(&content);
+
+                return ExternalFetchResult {
+                    title,
+                    content,
+                    timestamp: now_timestamp_string(),
+                    extract,
+                    url: final_url.to_string(),
+                    source_wiki: "web".to_string(),
+                    source_domain: source_domain.to_string(),
+                    content_format: "text".to_string(),
+                    content_hash,
+                    revision_id: None,
+                    display_title: None,
+                    rendered_fetch_mode: None,
+                    canonical_url,
+                    site_name: metadata.site_name,
+                    byline: metadata.byline,
+                    published_at: metadata.published_at,
+                    fetch_mode: Some(FetchMode::Static),
+                    extraction_quality: Some(ExtractionQuality::Low),
+                };
+            }
+            let content = extracted;
             let extract = metadata
                 .description
                 .clone()
@@ -293,6 +368,43 @@ fn build_html_fetch_result(
             }
         }
     }
+}
+
+fn build_metadata_fallback_content(
+    metadata: &HtmlMetadata,
+    final_url: &str,
+    app_shell: bool,
+    max_bytes: usize,
+) -> String {
+    let mut lines = Vec::new();
+    if app_shell {
+        lines.push(format!(
+            "Client-rendered or app-shell page detected at {final_url}. Full article text could not be extracted reliably from the static HTML."
+        ));
+    } else {
+        lines.push(format!(
+            "Readable article text could not be extracted reliably from {final_url}."
+        ));
+    }
+    if let Some(title) = metadata.title.as_deref() {
+        lines.push(format!("Title: {title}"));
+    }
+    if let Some(description) = metadata.description.as_deref() {
+        lines.push(format!("Description: {description}"));
+    }
+    if let Some(byline) = metadata.byline.as_deref() {
+        lines.push(format!("Author: {byline}"));
+    }
+    if let Some(published_at) = metadata.published_at.as_deref() {
+        lines.push(format!("Published: {published_at}"));
+    }
+    if let Some(site_name) = metadata.site_name.as_deref() {
+        lines.push(format!("Site: {site_name}"));
+    }
+    if let Some(canonical_url) = metadata.canonical_url.as_deref() {
+        lines.push(format!("Canonical URL: {canonical_url}"));
+    }
+    truncate_to_byte_limit(&lines.join("\n"), max_bytes)
 }
 
 fn build_text_fetch_result(
@@ -380,6 +492,40 @@ fn extract_html_metadata(html: &str, final_url: &str) -> HtmlMetadata {
             &meta,
             &["description", "og:description", "twitter:description"],
         ),
+    }
+}
+
+fn extract_client_redirect_url(html: &str, final_url: &str) -> Option<String> {
+    let head = extract_head(html);
+    let base_url = Url::parse(final_url).ok()?;
+    for tag in scan_tags(&head, "meta") {
+        let http_equiv = tag
+            .attrs
+            .get("http-equiv")
+            .map(|value| value.to_ascii_lowercase());
+        let id = tag.attrs.get("id").map(|value| value.to_ascii_lowercase());
+        if http_equiv.as_deref() != Some("refresh") && id.as_deref() != Some("__next-page-redirect")
+        {
+            continue;
+        }
+        let content = tag.attrs.get("content")?;
+        let target = parse_meta_refresh_target(content)?;
+        let joined = base_url.join(target).ok()?.to_string();
+        return Some(joined);
+    }
+    None
+}
+
+fn parse_meta_refresh_target(content: &str) -> Option<&str> {
+    let lowered = content.to_ascii_lowercase();
+    let marker = "url=";
+    let at = lowered.find(marker)?;
+    let target = content[at + marker.len()..].trim();
+    let target = target.trim_matches(|ch| matches!(ch, '"' | '\'' | ' '));
+    if target.is_empty() {
+        None
+    } else {
+        Some(target)
     }
 }
 
@@ -525,6 +671,58 @@ fn score_extraction_quality(text: &str, extract: Option<&str>) -> ExtractionQual
         return ExtractionQuality::Medium;
     }
     ExtractionQuality::Low
+}
+
+fn detect_app_shell_html(html: &str) -> bool {
+    let lowered = html.to_ascii_lowercase();
+    let signals = [
+        "__next_f.push(",
+        "_next/static/",
+        "__next_data__",
+        "data-reactroot",
+        "ng-version",
+        "window.__nuxt__",
+        "id=\"app\"",
+        "id='app'",
+    ];
+    signals
+        .iter()
+        .filter(|signal| lowered.contains(**signal))
+        .count()
+        >= 2
+}
+
+fn detect_access_challenge(html: &str) -> bool {
+    let lowered = html.to_ascii_lowercase();
+    let vendor_signals = [
+        "awswafintegration",
+        "awswafcookiedomainlist",
+        "challenge-container",
+        "__cf_chl_",
+        "cf-browser-verification",
+        "captcha-delivery",
+        "datadome",
+        "perimeterx",
+        "px-captcha",
+    ];
+    if vendor_signals.iter().any(|signal| lowered.contains(signal)) {
+        return true;
+    }
+
+    let generic_signals = [
+        "verify that you're not a robot",
+        "checking your browser",
+        "enable javascript and then reload the page",
+        "javascript is disabled",
+        "access denied",
+        "captcha",
+        "challenge.js",
+    ];
+    generic_signals
+        .iter()
+        .filter(|signal| lowered.contains(**signal))
+        .count()
+        >= 2
 }
 
 fn extract_head(html: &str) -> String {
@@ -1003,8 +1201,9 @@ fn decode_html(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_html_fetch_result, collapse_inline_whitespace, extract_html_metadata,
-        extract_readable_text,
+        HtmlMetadata, build_html_fetch_result, build_metadata_fallback_content,
+        collapse_inline_whitespace, detect_access_challenge, detect_app_shell_html,
+        extract_client_redirect_url, extract_html_metadata, extract_readable_text,
     };
     use crate::research::model::{
         ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExtractionQuality,
@@ -1112,5 +1311,160 @@ mod tests {
         assert_eq!(result.extraction_quality, Some(ExtractionQuality::Low));
         assert!(!result.content_hash.is_empty());
         assert!(!collapse_inline_whitespace(&result.content).contains("<html>"));
+    }
+
+    #[test]
+    fn research_profile_reports_access_challenge_pages_cleanly() {
+        let result = build_html_fetch_result(
+            r#"
+            <html>
+              <head><title></title></head>
+              <body>
+                <script>window.awsWafCookieDomainList = [];</script>
+                <div id="challenge-container"></div>
+                <noscript>
+                  <h1>JavaScript is disabled</h1>
+                  verify that you're not a robot
+                </noscript>
+              </body>
+            </html>
+            "#,
+            "https://example.com/protected",
+            "example.com",
+            "protected",
+            &ExternalFetchOptions {
+                format: ExternalFetchFormat::Html,
+                max_bytes: 10_000,
+                profile: ExternalFetchProfile::Research,
+            },
+        );
+
+        assert_eq!(result.content_format, "text");
+        assert_eq!(result.fetch_mode, Some(FetchMode::Static));
+        assert_eq!(result.extraction_quality, Some(ExtractionQuality::Low));
+        assert!(
+            result.content.contains(
+                "Access challenge detected while fetching https://example.com/protected."
+            )
+        );
+        assert!(!result.content.contains("window.awsWafCookieDomainList"));
+    }
+
+    #[test]
+    fn research_profile_falls_back_to_metadata_when_static_extraction_fails() {
+        let result = build_html_fetch_result(
+            r#"
+            <html>
+              <head>
+                <title>Notes on Reading Remilia's art</title>
+                <meta name="description" content="A reflection on Remilia's aesthetics and reading practices." />
+                <meta name="author" content="Charlotte Fang" />
+                <meta property="og:site_name" content="Paragraph" />
+              </head>
+              <body>
+                <div id="app"></div>
+                <script>self.__next_f.push([1, "payload"]);</script>
+                <script src="/_next/static/chunks/main.js"></script>
+              </body>
+            </html>
+            "#,
+            "https://paragraph.com/@charlemagnefang/rjACW1CDER8t7UQDDgwd",
+            "paragraph.com",
+            "rjACW1CDER8t7UQDDgwd",
+            &ExternalFetchOptions {
+                format: ExternalFetchFormat::Html,
+                max_bytes: 10_000,
+                profile: ExternalFetchProfile::Research,
+            },
+        );
+
+        assert_eq!(result.content_format, "text");
+        assert_eq!(result.fetch_mode, Some(FetchMode::Static));
+        assert_eq!(result.extraction_quality, Some(ExtractionQuality::Low));
+        assert!(
+            result
+                .content
+                .contains("Client-rendered or app-shell page detected")
+        );
+        assert!(
+            result
+                .content
+                .contains("Title: Notes on Reading Remilia's art")
+        );
+        assert!(
+            result
+                .content
+                .contains("Description: A reflection on Remilia's aesthetics")
+        );
+        assert!(!result.content.contains("__next_f.push"));
+        assert!(!result.content.contains("<html>"));
+    }
+
+    #[test]
+    fn detects_vendor_and_generic_access_challenge_signals() {
+        assert!(detect_access_challenge(
+            "<html><body><script>window.awsWafCookieDomainList = [];</script></body></html>"
+        ));
+        assert!(detect_access_challenge(
+            "<html><body>JavaScript is disabled. Verify that you're not a robot.</body></html>"
+        ));
+        assert!(!detect_access_challenge(
+            "<html><body><article><p>Readable essay text.</p></article></body></html>"
+        ));
+    }
+
+    #[test]
+    fn detects_framework_app_shell_markup() {
+        assert!(detect_app_shell_html(
+            "<html><body><div id=\"app\"></div><script>self.__next_f.push([1, \"payload\"])</script><script src=\"/_next/static/chunks/main.js\"></script></body></html>"
+        ));
+        assert!(!detect_app_shell_html(
+            "<html><body><article><p>Readable essay text.</p></article></body></html>"
+        ));
+    }
+
+    #[test]
+    fn extracts_client_redirect_url_from_meta_refresh() {
+        let redirect = extract_client_redirect_url(
+            r#"
+            <html>
+              <head>
+                <meta id="__next-page-redirect" http-equiv="refresh" content="1;url=../@charlemagnefang/notes-towards-a-study-of-remilia-s-art" />
+              </head>
+            </html>
+            "#,
+            "https://paragraph.com/@charlemagnefang/rjACW1CDER8t7UQDDgwd",
+        )
+        .expect("client redirect");
+
+        assert_eq!(
+            redirect,
+            "https://paragraph.com/@charlemagnefang/notes-towards-a-study-of-remilia-s-art"
+        );
+    }
+
+    #[test]
+    fn metadata_fallback_content_includes_useful_context() {
+        let content = build_metadata_fallback_content(
+            &HtmlMetadata {
+                title: Some("Example title".to_string()),
+                canonical_url: Some("https://example.com/article".to_string()),
+                site_name: Some("Example".to_string()),
+                byline: Some("Author".to_string()),
+                published_at: Some("2026-03-17".to_string()),
+                description: Some("Summary text".to_string()),
+            },
+            "https://example.com/article",
+            true,
+            10_000,
+        );
+
+        assert!(content.contains("Client-rendered or app-shell page detected"));
+        assert!(content.contains("Title: Example title"));
+        assert!(content.contains("Description: Summary text"));
+        assert!(content.contains("Author: Author"));
+        assert!(content.contains("Published: 2026-03-17"));
+        assert!(content.contains("Site: Example"));
+        assert!(content.contains("Canonical URL: https://example.com/article"));
     }
 }

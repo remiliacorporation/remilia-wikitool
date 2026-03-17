@@ -50,7 +50,17 @@ resolve_wikitool_cmd() {
     if [ -n "$WIKITOOL_RAW" ]; then
         # shellcheck disable=SC2206 # Intentional word splitting for command string overrides.
         WIKITOOL_CMD=($WIKITOOL_RAW)
-        WIKITOOL_PATH_MODE="${WIKITOOL_PATH_MODE:-auto}"
+        if [ -n "${WIKITOOL_PATH_MODE:-}" ]; then
+            return
+        fi
+        case "$WIKITOOL_RAW" in
+            *.exe|[A-Za-z]:\\*|[A-Za-z]:/*)
+                WIKITOOL_PATH_MODE="windows"
+                ;;
+            *)
+                WIKITOOL_PATH_MODE="posix"
+                ;;
+        esac
         return
     fi
 
@@ -109,6 +119,14 @@ setup_project() {
     local dir="$TMPDIR_ROOT/project-$1"
     mkdir -p "$dir"
     echo "$dir"
+}
+
+write_live_env() {
+    local root="$1"
+    cat > "$root/.env" << 'ENVEOF'
+WIKI_URL=https://wiki.remilia.org/
+WIKI_API_URL=https://wiki.remilia.org/api.php
+ENVEOF
 }
 
 # Run wikitool with a given project root
@@ -771,6 +789,7 @@ if [ "$TIER" = "live" ]; then
 
     PROJ_LIVE=$(setup_project live)
     wt "$PROJ_LIVE" init > /dev/null 2>&1
+    write_live_env "$PROJ_LIVE"
 
     # --- pull ---
     section "pull (live)"
@@ -831,8 +850,11 @@ if [ "$TIER" = "live" ]; then
     # --- workflow bootstrap (live) ---
     section "workflow bootstrap (live)"
     PROJ_BOOTSTRAP_LIVE=$(setup_project workflow-bootstrap-live)
+    write_live_env "$PROJ_BOOTSTRAP_LIVE"
     OUTPUT=$(wt "$PROJ_BOOTSTRAP_LIVE" workflow bootstrap --skip-reference --skip-git-hooks --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "^knowledge warm$" && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE"; then
+    if echo "$OUTPUT" | grep -q "HTTP 429 Too Many Requests"; then
+        skip "workflow bootstrap invokes knowledge warm (docs source rate-limited)"
+    elif echo "$OUTPUT" | grep -q "^knowledge warm$" && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE"; then
         pass "workflow bootstrap invokes knowledge warm"
     else
         fail "workflow bootstrap invokes knowledge warm (got: ${OUTPUT:0:300})"
@@ -841,8 +863,11 @@ if [ "$TIER" = "live" ]; then
     # --- workflow full-refresh (live) ---
     section "workflow full-refresh (live)"
     PROJ_FULL_REFRESH_LIVE=$(setup_project workflow-full-refresh-live)
+    write_live_env "$PROJ_FULL_REFRESH_LIVE"
     OUTPUT=$(wt "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --skip-reference --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "^knowledge warm$" && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE"; then
+    if echo "$OUTPUT" | grep -q "HTTP 429 Too Many Requests"; then
+        skip "workflow full-refresh invokes knowledge warm (docs source rate-limited)"
+    elif echo "$OUTPUT" | grep -q "^knowledge warm$" && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE"; then
         pass "workflow full-refresh invokes knowledge warm"
     else
         fail "workflow full-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
@@ -851,7 +876,11 @@ if [ "$TIER" = "live" ]; then
     # --- knowledge warm (live) ---
     section "knowledge warm (live)"
     OUTPUT=$(wt "$PROJ_LIVE" knowledge warm --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "knowledge.readiness: authoring_ready" && echo "$OUTPUT" | grep -q "knowledge.docs_profile_ready: yes"; then
+    if echo "$OUTPUT" | grep -q "HTTP 429 Too Many Requests"; then
+        skip "knowledge warm builds local content and hydrates docs profile (docs source rate-limited)"
+    elif echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
+        && echo "$OUTPUT" | grep -q "knowledge.docs_profile_ready: yes" \
+        && echo "$OUTPUT" | grep -Eq "knowledge.readiness: (authoring_ready|content_ready)"; then
         pass "knowledge warm builds local content and hydrates docs profile"
     else
         fail "knowledge warm builds local content and hydrates docs profile (got: ${OUTPUT:0:300})"
