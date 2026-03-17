@@ -24,6 +24,20 @@ pub struct ExternalSearchHit {
     pub word_count: Option<u64>,
     pub snippet: String,
     pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub byte_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_snippet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redirect_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redirect_snippet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section_snippet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category_snippet: Option<String>,
 }
 
 #[derive(Debug, Clone)]

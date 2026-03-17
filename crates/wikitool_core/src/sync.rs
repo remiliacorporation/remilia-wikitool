@@ -10,8 +10,9 @@ use serde::Serialize;
 use crate::filesystem::{NamespaceMapper, ScanOptions, scan_files, validate_scoped_path};
 use crate::knowledge::content_index::{RebuildReport, rebuild_index};
 pub use crate::mw::{
-    ExternalSearchHit, MediaWikiClient, MediaWikiClientConfig, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI,
-    NS_MODULE, NS_TEMPLATE, PageTimestampInfo, RemotePage, WikiReadApi, WikiWriteApi,
+    ExternalSearchHit, ExternalSearchReport, MediaWikiClient, MediaWikiClientConfig,
+    MediaWikiSearchOptions, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
+    NS_TEMPLATE, PageTimestampInfo, RemotePage, WikiReadApi, WikiWriteApi, search_pages_report,
 };
 use crate::runtime::ResolvedPaths;
 use crate::schema::{ensure_database_schema_connection, open_initialized_database_connection};
@@ -152,10 +153,20 @@ pub fn search_external_wiki(
     namespaces: &[i32],
     limit: usize,
 ) -> Result<Vec<ExternalSearchHit>> {
-    search_external_wiki_with_config(
+    Ok(search_external_wiki_report(query, namespaces, limit, MediaWikiSearchWhat::Text)?.hits)
+}
+
+pub fn search_external_wiki_report(
+    query: &str,
+    namespaces: &[i32],
+    limit: usize,
+    what: MediaWikiSearchWhat,
+) -> Result<ExternalSearchReport> {
+    search_external_wiki_report_with_config(
         query,
         namespaces,
         limit,
+        what,
         &crate::config::WikiConfig::default(),
     )
 }
@@ -166,8 +177,33 @@ pub fn search_external_wiki_with_config(
     limit: usize,
     config: &crate::config::WikiConfig,
 ) -> Result<Vec<ExternalSearchHit>> {
+    Ok(search_external_wiki_report_with_config(
+        query,
+        namespaces,
+        limit,
+        MediaWikiSearchWhat::Text,
+        config,
+    )?
+    .hits)
+}
+
+pub fn search_external_wiki_report_with_config(
+    query: &str,
+    namespaces: &[i32],
+    limit: usize,
+    what: MediaWikiSearchWhat,
+    config: &crate::config::WikiConfig,
+) -> Result<ExternalSearchReport> {
     let mut client = MediaWikiClient::from_config(config)?;
-    client.search(query, namespaces, limit)
+    search_pages_report(
+        &mut client,
+        query,
+        &MediaWikiSearchOptions {
+            namespaces: namespaces.to_vec(),
+            limit,
+            what,
+        },
+    )
 }
 
 pub fn push_to_remote(paths: &ResolvedPaths, options: &PushOptions) -> Result<PushReport> {

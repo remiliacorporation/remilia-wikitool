@@ -4,8 +4,8 @@ use wikitool_core::knowledge::retrieval::{
     LocalContextBundle, LocalSearchHit, build_local_context, query_search_local,
 };
 use wikitool_core::sync::{
-    ExternalSearchHit, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE,
-    search_external_wiki_with_config,
+    ExternalSearchReport, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
+    NS_TEMPLATE, search_external_wiki_report_with_config,
 };
 
 use crate::cli_support::{
@@ -27,6 +27,12 @@ pub(crate) struct SearchArgs {
 #[derive(Debug, Args)]
 pub(crate) struct SearchExternalArgs {
     query: String,
+    #[arg(long, default_value_t = 20, value_name = "N")]
+    limit: usize,
+    #[arg(long, default_value = "text", value_name = "SCOPE")]
+    what: String,
+    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    format: String,
 }
 
 pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result<()> {
@@ -89,19 +95,30 @@ pub(crate) fn run_search_external(
     runtime: &RuntimeOptions,
     args: SearchExternalArgs,
 ) -> Result<()> {
+    if args.limit == 0 {
+        bail!("search-external requires --limit >= 1");
+    }
     let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let format = normalize_output(&args.format)?;
+    let what = MediaWikiSearchWhat::parse(&args.what)?;
     let query = normalize_title_query(&args.query);
     if query.is_empty() {
         bail!("search-external requires a non-empty query");
     }
 
     let namespaces = [NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
-    let hits = search_external_wiki_with_config(&query, &namespaces, 20, &config)?;
+    let report =
+        search_external_wiki_report_with_config(&query, &namespaces, args.limit, what, &config)?;
+
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
 
     println!("search-external");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("query: {query}");
-    print_external_search_hits("search_external", &hits);
+    print_external_search_report("search_external", &report);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -126,17 +143,49 @@ fn print_search_hits(prefix: &str, hits: &[LocalSearchHit]) {
     }
 }
 
-fn print_external_search_hits(prefix: &str, hits: &[ExternalSearchHit]) {
-    println!("{prefix}.count: {}", hits.len());
-    if hits.is_empty() {
+pub(crate) fn print_external_search_report(prefix: &str, report: &ExternalSearchReport) {
+    println!("{prefix}.count: {}", report.hits.len());
+    println!("{prefix}.what: {}", report.what.as_api_param());
+    println!(
+        "{prefix}.namespaces: {}",
+        if report.namespaces.is_empty() {
+            "<all>".to_string()
+        } else {
+            report
+                .namespaces
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    );
+    println!(
+        "{prefix}.total_hits: {}",
+        report
+            .total_hits
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "<none>".to_string())
+    );
+    println!(
+        "{prefix}.suggestion: {}",
+        report.suggestion.as_deref().unwrap_or("<none>")
+    );
+    println!(
+        "{prefix}.rewritten_query: {}",
+        report.rewritten_query.as_deref().unwrap_or("<none>")
+    );
+    if report.hits.is_empty() {
         println!("{prefix}.hits: <none>");
         return;
     }
-    for hit in hits {
+    for hit in &report.hits {
         println!(
             "{prefix}.hit: {} (namespace={}, page_id={})",
             hit.title, hit.namespace, hit.page_id
         );
+        if let Some(value) = hit.byte_size {
+            println!("{prefix}.hit.byte_size: {value}");
+        }
         println!(
             "{prefix}.hit.word_count: {}",
             hit.word_count
@@ -155,6 +204,33 @@ fn print_external_search_hits(prefix: &str, hits: &[ExternalSearchHit]) {
                 &hit.snippet
             }
         );
+        if let Some(value) = hit.title_snippet.as_deref() {
+            println!("{prefix}.hit.title_snippet: {value}");
+        }
+        if let Some(value) = hit.redirect_title.as_deref() {
+            println!("{prefix}.hit.redirect_title: {value}");
+        }
+        if let Some(value) = hit.redirect_snippet.as_deref() {
+            println!("{prefix}.hit.redirect_snippet: {value}");
+        }
+        if let Some(value) = hit.section_title.as_deref() {
+            println!("{prefix}.hit.section_title: {value}");
+        }
+        if let Some(value) = hit.section_snippet.as_deref() {
+            println!("{prefix}.hit.section_snippet: {value}");
+        }
+        if let Some(value) = hit.category_snippet.as_deref() {
+            println!("{prefix}.hit.category_snippet: {value}");
+        }
+    }
+}
+
+pub(crate) fn normalize_output(value: &str) -> Result<&'static str> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "json" => Ok("json"),
+        "text" => Ok("text"),
+        _ => bail!("unsupported output format: {} (expected text|json)", value),
     }
 }
 

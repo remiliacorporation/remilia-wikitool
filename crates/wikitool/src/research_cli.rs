@@ -5,10 +5,12 @@ use wikitool_core::research::{
     ExternalFetchFormat, ExternalFetchOptions, ExternalFetchResult, fetch_page_by_url,
 };
 use wikitool_core::sync::{
-    NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE, search_external_wiki_with_config,
+    ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN,
+    NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE, search_external_wiki_report_with_config,
 };
 
 use crate::cli_support::{normalize_path, normalize_title_query, resolve_runtime_with_config};
+use crate::query_cli::{normalize_output, print_external_search_report};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -30,6 +32,8 @@ pub(crate) struct ResearchSearchArgs {
     query: String,
     #[arg(long, default_value_t = 20, value_name = "N")]
     limit: usize,
+    #[arg(long, default_value = "text", value_name = "SCOPE")]
+    what: String,
     #[arg(long, default_value = "json", value_name = "FORMAT")]
     format: String,
 }
@@ -47,8 +51,16 @@ pub(crate) struct ResearchFetchArgs {
 struct ResearchSearchOutput {
     schema_version: String,
     query: String,
+    what: MediaWikiSearchWhat,
+    namespaces: Vec<i32>,
     count: usize,
-    hits: Vec<wikitool_core::sync::ExternalSearchHit>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_hits: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggestion: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rewritten_query: Option<String>,
+    hits: Vec<ExternalSearchHit>,
 }
 
 #[derive(Debug, Serialize)]
@@ -69,6 +81,7 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
         bail!("research search requires --limit >= 1");
     }
     let format = normalize_output(&args.format)?;
+    let what = MediaWikiSearchWhat::parse(&args.what)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let query = normalize_title_query(&args.query);
     if query.is_empty() {
@@ -76,15 +89,11 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
     }
 
     let namespaces = [NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
-    let hits = search_external_wiki_with_config(&query, &namespaces, args.limit, &config)?;
+    let report =
+        search_external_wiki_report_with_config(&query, &namespaces, args.limit, what, &config)?;
 
     if format == "json" {
-        let output = ResearchSearchOutput {
-            schema_version: "research_search_v1".to_string(),
-            query,
-            count: hits.len(),
-            hits,
-        };
+        let output = ResearchSearchOutput::from(report);
         println!("{}", serde_json::to_string_pretty(&output)?);
         return Ok(());
     }
@@ -92,14 +101,7 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
     println!("research search");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("query: {query}");
-    println!("count: {}", hits.len());
-    for hit in hits {
-        println!(
-            "hit: {} (namespace={}, page_id={})",
-            hit.title, hit.namespace, hit.page_id
-        );
-        println!("hit.snippet: {}", hit.snippet);
-    }
+    print_external_search_report("research_search", &report);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -145,11 +147,29 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     Ok(())
 }
 
-fn normalize_output(value: &str) -> Result<&'static str> {
-    let normalized = value.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "json" => Ok("json"),
-        "text" => Ok("text"),
-        _ => bail!("unsupported output format: {} (expected text|json)", value),
+impl From<ExternalSearchReport> for ResearchSearchOutput {
+    fn from(report: ExternalSearchReport) -> Self {
+        let ExternalSearchReport {
+            query,
+            what,
+            namespaces,
+            total_hits,
+            suggestion,
+            rewritten_query,
+            hits,
+        } = report;
+        let count = hits.len();
+
+        Self {
+            schema_version: "research_search_v1".to_string(),
+            query,
+            what,
+            namespaces,
+            count,
+            total_hits,
+            suggestion,
+            rewritten_query,
+            hits,
+        }
     }
 }
