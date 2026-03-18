@@ -182,9 +182,8 @@ If `--host-project-root` is provided, host context is layered on top and wikitoo
 ## Documentation
 
 - `SETUP.md` setup guide
-- `docs/wikitool/how-to.md` task recipes
-- `docs/wikitool/reference.md` command reference generated from Rust CLI help
-- `docs/wikitool/explanation.md` architecture notes
+- `docs/wikitool/guide.md` workflows and troubleshooting
+- `docs/wikitool/reference.md` command reference (auto-generated from CLI help)
 - `VERSIONING.md` version bump policy and release checklist
 - `RELEASE_LOG.md` release history
 - `testbench/cli_tests.sh` broad CLI regression harness

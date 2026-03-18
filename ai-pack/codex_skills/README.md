@@ -1,21 +1,9 @@
 # Codex Skills Bundle
 
-These skills are thin overlays for editing safety and workflow sequencing.
-They do not replace ordinary reasoning, shell work, or file edits; use `wikitool` where it adds wiki-aware value.
+Two skills matching the Claude Code `.claude/skills/` surface:
 
-Canonical command and policy truth remains:
+1. `wikitool-operator` — when/how to use the CLI (authoring, retrieval, sync, diagnostics)
+2. `wikitool-content-gate` — pre-push validation contract (lint, validate, diff, gate report)
 
-1. `AGENTS.md` / `CLAUDE.md`
-2. `SETUP.md` + `docs/wikitool/*`
-3. Live CLI help (`wikitool --help`, `wikitool <command> --help`)
-
-## Included skills
-
-1. `wikitool-operator`
-2. `wikitool-content-gate`
-
-## Install into Codex
-
-Copy each skill folder into your Codex skills directory (for example `$CODEX_HOME/skills`), then restart Codex.
-
-The release artifact keeps this bundle in `codex_skills/`.
+These are thin overlays. Canonical truth is `AGENTS.md`, `docs/wikitool/*`, and live CLI help.
+Use `wikitool` where it adds wiki-aware value; use normal reasoning and file tools for everything else.

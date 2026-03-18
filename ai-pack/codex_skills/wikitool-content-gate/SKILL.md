@@ -1,51 +1,53 @@
 ---
 name: wikitool-content-gate
-description: Run deterministic content quality gates for wiki edits before push, including validate, diff, index/category checks, and explicit dry-run gate output.
+description: Run deterministic content quality gates for wiki edits before push — lint, validate, diff, audit, and explicit dry-run gate output.
 ---
 
 # Skill: wikitool-content-gate
 
-Keep this skill thin and policy-focused.
-Canonical command truth is CLI help and runbooks.
-Use `wikitool` here for deterministic wiki-aware gates, not as a replacement for editorial judgment or normal file editing.
+Validate, audit, and gate wiki content before push.
+Use `wikitool` for deterministic wiki-aware checks. Editorial judgment is yours, not wikitool's.
 
-## Canonical lookup order
-
-1. `wikitool --help`
-2. `wikitool <command> --help`
-3. `docs/wikitool/reference.md`
-
-## Validation pass
+## Gate sequence
 
 ```bash
-wikitool article lint wiki_content/Main/Title.wiki --format json
+wikitool article lint wiki_content/Main/<Title>.wiki --format json
 wikitool validate
 wikitool diff
 ```
 
-## Link, category, and index signals
+## Fix loop
+
+When lint reports issues:
 
 ```bash
-wikitool knowledge inspect orphans
-wikitool knowledge inspect backlinks "Title"
-wikitool knowledge inspect empty-categories
-wikitool search "Category:"
+wikitool article fix wiki_content/Main/<Title>.wiki --apply safe
+wikitool article lint wiki_content/Main/<Title>.wiki --format json   # re-lint to verify
 ```
 
-## Docs-assisted checks
+Fix what `--apply safe` cannot handle manually, then re-lint until clean.
 
-```bash
-wikitool docs context "extension feature" --profile remilia-mw-1.44 --format json
-wikitool wiki profile show --format json
-wikitool templates show "Template:Infobox person"
-```
+## Audit signals
 
-## Push-gate report contract
+Use these for cleanup passes or broader content review:
+
+| Need | Command |
+|------|---------|
+| Orphan pages (no backlinks) | `knowledge inspect orphans` |
+| Empty categories | `knowledge inspect empty-categories` |
+| What links to a page | `knowledge inspect backlinks "Title"` |
+| Category inventory | `search "Category:"` |
+| Template usage | `templates show "Template:Name"` |
+| Profile lint rules | `wiki profile show --format json` |
+
+## Push-gate report
 
 Before any write push, report:
 
-1. Article lint result (`pass` or explicit rule hits)
-2. Validation result (`pass` or explicit failures)
-3. Diff scope summary
-4. Risk notes (delete, force, template/category scope)
-5. Next command (`wikitool push --dry-run --summary ...`)
+1. **Lint**: pass, or specific rule hits
+2. **Validate**: pass, or broken links / integrity issues
+3. **Diff**: which pages changed, scope summary
+4. **Risk**: any delete, force, template-scope, or category-scope concerns
+5. **Next**: `wikitool push --dry-run --summary "..."`
+
+Do not approve `--force` without explicit user instruction.

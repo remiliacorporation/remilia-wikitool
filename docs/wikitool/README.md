@@ -1,12 +1,6 @@
-﻿# Wikitool Documentation (Diataxis)
+# Wikitool Documentation
 
-This folder follows the Diataxis model so editors and agents can find the right guidance quickly.
+- `guide.md` — setup, workflows, troubleshooting
+- `reference.md` — canonical command/flag reference (auto-generated from CLI help)
 
-## Contents
-
-- `SETUP.md` setup walkthrough
-- `how-to.md` task recipes
-- `reference.md` canonical command/flag reference generated from Rust CLI help
-- `explanation.md` architecture and design rationale
-
-For authoritative command flags, use `docs/wikitool/reference.md` or `wikitool --help`.
+For flags: `wikitool <command> --help` or `reference.md`.

@@ -74,36 +74,20 @@ Use this order:
 4. `llm_instructions/extensions.md`
 5. `.claude/rules/wiki-style.md`
 6. `.claude/rules/safety.md`
-7. `docs/wikitool/how-to.md`
+7. `docs/wikitool/guide.md`
 8. `docs/wikitool/reference.md`
 9. `wikitool --help` and `wikitool <command> --help`
 
 ## Skill Surfaces
 
-### Claude skill files
+Claude and Codex share the same 2-skill structure:
 
-The packaged `.claude/skills/` suite includes:
+| Claude (`.claude/skills/`) | Codex (`codex_skills/`) | Role |
+|---|---|---|
+| `/wikitool` | `wikitool-operator` | When/how to use the CLI — retrieval, authoring, sync, diagnostics |
+| `/review` | `wikitool-content-gate` | Pre-push validation contract — lint, validate, diff, gate report |
 
-1. `/article`
-2. `/template`
-3. `/sync`
-4. `/research`
-5. `/cleanup`
-6. `/review`
-7. `/seo`
-8. `/mw-fetch`
-9. `/wikitool`
-
-These are thin workflow wrappers, not command-surface authorities.
-
-### Codex skill files
-
-`codex_skills/` includes:
-
-1. `wikitool-operator`
-2. `wikitool-content-gate`
-
-Codex skills must remain thin overlays that defer to runbooks and CLI help.
+Skill bodies are structurally identical across platforms. They are thin overlays that defer to runbooks and CLI help.
 
 Use normal reasoning, ordinary shell/file tools, and direct editing by default.
 Reach for `wikitool` when it adds wiki-aware value: local knowledge retrieval, MediaWiki-aware fetch/export, template/profile lookup, article lint/fix/validate, and guarded sync/push.
@@ -190,9 +174,8 @@ When behavior changes, update all of:
 4. `ai-pack/.claude/rules/*`
 5. `ai-pack/.claude/skills/*`
 6. `ai-pack/codex_skills/*`
-7. `docs/wikitool/how-to.md`
+7. `docs/wikitool/guide.md`
 8. `docs/wikitool/reference.md`
-9. `docs/wikitool/explanation.md`
 
 Regenerate command reference after CLI changes:
 

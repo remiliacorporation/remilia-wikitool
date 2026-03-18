@@ -10,7 +10,7 @@ Use this lookup order:
 2. `llm_instructions/style_rules.md`
 3. `llm_instructions/article_structure.md`
 4. `llm_instructions/writing_guide.md`
-5. `docs/wikitool/how-to.md`
+5. `docs/wikitool/guide.md`
 6. `docs/wikitool/reference.md`
 7. `wikitool --help` and `wikitool <command> --help`
 

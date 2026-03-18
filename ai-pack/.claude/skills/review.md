@@ -1,8 +1,7 @@
-# /review - Pre-Push Quality Gate
+# /review - Content Gate
 
-Thin wrapper for the final gate before write push.
-Use `wikitool` here for deterministic checks and diff review, not as a substitute for editorial judgment.
-Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
+Validate, audit, and gate wiki content before push.
+Use `wikitool` for deterministic wiki-aware checks. Editorial judgment is yours, not wikitool's.
 
 ## Gate sequence
 
@@ -12,17 +11,38 @@ wikitool validate
 wikitool diff
 ```
 
-Manual checks:
+## Fix loop
 
-1. Structure (`SHORTDESC`, article quality banner, refs, categories)
-2. Style compliance (`llm_instructions/style_rules.md`)
-3. Citation quality and source reliability
-4. Template/profile fit when the page depends on infobox or citation conventions
-
-## Push gate
+When lint reports issues:
 
 ```bash
-wikitool push --dry-run --summary "Review pass: <scope>"
+wikitool article fix wiki_content/Main/<Title>.wiki --apply safe
+wikitool article lint wiki_content/Main/<Title>.wiki --format json   # re-lint to verify
 ```
 
-Do not approve `--force` without explicit instruction.
+Fix what `--apply safe` cannot handle manually, then re-lint until clean.
+
+## Audit signals
+
+Use these for cleanup passes or broader content review:
+
+| Need | Command |
+|------|---------|
+| Orphan pages (no backlinks) | `knowledge inspect orphans` |
+| Empty categories | `knowledge inspect empty-categories` |
+| What links to a page | `knowledge inspect backlinks "Title"` |
+| Category inventory | `search "Category:"` |
+| Template usage | `templates show "Template:Name"` |
+| Profile lint rules | `wiki profile show --format json` |
+
+## Push-gate report
+
+Before any write push, report:
+
+1. **Lint**: pass, or specific rule hits
+2. **Validate**: pass, or broken links / integrity issues
+3. **Diff**: which pages changed, scope summary
+4. **Risk**: any delete, force, template-scope, or category-scope concerns
+5. **Next**: `wikitool push --dry-run --summary "..."`
+
+Do not approve `--force` without explicit user instruction.
