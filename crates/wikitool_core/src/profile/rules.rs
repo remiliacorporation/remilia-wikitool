@@ -97,7 +97,7 @@ pub struct ProfileOverlay {
 }
 
 impl ProfileOverlay {
-    pub fn recommended_template_titles(&self) -> Vec<String> {
+    pub fn profile_template_titles(&self) -> Vec<String> {
         let mut titles = BTreeSet::new();
         if let Some(value) = self.authoring.article_quality_template.as_deref() {
             titles.insert(value.to_string());
@@ -122,7 +122,7 @@ pub struct TemplateCatalogSummary {
     pub templatedata_count: usize,
     pub redirect_alias_count: usize,
     pub usage_index_ready: bool,
-    pub recommended_template_titles: Vec<String>,
+    pub profile_template_titles: Vec<String>,
     pub refreshed_at: String,
 }
 

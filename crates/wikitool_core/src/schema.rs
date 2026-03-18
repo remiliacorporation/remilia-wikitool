@@ -77,6 +77,20 @@ const REQUIRED_ALIAS_COLUMNS: &[&str] = &[
     "source_relative_path",
 ];
 
+const REQUIRED_INDEXED_PAGE_COLUMNS: &[&str] = &[
+    "relative_path",
+    "title",
+    "namespace",
+    "is_redirect",
+    "is_translation_variant",
+    "translation_base_title",
+    "translation_language",
+    "redirect_target",
+    "content_hash",
+    "bytes",
+    "indexed_at_unix",
+];
+
 const REQUIRED_SECTION_COLUMNS: &[&str] = &[
     "section_index",
     "source_title",
@@ -298,6 +312,7 @@ pub fn ensure_database_schema_connection(connection: &Connection) -> Result<()> 
 }
 
 fn validate_disposable_schema(connection: &Connection) -> Result<()> {
+    require_columns(connection, "indexed_pages", REQUIRED_INDEXED_PAGE_COLUMNS)?;
     require_columns(connection, "indexed_page_aliases", REQUIRED_ALIAS_COLUMNS)?;
     require_columns(
         connection,
@@ -358,6 +373,7 @@ fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()>
         return Ok(());
     }
 
+    require_columns_if_table_exists(connection, "indexed_pages", REQUIRED_INDEXED_PAGE_COLUMNS)?;
     require_columns_if_table_exists(connection, "indexed_page_aliases", REQUIRED_ALIAS_COLUMNS)?;
     require_columns_if_table_exists(
         connection,

@@ -1,4 +1,5 @@
 use super::parse_sections::strip_summary_noise;
+use crate::title_variants;
 
 pub(crate) fn collapse_whitespace(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
@@ -126,27 +127,5 @@ pub(crate) fn classify_docs_page_kind(title: &str) -> String {
 }
 
 pub(crate) fn is_translation_variant(title: &str) -> bool {
-    let Some((_, suffix)) = title.rsplit_once('/') else {
-        return false;
-    };
-    let suffix = suffix.trim();
-    if suffix.is_empty() || suffix.contains(' ') {
-        return false;
-    }
-    if suffix.eq_ignore_ascii_case("qqq") {
-        return true;
-    }
-
-    let mut letter_count = 0usize;
-    for ch in suffix.chars() {
-        if ch.is_ascii_lowercase() {
-            letter_count += 1;
-            continue;
-        }
-        if ch == '-' || ch.is_ascii_digit() {
-            continue;
-        }
-        return false;
-    }
-    letter_count >= 2 && suffix.len() <= 12
+    title_variants::is_translation_variant(title)
 }

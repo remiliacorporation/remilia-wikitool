@@ -206,11 +206,11 @@ fn print_catalog_summary(catalog: &TemplateCatalog) {
         }
     );
     println!(
-        "recommended_templates: {}",
-        if summary.recommended_template_titles.is_empty() {
+        "profile_templates: {}",
+        if summary.profile_template_titles.is_empty() {
             "<none>".to_string()
         } else {
-            summary.recommended_template_titles.join(", ")
+            summary.profile_template_titles.join(", ")
         }
     );
     println!("refreshed_at: {}", summary.refreshed_at);

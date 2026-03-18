@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS indexed_pages (
     title TEXT NOT NULL,
     namespace TEXT NOT NULL,
     is_redirect INTEGER NOT NULL,
+    is_translation_variant INTEGER NOT NULL DEFAULT 0,
+    translation_base_title TEXT,
+    translation_language TEXT,
     redirect_target TEXT,
     content_hash TEXT NOT NULL,
     bytes INTEGER NOT NULL,
@@ -36,6 +39,8 @@ CREATE INDEX IF NOT EXISTS idx_indexed_pages_lower_title
     ON indexed_pages(lower(title));
 CREATE INDEX IF NOT EXISTS idx_indexed_pages_ns_redirect
     ON indexed_pages(namespace, is_redirect);
+CREATE INDEX IF NOT EXISTS idx_indexed_pages_translation_base
+    ON indexed_pages(translation_base_title);
 
 CREATE TABLE IF NOT EXISTS indexed_links (
     source_relative_path TEXT NOT NULL,

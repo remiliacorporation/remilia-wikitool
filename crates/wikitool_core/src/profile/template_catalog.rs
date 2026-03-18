@@ -275,10 +275,10 @@ pub fn find_template_catalog_entry(
 
 impl TemplateCatalog {
     pub fn summary(&self) -> TemplateCatalogSummary {
-        let mut recommended_template_titles = BTreeSet::new();
+        let mut profile_template_titles = BTreeSet::new();
         for entry in &self.entries {
             if !entry.recommendation_tags.is_empty() {
-                recommended_template_titles.insert(entry.template_title.clone());
+                profile_template_titles.insert(entry.template_title.clone());
             }
         }
         TemplateCatalogSummary {
@@ -287,7 +287,7 @@ impl TemplateCatalog {
             templatedata_count: self.templatedata_count,
             redirect_alias_count: self.redirect_alias_count,
             usage_index_ready: self.usage_index_ready,
-            recommended_template_titles: recommended_template_titles.into_iter().collect(),
+            profile_template_titles: profile_template_titles.into_iter().collect(),
             refreshed_at: self.refreshed_at.clone(),
         }
     }

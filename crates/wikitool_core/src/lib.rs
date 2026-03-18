@@ -19,3 +19,4 @@ pub mod runtime;
 pub mod schema;
 pub mod support;
 pub mod sync;
+pub mod title_variants;

@@ -19,6 +19,7 @@ use wikitool_core::knowledge::content_index::{RebuildReport, rebuild_index};
 use wikitool_core::knowledge::status::{
     DEFAULT_DOCS_PROFILE, KnowledgeReadinessLevel, KnowledgeStatusReport, knowledge_status,
 };
+use wikitool_core::profile::load_or_build_remilia_profile_overlay;
 use wikitool_core::runtime::{ResolvedPaths, ensure_runtime_ready_for_sync, inspect_runtime};
 
 use crate::cli_support::{
@@ -727,7 +728,8 @@ fn run_knowledge_article_start(
             result: KnowledgeArticleStartPayload::QueryMissing,
         },
         AuthoringKnowledgePack::Found(report) => {
-            let article_start = build_article_start(&report);
+            let overlay = load_or_build_remilia_profile_overlay(&paths)?;
+            let article_start = build_article_start(&report, &overlay);
             KnowledgeArticleStartOutput {
                 docs_profile_requested: status.docs_profile_requested.clone(),
                 readiness: status.readiness.clone(),
@@ -778,16 +780,92 @@ fn run_knowledge_article_start(
             );
             println!("article_start.topic: {}", article_start.topic);
             println!(
-                "article_start.article_type: {}",
-                serde_json::to_string(&article_start.article_type)?
-            );
-            println!(
                 "article_start.local_state: {}",
                 serde_json::to_string(&article_start.local_state)?
             );
             println!(
                 "article_start.comparable_pages: {}",
                 format_list(&article_start.local_integration.comparable_pages)
+            );
+            println!(
+                "article_start.required_templates: {}",
+                article_start
+                    .local_integration
+                    .required_templates
+                    .iter()
+                    .map(|entry| entry.template_title.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!(
+                "article_start.subject_type_hints: {}",
+                article_start
+                    .local_integration
+                    .subject_type_hints
+                    .iter()
+                    .map(|entry| entry.subject_type.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!(
+                "article_start.available_infoboxes: {}",
+                article_start
+                    .local_integration
+                    .available_infoboxes
+                    .iter()
+                    .map(|entry| entry.template_title.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!(
+                "article_start.citation_templates_seen: {}",
+                article_start
+                    .local_integration
+                    .citation_templates_seen
+                    .iter()
+                    .map(|entry| entry.template_title.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!(
+                "article_start.template_surface: {}",
+                article_start
+                    .local_integration
+                    .template_surface
+                    .iter()
+                    .map(|entry| entry.template_title.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!(
+                "article_start.categories_seen: {}",
+                article_start
+                    .local_integration
+                    .categories_seen
+                    .iter()
+                    .map(|entry| entry.category_title.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!(
+                "article_start.links_seen: {}",
+                article_start
+                    .local_integration
+                    .links_seen
+                    .iter()
+                    .map(|entry| entry.page_title.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!(
+                "article_start.section_skeleton: {}",
+                article_start
+                    .local_integration
+                    .section_skeleton
+                    .iter()
+                    .map(|entry| entry.heading.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
             println!(
                 "article_start.docs_queries: {}",

@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use anyhow::bail;
+
 use crate::content_store::parsing;
 use crate::knowledge::prelude::{
     ChunkRerankSignals, ChunkRetrievalPlan, RetrievalAudience, build_authority_page_weight_map,
@@ -18,9 +20,9 @@ use crate::knowledge::templates::{
     load_authoring_template_references, summarize_template_usage_for_sources,
 };
 use crate::knowledge::{model::*, prelude::*};
+use crate::title_variants::is_translation_variant;
 
 pub mod article_start;
-pub mod classify;
 pub mod comparables;
 pub mod docs_bridge;
 pub mod model;
@@ -52,6 +54,11 @@ pub fn build_authoring_knowledge_pack(
     };
     if topic.is_empty() {
         return Ok(AuthoringKnowledgePack::QueryMissing);
+    }
+    if is_translation_variant(&topic) {
+        bail!(
+            "translation surfaces are not supported yet for `{topic}`; translation subpages are discovery-only and cannot be used for editing context"
+        );
     }
 
     let related_limit = options.related_page_limit.max(1);

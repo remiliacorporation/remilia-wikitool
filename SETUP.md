@@ -6,28 +6,44 @@ Read-only workflows do not require credentials. Push/delete writes require bot c
 
 ## 1) Get the binary
 
-Option A: build from source:
+Option A: download a release artifact for your OS and extract it. Community release bundles place the `wikitool` binary in the top-level extracted folder.
+
+Option B: build from source:
 
 ```bash
 cargo build --package wikitool --release
 ```
 
-Option B: download a release artifact for your OS.
-
 ## 2) Initialize runtime
 
 From the project root (or pass `--project-root`):
 
+Release package:
+
 ```bash
 wikitool init --templates
+```
+
+Source build from the `tools/wikitool/` checkout:
+
+```bash
+./target/release/wikitool init --templates
 ```
 
 This materializes `.wikitool/` runtime state.
 
 ## 3) Pull content
 
+Release package:
+
 ```bash
 wikitool pull --full --all
+```
+
+Source build:
+
+```bash
+./target/release/wikitool pull --full --all
 ```
 
 Incremental pull examples:

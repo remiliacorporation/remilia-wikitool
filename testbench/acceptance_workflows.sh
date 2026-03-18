@@ -222,7 +222,10 @@ else
     fail "knowledge build prepares the local index for authoring acceptance (got: $OUTPUT)"
 fi
 OUTPUT=$(wt "$PROJ" knowledge article-start "Gamma" --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"schema_version": "article_start_v1"' \
+if echo "$OUTPUT" | grep -q '"schema_version": "article_start"' \
+    && ! echo "$OUTPUT" | grep -q '"article_type"' \
+    && ! echo "$OUTPUT" | grep -q '"confidence"' \
+    && echo "$OUTPUT" | grep -q '"required_templates"' \
     && echo "$OUTPUT" | grep -Eq '"local_state": "(linked_but_missing|likely_missing)"'; then
     pass "knowledge article-start produces a missing-page authoring brief"
 else

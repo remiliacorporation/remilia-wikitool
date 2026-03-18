@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;
 
+use crate::authoring::article_start::build_article_start;
 use crate::content_store::parsing::{
     extract_first_url, extract_media_records, extract_module_invocations,
     extract_reference_records, extract_template_invocations, extract_wikilinks,
@@ -23,6 +24,10 @@ use crate::knowledge::retrieval::{
 use crate::knowledge::templates::{
     ActiveTemplateCatalogLookup, TemplateReferenceLookup, query_active_template_catalog,
     query_template_reference,
+};
+use crate::profile::{
+    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, GoldenSetRules,
+    InfoboxPreference, LintRules, ProfileOverlay, RemiliaRules,
 };
 use crate::runtime::{ResolvedPaths, ValueSource};
 
@@ -50,6 +55,69 @@ fn paths(project_root: &Path) -> ResolvedPaths {
         root_source: ValueSource::Flag,
         data_source: ValueSource::Default,
         config_source: ValueSource::Default,
+    }
+}
+
+fn test_profile_overlay() -> ProfileOverlay {
+    ProfileOverlay {
+        schema_version: "profile_overlay_v1".to_string(),
+        profile_id: "test-profile".to_string(),
+        base_profile_id: "test-base".to_string(),
+        docs_profile: "remilia-mw-1.44".to_string(),
+        source_documents: Vec::new(),
+        authoring: AuthoringRules {
+            require_short_description: true,
+            short_description_forms: vec!["SHORTDESC".to_string()],
+            require_article_quality_banner: true,
+            article_quality_template: Some("Template:Article quality".to_string()),
+            article_quality_default_state: Some("unverified".to_string()),
+            required_appendix_sections: vec!["References".to_string()],
+            references_template: Some("Template:Reflist".to_string()),
+            prefer_sentence_case_headings: true,
+            prefer_wikitext_only: true,
+            forbid_markdown: true,
+            require_straight_quotes: true,
+        },
+        citations: CitationRules {
+            preferred_templates: vec![CitationTemplateRule {
+                family: "web".to_string(),
+                template_title: "Template:Cite web".to_string(),
+            }],
+            use_named_references: true,
+            leave_archive_fields_blank: true,
+            unreliable_sources: Vec::new(),
+        },
+        remilia: RemiliaRules {
+            default_parent_group: Some("Remilia".to_string()),
+            preferred_group_field: Some("parent_group".to_string()),
+            avoid_group_fields: Vec::new(),
+            infobox_preferences: vec![
+                InfoboxPreference {
+                    subject_type: "concept".to_string(),
+                    template_title: "Template:Infobox concept".to_string(),
+                },
+                InfoboxPreference {
+                    subject_type: "organization".to_string(),
+                    template_title: "Template:Infobox organization".to_string(),
+                },
+            ],
+        },
+        categories: CategoryRules {
+            preferred_categories: vec!["Category:Ideas".to_string()],
+            min_per_article: 1,
+            max_per_article: 4,
+        },
+        lint: LintRules {
+            banned_phrases: Vec::new(),
+            watchlist_terms: Vec::new(),
+            forbid_curly_quotes: true,
+            forbid_placeholder_fragments: Vec::new(),
+        },
+        golden_set: GoldenSetRules {
+            article_corpus_available: false,
+            source_documents: Vec::new(),
+        },
+        refreshed_at: "1739000000".to_string(),
     }
 }
 
@@ -1241,6 +1309,181 @@ fn build_local_context_prefers_prose_over_leading_metadata() {
             .context_chunks
             .iter()
             .all(|chunk| !chunk.chunk_text.starts_with("{{SHORTDESC"))
+    );
+}
+
+#[test]
+fn build_article_start_uses_neutral_surfaces_without_forced_type() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Hyperstition_concept.wiki"),
+        "{{Infobox concept|name=Hyperstition concept}}\n'''Hyperstition concept''' is a concept page.\n== Philosophy ==\nHyperstition concept grounding text with SignalThread.\n<ref>{{Cite web|title=Concept Source|website=Remilia}}</ref>\n[[Category:Ideas]]",
+    );
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Hyperstition_collective.wiki"),
+        "{{Infobox organization|name=Hyperstition Collective}}\n'''Hyperstition Collective''' is an organization.\n== History ==\nHyperstition group context.\n[[Category:Organizations]]",
+    );
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Hyperstition_art.wiki"),
+        "{{Infobox artwork|name=Hyperstition art}}\n'''Hyperstition art''' is an artwork.\n== Background ==\nHyperstition artwork context.",
+    );
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let report = build_authoring_knowledge_pack(
+        &paths,
+        Some("Hyperstition"),
+        None,
+        &AuthoringKnowledgePackOptions::default(),
+    )
+    .expect("authoring pack");
+    let report = match report {
+        AuthoringKnowledgePack::Found(report) => *report,
+        other => panic!("expected found authoring pack, got {other:?}"),
+    };
+    let article_start = build_article_start(&report, &test_profile_overlay());
+    let serialized = serde_json::to_string(&article_start).expect("serialize article start");
+
+    assert_eq!(article_start.schema_version, "article_start");
+    assert!(!serialized.contains("\"article_type\""));
+    assert!(!serialized.contains("confidence"));
+    assert_eq!(
+        article_start.local_integration.required_templates[0].template_title,
+        "Template:Article quality"
+    );
+    assert!(
+        article_start
+            .local_integration
+            .subject_type_hints
+            .iter()
+            .any(|entry| entry.subject_type == "concept")
+    );
+    assert!(
+        article_start
+            .local_integration
+            .available_infoboxes
+            .iter()
+            .any(|entry| {
+                entry.template_title == "Template:Infobox concept"
+                    && entry.mapped_subject_type.as_deref() == Some("concept")
+            })
+    );
+    let infobox_titles = article_start
+        .local_integration
+        .available_infoboxes
+        .iter()
+        .map(|entry| entry.template_title.clone())
+        .collect::<Vec<_>>();
+    let mut sorted_infobox_titles = infobox_titles.clone();
+    sorted_infobox_titles.sort();
+    assert_eq!(infobox_titles, sorted_infobox_titles);
+}
+
+#[test]
+fn translation_variants_are_discovery_only_and_do_not_pollute_editing_context() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Network_spirituality.wiki"),
+        "{{Infobox concept|name=Network spirituality}}\n'''Network spirituality''' anchors the BeaconSignal concept.\n== History ==\nBeaconSignal history text with grounded prose.",
+    );
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Network_spirituality___ko.wiki"),
+        "{{Infobox concept|name=Network spirituality}}\n'''Network spirituality''' 한국어 BeaconSignal 문서.\n== References ==\n{{Reflist}}",
+    );
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let search = query_search_local(&paths, "Network spirituality/ko", 10)
+        .expect("search query")
+        .expect("search should be available");
+    assert_eq!(search.len(), 1);
+    assert_eq!(search[0].title, "Network spirituality");
+    assert_eq!(
+        search[0].matched_translation_language.as_deref(),
+        Some("ko")
+    );
+    assert_eq!(search[0].translation_languages, vec!["ko".to_string()]);
+
+    let context_error =
+        build_local_context(&paths, "Network spirituality/ko").expect_err("translation context");
+    assert!(context_error.to_string().contains("discovery-only"));
+
+    let chunk_error = crate::knowledge::retrieval::retrieve_local_context_chunks_with_options(
+        &paths,
+        "Network spirituality/ko",
+        None,
+        4,
+        240,
+        true,
+    )
+    .expect_err("translation chunks");
+    assert!(chunk_error.to_string().contains("discovery-only"));
+
+    let pack_error = build_authoring_knowledge_pack(
+        &paths,
+        Some("Network spirituality/ko"),
+        None,
+        &AuthoringKnowledgePackOptions::default(),
+    )
+    .expect_err("translation pack");
+    assert!(pack_error.to_string().contains("discovery-only"));
+
+    let retrieval =
+        retrieve_local_context_chunks_across_pages(&paths, "BeaconSignal", 4, 240, 4, true)
+            .expect("across-pages retrieval");
+    let report = match retrieval {
+        LocalChunkAcrossRetrieval::Found(report) => report,
+        other => panic!("expected found report, got {other:?}"),
+    };
+    assert!(
+        report
+            .chunks
+            .iter()
+            .all(|chunk| chunk.source_title != "Network spirituality/ko")
+    );
+    assert!(
+        report
+            .chunks
+            .iter()
+            .all(|chunk| chunk.section_heading.as_deref() != Some("References"))
+    );
+
+    let catalog = query_active_template_catalog(&paths, 10).expect("catalog query");
+    let catalog = match catalog {
+        ActiveTemplateCatalogLookup::Found(catalog) => catalog,
+        other => panic!("expected catalog, got {other:?}"),
+    };
+    let infobox = catalog
+        .templates
+        .iter()
+        .find(|template| template.template_title == "Template:Infobox concept")
+        .expect("infobox concept");
+    assert!(
+        infobox
+            .example_invocations
+            .iter()
+            .all(|example| example.source_title != "Network spirituality/ko")
     );
 }
 

@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::env;
 use std::fs;
 use std::path::Path;
 
@@ -270,7 +271,7 @@ fn store_profile_overlay(paths: &ResolvedPaths, overlay: &ProfileOverlay) -> Res
     let metadata_json =
         serde_json::to_string_pretty(overlay).context("failed to serialize profile overlay")?;
     let row_count = overlay
-        .recommended_template_titles()
+        .profile_template_titles()
         .len()
         .saturating_add(overlay.lint.banned_phrases.len())
         .saturating_add(overlay.citations.unreliable_sources.len());
@@ -317,16 +318,48 @@ fn load_source_document(
     paths: &ResolvedPaths,
     relative_path: &str,
 ) -> Result<(String, ProfileSourceDocument)> {
-    let path = paths.project_root.join(Path::new(relative_path));
+    let path = resolve_source_document_path(paths, relative_path)?;
     let content =
         fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     Ok((
         content.clone(),
         ProfileSourceDocument {
-            relative_path: normalize_path(relative_path),
+            relative_path: normalize_path(path),
             content_hash: compute_hash(&content),
         },
     ))
+}
+
+fn resolve_source_document_path(
+    paths: &ResolvedPaths,
+    relative_path: &str,
+) -> Result<std::path::PathBuf> {
+    let relative = Path::new(relative_path);
+    let file_name = relative
+        .file_name()
+        .context("profile source document path is missing a file name")?;
+    let mut candidates = Vec::new();
+    candidates.push(paths.project_root.join(relative));
+    candidates.push(paths.project_root.join("llm_instructions").join(file_name));
+
+    if let Ok(executable) = env::current_exe() {
+        for ancestor in executable.ancestors().take(8) {
+            candidates.push(ancestor.join(relative));
+            candidates.push(ancestor.join("ai-pack/llm_instructions").join(file_name));
+            candidates.push(ancestor.join("llm_instructions").join(file_name));
+        }
+    }
+
+    candidates.sort();
+    candidates.dedup();
+    for candidate in candidates {
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    let fallback = paths.project_root.join(relative);
+    Err(anyhow::anyhow!("failed to read {}", fallback.display()))
 }
 
 fn extract_citation_templates(content: &str) -> Vec<CitationTemplateRule> {

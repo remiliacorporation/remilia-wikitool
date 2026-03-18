@@ -134,11 +134,20 @@ fn print_search_hits(prefix: &str, hits: &[LocalSearchHit]) {
         return;
     }
     for hit in hits {
+        let translation_languages = if hit.translation_languages.is_empty() {
+            "<none>".to_string()
+        } else {
+            hit.translation_languages.join(", ")
+        };
         println!(
-            "{prefix}.hit: {} (namespace={}, redirect={})",
+            "{prefix}.hit: {} (namespace={}, redirect={}, translation_languages={}, matched_translation_language={})",
             hit.title,
             hit.namespace,
-            if hit.is_redirect { "yes" } else { "no" }
+            if hit.is_redirect { "yes" } else { "no" },
+            translation_languages,
+            hit.matched_translation_language
+                .as_deref()
+                .unwrap_or("<none>")
         );
     }
 }

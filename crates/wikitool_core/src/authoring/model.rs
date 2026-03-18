@@ -2,19 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ArticleType {
-    Person,
-    Organization,
-    Website,
-    Concept,
-    Event,
-    Work,
-    Collection,
-    Unknown,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
 pub enum ExternalResearchPolicy {
     Fallback,
     Always,
@@ -31,6 +18,14 @@ pub enum LocalExistenceState {
     AmbiguousLocalCoverage,
     ExpansionCandidate,
     MergeCandidate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextSurfaceSource {
+    Profile,
+    Comparables,
+    Both,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -57,26 +52,40 @@ pub struct RecommendedAction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TemplateRecommendation {
+pub struct RequiredTemplate {
     pub template_title: String,
-    pub rationale: String,
-    pub confidence: u8,
-    pub evidence: Vec<EvidenceRef>,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CategoryRecommendation {
+pub struct SubjectTypeHint {
+    pub subject_type: String,
+    pub source: ContextSurfaceSource,
+    pub supporting_pages: Vec<String>,
+    pub supporting_templates: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TemplateSurfaceEntry {
+    pub template_title: String,
+    pub source: ContextSurfaceSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mapped_subject_type: Option<String>,
+    pub supporting_pages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CategorySurfaceEntry {
     pub category_title: String,
-    pub rationale: String,
-    pub confidence: u8,
-    pub evidence_titles: Vec<String>,
+    pub source: ContextSurfaceSource,
+    pub supporting_pages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct LinkRecommendation {
+pub struct LinkSurfaceEntry {
     pub page_title: String,
-    pub rationale: String,
-    pub confidence: u8,
+    pub source: ContextSurfaceSource,
+    pub supporting_pages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,11 +107,13 @@ pub struct SubjectResearchLane {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalIntegrationLane {
     pub comparable_pages: Vec<String>,
-    pub infobox: Option<TemplateRecommendation>,
-    pub citation_families: Vec<TemplateRecommendation>,
-    pub template_recommendations: Vec<TemplateRecommendation>,
-    pub category_candidates: Vec<CategoryRecommendation>,
-    pub link_candidates: Vec<LinkRecommendation>,
+    pub required_templates: Vec<RequiredTemplate>,
+    pub subject_type_hints: Vec<SubjectTypeHint>,
+    pub available_infoboxes: Vec<TemplateSurfaceEntry>,
+    pub citation_templates_seen: Vec<TemplateSurfaceEntry>,
+    pub template_surface: Vec<TemplateSurfaceEntry>,
+    pub categories_seen: Vec<CategorySurfaceEntry>,
+    pub links_seen: Vec<LinkSurfaceEntry>,
     pub section_skeleton: Vec<SectionSkeleton>,
     pub docs_queries: Vec<String>,
 }
@@ -141,7 +152,6 @@ impl Default for ArticleStartOptions {
 pub struct ArticleStartResult {
     pub schema_version: String,
     pub topic: String,
-    pub article_type: ArticleType,
     pub local_state: LocalExistenceState,
     pub subject_research: SubjectResearchLane,
     pub local_integration: LocalIntegrationLane,

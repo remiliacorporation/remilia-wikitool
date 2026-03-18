@@ -6,19 +6,19 @@ Primary runtime is a Rust CLI binary (`wikitool`) on stable Rust (edition 2024).
 
 ## Quick Start
 
-From this repository:
+From a release package after extracting the archive (the `wikitool` binary is in the top-level extracted folder):
+
+```bash
+wikitool init --templates
+wikitool pull --full --all
+```
+
+From this repository source checkout:
 
 ```bash
 cargo build --package wikitool --release
 ./target/release/wikitool init --templates
 ./target/release/wikitool pull --full --all
-```
-
-From a release package:
-
-```bash
-wikitool init --templates
-wikitool pull --full --all
 ```
 
 ## Default Authoring Workflow

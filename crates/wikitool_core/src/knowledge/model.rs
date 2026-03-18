@@ -25,6 +25,10 @@ pub struct LocalSearchHit {
     pub title: String,
     pub namespace: String,
     pub is_redirect: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub translation_languages: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_translation_language: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

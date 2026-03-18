@@ -7,6 +7,7 @@ use crate::knowledge::prelude::{
 };
 use crate::knowledge::templates::load_page_summary_for_connection;
 use crate::knowledge::{model::*, prelude::*};
+use crate::title_variants::is_translation_variant;
 
 use super::topic_assessment::query_local_search_for_connection;
 
@@ -33,7 +34,7 @@ pub(crate) struct AuthoringRelatedPageInputs<'a> {
 pub(crate) fn authoring_page_allowed(page: &IndexedPageRecord) -> bool {
     page.namespace == Namespace::Main.as_str()
         && !page.is_redirect
-        && !title_looks_like_translation_subpage(&page.title)
+        && !is_translation_variant(&page.title)
 }
 
 pub(crate) fn load_semantic_page_hits(
@@ -210,11 +211,4 @@ fn add_authoring_page_candidate(
     }
     entry.score = entry.score.saturating_add(score);
     entry.sources.insert(source.to_string());
-}
-
-fn title_looks_like_translation_subpage(title: &str) -> bool {
-    let Some((_, suffix)) = title.rsplit_once('/') else {
-        return false;
-    };
-    suffix.len() == 2 && suffix.chars().all(|ch| ch.is_ascii_lowercase())
 }

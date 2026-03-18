@@ -1,4 +1,5 @@
 use super::prelude::*;
+use crate::title_variants::translation_variant_info;
 
 pub use super::model::{RebuildReport, StoredIndexStats};
 
@@ -22,11 +23,14 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 title,
                 namespace,
                 is_redirect,
+                is_translation_variant,
+                translation_base_title,
+                translation_language,
                 redirect_target,
                 content_hash,
                 bytes,
                 indexed_at_unix
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )
         .context("failed to prepare indexed_pages insert")?;
 
@@ -271,12 +275,24 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
     let mut inserted_links = 0usize;
     let mut template_implementation_seeds = BTreeMap::<String, TemplateImplementationSeed>::new();
     for file in &files {
+        let translation_variant = translation_variant_info(&file.title);
         page_statement
             .execute(params![
                 file.relative_path,
                 file.title,
                 file.namespace,
                 if file.is_redirect { 1i64 } else { 0i64 },
+                if translation_variant.is_some() {
+                    1i64
+                } else {
+                    0i64
+                },
+                translation_variant
+                    .as_ref()
+                    .map(|variant| variant.base_title.as_str()),
+                translation_variant
+                    .as_ref()
+                    .map(|variant| variant.language_code.as_str()),
                 file.redirect_target,
                 file.content_hash,
                 i64::try_from(file.bytes).context("bytes value does not fit into i64")?,
@@ -284,6 +300,10 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
             ])
             .with_context(|| format!("failed to insert {}", file.relative_path))?;
         inserted_rows += 1;
+
+        if translation_variant.is_some() {
+            continue;
+        }
 
         let content = load_scanned_file_content(paths, file)?;
         let links = extract_wikilinks(&content);

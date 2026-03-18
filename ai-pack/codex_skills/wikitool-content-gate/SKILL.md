@@ -1,53 +1,17 @@
 ---
 name: wikitool-content-gate
-description: Run deterministic content quality gates for wiki edits before push — lint, validate, diff, audit, and explicit dry-run gate output.
+description: Thin wrapper for deterministic wikitool content gates before push.
 ---
 
 # Skill: wikitool-content-gate
 
-Validate, audit, and gate wiki content before push.
-Use `wikitool` for deterministic wiki-aware checks. Editorial judgment is yours, not wikitool's.
+Thin wrapper for content gating with `wikitool`.
 
-## Gate sequence
+Use normal reasoning and editorial judgment. Verify the live command surface against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
-```bash
-wikitool article lint wiki_content/Main/<Title>.wiki --format json
-wikitool validate
-wikitool diff
-```
-
-## Fix loop
-
-When lint reports issues:
-
-```bash
-wikitool article fix wiki_content/Main/<Title>.wiki --apply safe
-wikitool article lint wiki_content/Main/<Title>.wiki --format json   # re-lint to verify
-```
-
-Fix what `--apply safe` cannot handle manually, then re-lint until clean.
-
-## Audit signals
-
-Use these for cleanup passes or broader content review:
-
-| Need | Command |
-|------|---------|
-| Orphan pages (no backlinks) | `knowledge inspect orphans` |
-| Empty categories | `knowledge inspect empty-categories` |
-| What links to a page | `knowledge inspect backlinks "Title"` |
-| Category inventory | `search "Category:"` |
-| Template usage | `templates show "Template:Name"` |
-| Profile lint rules | `wiki profile show --format json` |
-
-## Push-gate report
-
-Before any write push, report:
-
-1. **Lint**: pass, or specific rule hits
-2. **Validate**: pass, or broken links / integrity issues
-3. **Diff**: which pages changed, scope summary
-4. **Risk**: any delete, force, template-scope, or category-scope concerns
-5. **Next**: `wikitool push --dry-run --summary "..."`
-
-Do not approve `--force` without explicit user instruction.
+Typical gate loop:
+- `wikitool article lint <path> --format json`
+- `wikitool article fix <path> --apply safe`
+- `wikitool validate`
+- `wikitool diff`
+- `wikitool push --dry-run --summary "..."`

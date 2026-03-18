@@ -1,14 +1,19 @@
-use crate::knowledge::model::AuthoringKnowledgePackResult;
+use std::collections::{BTreeMap, BTreeSet};
 
-use super::classify::classify_article_type;
+use crate::knowledge::model::AuthoringKnowledgePackResult;
+use crate::profile::ProfileOverlay;
+
 use super::model::{
-    ArticleStartResult, AuthoringConstraint, CategoryRecommendation, EvidenceRef,
-    LinkRecommendation, LocalExistenceState, LocalIntegrationLane, OpenQuestion, RecommendedAction,
-    SectionSkeleton, SubjectResearchLane, TemplateRecommendation,
+    ArticleStartResult, AuthoringConstraint, CategorySurfaceEntry, ContextSurfaceSource,
+    EvidenceRef, LinkSurfaceEntry, LocalExistenceState, LocalIntegrationLane, OpenQuestion,
+    RecommendedAction, RequiredTemplate, SectionSkeleton, SubjectResearchLane, SubjectTypeHint,
+    TemplateSurfaceEntry,
 };
 
-pub fn build_article_start(pack: &AuthoringKnowledgePackResult) -> ArticleStartResult {
-    let article_type = classify_article_type(pack);
+pub fn build_article_start(
+    pack: &AuthoringKnowledgePackResult,
+    overlay: &ProfileOverlay,
+) -> ArticleStartResult {
     let local_state = if let Some(exact_page) = &pack.topic_assessment.exact_page {
         if exact_page.is_redirect {
             LocalExistenceState::RedirectExists
@@ -54,92 +59,30 @@ pub fn build_article_start(pack: &AuthoringKnowledgePackResult) -> ArticleStartR
         evidence: evidence.clone(),
     };
 
-    let infobox = pack
-        .suggested_templates
-        .iter()
-        .find(|template| {
-            template
-                .template_title
-                .to_ascii_lowercase()
-                .contains("infobox")
-        })
-        .map(|template| TemplateRecommendation {
-            template_title: template.template_title.clone(),
-            rationale: "Most similar local pages use this infobox family.".to_string(),
-            confidence: 80,
-            evidence: evidence.iter().take(3).cloned().collect(),
-        });
-
-    let citation_families = pack
-        .suggested_references
-        .iter()
-        .take(3)
-        .map(|reference| TemplateRecommendation {
-            template_title: reference
-                .common_templates
-                .first()
-                .cloned()
-                .unwrap_or_else(|| reference.citation_family.clone()),
-            rationale: format!(
-                "Observed citation pattern: {} / {}",
-                reference.citation_family, reference.source_type
-            ),
-            confidence: 70,
-            evidence: evidence.iter().take(2).cloned().collect(),
-        })
-        .collect();
-
-    let template_recommendations = pack
-        .suggested_templates
-        .iter()
-        .take(5)
-        .map(|template| TemplateRecommendation {
-            template_title: template.template_title.clone(),
-            rationale: format!(
-                "Seen across {} comparable pages.",
-                template.distinct_page_count
-            ),
-            confidence: 65,
-            evidence: evidence.iter().take(2).cloned().collect(),
-        })
-        .collect();
-
-    let category_candidates = pack
-        .suggested_categories
-        .iter()
-        .take(6)
-        .map(|category| CategoryRecommendation {
-            category_title: category.title.clone(),
-            rationale: format!("Supported by {} related pages.", category.support_count),
-            confidence: u8::try_from((category.support_count * 20).min(100)).unwrap_or(100),
-            evidence_titles: category.evidence_titles.clone(),
-        })
-        .collect();
-
-    let link_candidates = pack
-        .suggested_links
+    let comparable_pages = pack
+        .related_pages
         .iter()
         .take(8)
-        .map(|link| LinkRecommendation {
-            page_title: link.title.clone(),
-            rationale: format!("Backed by {} related sources.", link.support_count),
-            confidence: u8::try_from((link.support_count * 15).min(100)).unwrap_or(100),
-        })
-        .collect();
+        .map(|page| page.title.clone())
+        .collect::<Vec<_>>();
+    let required_templates = build_required_templates(overlay);
+    let subject_type_hints = build_subject_type_hints(pack, overlay);
+    let available_infoboxes = build_available_infoboxes(pack, overlay);
+    let citation_templates_seen = build_citation_templates(pack, overlay);
+    let template_surface = build_template_surface(pack, overlay);
+    let categories_seen = build_category_surface(pack);
+    let links_seen = build_link_surface(pack);
+    let section_skeleton = build_section_skeleton(pack);
 
-    let section_skeleton = default_section_skeleton(&article_type);
     let local_integration = LocalIntegrationLane {
-        comparable_pages: pack
-            .related_pages
-            .iter()
-            .take(8)
-            .map(|page| page.title.clone())
-            .collect(),
-        infobox,
-        citation_families,
-        template_recommendations,
-        category_candidates,
-        link_candidates,
+        comparable_pages,
+        required_templates,
+        subject_type_hints,
+        available_infoboxes,
+        citation_templates_seen,
+        template_surface,
+        categories_seen,
+        links_seen,
         section_skeleton,
         docs_queries: pack
             .docs_context
@@ -148,22 +91,7 @@ pub fn build_article_start(pack: &AuthoringKnowledgePackResult) -> ArticleStartR
             .unwrap_or_default(),
     };
 
-    let constraints = vec![
-        AuthoringConstraint {
-            level: "must".to_string(),
-            rule_id: "files-first".to_string(),
-            message:
-                "Use local wiki content and template conventions as the primary source of fit."
-                    .to_string(),
-        },
-        AuthoringConstraint {
-            level: "should".to_string(),
-            rule_id: "preserve-raw-evidence".to_string(),
-            message: "Keep raw evidence paths visible when interpreting authoring guidance."
-                .to_string(),
-        },
-    ];
-
+    let constraints = build_constraints(overlay);
     let mut open_questions = Vec::new();
     if !pack.stub_missing_links.is_empty() {
         open_questions.push(OpenQuestion {
@@ -177,7 +105,8 @@ pub fn build_article_start(pack: &AuthoringKnowledgePackResult) -> ArticleStartR
     if pack.suggested_references.is_empty() {
         open_questions.push(OpenQuestion {
             question: "Which reliable sources will substantiate the core claims?".to_string(),
-            reason: "No citation families were surfaced from comparable pages.".to_string(),
+            reason: "No citation templates or reference patterns were surfaced locally."
+                .to_string(),
             blocking: true,
             evidence: evidence.iter().take(1).cloned().collect(),
         });
@@ -186,19 +115,18 @@ pub fn build_article_start(pack: &AuthoringKnowledgePackResult) -> ArticleStartR
     let next_actions = vec![
         RecommendedAction {
             label: "Review comparables".to_string(),
-            why: "The related-page set shows the closest local structure and terminology."
+            why: "Use local pages as the fit check for terminology, scope, and structure."
                 .to_string(),
         },
         RecommendedAction {
-            label: "Draft skeleton".to_string(),
-            why: "Use the suggested section layout before writing prose.".to_string(),
+            label: "Draft structure".to_string(),
+            why: "Start from the section skeleton and required templates before prose.".to_string(),
         },
     ];
 
     ArticleStartResult {
-        schema_version: "article_start_v1".to_string(),
+        schema_version: "article_start".to_string(),
         topic: pack.topic.clone(),
-        article_type,
         local_state,
         subject_research,
         local_integration,
@@ -209,38 +137,232 @@ pub fn build_article_start(pack: &AuthoringKnowledgePackResult) -> ArticleStartR
     }
 }
 
-fn default_section_skeleton(article_type: &super::model::ArticleType) -> Vec<SectionSkeleton> {
-    let mut sections = vec![SectionSkeleton {
-        heading: "Overview".to_string(),
-        rationale: "Lead with a concise summary anchored in local terminology.".to_string(),
-        required: true,
-    }];
-    match article_type {
-        super::model::ArticleType::Person => {
-            sections.push(SectionSkeleton {
-                heading: "Biography".to_string(),
-                rationale: "Comparable person pages normally introduce background and role."
-                    .to_string(),
-                required: true,
-            });
+fn build_required_templates(overlay: &ProfileOverlay) -> Vec<RequiredTemplate> {
+    let mut out = Vec::new();
+    if overlay.authoring.require_article_quality_banner
+        && let Some(template_title) = overlay.authoring.article_quality_template.as_deref()
+    {
+        out.push(RequiredTemplate {
+            template_title: template_title.to_string(),
+            reason: "Required by the current profile overlay for article starts.".to_string(),
+        });
+    }
+    if let Some(template_title) = overlay.authoring.references_template.as_deref() {
+        out.push(RequiredTemplate {
+            template_title: template_title.to_string(),
+            reason: "Required to render the References appendix on this wiki.".to_string(),
+        });
+    }
+    out
+}
+
+fn build_subject_type_hints(
+    pack: &AuthoringKnowledgePackResult,
+    overlay: &ProfileOverlay,
+) -> Vec<SubjectTypeHint> {
+    let mut hints = BTreeMap::<String, (BTreeSet<String>, BTreeSet<String>)>::new();
+    for template in &pack.suggested_templates {
+        let template_title = normalize_template_title(&template.template_title);
+        if !template_is_infobox(&template_title) {
+            continue;
         }
-        super::model::ArticleType::Organization => {
-            sections.push(SectionSkeleton {
-                heading: "History".to_string(),
-                rationale: "Organization pages usually establish formation and activity."
-                    .to_string(),
-                required: true,
-            });
-        }
-        _ => {
-            sections.push(SectionSkeleton {
-                heading: "Background".to_string(),
-                rationale: "Concept and general-topic pages benefit from historical framing."
-                    .to_string(),
-                required: false,
-            });
+        for preference in &overlay.remilia.infobox_preferences {
+            if !preference
+                .template_title
+                .eq_ignore_ascii_case(&template_title)
+            {
+                continue;
+            }
+            let entry = hints
+                .entry(preference.subject_type.clone())
+                .or_insert_with(|| (BTreeSet::new(), BTreeSet::new()));
+            entry.0.extend(template.example_pages.iter().cloned());
+            entry.1.insert(template_title.clone());
         }
     }
+
+    let mut out = hints
+        .into_iter()
+        .map(
+            |(subject_type, (supporting_pages, supporting_templates))| SubjectTypeHint {
+                subject_type,
+                source: ContextSurfaceSource::Both,
+                supporting_pages: supporting_pages.into_iter().collect(),
+                supporting_templates: supporting_templates.into_iter().collect(),
+            },
+        )
+        .collect::<Vec<_>>();
+    out.sort_by(|left, right| left.subject_type.cmp(&right.subject_type));
+    out
+}
+
+fn build_available_infoboxes(
+    pack: &AuthoringKnowledgePackResult,
+    overlay: &ProfileOverlay,
+) -> Vec<TemplateSurfaceEntry> {
+    let profile_mappings = overlay_infobox_subject_type_map(overlay);
+    collect_template_entries(
+        pack.suggested_templates
+            .iter()
+            .filter(|template| template_is_infobox(&template.template_title))
+            .map(|template| {
+                let normalized = normalize_template_title(&template.template_title);
+                (
+                    normalized.clone(),
+                    template.example_pages.clone(),
+                    profile_mappings
+                        .get(&normalized.to_ascii_lowercase())
+                        .cloned(),
+                )
+            }),
+    )
+}
+
+fn build_citation_templates(
+    pack: &AuthoringKnowledgePackResult,
+    overlay: &ProfileOverlay,
+) -> Vec<TemplateSurfaceEntry> {
+    let mut comparable_entries = BTreeMap::<String, TemplateSurfaceEntry>::new();
+    for reference in &pack.suggested_references {
+        let template_title = normalize_template_title(
+            reference
+                .common_templates
+                .first()
+                .unwrap_or(&reference.citation_family),
+        );
+        if template_title.is_empty() {
+            continue;
+        }
+        let key = template_title.to_ascii_lowercase();
+        let entry = comparable_entries
+            .entry(key)
+            .or_insert_with(|| TemplateSurfaceEntry {
+                template_title: template_title.clone(),
+                source: ContextSurfaceSource::Comparables,
+                mapped_subject_type: None,
+                supporting_pages: Vec::new(),
+            });
+        extend_sorted_unique(&mut entry.supporting_pages, &reference.example_pages);
+    }
+
+    for rule in &overlay.citations.preferred_templates {
+        let key = rule.template_title.to_ascii_lowercase();
+        if let Some(entry) = comparable_entries.get_mut(&key) {
+            entry.source = ContextSurfaceSource::Both;
+            continue;
+        }
+        comparable_entries.insert(
+            key,
+            TemplateSurfaceEntry {
+                template_title: rule.template_title.clone(),
+                source: ContextSurfaceSource::Profile,
+                mapped_subject_type: None,
+                supporting_pages: Vec::new(),
+            },
+        );
+    }
+
+    comparable_entries.into_values().collect()
+}
+
+fn build_template_surface(
+    pack: &AuthoringKnowledgePackResult,
+    overlay: &ProfileOverlay,
+) -> Vec<TemplateSurfaceEntry> {
+    let profile_templates = overlay
+        .profile_template_titles()
+        .into_iter()
+        .map(|title| title.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let mut out = pack
+        .suggested_templates
+        .iter()
+        .filter(|template| !template_is_infobox(&template.template_title))
+        .map(|template| TemplateSurfaceEntry {
+            template_title: normalize_template_title(&template.template_title),
+            source: if profile_templates.contains(&template.template_title.to_ascii_lowercase()) {
+                ContextSurfaceSource::Both
+            } else {
+                ContextSurfaceSource::Comparables
+            },
+            mapped_subject_type: None,
+            supporting_pages: dedup_sorted(template.example_pages.clone()),
+        })
+        .collect::<Vec<_>>();
+    out.sort_by(|left, right| left.template_title.cmp(&right.template_title));
+    out.dedup_by(|left, right| {
+        left.template_title
+            .eq_ignore_ascii_case(&right.template_title)
+    });
+    out
+}
+
+fn build_category_surface(pack: &AuthoringKnowledgePackResult) -> Vec<CategorySurfaceEntry> {
+    let mut out = pack
+        .suggested_categories
+        .iter()
+        .map(|category| CategorySurfaceEntry {
+            category_title: category.title.clone(),
+            source: ContextSurfaceSource::Comparables,
+            supporting_pages: dedup_sorted(category.evidence_titles.clone()),
+        })
+        .collect::<Vec<_>>();
+    out.sort_by(|left, right| left.category_title.cmp(&right.category_title));
+    out
+}
+
+fn build_link_surface(pack: &AuthoringKnowledgePackResult) -> Vec<LinkSurfaceEntry> {
+    let mut out = pack
+        .suggested_links
+        .iter()
+        .map(|link| LinkSurfaceEntry {
+            page_title: link.title.clone(),
+            source: ContextSurfaceSource::Comparables,
+            supporting_pages: dedup_sorted(link.evidence_titles.clone()),
+        })
+        .collect::<Vec<_>>();
+    out.sort_by(|left, right| left.page_title.cmp(&right.page_title));
+    out
+}
+
+fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSkeleton> {
+    let mut sections = vec![SectionSkeleton {
+        heading: "Overview".to_string(),
+        rationale: "Use a concise lead anchored in local terminology.".to_string(),
+        required: true,
+    }];
+
+    let mut heading_support = BTreeMap::<String, (String, BTreeSet<String>)>::new();
+    for chunk in &pack.chunks {
+        let Some(heading) = chunk.section_heading.as_deref() else {
+            continue;
+        };
+        let normalized = normalize_heading(heading);
+        if normalized.is_empty() || heading_is_low_signal(&normalized) {
+            continue;
+        }
+        let entry = heading_support
+            .entry(normalized.to_ascii_lowercase())
+            .or_insert_with(|| (normalized.clone(), BTreeSet::new()));
+        entry.1.insert(chunk.source_title.clone());
+    }
+
+    let min_support = if pack.related_pages.len() > 1 { 2 } else { 1 };
+    let mut headings = heading_support
+        .into_values()
+        .filter(|(_, supporting_pages)| supporting_pages.len() >= min_support)
+        .map(|(heading, supporting_pages)| SectionSkeleton {
+            rationale: format!(
+                "Seen on {} comparable page{}.",
+                supporting_pages.len(),
+                if supporting_pages.len() == 1 { "" } else { "s" }
+            ),
+            heading,
+            required: false,
+        })
+        .collect::<Vec<_>>();
+    headings.sort_by(|left, right| left.heading.cmp(&right.heading));
+    sections.extend(headings);
     sections.push(SectionSkeleton {
         heading: "References".to_string(),
         rationale: "Reference handling is a hard requirement for publication-quality pages."
@@ -248,4 +370,137 @@ fn default_section_skeleton(article_type: &super::model::ArticleType) -> Vec<Sec
         required: true,
     });
     sections
+}
+
+fn build_constraints(overlay: &ProfileOverlay) -> Vec<AuthoringConstraint> {
+    let mut constraints = vec![AuthoringConstraint {
+        level: "must".to_string(),
+        rule_id: "files-first".to_string(),
+        message: "Use local wiki content and conventions as the primary fit check.".to_string(),
+    }];
+    if overlay.authoring.require_short_description {
+        constraints.push(AuthoringConstraint {
+            level: "must".to_string(),
+            rule_id: "short-description".to_string(),
+            message: "Add a short description before the article body.".to_string(),
+        });
+    }
+    if overlay.authoring.require_article_quality_banner
+        && let Some(template_title) = overlay.authoring.article_quality_template.as_deref()
+    {
+        constraints.push(AuthoringConstraint {
+            level: "must".to_string(),
+            rule_id: "article-quality-banner".to_string(),
+            message: format!("Include {template_title} near the start of the page."),
+        });
+    }
+    if overlay
+        .authoring
+        .required_appendix_sections
+        .iter()
+        .any(|section| section.eq_ignore_ascii_case("References"))
+        && let Some(template_title) = overlay.authoring.references_template.as_deref()
+    {
+        constraints.push(AuthoringConstraint {
+            level: "must".to_string(),
+            rule_id: "references-section".to_string(),
+            message: format!("Keep a References section and render it with {template_title}."),
+        });
+    }
+    constraints
+}
+
+fn overlay_infobox_subject_type_map(overlay: &ProfileOverlay) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for preference in &overlay.remilia.infobox_preferences {
+        out.insert(
+            preference.template_title.to_ascii_lowercase(),
+            preference.subject_type.clone(),
+        );
+    }
+    out
+}
+
+fn collect_template_entries<I>(entries: I) -> Vec<TemplateSurfaceEntry>
+where
+    I: IntoIterator<Item = (String, Vec<String>, Option<String>)>,
+{
+    let mut out = BTreeMap::<String, TemplateSurfaceEntry>::new();
+    for (template_title, supporting_pages, mapped_subject_type) in entries {
+        let normalized = normalize_template_title(&template_title);
+        if normalized.is_empty() {
+            continue;
+        }
+        let key = normalized.to_ascii_lowercase();
+        let entry = out.entry(key).or_insert_with(|| TemplateSurfaceEntry {
+            template_title: normalized.clone(),
+            source: if mapped_subject_type.is_some() {
+                ContextSurfaceSource::Both
+            } else {
+                ContextSurfaceSource::Comparables
+            },
+            mapped_subject_type: mapped_subject_type.clone(),
+            supporting_pages: Vec::new(),
+        });
+        if entry.mapped_subject_type.is_none() {
+            entry.mapped_subject_type = mapped_subject_type.clone();
+        }
+        if mapped_subject_type.is_some() {
+            entry.source = ContextSurfaceSource::Both;
+        }
+        extend_sorted_unique(&mut entry.supporting_pages, &supporting_pages);
+    }
+    out.into_values().collect()
+}
+
+fn normalize_template_title(value: &str) -> String {
+    value.trim().replace('_', " ")
+}
+
+fn template_is_infobox(template_title: &str) -> bool {
+    template_title
+        .trim()
+        .to_ascii_lowercase()
+        .contains("infobox")
+}
+
+fn normalize_heading(value: &str) -> String {
+    let normalized = value.trim().replace('_', " ");
+    if normalized.is_empty() {
+        String::new()
+    } else {
+        normalized
+    }
+}
+
+fn heading_is_low_signal(heading: &str) -> bool {
+    let lowered = heading.to_ascii_lowercase();
+    [
+        "references",
+        "notes",
+        "external links",
+        "further reading",
+        "bibliography",
+        "gallery",
+        "see also",
+    ]
+    .iter()
+    .any(|value| lowered.contains(value))
+}
+
+fn dedup_sorted(values: Vec<String>) -> Vec<String> {
+    let mut values = values
+        .into_iter()
+        .map(|value| value.trim().replace('_', " "))
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn extend_sorted_unique(target: &mut Vec<String>, values: &[String]) {
+    target.extend(values.iter().cloned());
+    target.sort();
+    target.dedup();
 }
