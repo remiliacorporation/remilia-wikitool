@@ -217,18 +217,11 @@ where
 {
     let (project_root, root_source) = resolve_project_root(context, overrides, &lookup_env)
         .context("failed to resolve project root")?;
-    reject_legacy_layout(&project_root)?;
 
     let state_dir = project_root.join(".wikitool");
     let wiki_content_dir = project_root.join("wiki_content");
     let templates_dir = project_root.join("templates");
-    let new_parser_path = state_dir.join(PARSER_CONFIG_FILENAME);
-    let legacy_parser_path = state_dir.join("remilia-parser.json");
-    let parser_config_path = if new_parser_path.exists() || !legacy_parser_path.exists() {
-        new_parser_path
-    } else {
-        legacy_parser_path
-    };
+    let parser_config_path = state_dir.join(PARSER_CONFIG_FILENAME);
 
     let (data_dir, data_source) = if let Some(path) = overrides.data_dir.as_deref() {
         (
@@ -443,33 +436,6 @@ fn write_text_file(path: &Path, content: &str, force: bool) -> Result<bool> {
     Ok(true)
 }
 
-fn reject_legacy_layout(project_root: &Path) -> Result<()> {
-    let legacy_wikitool = project_root.join("custom").join("wikitool");
-    let legacy_templates = project_root.join("custom").join("templates");
-
-    let mut found = Vec::new();
-    if legacy_wikitool.exists() {
-        found.push(legacy_wikitool);
-    }
-    if legacy_templates.exists() {
-        found.push(legacy_templates);
-    }
-
-    if found.is_empty() {
-        return Ok(());
-    }
-
-    let found_lines = found
-        .iter()
-        .map(|path| format!("  - {}", normalize_for_display(path)))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    bail!(
-        "Legacy runtime layout detected under custom/*:\n{found_lines}\nOnly project-root runtime layout is supported (wiki_content/, templates/, .wikitool/).\nRecommended recovery steps:\n  1) Initialize a clean project root: wikitool init --project-root <new-root> --templates\n  2) Pull fresh state from live wiki: wikitool pull --full --all\n  3) Rebuild derived local data when needed: wikitool knowledge build"
-    );
-}
-
 fn normalize_for_display(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -511,26 +477,6 @@ mod tests {
             .expect("resolve paths");
         assert_eq!(resolved.project_root, from_flag);
         assert_eq!(resolved.root_source, ValueSource::Flag);
-    }
-
-    #[test]
-    fn resolve_paths_rejects_legacy_layout() {
-        let temp = tempdir().expect("tempdir");
-        let root = temp.path().join("legacy-root");
-        fs::create_dir_all(root.join("custom").join("wikitool")).expect("legacy path");
-
-        let context = ResolutionContext {
-            cwd: root.clone(),
-            executable_dir: None,
-        };
-        let overrides = PathOverrides {
-            project_root: Some(root.clone()),
-            ..PathOverrides::default()
-        };
-        let err = resolve_paths_with_lookup(&context, &overrides, |_| None).expect_err("must fail");
-        let message = err.to_string();
-        assert!(message.contains("Legacy runtime layout detected"));
-        assert!(message.contains("Only project-root runtime layout is supported"));
     }
 
     #[test]

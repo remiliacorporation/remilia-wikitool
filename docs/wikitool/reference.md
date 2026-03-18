@@ -45,7 +45,6 @@ Commands:
   workflow             Run end-to-end setup and refresh workflows
   release              Build AI companion packs and release bundles
   dev                  Install local development helpers
-  contracts            Contract bootstrap and differential harness helpers
   help                 Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1076,6 +1075,7 @@ Options:
       --format <FORMAT>      [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
+      --view <VIEW>          [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1092,6 +1092,7 @@ Options:
       --format <FORMAT>      [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
+      --view <VIEW>          [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1128,6 +1129,7 @@ Options:
       --format <FORMAT>      [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
+      --view <VIEW>          [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1144,6 +1146,7 @@ Options:
       --format <FORMAT>      [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
+      --view <VIEW>          [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1179,6 +1182,7 @@ Options:
       --format <FORMAT>      [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
+      --view <VIEW>          [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1558,58 +1562,6 @@ Options:
       --data-dir <PATH>      
       --source <PATH>        Hook source file (default: scripts/git-hooks/commit-msg under repo root)
       --allow-missing-git    Do not fail when .git/hooks is missing (useful for zip-distributed binaries)
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## contracts
-
-```text
-Contract bootstrap and differential harness helpers
-
-Usage: wikitool contracts [OPTIONS] <COMMAND>
-
-Commands:
-  snapshot         Generate an offline fixture snapshot used by the differential harness
-  command-surface  Print frozen command-surface contract as JSON
-  help             Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## contracts snapshot
-
-```text
-Generate an offline fixture snapshot used by the differential harness
-
-Usage: wikitool contracts snapshot [OPTIONS]
-
-Options:
-      --project-root <PROJECT_ROOT>    [default: .]
-      --content-dir <CONTENT_DIR>      [default: wiki_content]
-      --data-dir <PATH>                
-      --config <PATH>                  
-      --templates-dir <TEMPLATES_DIR>  [default: templates]
-      --diagnostics                    Print resolved runtime diagnostics
-  -h, --help                           Print help
-```
-
-## contracts command-surface
-
-```text
-Print frozen command-surface contract as JSON
-
-Usage: wikitool contracts command-surface [OPTIONS]
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help

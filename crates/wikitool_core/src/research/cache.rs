@@ -110,7 +110,6 @@ where
 
 fn ensure_research_cache_layout(paths: &ResolvedPaths) -> Result<()> {
     for directory in [
-        paths.research_cache_dir().join("queries"),
         paths.research_cache_dir().join("documents"),
         paths.research_cache_dir().join("rendered"),
     ] {
@@ -221,14 +220,13 @@ fn uses_rendered_bucket(result: &ExternalFetchResult) -> bool {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
-    use std::fs;
     use std::path::Path;
 
     use tempfile::tempdir;
 
     use super::{
-        CachedFetchDocument, ResearchCacheOptions, ResearchCacheStatus, cache_key_for_fetch,
-        cache_path_for_result, ensure_research_cache_layout, fetch_page_by_url_cached_with,
+        ResearchCacheOptions, ResearchCacheStatus, cache_key_for_fetch, cache_path_for_result,
+        ensure_research_cache_layout, fetch_page_by_url_cached_with,
     };
     use crate::research::model::{
         ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
@@ -306,7 +304,6 @@ mod tests {
 
         ensure_research_cache_layout(&paths).expect("layout should initialize");
 
-        assert!(paths.research_cache_dir().join("queries").exists());
         assert!(paths.research_cache_dir().join("documents").exists());
         assert!(paths.research_cache_dir().join("rendered").exists());
     }
@@ -428,88 +425,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reads_legacy_generic_entry_from_rendered_bucket() {
-        let temp = tempdir().expect("tempdir");
-        let paths = paths(temp.path());
-        ensure_research_cache_layout(&paths).expect("layout should initialize");
-        let options = ExternalFetchOptions {
-            format: ExternalFetchFormat::Html,
-            max_bytes: 10_000,
-            profile: ExternalFetchProfile::Research,
-        };
-        let key = cache_key_for_fetch("https://example.com/article", &options);
-        let legacy_path = paths
-            .research_cache_dir()
-            .join("rendered")
-            .join(format!("{key}.json"));
-        let payload = serde_json::to_string_pretty(&CachedFetchDocument {
-            schema_version: "research_fetch_cache_v1".to_string(),
-            result: sample_result("legacy body"),
-        })
-        .expect("json should serialize");
-        fs::write(&legacy_path, payload).expect("legacy cache should write");
-
-        let cached = fetch_page_by_url_cached_with(
-            &paths,
-            "https://example.com/article",
-            &options,
-            &ResearchCacheOptions::default(),
-            || unreachable!("cache hit should skip fetch"),
-        )
-        .expect("cached fetch should succeed")
-        .expect("cached fetch should exist");
-
-        assert_eq!(cached.status, ResearchCacheStatus::Hit);
-        assert_eq!(cached.result.content, "legacy body");
-        assert_eq!(cached.cache_path.as_deref(), Some(legacy_path.as_path()));
-    }
-
-    #[test]
-    fn refresh_migrates_generic_entry_into_documents_bucket() {
-        let temp = tempdir().expect("tempdir");
-        let paths = paths(temp.path());
-        ensure_research_cache_layout(&paths).expect("layout should initialize");
-        let options = ExternalFetchOptions {
-            format: ExternalFetchFormat::Html,
-            max_bytes: 10_000,
-            profile: ExternalFetchProfile::Research,
-        };
-        let key = cache_key_for_fetch("https://example.com/article", &options);
-        let legacy_path = paths
-            .research_cache_dir()
-            .join("rendered")
-            .join(format!("{key}.json"));
-        let payload = serde_json::to_string_pretty(&CachedFetchDocument {
-            schema_version: "research_fetch_cache_v1".to_string(),
-            result: sample_result("legacy body"),
-        })
-        .expect("json should serialize");
-        fs::write(&legacy_path, payload).expect("legacy cache should write");
-
-        let refreshed = fetch_page_by_url_cached_with(
-            &paths,
-            "https://example.com/article",
-            &options,
-            &ResearchCacheOptions {
-                use_cache: true,
-                refresh: true,
-            },
-            || Ok(Some(sample_result("fresh body"))),
-        )
-        .expect("refresh fetch should succeed")
-        .expect("refresh fetch should exist");
-
-        assert_eq!(refreshed.status, ResearchCacheStatus::Refresh);
-        assert_eq!(refreshed.result.content, "fresh body");
-        assert_eq!(
-            refreshed
-                .cache_path
-                .as_deref()
-                .and_then(|path| path.parent())
-                .and_then(|path| path.file_name()),
-            Some(std::ffi::OsStr::new("documents"))
-        );
-        assert!(!legacy_path.exists());
-    }
 }

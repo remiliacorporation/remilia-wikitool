@@ -601,24 +601,6 @@ else
     fail "search finds indexed article (got: $OUTPUT)"
 fi
 
-# --- contracts command-surface ---
-section "contracts command-surface"
-OUTPUT=$(wt "$PROJ" contracts command-surface 2>&1)
-if echo "$OUTPUT" | grep -q '^\['; then
-    pass "contracts command-surface outputs JSON"
-else
-    fail "contracts command-surface outputs JSON (got: ${OUTPUT:0:200})"
-fi
-
-# --- contracts snapshot ---
-section "contracts snapshot"
-OUTPUT=$(wt "$PROJ" contracts snapshot --project-root "$PROJ" 2>&1)
-if echo "$OUTPUT" | grep -q '{'; then
-    pass "contracts snapshot produces JSON"
-else
-    fail "contracts snapshot produces JSON (got: ${OUTPUT:0:200})"
-fi
-
 # --- import cargo (CSV) ---
 section "import cargo (CSV)"
 if [ -f "$FIXTURES/sample_import.csv" ]; then

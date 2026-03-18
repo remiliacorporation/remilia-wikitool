@@ -304,10 +304,12 @@ pub fn open_database_connection(db_path: &Path) -> Result<Connection> {
 }
 
 pub fn ensure_database_schema_connection(connection: &Connection) -> Result<()> {
-    validate_existing_schema_compatibility(connection)?;
-    connection
-        .execute_batch(DB_SCHEMA_SQL)
-        .context("failed to initialize database schema")?;
+    if let Err(init_error) = connection.execute_batch(DB_SCHEMA_SQL) {
+        if let Err(schema_error) = validate_disposable_schema(connection) {
+            return Err(schema_error).context("failed to initialize database schema");
+        }
+        return Err(init_error).context("failed to initialize database schema");
+    }
     validate_disposable_schema(connection)
 }
 
@@ -368,78 +370,6 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
     )
 }
 
-fn validate_existing_schema_compatibility(connection: &Connection) -> Result<()> {
-    if !has_user_tables(connection)? {
-        return Ok(());
-    }
-
-    require_columns_if_table_exists(connection, "indexed_pages", REQUIRED_INDEXED_PAGE_COLUMNS)?;
-    require_columns_if_table_exists(connection, "indexed_page_aliases", REQUIRED_ALIAS_COLUMNS)?;
-    require_columns_if_table_exists(
-        connection,
-        "indexed_page_sections",
-        REQUIRED_SECTION_COLUMNS,
-    )?;
-    require_columns_if_table_exists(
-        connection,
-        "indexed_template_examples",
-        REQUIRED_TEMPLATE_EXAMPLE_COLUMNS,
-    )?;
-    require_columns_if_table_exists(
-        connection,
-        "indexed_module_invocations",
-        REQUIRED_MODULE_INVOCATION_COLUMNS,
-    )?;
-    require_columns_if_table_exists(
-        connection,
-        "indexed_page_references",
-        REQUIRED_REFERENCE_COLUMNS,
-    )?;
-    require_columns_if_table_exists(
-        connection,
-        "indexed_reference_authorities",
-        REQUIRED_REFERENCE_AUTHORITY_COLUMNS,
-    )?;
-    require_columns_if_table_exists(
-        connection,
-        "indexed_reference_identifiers",
-        REQUIRED_REFERENCE_IDENTIFIER_COLUMNS,
-    )?;
-    require_columns_if_table_exists(connection, "indexed_page_media", REQUIRED_MEDIA_COLUMNS)?;
-    require_columns_if_table_exists(
-        connection,
-        "indexed_page_semantics",
-        REQUIRED_SEMANTIC_COLUMNS,
-    )?;
-    require_columns_if_table_exists(
-        connection,
-        "indexed_template_implementation_pages",
-        REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS,
-    )?;
-    require_columns_if_table_exists(connection, "docs_corpora", REQUIRED_DOCS_CORPORA_COLUMNS)?;
-    require_columns_if_table_exists(connection, "docs_pages", REQUIRED_DOCS_PAGE_COLUMNS)?;
-    require_columns_if_table_exists(connection, "docs_sections", REQUIRED_DOCS_SECTION_COLUMNS)?;
-    require_columns_if_table_exists(connection, "docs_symbols", REQUIRED_DOCS_SYMBOL_COLUMNS)?;
-    require_columns_if_table_exists(connection, "docs_examples", REQUIRED_DOCS_EXAMPLE_COLUMNS)?;
-    require_columns_if_table_exists(connection, "docs_links", REQUIRED_DOCS_LINK_COLUMNS)?;
-    require_columns(
-        connection,
-        "knowledge_artifacts",
-        REQUIRED_KNOWLEDGE_ARTIFACT_COLUMNS,
-    )
-}
-
-fn require_columns_if_table_exists(
-    connection: &Connection,
-    table_name: &str,
-    required_columns: &[&str],
-) -> Result<()> {
-    if table_exists(connection, table_name)? {
-        require_columns(connection, table_name, required_columns)?;
-    }
-    Ok(())
-}
-
 fn require_columns(
     connection: &Connection,
     table_name: &str,
@@ -474,36 +404,6 @@ fn require_columns(
 
     Ok(())
 }
-
-fn has_user_tables(connection: &Connection) -> Result<bool> {
-    let count: i64 = connection
-        .query_row(
-            "SELECT COUNT(*)
-             FROM sqlite_master
-             WHERE type = 'table'
-               AND name NOT LIKE 'sqlite_%'",
-            [],
-            |row| row.get(0),
-        )
-        .context("failed to inspect sqlite_master for existing tables")?;
-    Ok(count > 0)
-}
-
-fn table_exists(connection: &Connection, table_name: &str) -> Result<bool> {
-    let exists: i64 = connection
-        .query_row(
-            "SELECT EXISTS(
-                SELECT 1
-                FROM sqlite_master
-                WHERE type IN ('table', 'view') AND name = ?1
-            )",
-            [table_name],
-            |row| row.get(0),
-        )
-        .with_context(|| format!("failed to inspect sqlite_master for {table_name}"))?;
-    Ok(exists != 0)
-}
-
 fn schema_reset_hint(db_path: &Path) -> String {
     format!(
         "delete {} and rerun the relevant sync/import command to recreate the disposable local database",

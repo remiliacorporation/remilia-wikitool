@@ -1,8 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
 
-use wikitool_core::contracts::command_surface;
-
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -154,29 +152,4 @@ fn codex_skill_wrappers_remain_help_backed_and_perf_free() {
             "{path} must not mention removed perf surfaces"
         );
     }
-}
-
-#[test]
-fn frozen_command_surface_includes_release_research_and_dev_commands() {
-    let surface = command_surface();
-    for command in [
-        "knowledge article-start",
-        "research search",
-        "research fetch",
-        "release build-ai-pack",
-        "release package",
-        "release build-matrix",
-        "dev install-git-hooks",
-        "contracts snapshot",
-        "contracts command-surface",
-    ] {
-        assert!(
-            surface.iter().any(|item| item == command),
-            "missing `{command}` from frozen command surface"
-        );
-    }
-    assert!(
-        !surface.iter().any(|item| item == "perf lighthouse"),
-        "frozen command surface must not retain removed Lighthouse commands"
-    );
 }

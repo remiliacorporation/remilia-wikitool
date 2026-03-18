@@ -7,7 +7,6 @@ pub(crate) use wikitool_core::schema::LOCAL_DB_POLICY_MESSAGE;
 
 mod article_cli;
 mod cli_support;
-mod contracts_cli;
 mod db_cli;
 mod dev_cli;
 mod docs_cli;
@@ -118,11 +117,6 @@ enum Commands {
     Release(release::ReleaseArgs),
     #[command(about = "Install local development helpers")]
     Dev(dev_cli::DevArgs),
-    #[command(
-        name = "contracts",
-        about = "Contract bootstrap and differential harness helpers"
-    )]
-    Contracts(contracts_cli::ContractsArgs),
 }
 
 fn main() -> Result<()> {
@@ -171,7 +165,6 @@ fn main() -> Result<()> {
         Some(Commands::Workflow(args)) => workflow_cli::run_workflow(&runtime, args),
         Some(Commands::Release(args)) => release::run_release(args),
         Some(Commands::Dev(args)) => dev_cli::run_dev(args),
-        Some(Commands::Contracts(args)) => contracts_cli::run_contracts(args),
         None => {
             let mut command = Cli::command();
             command.print_help()?;

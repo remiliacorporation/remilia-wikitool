@@ -2,7 +2,6 @@ pub mod article_lint;
 pub mod authoring;
 pub mod config;
 pub mod content_store;
-pub mod contracts;
 pub mod delete;
 pub mod docs;
 pub mod external;
