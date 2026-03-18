@@ -17,6 +17,7 @@ ai-pack/docs-bundle-*.json
 
 # Test coverage
 coverage/
+testbench/.tmp
 
 # Build
 dist/
