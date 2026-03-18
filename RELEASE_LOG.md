@@ -7,6 +7,7 @@ Chronological release notes for tagged wikitool versions.
 Date: 2026-03-18
 
 Breaking release that replaces the retrieval layer with a purpose-built knowledge system for AI-assisted authoring.
+Just delete your old wikitool installation ;d
 
 ### What changed
 
