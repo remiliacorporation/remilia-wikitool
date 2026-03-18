@@ -7,9 +7,14 @@ on:
         description: "Version label for artifact names (example: v0.2.0)"
         required: true
         type: string
+      create_release:
+        description: "Create a GitHub Release and attach zips"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
-  release-artifacts:
+  build:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -85,5 +90,50 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wikitool-release-${{ inputs.artifact_version }}-${{ matrix.target }}
-          path: dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}
+          path: dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}.zip
           if-no-files-found: error
+
+  publish-release:
+    if: inputs.create_release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-zips
+          pattern: wikitool-release-${{ inputs.artifact_version }}-*
+          merge-multiple: true
+
+      - name: List downloaded assets
+        run: ls -lh release-zips/
+
+      - name: Extract release notes from RELEASE_LOG.md
+        id: notes
+        run: |
+          # Extract the section for the current version (everything between its ## heading and the next)
+          awk '/^## '"${VERSION_TAG#v}"'/{found=1; next} /^## /{if(found) exit} found' RELEASE_LOG.md > release_body.md
+          # If nothing matched by bare version, try with v-prefix
+          if [ ! -s release_body.md ]; then
+            awk '/^## '"${VERSION_TAG}"'/{found=1; next} /^## /{if(found) exit} found' RELEASE_LOG.md > release_body.md
+          fi
+          # Fallback
+          if [ ! -s release_body.md ]; then
+            echo "Release ${VERSION_TAG}" > release_body.md
+          fi
+          cat release_body.md
+        env:
+          VERSION_TAG: ${{ inputs.artifact_version }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.artifact_version }}" \
+            --title "wikitool ${{ inputs.artifact_version }}" \
+            --notes-file release_body.md \
+            release-zips/*.zip
