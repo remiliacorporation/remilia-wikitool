@@ -1,6 +1,8 @@
 # /research - Topic Research
 
 Thin wrapper for the evidence-gathering workflow.
+Use normal research reasoning and ordinary browsing/searching as needed.
+Use `wikitool` when you want local wiki retrieval, MediaWiki-aware fetches, pinned docs corpora, or template/profile-aware context.
 Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 ## Discovery

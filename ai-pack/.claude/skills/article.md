@@ -1,6 +1,7 @@
 # /article - Wiki Article Writing
 
 Thin wrapper for the default authoring workflow.
+Write normally. Use `wikitool` to ground the draft in local/wiki context, check template/profile fit, lint/fix the page, and gate sync safely.
 Canonical flags live in:
 
 1. `wikitool --help`
@@ -13,21 +14,19 @@ Canonical flags live in:
 2. `llm_instructions/article_structure.md`
 3. `llm_instructions/writing_guide.md`
 
-## Default preparation
+## Default lane
 
 ```bash
-wikitool pull
-wikitool knowledge warm --docs-profile remilia-mw-1.44
-wikitool wiki profile sync
+wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 wikitool knowledge article-start "Topic" --format json
 wikitool research search "Topic" --format json
 wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
 wikitool templates show "Template:Infobox person"
-wikitool templates examples "Template:Infobox person" --limit 2
 wikitool wiki profile show --format json
 ```
 
 Use `wikitool knowledge pack "Topic" --format json` only when the deeper raw retrieval substrate is needed behind `article-start`.
+Use `wikitool templates examples "Template:Infobox person" --limit 2` when the template call shape is still unclear after `templates show`.
 
 ## Draft gate
 

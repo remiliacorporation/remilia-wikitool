@@ -1,6 +1,7 @@
 # /template - Template and Module Editing
 
 Thin wrapper for template/module/CSS work.
+Edit template, module, CSS, and JS files normally. Use `wikitool` when you need live template catalog context, Remilia profile preferences, docs lookup, and guarded sync.
 Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 ## Lookup context

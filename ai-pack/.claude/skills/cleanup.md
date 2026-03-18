@@ -1,6 +1,7 @@
 # /cleanup - Cleanup and Auditing
 
 Thin wrapper for cleanup passes.
+Use normal editing for the draft itself. Use `wikitool` to surface wiki-specific lint, validation, link/category audits, and push guards.
 Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 ## Audit workflow

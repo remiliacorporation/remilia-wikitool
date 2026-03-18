@@ -1,6 +1,7 @@
 # /mw-fetch - External Wiki Fetch/Export
 
 Thin wrapper for raw fetch/export and pinned docs workflows.
+Use `research fetch` when you want readable extracted evidence, and `fetch` or `export` when you want raw/reference-oriented capture.
 Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 ## Raw and readable fetch lanes
@@ -12,9 +13,6 @@ wikitool export "https://wowdev.wiki/M2" --subpages --combined
 wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
 wikitool search-external "MediaWiki Cargo"
 ```
-
-Use `research fetch` for readable evidence extraction.
-Use `fetch` and `export` for raw/reference-oriented capture.
 
 ## Docs import/search
 

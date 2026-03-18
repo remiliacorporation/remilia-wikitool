@@ -1,6 +1,7 @@
 # /review - Pre-Push Quality Gate
 
 Thin wrapper for the final gate before write push.
+Use `wikitool` here for deterministic checks and diff review, not as a substitute for editorial judgment.
 Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 ## Gate sequence

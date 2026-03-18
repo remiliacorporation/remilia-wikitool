@@ -1,6 +1,8 @@
 # /wikitool - CLI Gateway
 
-Run `wikitool` command workflows while keeping docs/help as source of truth.
+Thin wrapper for deciding when to use `wikitool`.
+Use normal reasoning, ordinary shell/file tools, and direct editing by default.
+Reach for `wikitool` when you need wiki-aware retrieval, MediaWiki-aware fetch/export, template/profile lookup, article lint/fix/validate, or guarded sync/push.
 
 ## Lookup order
 
@@ -8,12 +10,15 @@ Run `wikitool` command workflows while keeping docs/help as source of truth.
 2. `wikitool <command> --help`
 3. `docs/wikitool/reference.md`
 
-## Core operator sequence
+## Common lanes
 
 ```bash
-wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44
-wikitool wiki profile sync
+wikitool knowledge status --docs-profile remilia-mw-1.44
+wikitool knowledge article-start "Topic" --format json
+wikitool research search "Topic" --format json
+wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
+wikitool article lint wiki_content/Main/<Title>.wiki --format json
+wikitool article fix wiki_content/Main/<Title>.wiki --apply safe
 wikitool diff
 wikitool validate
 wikitool push --dry-run --summary "Summary"

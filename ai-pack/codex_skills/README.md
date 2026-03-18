@@ -1,6 +1,7 @@
 # Codex Skills Bundle
 
 These skills are thin overlays for editing safety and workflow sequencing.
+They do not replace ordinary reasoning, shell work, or file edits; use `wikitool` where it adds wiki-aware value.
 
 Canonical command and policy truth remains:
 

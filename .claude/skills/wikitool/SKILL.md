@@ -9,6 +9,8 @@ argument-hint: [command] [options]
 
 Treat this skill as a thin overlay.
 Canonical behavior is defined by runbooks and live CLI help.
+Use normal reasoning, ordinary shell/file tools, and direct editing by default.
+Reach for `wikitool` when you need wiki-aware retrieval, MediaWiki-aware fetch/export, template/profile lookup, article lint/fix/validate, or guarded sync/push.
 
 ## Usage
 

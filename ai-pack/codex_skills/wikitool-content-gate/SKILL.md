@@ -7,6 +7,13 @@ description: Run deterministic content quality gates for wiki edits before push,
 
 Keep this skill thin and policy-focused.
 Canonical command truth is CLI help and runbooks.
+Use `wikitool` here for deterministic wiki-aware gates, not as a replacement for editorial judgment or normal file editing.
+
+## Canonical lookup order
+
+1. `wikitool --help`
+2. `wikitool <command> --help`
+3. `docs/wikitool/reference.md`
 
 ## Validation pass
 

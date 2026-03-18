@@ -16,6 +16,26 @@ fn read_repo_file(relative: &str) -> String {
     })
 }
 
+fn markdown_files_under(relative_dir: &str) -> Vec<String> {
+    let root = repo_root();
+    let mut files = fs::read_dir(root.join(relative_dir))
+        .unwrap_or_else(|error| panic!("failed to read directory {relative_dir}: {error}"))
+        .map(|entry| {
+            let entry = entry
+                .unwrap_or_else(|error| panic!("failed to read entry in {relative_dir}: {error}"));
+            entry
+                .path()
+                .strip_prefix(&root)
+                .expect("strip repo root")
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .filter(|path| path.ends_with(".md"))
+        .collect::<Vec<_>>();
+    files.sort();
+    files
+}
+
 #[test]
 fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
     let claude = read_repo_file("ai-pack/CLAUDE.md");
@@ -26,6 +46,10 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
         assert!(
             body.contains("wikitool knowledge article-start"),
             "packaged guidance must mention article-start"
+        );
+        assert!(
+            body.contains("Use normal reasoning"),
+            "packaged guidance must keep the normal-reasoning boundary explicit"
         );
         assert!(
             body.contains("wikitool --help") && body.contains("docs/wikitool/reference.md"),
@@ -45,6 +69,10 @@ fn thin_wrappers_reference_help_and_keep_raw_pack_secondary() {
     let local_skill = read_repo_file(".claude/skills/wikitool/SKILL.md");
 
     for body in [&claude_skill, &codex_skill, &local_skill] {
+        assert!(
+            body.contains("Use normal reasoning"),
+            "thin wrappers must preserve the normal-reasoning boundary"
+        );
         assert!(
             body.contains("wikitool --help") && body.contains("docs/wikitool/reference.md"),
             "thin wrappers must defer to CLI help/reference"
@@ -71,6 +99,61 @@ fn db_wrapper_hint_matches_current_public_surface() {
         !db_skill.contains("<stats|sync|migrate>"),
         "db wrapper hint must not mention removed commands"
     );
+}
+
+#[test]
+fn packaged_skill_wrappers_stay_thin_and_do_not_reintroduce_removed_surfaces() {
+    for path in markdown_files_under("ai-pack/.claude/skills") {
+        let body = read_repo_file(&path);
+        assert!(
+            body.contains("Thin wrapper"),
+            "{path} must stay a thin wrapper"
+        );
+        assert!(
+            body.contains("docs/wikitool/reference.md"),
+            "{path} must defer to the generated CLI reference"
+        );
+        assert!(
+            !body.contains("wikitool perf") && !body.contains("perf lighthouse"),
+            "{path} must not mention removed perf surfaces"
+        );
+    }
+}
+
+#[test]
+fn local_wikitool_command_wrappers_remain_reference_backed() {
+    for path in markdown_files_under(".claude/skills/wikitool") {
+        let body = read_repo_file(&path);
+        assert!(
+            !body.contains("wikitool perf") && !body.contains("perf lighthouse"),
+            "{path} must not mention removed perf surfaces"
+        );
+        if path.ends_with("/SKILL.md") {
+            continue;
+        }
+        assert!(
+            body.contains("docs/wikitool/reference.md"),
+            "{path} must defer to the generated CLI reference"
+        );
+    }
+}
+
+#[test]
+fn codex_skill_wrappers_remain_help_backed_and_perf_free() {
+    for path in [
+        "ai-pack/codex_skills/wikitool-operator/SKILL.md",
+        "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
+    ] {
+        let body = read_repo_file(path);
+        assert!(
+            body.contains("wikitool --help") && body.contains("docs/wikitool/reference.md"),
+            "{path} must defer to CLI help/reference"
+        );
+        assert!(
+            !body.contains("wikitool perf") && !body.contains("perf lighthouse"),
+            "{path} must not mention removed perf surfaces"
+        );
+    }
 }
 
 #[test]

@@ -24,3 +24,4 @@ cargo run --quiet --package wikitool -- $ARGUMENTS
 Guardrail:
 
 1. For write flows, run `wikitool push --dry-run --summary "..."` before write push.
+2. Verify flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.

@@ -1,6 +1,7 @@
 # /sync - Wiki Sync Operations
 
 Thin wrapper for sync and refresh workflows.
+Use `wikitool` for pulling, diffing, validating, and guarded pushes. Do not force unrelated authoring or reasoning through it.
 Validate flags via `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 ## Setup and refresh

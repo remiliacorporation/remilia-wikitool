@@ -105,6 +105,10 @@ These are thin workflow wrappers, not command-surface authorities.
 
 Codex skills must remain thin overlays that defer to runbooks and CLI help.
 
+Use normal reasoning, ordinary shell/file tools, and direct editing by default.
+Reach for `wikitool` when it adds wiki-aware value: local knowledge retrieval, MediaWiki-aware fetch/export, template/profile lookup, article lint/fix/validate, and guarded sync/push.
+Do not route every step through `wikitool`.
+
 ## Operational Rules
 
 1. Do not perform write pushes by default.
@@ -116,7 +120,9 @@ Codex skills must remain thin overlays that defer to runbooks and CLI help.
 4. Keep output factual, neutral, and encyclopedic.
 5. Return raw MediaWiki wikitext for content edits.
 
-## Preferred Commands
+## Useful Wikitool Lanes
+
+These are example lanes, not a required sequence.
 
 ```bash
 wikitool pull --full --all

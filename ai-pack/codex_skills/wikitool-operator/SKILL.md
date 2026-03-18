@@ -7,6 +7,8 @@ description: Operate the Rust wikitool CLI for wiki editing sync, docs, import, 
 
 Keep this skill as a thin overlay.
 Canonical truth is `CLAUDE.md`, runbooks (`SETUP.md`, `docs/wikitool/*`), and live CLI help.
+Use normal reasoning, ordinary shell/file tools, and direct editing by default.
+Reach for `wikitool` when you need wiki-aware retrieval, MediaWiki-aware fetch/export, template/profile lookup, article lint/fix/validate, or guarded sync/push.
 
 ## Canonical lookup order
 
@@ -16,20 +18,20 @@ Canonical truth is `CLAUDE.md`, runbooks (`SETUP.md`, `docs/wikitool/*`), and li
 
 Do not introduce flags or command shapes that only exist in this skill.
 
-## Safe write sequence
+## Common lanes
 
 ```bash
+wikitool knowledge status --docs-profile remilia-mw-1.44
+wikitool knowledge article-start "Topic" --format json
+wikitool research search "Topic" --format json
+wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
+wikitool templates show "Template:Infobox person"
+wikitool wiki profile show --format json
 wikitool article lint wiki_content/Main/Title.wiki --format json
-wikitool pull --full --all
+wikitool article fix wiki_content/Main/Title.wiki --apply safe
 wikitool diff
 wikitool validate
 wikitool push --dry-run --summary "Summary"
-```
-
-If dry-run is correct:
-
-```bash
-wikitool push --summary "Summary"
 ```
 
 ## Preflight and diagnostics
@@ -39,29 +41,6 @@ wikitool status
 wikitool db stats
 wikitool knowledge inspect stats
 wikitool docs list --outdated
-```
-
-## Editing workflows
-
-```bash
-wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44
-wikitool wiki profile sync
-wikitool knowledge status --docs-profile remilia-mw-1.44
-wikitool knowledge article-start "Topic" --format json
-wikitool research search "Topic" --format json
-wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
-wikitool templates show "Template:Infobox person"
-wikitool templates examples "Template:Infobox person" --limit 2
-wikitool wiki profile show --format json
-wikitool article lint wiki_content/Main/Title.wiki --format json
-wikitool article fix wiki_content/Main/Title.wiki --apply safe
-wikitool knowledge pack "Topic" --format json
-wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
-wikitool search "Category:"
-wikitool docs import-profile remilia-mw-1.44
-wikitool docs search "extension feature" --profile remilia-mw-1.44
-wikitool docs context "parser function" --profile remilia-mw-1.44 --format json
 ```
 
 ## Retrieval guidance
