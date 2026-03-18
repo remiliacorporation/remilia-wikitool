@@ -519,7 +519,7 @@ fn build_net_summary(resources: &[NetResource]) -> NetSummary {
         .filter(|resource| resource.size_bytes.is_some())
         .cloned()
         .collect::<Vec<_>>();
-    largest.sort_by(|left, right| right.size_bytes.cmp(&left.size_bytes));
+    largest.sort_by_key(|resource| std::cmp::Reverse(resource.size_bytes));
     largest.truncate(5);
 
     NetSummary {

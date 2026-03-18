@@ -278,7 +278,10 @@ pub fn build_authoring_knowledge_pack(
 
     let comparable_page_headings = load_comparable_page_headings(
         &connection,
-        &related_pages.iter().map(|p| p.title.clone()).collect::<Vec<_>>(),
+        &related_pages
+            .iter()
+            .map(|p| p.title.clone())
+            .collect::<Vec<_>>(),
     )?;
 
     Ok(AuthoringKnowledgePack::Found(Box::new(

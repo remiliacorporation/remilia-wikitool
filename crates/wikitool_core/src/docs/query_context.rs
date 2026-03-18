@@ -34,10 +34,10 @@ pub fn build_docs_context(
     )?;
     let mut examples = load_context_examples(&connection, &context, options.profile.as_deref())?;
 
-    pages.sort_by(|left, right| right.retrieval_weight.cmp(&left.retrieval_weight));
-    sections.sort_by(|left, right| right.retrieval_weight.cmp(&left.retrieval_weight));
-    symbols.sort_by(|left, right| right.retrieval_weight.cmp(&left.retrieval_weight));
-    examples.sort_by(|left, right| right.retrieval_weight.cmp(&left.retrieval_weight));
+    pages.sort_by_key(|page| std::cmp::Reverse(page.retrieval_weight));
+    sections.sort_by_key(|section| std::cmp::Reverse(section.retrieval_weight));
+    symbols.sort_by_key(|symbol| std::cmp::Reverse(symbol.retrieval_weight));
+    examples.sort_by_key(|example| std::cmp::Reverse(example.retrieval_weight));
 
     let mut used_tokens = 0usize;
     let mut selected_pages = Vec::new();
