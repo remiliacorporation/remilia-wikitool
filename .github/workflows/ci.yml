@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - main
+      - master
   pull_request:
 
 jobs:
@@ -85,10 +85,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Cargo tests
-        working-directory: tools/wikitool
         run: cargo test --workspace
       - name: Offline CLI regression testbench
-        working-directory: tools/wikitool
         run: bash testbench/cli_tests.sh
 
   rust-nightly-lint:
