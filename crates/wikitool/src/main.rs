@@ -69,10 +69,15 @@ impl RuntimeOptions {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    #[command(about = "Initialize a new wikitool project")]
     Init(sync_cli::InitArgs),
+    #[command(about = "Pull wiki content and templates to local files")]
     Pull(sync_cli::PullArgs),
+    #[command(about = "Push local changes to the live wiki")]
     Push(sync_cli::PushArgs),
+    #[command(about = "Show local changes not yet pushed to the wiki")]
     Diff(sync_cli::DiffArgs),
+    #[command(about = "Show sync status and local project state")]
     Status(sync_cli::StatusArgs),
     #[command(about = "Show indexed local page context for one title")]
     Context(query_cli::ContextArgs),
@@ -83,17 +88,25 @@ enum Commands {
         about = "Search the remote wiki API without using the local index"
     )]
     SearchExternal(query_cli::SearchExternalArgs),
+    #[command(about = "Run structural and link integrity checks")]
     Validate,
+    #[command(about = "Check a page or all pages for style and structure issues")]
     Lint(quality_cli::LintArgs),
+    #[command(about = "Fetch a remote URL as wikitext or rendered HTML")]
     Fetch(export_cli::FetchArgs),
+    #[command(about = "Export a remote wiki page tree to local files")]
     Export(export_cli::ExportArgs),
+    #[command(about = "Delete a page from the live wiki")]
     Delete(sync_cli::DeleteArgs),
     #[command(about = "Inspect or reset the local runtime database")]
     Db(db_cli::DbArgs),
     #[command(about = "Manage and query pinned MediaWiki docs corpora")]
     Docs(docs_cli::DocsArgs),
+    #[command(about = "Inspect SEO metadata for wiki pages")]
     Seo(inspect_cli::SeoArgs),
+    #[command(about = "Inspect link network and page relationships")]
     Net(inspect_cli::NetArgs),
+    #[command(about = "Import content from external sources")]
     Import(import_cli::ImportArgs),
     #[command(about = "Build and query the local knowledge layer")]
     Knowledge(knowledge_cli::KnowledgeArgs),

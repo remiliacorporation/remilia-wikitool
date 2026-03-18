@@ -276,6 +276,11 @@ pub fn build_authoring_knowledge_pack(
         chunks: &chunks,
     });
 
+    let comparable_page_headings = load_comparable_page_headings(
+        &connection,
+        &related_pages.iter().map(|p| p.title.clone()).collect::<Vec<_>>(),
+    )?;
+
     Ok(AuthoringKnowledgePack::Found(Box::new(
         AuthoringKnowledgePackResult {
             topic,
@@ -301,6 +306,7 @@ pub fn build_authoring_knowledge_pack(
             retrieval_mode,
             chunks,
             token_estimate_total,
+            comparable_page_headings,
         },
     )))
 }
@@ -725,4 +731,43 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
         distinct_media_files,
         template_implementation_rows_total,
     })
+}
+
+fn load_comparable_page_headings(
+    connection: &Connection,
+    page_titles: &[String],
+) -> Result<Vec<ComparablePageHeading>> {
+    if !table_exists(connection, "indexed_page_sections")? {
+        return Ok(Vec::new());
+    }
+
+    let mut out = Vec::new();
+    let mut statement = connection
+        .prepare(
+            "SELECT source_title, section_heading, section_level
+             FROM indexed_page_sections
+             WHERE source_title = ?1
+             AND section_heading IS NOT NULL
+             AND section_level = 2
+             ORDER BY section_index ASC",
+        )
+        .context("failed to prepare comparable page headings query")?;
+
+    for title in page_titles {
+        let rows = statement
+            .query_map(params![title], |row| {
+                let level_i64: i64 = row.get(2)?;
+                Ok(ComparablePageHeading {
+                    source_title: row.get(0)?,
+                    section_heading: row.get(1)?,
+                    section_level: u8::try_from(level_i64).unwrap_or(2),
+                })
+            })
+            .context("failed to query comparable page headings")?;
+        for row in rows {
+            out.push(row.context("failed to decode comparable page heading row")?);
+        }
+    }
+
+    Ok(out)
 }

@@ -16,24 +16,24 @@ Wiki management CLI
 Usage: wikitool [OPTIONS] [COMMAND]
 
 Commands:
-  init                 
-  pull                 
-  push                 
-  diff                 
-  status               
+  init                 Initialize a new wikitool project
+  pull                 Pull wiki content and templates to local files
+  push                 Push local changes to the live wiki
+  diff                 Show local changes not yet pushed to the wiki
+  status               Show sync status and local project state
   context              Show indexed local page context for one title
   search               Search indexed local page titles
   search-external      Search the remote wiki API without using the local index
-  validate             
-  lint                 
-  fetch                
-  export               
-  delete               
+  validate             Run structural and link integrity checks
+  lint                 Check a page or all pages for style and structure issues
+  fetch                Fetch a remote URL as wikitext or rendered HTML
+  export               Export a remote wiki page tree to local files
+  delete               Delete a page from the live wiki
   db                   Inspect or reset the local runtime database
   docs                 Manage and query pinned MediaWiki docs corpora
-  seo                  
-  net                  
-  import               
+  seo                  Inspect SEO metadata for wiki pages
+  net                  Inspect link network and page relationships
+  import               Import content from external sources
   knowledge            Build and query the local knowledge layer
   research             Search and fetch subject evidence without mutating the wiki
   wiki                 Sync and inspect live wiki capability metadata
@@ -60,6 +60,8 @@ Options:
 ## init
 
 ```text
+Initialize a new wikitool project
+
 Usage: wikitool init [OPTIONS]
 
 Options:
@@ -77,6 +79,8 @@ Options:
 ## pull
 
 ```text
+Pull wiki content and templates to local files
+
 Usage: wikitool pull [OPTIONS]
 
 Options:
@@ -96,6 +100,8 @@ Options:
 ## push
 
 ```text
+Push local changes to the live wiki
+
 Usage: wikitool push [OPTIONS]
 
 Options:
@@ -115,6 +121,8 @@ Options:
 ## diff
 
 ```text
+Show local changes not yet pushed to the wiki
+
 Usage: wikitool diff [OPTIONS]
 
 Options:
@@ -130,6 +138,8 @@ Options:
 ## status
 
 ```text
+Show sync status and local project state
+
 Usage: wikitool status [OPTIONS]
 
 Options:
@@ -203,6 +213,8 @@ Options:
 ## validate
 
 ```text
+Run structural and link integrity checks
+
 Usage: wikitool validate [OPTIONS]
 
 Options:
@@ -216,6 +228,8 @@ Options:
 ## lint
 
 ```text
+Check a page or all pages for style and structure issues
+
 Usage: wikitool lint [OPTIONS] [TITLE]
 
 Arguments:
@@ -235,6 +249,8 @@ Options:
 ## fetch
 
 ```text
+Fetch a remote URL as wikitext or rendered HTML
+
 Usage: wikitool fetch [OPTIONS] <URL>
 
 Arguments:
@@ -254,6 +270,8 @@ Options:
 ## export
 
 ```text
+Export a remote wiki page tree to local files
+
 Usage: wikitool export [OPTIONS] <URL>
 
 Arguments:
@@ -276,6 +294,8 @@ Options:
 ## delete
 
 ```text
+Delete a page from the live wiki
+
 Usage: wikitool delete [OPTIONS] --reason <TEXT> <TITLE>
 
 Arguments:
@@ -576,6 +596,8 @@ Options:
 ## seo
 
 ```text
+Inspect SEO metadata for wiki pages
+
 Usage: wikitool seo [OPTIONS] <COMMAND>
 
 Commands:
@@ -612,6 +634,8 @@ Options:
 ## net
 
 ```text
+Inspect link network and page relationships
+
 Usage: wikitool net [OPTIONS] <COMMAND>
 
 Commands:
@@ -650,6 +674,8 @@ Options:
 ## import
 
 ```text
+Import content from external sources
+
 Usage: wikitool import [OPTIONS] <COMMAND>
 
 Commands:

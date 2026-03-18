@@ -330,35 +330,71 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
         heading: "Overview".to_string(),
         rationale: "Use a concise lead anchored in local terminology.".to_string(),
         required: true,
+        content_backed: true,
+        supporting_pages: Vec::new(),
     }];
 
-    let mut heading_support = BTreeMap::<String, (String, BTreeSet<String>)>::new();
+    // Collect chunk headings to determine content_backed status.
+    let mut chunk_heading_pages = BTreeMap::<String, BTreeSet<String>>::new();
     for chunk in &pack.chunks {
-        let Some(heading) = chunk.section_heading.as_deref() else {
-            continue;
-        };
-        let normalized = normalize_heading(heading);
+        if let Some(heading) = chunk.section_heading.as_deref() {
+            let normalized = normalize_heading(heading);
+            if !normalized.is_empty() && !heading_is_low_signal(&normalized) {
+                chunk_heading_pages
+                    .entry(normalized.to_ascii_lowercase())
+                    .or_default()
+                    .insert(chunk.source_title.clone());
+            }
+        }
+    }
+
+    // Primary signal: section headings from all comparable pages (deterministic, complete).
+    let mut heading_support = BTreeMap::<String, (String, BTreeSet<String>)>::new();
+    for cph in &pack.comparable_page_headings {
+        let normalized = normalize_heading(&cph.section_heading);
         if normalized.is_empty() || heading_is_low_signal(&normalized) {
             continue;
         }
         let entry = heading_support
             .entry(normalized.to_ascii_lowercase())
             .or_insert_with(|| (normalized.clone(), BTreeSet::new()));
-        entry.1.insert(chunk.source_title.clone());
+        entry.1.insert(cph.source_title.clone());
+    }
+
+    // Secondary signal: headings seen only in retrieved chunks (may come from pages
+    // outside the top comparable set, preserving backward-compatible discovery).
+    for chunk in &pack.chunks {
+        if let Some(heading) = chunk.section_heading.as_deref() {
+            let normalized = normalize_heading(heading);
+            if normalized.is_empty() || heading_is_low_signal(&normalized) {
+                continue;
+            }
+            let entry = heading_support
+                .entry(normalized.to_ascii_lowercase())
+                .or_insert_with(|| (normalized.clone(), BTreeSet::new()));
+            entry.1.insert(chunk.source_title.clone());
+        }
     }
 
     let min_support = if pack.related_pages.len() > 1 { 2 } else { 1 };
     let mut headings = heading_support
         .into_values()
         .filter(|(_, supporting_pages)| supporting_pages.len() >= min_support)
-        .map(|(heading, supporting_pages)| SectionSkeleton {
-            rationale: format!(
-                "Seen on {} comparable page{}.",
-                supporting_pages.len(),
-                if supporting_pages.len() == 1 { "" } else { "s" }
-            ),
-            heading,
-            required: false,
+        .map(|(heading, supporting_pages)| {
+            let key = heading.to_ascii_lowercase();
+            let content_backed = chunk_heading_pages.contains_key(&key);
+            let page_list: Vec<String> = supporting_pages.iter().cloned().collect();
+            SectionSkeleton {
+                rationale: format!(
+                    "Seen on {} comparable page{}.",
+                    supporting_pages.len(),
+                    if supporting_pages.len() == 1 { "" } else { "s" }
+                ),
+                heading,
+                required: false,
+                content_backed,
+                supporting_pages: page_list,
+            }
         })
         .collect::<Vec<_>>();
     headings.sort_by(|left, right| left.heading.cmp(&right.heading));
@@ -368,6 +404,8 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
         rationale: "Reference handling is a hard requirement for publication-quality pages."
             .to_string(),
         required: true,
+        content_backed: false,
+        supporting_pages: Vec::new(),
     });
     sections
 }
@@ -483,6 +521,7 @@ fn heading_is_low_signal(heading: &str) -> bool {
         "bibliography",
         "gallery",
         "see also",
+        "overview",
     ]
     .iter()
     .any(|value| lowered.contains(value))

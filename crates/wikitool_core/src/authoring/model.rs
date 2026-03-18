@@ -93,6 +93,10 @@ pub struct SectionSkeleton {
     pub heading: String,
     pub rationale: String,
     pub required: bool,
+    #[serde(default)]
+    pub content_backed: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supporting_pages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

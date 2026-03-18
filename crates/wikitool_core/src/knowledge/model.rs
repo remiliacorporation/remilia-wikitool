@@ -396,6 +396,13 @@ pub struct StubTemplateHint {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ComparablePageHeading {
+    pub source_title: String,
+    pub section_heading: String,
+    pub section_level: u8,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AuthoringKnowledgePackResult {
     pub topic: String,
     pub query: String,
@@ -420,6 +427,7 @@ pub struct AuthoringKnowledgePackResult {
     pub retrieval_mode: String,
     pub chunks: Vec<RetrievedChunk>,
     pub token_estimate_total: usize,
+    pub comparable_page_headings: Vec<ComparablePageHeading>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

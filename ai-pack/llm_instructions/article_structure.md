@@ -60,7 +60,23 @@ For Remilia projects: use `parent_group = Remilia` instead of `creator` or `arti
 
 ## Body sections
 
-Adapt to your subject. Common patterns:
+### Using the section skeleton from article-start
+
+`wikitool knowledge article-start` returns a `section_skeleton` with headings observed across comparable pages. Each entry includes:
+
+- **`heading`** â€" the section title seen on comparables
+- **`required`** â€" `true` for Overview and References (always present)
+- **`content_backed`** â€" `true` if retrieved evidence chunks already cover this section; `false` means the section exists on comparables but no content was retrieved
+- **`supporting_pages`** â€" which comparable pages have this section
+
+**Use the skeleton as a starting point, not a contract:**
+
+1. **Drop** sections that don't apply to your subject. A section appearing on comparables doesn't mean it belongs on every article â€" apply editorial judgment.
+2. **Add** sections the skeleton missed if your evidence supports them. The skeleton reflects structural consensus among comparables; unique aspects of your subject won't appear.
+3. **Investigate** sections marked `content_backed: false` â€" these exist on comparables but weren't in the retrieved evidence. Use `wikitool knowledge inspect chunks "<Page>" --query "<heading>" --limit 4 --token-budget 400` to fetch targeted content before writing those sections.
+4. **Sparse skeletons are normal** when comparables are structurally diverse (e.g., an organization compared against artworks, events, and people). Fall back on the subject-type patterns below.
+
+### Common section patterns by subject type
 
 | Subject type | Typical sections |
 |---|---|
