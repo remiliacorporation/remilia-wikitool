@@ -74,7 +74,7 @@ pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
     if format == "json" {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        println!("lint");
+        println!("module lint");
         println!(
             "selene_path: {}",
             report.selene_path.as_deref().unwrap_or("<none>")

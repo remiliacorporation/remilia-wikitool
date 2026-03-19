@@ -21,6 +21,7 @@ These instructions are designed for Claude but work with any capable LLM. They t
 wikitool pull
 # ... write/edit articles following these guides ...
 wikitool diff
+wikitool status --conflicts --title "Article Title"
 wikitool push --dry-run --summary "Summary"
 wikitool push --summary "Summary"
 ```

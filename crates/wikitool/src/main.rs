@@ -18,6 +18,7 @@ mod inspect_cli;
 mod knowledge_cli;
 mod knowledge_inspect_cli;
 mod lsp_cli;
+mod module_cli;
 mod quality_cli;
 mod query_cli;
 mod release;
@@ -90,8 +91,8 @@ enum Commands {
     SearchExternal(query_cli::SearchExternalArgs),
     #[command(about = "Run structural and link integrity checks")]
     Validate,
-    #[command(about = "Check a page or all pages for style and structure issues")]
-    Lint(quality_cli::LintArgs),
+    #[command(about = "Run Lua module linting and related checks")]
+    Module(module_cli::ModuleArgs),
     #[command(about = "Fetch a remote URL as wikitext or rendered HTML")]
     Fetch(export_cli::FetchArgs),
     #[command(about = "Export a remote wiki page tree to local files")]
@@ -158,7 +159,7 @@ fn main() -> Result<()> {
         Some(Commands::Search(args)) => query_cli::run_search(&runtime, args),
         Some(Commands::SearchExternal(args)) => query_cli::run_search_external(&runtime, args),
         Some(Commands::Validate) => quality_cli::run_validate(&runtime),
-        Some(Commands::Lint(args)) => quality_cli::run_lint(&runtime, args),
+        Some(Commands::Module(args)) => module_cli::run_module(&runtime, args),
         Some(Commands::Fetch(args)) => export_cli::run_fetch(&runtime, args),
         Some(Commands::Export(args)) => export_cli::run_export(&runtime, args),
         Some(Commands::Delete(args)) => sync_cli::run_delete(&runtime, args),

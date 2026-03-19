@@ -331,6 +331,100 @@ pub struct ReferenceUsageSummary {
     pub example_references: Vec<ReferenceUsageExample>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct ReferenceAuditFilters {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authority: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identifier_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identifier: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReferenceAuditSummaryReport {
+    pub reference_count: usize,
+    pub distinct_page_count: usize,
+    pub distinct_domain_count: usize,
+    pub distinct_template_count: usize,
+    pub distinct_authority_count: usize,
+    pub distinct_identifier_key_count: usize,
+    pub distinct_identifier_entry_count: usize,
+    pub top_domains: Vec<String>,
+    pub top_templates: Vec<String>,
+    pub top_authorities: Vec<String>,
+    pub top_identifier_keys: Vec<String>,
+    pub top_identifier_entries: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReferenceListItem {
+    pub source_title: String,
+    pub source_relative_path: String,
+    pub section_heading: Option<String>,
+    pub reference_index: usize,
+    pub reference_name: Option<String>,
+    pub reference_group: Option<String>,
+    pub citation_profile: String,
+    pub citation_family: String,
+    pub primary_template_title: Option<String>,
+    pub source_type: String,
+    pub source_origin: String,
+    pub source_family: String,
+    pub authority_kind: String,
+    pub source_authority: String,
+    pub reference_title: String,
+    pub source_container: String,
+    pub source_author: String,
+    pub source_domain: String,
+    pub source_date: String,
+    pub canonical_url: String,
+    pub identifier_keys: Vec<String>,
+    pub identifier_entries: Vec<String>,
+    pub source_urls: Vec<String>,
+    pub retrieval_signals: Vec<String>,
+    pub summary_text: String,
+    pub reference_wikitext: String,
+    pub template_titles: Vec<String>,
+    pub link_titles: Vec<String>,
+    pub token_estimate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReferenceListReport {
+    pub reference_count: usize,
+    pub items: Vec<ReferenceListItem>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceDuplicateKind {
+    CanonicalUrl,
+    NormalizedIdentifier,
+    ExactReferenceWikitext,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReferenceDuplicateGroup {
+    pub kind: ReferenceDuplicateKind,
+    pub match_key: String,
+    pub reference_count: usize,
+    pub distinct_page_count: usize,
+    pub source_titles: Vec<String>,
+    pub items: Vec<ReferenceListItem>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReferenceDuplicatesReport {
+    pub duplicate_group_count: usize,
+    pub duplicated_reference_count: usize,
+    pub groups: Vec<ReferenceDuplicateGroup>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct MediaUsageExample {
     pub source_title: String,

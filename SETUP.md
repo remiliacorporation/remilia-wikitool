@@ -71,6 +71,7 @@ wikitool knowledge article-start "Remilia Corporation" --format json
 wikitool research search "Remilia Corporation" --format json
 wikitool templates show "Template:Cite web"
 wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
+wikitool knowledge inspect references duplicates --title "Remilia Corporation" --format json
 wikitool knowledge pack "Remilia Corporation" --format json
 ```
 
@@ -82,9 +83,10 @@ Command chooser:
 - `knowledge article-start` for the interpreted authoring brief
 - `research search` and `research fetch` for external source discovery and extraction
 - `article lint` and `article fix` for draft remediation
+- `module lint` for Lua/module quality checks
 - `knowledge pack` for advanced/raw context assembly
 - `wiki profile sync|show` and `templates ...` for wiki-aware authoring surfaces
-- `knowledge inspect ...` for low-level retrieval or graph inspection
+- `knowledge inspect ...` for low-level retrieval, graph inspection, and indexed reference audits
 - `context` and `search` for quick indexed lookups against local wiki content
 - `docs context` and `docs search` for pinned MediaWiki docs retrieval
 - `docs ...` for direct docs import/search/context workflows
@@ -114,9 +116,10 @@ Bot password setup:
 
 ```bash
 wikitool diff
+wikitool status --conflicts --title "Topic"
 wikitool validate
-wikitool push --dry-run --summary "Summary"
-wikitool push --summary "Summary"
+wikitool push --dry-run --title "Topic" --summary "Summary"
+wikitool push --title "Topic" --summary "Summary"
 ```
 
 Default authoring loop:
@@ -126,6 +129,8 @@ wikitool knowledge article-start "Topic" --docs-profile remilia-mw-1.44 --format
 wikitool research search "Topic" --format json
 wikitool research fetch "https://example.org/source" --output json
 wikitool article lint wiki_content/Main/Topic.wiki --format json
+wikitool knowledge inspect references summary --title "Topic" --format json
+wikitool status --modified --title "Topic" --format json
 wikitool validate
 ```
 
@@ -150,6 +155,7 @@ wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 wikitool knowledge article-start "Remilia Corporation" --docs-profile remilia-mw-1.44 --format json
 wikitool article lint wiki_content/Main/Remilia_Corporation.wiki --format json
+wikitool knowledge inspect references duplicates --title "Remilia Corporation" --format json
 ```
 
 If live installed-extension discovery is blocked or unconfigured, `remilia-mw-1.44` still imports the pinned core corpus and reports the discovery skip in the command output instead of aborting the whole import.

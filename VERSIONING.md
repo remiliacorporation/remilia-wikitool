@@ -92,6 +92,9 @@ Packaged / distributable:
    - `cargo run --package wikitool -- knowledge article-start "Example Topic" --docs-profile remilia-mw-1.44 --format json`
    - `cargo run --package wikitool -- research search "Example Topic" --format json`
    - `cargo run --package wikitool -- article lint wiki_content/Main/Example_Topic.wiki --format json`
+   - `cargo run --package wikitool -- knowledge inspect references duplicates --title "Example Topic" --format json`
+   - `cargo run --package wikitool -- status --conflicts --title "Example Topic"`
+   - `cargo run --package wikitool -- module lint --format text`
    - `cargo run --package wikitool -- docs generate-reference`
 6. Build release bundles:
    - `cargo run --package wikitool -- release build-matrix --targets <triple>`

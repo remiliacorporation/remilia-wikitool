@@ -12,6 +12,7 @@ Use normal reasoning and editorial judgment. Verify the live command surface aga
 Typical gate loop:
 - `wikitool article lint <path> --format json`
 - `wikitool article fix <path> --apply safe`
+- `wikitool knowledge inspect references duplicates --title "<Title>" --format json`
 - `wikitool validate`
 - `wikitool diff`
 - `wikitool push --dry-run --summary "..."`

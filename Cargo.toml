@@ -20,6 +20,7 @@ selene-lib = "0.30.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 serde_yaml = "0.9.34"
+similar = "2.7.0"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 sha2 = "0.10.9"
 walkdir = "2.5.0"

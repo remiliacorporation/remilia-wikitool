@@ -26,7 +26,7 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name"`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
 6. **Write the article** following the structure in `article_structure.md`.
 7. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
-8. **Run article-aware lint** â€” `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`.
+8. **Run article-aware lint** â€” `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`. For large reference cleanups, use `wikitool knowledge inspect references summary --title "{Article_Title}" --format json` and `wikitool knowledge inspect references duplicates --title "{Article_Title}" --format json`.
 9. **Validate** â€” run `wikitool validate` for the lower-level integrity checks before diff/push.
 
 Use `wikitool knowledge pack ... --format json` when you need the deeper raw retrieval bundle behind `article-start`.
@@ -39,7 +39,8 @@ Use `wikitool knowledge pack ... --format json` when you need the deeper raw ret
 4. Lint the draft: `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`
 5. Validate: `wikitool validate`
 6. Review: `wikitool diff`
-7. Push: `wikitool push --dry-run --summary "Summary"` then `wikitool push --summary "Summary"`
+7. Preflight conflicts: `wikitool push --dry-run --title "{Article_Title}" --summary "Summary"`
+8. Push: `wikitool push --title "{Article_Title}" --summary "Summary"`
 
 ### Article length
 

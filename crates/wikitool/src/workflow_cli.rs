@@ -124,6 +124,7 @@ fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs)
                 templates: false,
                 categories: false,
                 all: true,
+                format: "text".to_string(),
             },
         )?;
     } else {
@@ -191,6 +192,7 @@ fn run_workflow_full_refresh(
             templates: false,
             categories: false,
             all: true,
+            format: "text".to_string(),
         },
     )?;
 
@@ -215,6 +217,11 @@ fn run_workflow_full_refresh(
             modified: false,
             conflicts: false,
             templates: true,
+            categories: false,
+            titles: Vec::new(),
+            paths: Vec::new(),
+            titles_file: None,
+            format: "text".to_string(),
         },
     )?;
     Ok(())

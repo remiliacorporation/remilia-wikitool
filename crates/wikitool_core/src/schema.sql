@@ -20,6 +20,18 @@ CREATE TABLE IF NOT EXISTS sync_config (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_snapshots (
+    title TEXT PRIMARY KEY,
+    relative_path TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    content_text TEXT NOT NULL,
+    synced_at_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sync_snapshots_relative_path
+    ON sync_snapshots(relative_path);
+CREATE INDEX IF NOT EXISTS idx_sync_snapshots_lower_title
+    ON sync_snapshots(lower(title));
+
 CREATE TABLE IF NOT EXISTS indexed_pages (
     relative_path TEXT PRIMARY KEY,
     title TEXT NOT NULL,

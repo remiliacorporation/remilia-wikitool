@@ -25,7 +25,7 @@ Commands:
   search               Search indexed local page titles
   search-external      Search the remote wiki API without using the local index
   validate             Run structural and link integrity checks
-  lint                 Check a page or all pages for style and structure issues
+  module               Run Lua module linting and related checks
   fetch                Fetch a remote URL as wikitext or rendered HTML
   export               Export a remote wiki page tree to local files
   delete               Delete a page from the live wiki
@@ -94,6 +94,7 @@ Options:
       --templates            Pull templates instead of articles
       --categories           Pull Category: namespace pages
       --all                  Pull everything (articles, categories, and templates)
+      --format <FORMAT>      [default: text]
   -h, --help                 Print help
 ```
 
@@ -115,6 +116,10 @@ Options:
       --diagnostics          Print resolved runtime diagnostics
       --templates            Include template/module/mediawiki namespaces
       --categories           Limit push to Category namespace pages
+      --title <TITLE>        
+      --path <PATH>          
+      --titles-file <PATH>   Read one canonical page title per line
+      --format <FORMAT>      [default: text]
   -h, --help                 Print help
 ```
 
@@ -128,10 +133,16 @@ Usage: wikitool diff [OPTIONS]
 Options:
       --project-root <PATH>  
       --templates            Include template/module/mediawiki namespaces
+      --categories           Limit diff to Category namespace pages
       --data-dir <PATH>      
-      --verbose              Show hash-level details for modified entries
       --config <PATH>        
+      --verbose              Show hash-level details for modified entries
+      --content              Render unified textual diffs against the last synced baseline
       --diagnostics          Print resolved runtime diagnostics
+      --title <TITLE>        
+      --path <PATH>          
+      --titles-file <PATH>   Read one canonical page title per line
+      --format <FORMAT>      [default: text]
   -h, --help                 Print help
 ```
 
@@ -149,7 +160,12 @@ Options:
       --data-dir <PATH>      
       --config <PATH>        
       --templates            Include templates
+      --categories           Limit status to Category namespace pages
       --diagnostics          Print resolved runtime diagnostics
+      --title <TITLE>        
+      --path <PATH>          
+      --titles-file <PATH>   Read one canonical page title per line
+      --format <FORMAT>      [default: text]
   -h, --help                 Print help
 ```
 
@@ -164,6 +180,7 @@ Arguments:
   <TITLE>  
 
 Options:
+      --format <FORMAT>      [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
@@ -182,6 +199,7 @@ Arguments:
   <QUERY>  
 
 Options:
+      --format <FORMAT>      [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
@@ -225,12 +243,31 @@ Options:
   -h, --help                 Print help
 ```
 
-## lint
+## module
 
 ```text
-Check a page or all pages for style and structure issues
+Run Lua module linting and related checks
 
-Usage: wikitool lint [OPTIONS] [TITLE]
+Usage: wikitool module [OPTIONS] <COMMAND>
+
+Commands:
+  lint  Lint Lua modules
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## module lint
+
+```text
+Lint Lua modules
+
+Usage: wikitool module lint [OPTIONS] [TITLE]
 
 Arguments:
   [TITLE]  
@@ -864,6 +901,7 @@ Commands:
   chunks            Retrieve token-budgeted content chunks from indexed pages
   backlinks         Show indexed pages that link to a title
   templates         Inspect active template usage and implementation references
+  references        Audit indexed references for cleanup work
   orphans           Show indexed pages with no backlinks
   empty-categories  Show categories with no indexed members
   help              Print this message or the help of the given subcommand(s)
@@ -954,6 +992,99 @@ Options:
       --format <FORMAT>      Output format: text|json [default: text]
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
+```
+
+## knowledge inspect references
+
+```text
+Audit indexed references for cleanup work
+
+Usage: wikitool knowledge inspect references [OPTIONS] <COMMAND>
+
+Commands:
+  summary     Show aggregate reference audit counts
+  list        List individual indexed references
+  duplicates  Show strong duplicate reference groups
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge inspect references summary
+
+```text
+Show aggregate reference audit counts
+
+Usage: wikitool knowledge inspect references summary [OPTIONS]
+
+Options:
+      --project-root <PATH>              
+      --title <TITLE>                    
+      --data-dir <PATH>                  
+      --titles-file <PATH>               Read one canonical page title per line
+      --all                              Inspect all indexed pages
+      --config <PATH>                    
+      --diagnostics                      Print resolved runtime diagnostics
+      --domain <DOMAIN>                  
+      --template <TEMPLATE>              
+      --authority <AUTHORITY>            
+      --identifier-key <IDENTIFIER_KEY>  
+      --identifier <IDENTIFIER>          
+      --format <FORMAT>                  Output format: text|json [default: text]
+  -h, --help                             Print help
+```
+
+## knowledge inspect references list
+
+```text
+List individual indexed references
+
+Usage: wikitool knowledge inspect references list [OPTIONS]
+
+Options:
+      --project-root <PATH>              
+      --title <TITLE>                    
+      --data-dir <PATH>                  
+      --titles-file <PATH>               Read one canonical page title per line
+      --all                              Inspect all indexed pages
+      --config <PATH>                    
+      --diagnostics                      Print resolved runtime diagnostics
+      --domain <DOMAIN>                  
+      --template <TEMPLATE>              
+      --authority <AUTHORITY>            
+      --identifier-key <IDENTIFIER_KEY>  
+      --identifier <IDENTIFIER>          
+      --format <FORMAT>                  Output format: text|json [default: text]
+  -h, --help                             Print help
+```
+
+## knowledge inspect references duplicates
+
+```text
+Show strong duplicate reference groups
+
+Usage: wikitool knowledge inspect references duplicates [OPTIONS]
+
+Options:
+      --project-root <PATH>              
+      --title <TITLE>                    
+      --data-dir <PATH>                  
+      --titles-file <PATH>               Read one canonical page title per line
+      --all                              Inspect all indexed pages
+      --config <PATH>                    
+      --diagnostics                      Print resolved runtime diagnostics
+      --domain <DOMAIN>                  
+      --template <TEMPLATE>              
+      --authority <AUTHORITY>            
+      --identifier-key <IDENTIFIER_KEY>  
+      --identifier <IDENTIFIER>          
+      --format <FORMAT>                  Output format: text|json [default: text]
+  -h, --help                             Print help
 ```
 
 ## knowledge inspect orphans
@@ -1334,10 +1465,10 @@ Options:
 ```text
 Lint article wikitext against wiki/profile rules
 
-Usage: wikitool article lint [OPTIONS] <PATH>
+Usage: wikitool article lint [OPTIONS] [PATH]
 
 Arguments:
-  <PATH>  
+  [PATH]  
 
 Options:
       --profile <PROFILE>    [default: remilia]
@@ -1347,6 +1478,10 @@ Options:
       --config <PATH>        
       --strict               Treat warnings as errors
       --diagnostics          Print resolved runtime diagnostics
+      --title <TITLE>        
+      --path <PATH>          
+      --titles-file <PATH>   Read one canonical page title per line
+      --changed              Lint the current changed main-namespace article set
   -h, --help                 Print help
 ```
 
@@ -1355,10 +1490,10 @@ Options:
 ```text
 Apply safe mechanical fixes to article wikitext
 
-Usage: wikitool article fix [OPTIONS] <PATH>
+Usage: wikitool article fix [OPTIONS] [PATH]
 
 Arguments:
-  <PATH>  
+  [PATH]  
 
 Options:
       --profile <PROFILE>    [default: remilia]
@@ -1368,6 +1503,10 @@ Options:
       --config <PATH>        
       --format <FORMAT>      [default: text]
       --diagnostics          Print resolved runtime diagnostics
+      --title <TITLE>        
+      --path <PATH>          
+      --titles-file <PATH>   Read one canonical page title per line
+      --changed              Fix the current changed main-namespace article set
   -h, --help                 Print help
 ```
 

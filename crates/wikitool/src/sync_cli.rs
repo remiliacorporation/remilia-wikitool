@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
+use serde::Serialize;
 use wikitool_core::config::{WikiConfig, WikiConfigPatch, load_config, patch_wiki_config};
 use wikitool_core::delete::{DeleteOptions as LocalDeleteOptions, DeleteReport, delete_local_page};
 use wikitool_core::filesystem::{ScanOptions, scan_stats};
@@ -10,9 +11,10 @@ use wikitool_core::runtime::{
     InitOptions, ResolvedPaths, ensure_runtime_ready_for_sync, init_layout, inspect_runtime,
 };
 use wikitool_core::sync::{
-    DiffChangeType, DiffOptions, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE,
-    PullOptions, PushOptions, RemoteDeleteStatus, delete_remote_page_with_config,
-    diff_local_against_sync, discover_custom_namespaces, pull_from_remote_with_config,
+    DiffBaselineStatus, DiffChangeType, DiffOptions, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
+    NS_TEMPLATE, PullOptions, PushOptions, RemoteDeleteStatus, SyncPlanChange, SyncPlanOptions,
+    SyncPlanReport, SyncSelection, delete_remote_page_with_config, diff_local_against_sync,
+    discover_custom_namespaces, plan_sync_changes_with_config, pull_from_remote_with_config,
     push_to_remote_with_config,
 };
 
@@ -20,6 +22,7 @@ use crate::cli_support::{
     format_flag, normalize_path, print_scan_stats, resolve_runtime_paths,
     resolve_runtime_with_config,
 };
+use crate::query_cli::normalize_output;
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -48,6 +51,8 @@ pub(crate) struct PullArgs {
     pub(crate) categories: bool,
     #[arg(long, help = "Pull everything (articles, categories, and templates)")]
     pub(crate) all: bool,
+    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    pub(crate) format: String,
 }
 
 #[derive(Debug, Args)]
@@ -64,14 +69,45 @@ pub(crate) struct PushArgs {
     pub(crate) templates: bool,
     #[arg(long, help = "Limit push to Category namespace pages")]
     pub(crate) categories: bool,
+    #[arg(long = "title", value_name = "TITLE")]
+    pub(crate) titles: Vec<String>,
+    #[arg(long = "path", value_name = "PATH")]
+    pub(crate) paths: Vec<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Read one canonical page title per line"
+    )]
+    pub(crate) titles_file: Option<PathBuf>,
+    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    pub(crate) format: String,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct DiffArgs {
     #[arg(long, help = "Include template/module/mediawiki namespaces")]
     pub(crate) templates: bool,
+    #[arg(long, help = "Limit diff to Category namespace pages")]
+    pub(crate) categories: bool,
     #[arg(long, help = "Show hash-level details for modified entries")]
     pub(crate) verbose: bool,
+    #[arg(
+        long,
+        help = "Render unified textual diffs against the last synced baseline"
+    )]
+    pub(crate) content: bool,
+    #[arg(long = "title", value_name = "TITLE")]
+    pub(crate) titles: Vec<String>,
+    #[arg(long = "path", value_name = "PATH")]
+    pub(crate) paths: Vec<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Read one canonical page title per line"
+    )]
+    pub(crate) titles_file: Option<PathBuf>,
+    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    pub(crate) format: String,
 }
 
 #[derive(Debug, Args)]
@@ -82,6 +118,20 @@ pub(crate) struct StatusArgs {
     pub(crate) conflicts: bool,
     #[arg(long, help = "Include templates")]
     pub(crate) templates: bool,
+    #[arg(long, help = "Limit status to Category namespace pages")]
+    pub(crate) categories: bool,
+    #[arg(long = "title", value_name = "TITLE")]
+    pub(crate) titles: Vec<String>,
+    #[arg(long = "path", value_name = "PATH")]
+    pub(crate) paths: Vec<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Read one canonical page title per line"
+    )]
+    pub(crate) titles_file: Option<PathBuf>,
+    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    pub(crate) format: String,
 }
 
 #[derive(Debug, Args)]
@@ -99,6 +149,102 @@ pub(crate) struct DeleteArgs {
     pub(crate) backup_dir: Option<PathBuf>,
     #[arg(long, help = "Preview deletion without making changes")]
     pub(crate) dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct PullJsonReport<'a> {
+    project_root: String,
+    full: bool,
+    overwrite_local: bool,
+    category: Option<&'a str>,
+    templates: bool,
+    categories: bool,
+    all: bool,
+    namespaces: Vec<i32>,
+    report: &'a wikitool_core::sync::PullReport,
+}
+
+#[derive(Debug, Serialize)]
+struct PushJsonReport<'a> {
+    project_root: String,
+    summary: &'a str,
+    dry_run: bool,
+    force: bool,
+    delete: bool,
+    templates: bool,
+    categories: bool,
+    selection: &'a SyncSelection,
+    report: &'a wikitool_core::sync::PushReport,
+}
+
+#[derive(Debug, Serialize)]
+struct StatusJsonReport {
+    project_root: String,
+    filters: StatusJsonFilters,
+    sync_ledger_ready: bool,
+    plan: Option<SyncPlanReport>,
+    runtime: RuntimeStatusJson,
+    scan: wikitool_core::filesystem::ScanStats,
+}
+
+#[derive(Debug, Serialize)]
+struct StatusJsonFilters {
+    modified: bool,
+    conflicts: bool,
+    templates: bool,
+    categories: bool,
+    selection: SyncSelection,
+}
+
+#[derive(Debug, Serialize)]
+struct RuntimeStatusJson {
+    project_root_exists: bool,
+    wiki_content_exists: bool,
+    templates_exists: bool,
+    state_dir_exists: bool,
+    data_dir_exists: bool,
+    db_exists: bool,
+    db_size_bytes: Option<u64>,
+    config_exists: bool,
+    parser_config_exists: bool,
+    warnings: Vec<String>,
+}
+
+fn runtime_status_json(status: &wikitool_core::runtime::RuntimeStatus) -> RuntimeStatusJson {
+    RuntimeStatusJson {
+        project_root_exists: status.project_root_exists,
+        wiki_content_exists: status.wiki_content_exists,
+        templates_exists: status.templates_exists,
+        state_dir_exists: status.state_dir_exists,
+        data_dir_exists: status.data_dir_exists,
+        db_exists: status.db_exists,
+        db_size_bytes: status.db_size_bytes,
+        config_exists: status.config_exists,
+        parser_config_exists: status.parser_config_exists,
+        warnings: status.warnings.clone(),
+    }
+}
+
+fn load_sync_selection(
+    titles: &[String],
+    paths: &[String],
+    titles_file: Option<&PathBuf>,
+) -> Result<SyncSelection> {
+    let mut loaded_titles = titles.to_vec();
+    if let Some(titles_file) = titles_file {
+        let content = fs::read_to_string(titles_file)
+            .with_context(|| format!("failed to read {}", normalize_path(titles_file)))?;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                loaded_titles.push(trimmed.to_string());
+            }
+        }
+    }
+    Ok(SyncSelection {
+        titles: loaded_titles,
+        paths: paths.to_vec(),
+    })
 }
 
 pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
@@ -195,6 +341,7 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
 }
 
 pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
+    let format = normalize_output(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
@@ -210,6 +357,27 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
         },
         &config,
     )?;
+
+    if format == "json" {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&PullJsonReport {
+                project_root: normalize_path(&paths.project_root),
+                full: args.full,
+                overwrite_local: args.overwrite_local,
+                category: args.category.as_deref(),
+                templates: args.templates,
+                categories: args.categories,
+                all: args.all,
+                namespaces,
+                report: &report,
+            })?
+        );
+        if report.success {
+            return Ok(());
+        }
+        bail!("pull completed with {} error(s)", report.errors.len());
+    }
 
     println!("pull");
     println!("project_root: {}", normalize_path(&paths.project_root));
@@ -274,9 +442,11 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
 }
 
 pub(crate) fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
+    let format = normalize_output(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
+    let selection = load_sync_selection(&args.titles, &args.paths, args.titles_file.as_ref())?;
 
     let summary = args
         .summary
@@ -295,9 +465,37 @@ pub(crate) fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
             delete: args.delete,
             include_templates: args.templates,
             categories_only: args.categories,
+            selection: selection.clone(),
         },
         &config,
     )?;
+
+    if format == "json" {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&PushJsonReport {
+                project_root: normalize_path(&paths.project_root),
+                summary: &summary,
+                dry_run: args.dry_run,
+                force: args.force,
+                delete: args.delete,
+                templates: args.templates,
+                categories: args.categories,
+                selection: &selection,
+                report: &report,
+            })?
+        );
+        if report.success {
+            return Ok(());
+        }
+        if !report.conflicts.is_empty() && !args.force {
+            bail!(
+                "push blocked by {} conflict(s); rerun with --force after review",
+                report.conflicts.len()
+            );
+        }
+        bail!("push completed with {} error(s)", report.errors.len());
+    }
 
     println!("push");
     println!("project_root: {}", normalize_path(&paths.project_root));
@@ -307,6 +505,12 @@ pub(crate) fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
     println!("delete: {}", args.delete);
     println!("templates: {}", args.templates);
     println!("categories: {}", args.categories);
+    if !selection.titles.is_empty() {
+        println!("selection.titles: {}", selection.titles.join(" | "));
+    }
+    if !selection.paths.is_empty() {
+        println!("selection.paths: {}", selection.paths.join(" | "));
+    }
     println!("push.request_count: {}", report.request_count);
     println!("push.pushed: {}", report.pushed);
     println!("push.created: {}", report.created);
@@ -351,38 +555,76 @@ pub(crate) fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
 }
 
 pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
+    let format = normalize_output(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
-
-    println!("diff");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("templates: {}", args.templates);
-    println!("verbose: {}", args.verbose);
+    let selection = load_sync_selection(&args.titles, &args.paths, args.titles_file.as_ref())?;
 
     let report = match diff_local_against_sync(
         &paths,
         &DiffOptions {
             include_templates: args.templates,
+            categories_only: args.categories,
+            include_content: args.content,
+            selection: selection.clone(),
         },
     )? {
         Some(report) => report,
         None => {
-            println!(
-                "diff.sync_ledger: <not built> (run `wikitool pull --full{}`)",
-                if args.templates { " --templates" } else { "" }
-            );
-            println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-            if runtime.diagnostics {
-                println!("\n[diagnostics]\n{}", paths.diagnostics());
+            if format == "json" {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "project_root": normalize_path(&paths.project_root),
+                        "sync_ledger_ready": false,
+                        "templates": args.templates,
+                        "categories": args.categories,
+                        "content": args.content,
+                        "selection": selection,
+                    })
+                );
+            } else {
+                println!("diff");
+                println!("project_root: {}", normalize_path(&paths.project_root));
+                println!("templates: {}", args.templates);
+                println!("categories: {}", args.categories);
+                println!("content: {}", args.content);
+                println!(
+                    "diff.sync_ledger: <not built> (run `wikitool pull --full{}`)",
+                    if args.templates { " --templates" } else { "" }
+                );
+                println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+                if runtime.diagnostics {
+                    println!("\n[diagnostics]\n{}", paths.diagnostics());
+                }
             }
             return Ok(());
         }
     };
 
+    if format == "json" {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    println!("diff");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("templates: {}", args.templates);
+    println!("categories: {}", args.categories);
+    println!("verbose: {}", args.verbose);
+    println!("content: {}", args.content);
+    if !selection.titles.is_empty() {
+        println!("selection.titles: {}", selection.titles.join(" | "));
+    }
+    if !selection.paths.is_empty() {
+        println!("selection.paths: {}", selection.paths.join(" | "));
+    }
+
     println!("diff.new_local: {}", report.new_local);
     println!("diff.modified_local: {}", report.modified_local);
     println!("diff.deleted_local: {}", report.deleted_local);
+    println!("diff.conflicts.count: {}", report.conflict_count);
     println!("diff.total: {}", report.changes.len());
 
     if report.changes.is_empty() {
@@ -405,6 +647,18 @@ pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
                     "diff.change.synced_wiki_timestamp: {}",
                     change.synced_wiki_timestamp.as_deref().unwrap_or("<none>")
                 );
+                if args.content {
+                    println!(
+                        "diff.change.baseline_status: {}",
+                        format_baseline_status(change.baseline_status.as_ref())
+                    );
+                }
+            }
+            if args.content
+                && let Some(unified_diff) = &change.unified_diff
+            {
+                println!("diff.change.content:");
+                print!("{unified_diff}");
             }
         }
     }
@@ -417,8 +671,10 @@ pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
 }
 
 pub(crate) fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
+    let format = normalize_output(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
+    let selection = load_sync_selection(&args.titles, &args.paths, args.titles_file.as_ref())?;
     let custom_folders: Vec<String> = config
         .wiki
         .custom_namespaces
@@ -433,9 +689,78 @@ pub(crate) fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<(
             custom_content_folders: custom_folders,
         },
     )?;
+    let plan = plan_sync_changes_with_config(
+        &paths,
+        &SyncPlanOptions {
+            include_templates: args.templates,
+            categories_only: args.categories,
+            include_deletes: true,
+            include_remote_conflicts: args.conflicts,
+            selection: selection.clone(),
+        },
+        &config,
+    )?;
 
-    println!("runtime status");
+    if format == "json" {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&StatusJsonReport {
+                project_root: normalize_path(&paths.project_root),
+                filters: StatusJsonFilters {
+                    modified: args.modified,
+                    conflicts: args.conflicts,
+                    templates: args.templates,
+                    categories: args.categories,
+                    selection,
+                },
+                sync_ledger_ready: plan.is_some(),
+                plan,
+                runtime: runtime_status_json(&status),
+                scan,
+            })?
+        );
+        return Ok(());
+    }
+
+    println!("status");
     println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("filters.modified: {}", args.modified);
+    println!("filters.conflicts: {}", args.conflicts);
+    println!("filters.templates: {}", args.templates);
+    println!("filters.categories: {}", args.categories);
+    if !selection.titles.is_empty() {
+        println!("selection.titles: {}", selection.titles.join(" | "));
+    }
+    if !selection.paths.is_empty() {
+        println!("selection.paths: {}", selection.paths.join(" | "));
+    }
+
+    if let Some(plan) = &plan {
+        println!("status.new_local: {}", plan.new_local);
+        println!("status.modified_local: {}", plan.modified_local);
+        println!("status.deleted_local: {}", plan.deleted_local);
+        println!("status.total: {}", plan.changes.len());
+        println!("status.conflicts.checked: {}", args.conflicts);
+        println!("status.conflicts.count: {}", plan.conflict_count);
+
+        let display_changes = status_display_changes(plan, args.modified, args.conflicts);
+        if display_changes.is_empty() {
+            println!("status.changes: <none>");
+        } else {
+            for change in display_changes {
+                println!(
+                    "status.change: type={} title={} path={} conflict={}",
+                    format_diff_change_type(&change.change_type),
+                    change.title,
+                    change.relative_path,
+                    change.remote_conflict
+                );
+            }
+        }
+    } else {
+        println!("status.sync_ledger: <not built>");
+    }
+
     println!(
         "project_root_exists: {}",
         format_flag(status.project_root_exists)
@@ -460,9 +785,6 @@ pub(crate) fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<(
         "parser_config_exists: {}",
         format_flag(status.parser_config_exists)
     );
-    println!("filters.modified: {}", args.modified);
-    println!("filters.conflicts: {}", args.conflicts);
-    println!("filters.templates: {}", args.templates);
     print_scan_stats("scan", &scan);
     if !status.warnings.is_empty() {
         println!("warnings:");
@@ -599,10 +921,41 @@ fn print_delete_report(report: &DeleteReport) {
     );
 }
 
+fn format_baseline_status(value: Option<&DiffBaselineStatus>) -> &'static str {
+    match value {
+        Some(DiffBaselineStatus::Available) => "available",
+        Some(DiffBaselineStatus::MissingSnapshot) => "missing_snapshot",
+        Some(DiffBaselineStatus::NotApplicable) => "not_applicable",
+        None => "<none>",
+    }
+}
+
 fn format_diff_change_type(value: &DiffChangeType) -> &'static str {
     match value {
         DiffChangeType::NewLocal => "new_local",
         DiffChangeType::ModifiedLocal => "modified_local",
         DiffChangeType::DeletedLocal => "deleted_local",
     }
+}
+
+fn status_display_changes(
+    plan: &SyncPlanReport,
+    modified_only: bool,
+    conflicts_only: bool,
+) -> Vec<&SyncPlanChange> {
+    plan.changes
+        .iter()
+        .filter(|change| {
+            if conflicts_only && !change.remote_conflict {
+                return false;
+            }
+            if modified_only && conflicts_only {
+                return true;
+            }
+            if modified_only {
+                return true;
+            }
+            true
+        })
+        .collect()
 }

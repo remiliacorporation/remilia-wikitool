@@ -17,11 +17,15 @@ use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 #[derive(Debug, Args)]
 pub(crate) struct ContextArgs {
     title: String,
+    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    format: String,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct SearchArgs {
     query: String,
+    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    format: String,
 }
 
 #[derive(Debug, Args)]
@@ -37,16 +41,21 @@ pub(crate) struct SearchExternalArgs {
 
 pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
+    let format = normalize_output(&args.format)?;
     let title = normalize_title_query(&args.title);
     if title.is_empty() {
         bail!("context requires a non-empty title");
     }
 
-    println!("context");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("title: {title}");
     match build_local_context(&paths, &title)? {
         Some(bundle) => {
+            if format == "json" {
+                println!("{}", serde_json::to_string_pretty(&bundle)?);
+                return Ok(());
+            }
+            println!("context");
+            println!("project_root: {}", normalize_path(&paths.project_root));
+            println!("title: {title}");
             println!("context.backend: indexed");
             print_context_bundle("context", &bundle);
         }
@@ -66,16 +75,21 @@ pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result
 
 pub(crate) fn run_search(runtime: &RuntimeOptions, args: SearchArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
+    let format = normalize_output(&args.format)?;
     let query = normalize_title_query(&args.query);
     if query.is_empty() {
         bail!("search requires a non-empty query");
     }
 
-    println!("search");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("query: {query}");
     match query_search_local(&paths, &query, 20)? {
         Some(results) => {
+            if format == "json" {
+                println!("{}", serde_json::to_string_pretty(&results)?);
+                return Ok(());
+            }
+            println!("search");
+            println!("project_root: {}", normalize_path(&paths.project_root));
+            println!("query: {query}");
             println!("search.backend: indexed");
             print_search_hits("search", &results);
         }

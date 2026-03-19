@@ -120,10 +120,15 @@ wikitool templates show "Template:Infobox person"
 wikitool templates examples "Template:Infobox person" --limit 2
 wikitool wiki profile show --format json
 wikitool article lint wiki_content/Main/Title.wiki --format json
+wikitool article lint --changed --format json
+wikitool knowledge inspect references duplicates --title "Title" --format json
 wikitool knowledge pack "Topic" --format json
 wikitool search "Category:"
+wikitool status --modified --format json
+wikitool status --conflicts --title "Title"
 wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480
 wikitool knowledge inspect chunks --across-pages --query "topic" --max-pages 8 --limit 10 --token-budget 1200 --format json --diversify
+wikitool module lint --format json
 wikitool docs import-profile remilia-mw-1.44
 wikitool docs context "extension name" --profile remilia-mw-1.44 --format json
 wikitool fetch "https://www.mediawiki.org/wiki/Manual:Hooks"

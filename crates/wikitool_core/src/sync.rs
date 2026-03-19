@@ -6,8 +6,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, params};
 use serde::Serialize;
+use similar::TextDiff;
 
-use crate::filesystem::{NamespaceMapper, ScanOptions, scan_files, validate_scoped_path};
+use crate::filesystem::{
+    NamespaceMapper, ScanOptions, ScannedFile, scan_files, validate_scoped_path,
+};
 use crate::knowledge::content_index::{RebuildReport, rebuild_index};
 pub use crate::mw::{
     ExternalSearchHit, ExternalSearchReport, MediaWikiClient, MediaWikiClientConfig,
@@ -55,6 +58,7 @@ pub struct PushOptions {
     pub delete: bool,
     pub include_templates: bool,
     pub categories_only: bool,
+    pub selection: SyncSelection,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,6 +107,20 @@ pub enum DiffChangeType {
     DeletedLocal,
 }
 
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct SyncSelection {
+    pub titles: Vec<String>,
+    pub paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffBaselineStatus {
+    Available,
+    MissingSnapshot,
+    NotApplicable,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DiffChange {
     pub title: String,
@@ -111,6 +129,10 @@ pub struct DiffChange {
     pub local_hash: Option<String>,
     pub synced_hash: Option<String>,
     pub synced_wiki_timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub baseline_status: Option<DiffBaselineStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unified_diff: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,12 +140,47 @@ pub struct DiffReport {
     pub new_local: usize,
     pub modified_local: usize,
     pub deleted_local: usize,
+    pub conflict_count: usize,
     pub changes: Vec<DiffChange>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct DiffOptions {
     pub include_templates: bool,
+    pub categories_only: bool,
+    pub include_content: bool,
+    pub selection: SyncSelection,
+}
+
+#[derive(Debug, Clone)]
+pub struct SyncPlanOptions {
+    pub include_templates: bool,
+    pub categories_only: bool,
+    pub include_deletes: bool,
+    pub include_remote_conflicts: bool,
+    pub selection: SyncSelection,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncPlanChange {
+    pub title: String,
+    pub change_type: DiffChangeType,
+    pub relative_path: String,
+    pub local_hash: Option<String>,
+    pub synced_hash: Option<String>,
+    pub synced_wiki_timestamp: Option<String>,
+    pub remote_conflict: bool,
+    pub remote_wiki_timestamp: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncPlanReport {
+    pub new_local: usize,
+    pub modified_local: usize,
+    pub deleted_local: usize,
+    pub conflict_count: usize,
+    pub changes: Vec<SyncPlanChange>,
+    pub request_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -133,6 +190,41 @@ struct SyncLedgerEntry {
     relative_path: String,
     content_hash: String,
     wiki_modified_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SyncSnapshotEntry {
+    title: String,
+    relative_path: String,
+    content_text: String,
+}
+
+#[derive(Debug, Clone)]
+struct PlannedSyncChangeInternal {
+    title: String,
+    change_type: DiffChangeType,
+    relative_path: String,
+    local_hash: Option<String>,
+    synced_hash: Option<String>,
+    synced_wiki_timestamp: Option<String>,
+    remote_conflict: bool,
+    remote_wiki_timestamp: Option<String>,
+}
+
+#[derive(Debug)]
+struct SyncPlanningContext {
+    connection: Connection,
+    local_map: BTreeMap<String, ScannedFile>,
+    ledger: BTreeMap<String, SyncLedgerEntry>,
+    changes: Vec<PlannedSyncChangeInternal>,
+    request_count: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ResolvedSyncSelection {
+    title_keys: BTreeSet<String>,
+    exact_paths: BTreeSet<String>,
+    path_prefixes: Vec<String>,
 }
 
 pub fn pull_from_remote(paths: &ResolvedPaths, options: &PullOptions) -> Result<PullReport> {
@@ -215,12 +307,24 @@ pub fn push_to_remote_with_config(
     options: &PushOptions,
     config: &crate::config::WikiConfig,
 ) -> Result<PushReport> {
-    let username = env::var("WIKI_BOT_USER")
-        .map_err(|_| anyhow::anyhow!("WIKI_BOT_USER is required for push"))?;
-    let password = env::var("WIKI_BOT_PASS")
-        .map_err(|_| anyhow::anyhow!("WIKI_BOT_PASS is required for push"))?;
     let mut client = MediaWikiClient::from_config(config)?;
-    push_to_remote_with_api(paths, options, &mut client, Some((&username, &password)))
+    let credentials = if options.dry_run {
+        None
+    } else {
+        let username = env::var("WIKI_BOT_USER")
+            .map_err(|_| anyhow::anyhow!("WIKI_BOT_USER is required for push"))?;
+        let password = env::var("WIKI_BOT_PASS")
+            .map_err(|_| anyhow::anyhow!("WIKI_BOT_PASS is required for push"))?;
+        Some((username, password))
+    };
+    push_to_remote_with_api(
+        paths,
+        options,
+        &mut client,
+        credentials
+            .as_ref()
+            .map(|(user, pass)| (user.as_str(), pass.as_str())),
+    )
 }
 
 pub fn delete_remote_page(title: &str, reason: &str) -> Result<RemoteDeleteReport> {
@@ -293,10 +397,126 @@ pub fn discover_custom_namespaces(
     client.discover_custom_namespaces()
 }
 
+pub fn plan_sync_changes(
+    paths: &ResolvedPaths,
+    options: &SyncPlanOptions,
+) -> Result<Option<SyncPlanReport>> {
+    plan_sync_changes_with_config(paths, options, &crate::config::WikiConfig::default())
+}
+
+pub fn plan_sync_changes_with_config(
+    paths: &ResolvedPaths,
+    options: &SyncPlanOptions,
+    config: &crate::config::WikiConfig,
+) -> Result<Option<SyncPlanReport>> {
+    let Some(mut context) = collect_sync_planning_context(paths, options)? else {
+        return Ok(None);
+    };
+    if options.include_remote_conflicts {
+        let mut client = MediaWikiClient::from_config(config)?;
+        hydrate_remote_conflicts(&mut context, &mut client)?;
+    }
+    Ok(Some(build_sync_plan_report(&context)))
+}
+
+pub fn collect_changed_article_paths(
+    paths: &ResolvedPaths,
+    selection: &SyncSelection,
+    include_selected_redirects: bool,
+) -> Result<Option<Vec<String>>> {
+    let Some(context) = collect_sync_planning_context(
+        paths,
+        &SyncPlanOptions {
+            include_templates: false,
+            categories_only: false,
+            include_deletes: false,
+            include_remote_conflicts: false,
+            selection: selection.clone(),
+        },
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let selection_active = !selection.titles.is_empty() || !selection.paths.is_empty();
+    let mut out = Vec::new();
+    for change in &context.changes {
+        let key = normalized_title_key(&change.title);
+        let Some(file) = context.local_map.get(&key) else {
+            continue;
+        };
+        if file.namespace != "Main" {
+            continue;
+        }
+        if file.is_redirect && !(include_selected_redirects && selection_active) {
+            continue;
+        }
+        out.push(file.relative_path.clone());
+    }
+    out.sort();
+    out.dedup();
+    Ok(Some(out))
+}
+
 pub fn diff_local_against_sync(
     paths: &ResolvedPaths,
     options: &DiffOptions,
 ) -> Result<Option<DiffReport>> {
+    let Some(context) = collect_sync_planning_context(
+        paths,
+        &SyncPlanOptions {
+            include_templates: options.include_templates,
+            categories_only: options.categories_only,
+            include_deletes: true,
+            include_remote_conflicts: false,
+            selection: options.selection.clone(),
+        },
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let snapshots = if options.include_content {
+        load_sync_snapshot_map(&context.connection)?
+    } else {
+        BTreeMap::new()
+    };
+
+    let changes = context
+        .changes
+        .iter()
+        .map(|change| {
+            let (baseline_status, unified_diff) = if options.include_content {
+                build_content_diff(paths, &snapshots, change)?
+            } else {
+                (None, None)
+            };
+            Ok(DiffChange {
+                title: change.title.clone(),
+                change_type: change.change_type.clone(),
+                relative_path: change.relative_path.clone(),
+                local_hash: change.local_hash.clone(),
+                synced_hash: change.synced_hash.clone(),
+                synced_wiki_timestamp: change.synced_wiki_timestamp.clone(),
+                baseline_status,
+                unified_diff,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(Some(DiffReport {
+        new_local: count_changes(&context.changes, DiffChangeType::NewLocal),
+        modified_local: count_changes(&context.changes, DiffChangeType::ModifiedLocal),
+        deleted_local: count_changes(&context.changes, DiffChangeType::DeletedLocal),
+        conflict_count: 0,
+        changes,
+    }))
+}
+
+fn collect_sync_planning_context(
+    paths: &ResolvedPaths,
+    options: &SyncPlanOptions,
+) -> Result<Option<SyncPlanningContext>> {
     if !paths.db_path.exists() {
         return Ok(None);
     }
@@ -305,6 +525,7 @@ pub fn diff_local_against_sync(
         return Ok(None);
     }
 
+    let selection = resolve_sync_selection(paths, &options.selection)?;
     let local_files = scan_files(
         paths,
         &ScanOptions {
@@ -313,47 +534,73 @@ pub fn diff_local_against_sync(
             ..ScanOptions::default()
         },
     )?;
-    let ledger = load_sync_ledger_map(&connection, options.include_templates)?;
 
     let mut local_map = BTreeMap::new();
     for file in local_files {
+        if options.categories_only && namespace_name_to_id(&file.namespace) != Some(NS_CATEGORY) {
+            continue;
+        }
+        if !selection.matches(&file.title, &file.relative_path) {
+            continue;
+        }
         local_map.insert(normalized_title_key(&file.title), file);
     }
+
+    let ledger = load_sync_ledger_map(&connection, options.include_templates)?
+        .into_iter()
+        .filter(|(_, entry)| {
+            (!options.categories_only || entry.namespace == NS_CATEGORY)
+                && selection.matches(&entry.title, &entry.relative_path)
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    backfill_sync_snapshots_from_local(&connection, paths, &local_map, &ledger)?;
 
     let mut changes = Vec::new();
     for file in local_map.values() {
         let key = normalized_title_key(&file.title);
         match ledger.get(&key) {
-            None => changes.push(DiffChange {
+            None => changes.push(PlannedSyncChangeInternal {
                 title: file.title.clone(),
                 change_type: DiffChangeType::NewLocal,
                 relative_path: file.relative_path.clone(),
                 local_hash: Some(file.content_hash.clone()),
                 synced_hash: None,
                 synced_wiki_timestamp: None,
+                remote_conflict: false,
+                remote_wiki_timestamp: None,
             }),
-            Some(entry) if entry.content_hash != file.content_hash => changes.push(DiffChange {
-                title: file.title.clone(),
-                change_type: DiffChangeType::ModifiedLocal,
-                relative_path: file.relative_path.clone(),
-                local_hash: Some(file.content_hash.clone()),
-                synced_hash: Some(entry.content_hash.clone()),
-                synced_wiki_timestamp: entry.wiki_modified_at.clone(),
-            }),
+            Some(entry) if entry.content_hash != file.content_hash => {
+                changes.push(PlannedSyncChangeInternal {
+                    title: file.title.clone(),
+                    change_type: DiffChangeType::ModifiedLocal,
+                    relative_path: file.relative_path.clone(),
+                    local_hash: Some(file.content_hash.clone()),
+                    synced_hash: Some(entry.content_hash.clone()),
+                    synced_wiki_timestamp: entry.wiki_modified_at.clone(),
+                    remote_conflict: false,
+                    remote_wiki_timestamp: None,
+                });
+            }
             Some(_) => {}
         }
     }
 
-    for entry in ledger.values() {
-        let key = normalized_title_key(&entry.title);
-        if !local_map.contains_key(&key) {
-            changes.push(DiffChange {
+    if options.include_deletes {
+        for entry in ledger.values() {
+            let key = normalized_title_key(&entry.title);
+            if local_map.contains_key(&key) {
+                continue;
+            }
+            changes.push(PlannedSyncChangeInternal {
                 title: entry.title.clone(),
                 change_type: DiffChangeType::DeletedLocal,
                 relative_path: entry.relative_path.clone(),
                 local_hash: None,
                 synced_hash: Some(entry.content_hash.clone()),
                 synced_wiki_timestamp: entry.wiki_modified_at.clone(),
+                remote_conflict: false,
+                remote_wiki_timestamp: None,
             });
         }
     }
@@ -364,25 +611,235 @@ pub fn diff_local_against_sync(
             .then(left.title.cmp(&right.title))
     });
 
-    let new_local = changes
-        .iter()
-        .filter(|item| item.change_type == DiffChangeType::NewLocal)
-        .count();
-    let modified_local = changes
-        .iter()
-        .filter(|item| item.change_type == DiffChangeType::ModifiedLocal)
-        .count();
-    let deleted_local = changes
-        .iter()
-        .filter(|item| item.change_type == DiffChangeType::DeletedLocal)
-        .count();
-
-    Ok(Some(DiffReport {
-        new_local,
-        modified_local,
-        deleted_local,
+    Ok(Some(SyncPlanningContext {
+        connection,
+        local_map,
+        ledger,
         changes,
+        request_count: 0,
     }))
+}
+
+fn build_sync_plan_report(context: &SyncPlanningContext) -> SyncPlanReport {
+    SyncPlanReport {
+        new_local: count_changes(&context.changes, DiffChangeType::NewLocal),
+        modified_local: count_changes(&context.changes, DiffChangeType::ModifiedLocal),
+        deleted_local: count_changes(&context.changes, DiffChangeType::DeletedLocal),
+        conflict_count: context
+            .changes
+            .iter()
+            .filter(|change| change.remote_conflict)
+            .count(),
+        changes: context
+            .changes
+            .iter()
+            .map(|change| SyncPlanChange {
+                title: change.title.clone(),
+                change_type: change.change_type.clone(),
+                relative_path: change.relative_path.clone(),
+                local_hash: change.local_hash.clone(),
+                synced_hash: change.synced_hash.clone(),
+                synced_wiki_timestamp: change.synced_wiki_timestamp.clone(),
+                remote_conflict: change.remote_conflict,
+                remote_wiki_timestamp: change.remote_wiki_timestamp.clone(),
+            })
+            .collect(),
+        request_count: context.request_count,
+    }
+}
+
+fn hydrate_remote_conflicts<A: WikiWriteApi>(
+    context: &mut SyncPlanningContext,
+    api: &mut A,
+) -> Result<()> {
+    if context.changes.is_empty() {
+        context.request_count = api.request_count();
+        return Ok(());
+    }
+
+    let titles = context
+        .changes
+        .iter()
+        .map(|change| change.title.clone())
+        .collect::<Vec<_>>();
+    let remote_timestamps = api
+        .get_page_timestamps(&titles)?
+        .into_iter()
+        .map(|item| (normalized_title_key(&item.title), item))
+        .collect::<BTreeMap<_, _>>();
+
+    for change in &mut context.changes {
+        change.remote_conflict = push_has_conflict(
+            &change.title,
+            &change.change_type,
+            &context.ledger,
+            &remote_timestamps,
+        );
+        change.remote_wiki_timestamp = remote_timestamps
+            .get(&normalized_title_key(&change.title))
+            .map(|item| item.timestamp.clone());
+    }
+    context.request_count = api.request_count();
+    Ok(())
+}
+
+fn count_changes(changes: &[PlannedSyncChangeInternal], change_type: DiffChangeType) -> usize {
+    changes
+        .iter()
+        .filter(|item| item.change_type == change_type)
+        .count()
+}
+
+impl ResolvedSyncSelection {
+    fn active(&self) -> bool {
+        !(self.title_keys.is_empty()
+            && self.exact_paths.is_empty()
+            && self.path_prefixes.is_empty())
+    }
+
+    fn matches(&self, title: &str, relative_path: &str) -> bool {
+        if !self.active() {
+            return true;
+        }
+        let normalized_relative = normalize_path(relative_path);
+        self.title_keys.contains(&normalized_title_key(title))
+            || self.exact_paths.contains(&normalized_relative)
+            || self.path_prefixes.iter().any(|prefix| {
+                normalized_relative == *prefix
+                    || normalized_relative.starts_with(&format!("{prefix}/"))
+            })
+    }
+}
+
+fn resolve_sync_selection(
+    paths: &ResolvedPaths,
+    selection: &SyncSelection,
+) -> Result<ResolvedSyncSelection> {
+    let mut resolved = ResolvedSyncSelection::default();
+    for title in &selection.titles {
+        let normalized = normalize_title_for_storage(title);
+        if !normalized.is_empty() {
+            resolved.title_keys.insert(normalized.to_ascii_lowercase());
+        }
+    }
+    for path in &selection.paths {
+        let Some((relative_path, is_prefix)) = normalize_sync_selection_path(paths, path)? else {
+            continue;
+        };
+        if is_prefix {
+            resolved.path_prefixes.push(relative_path);
+        } else {
+            resolved.exact_paths.insert(relative_path);
+        }
+    }
+    resolved.path_prefixes.sort();
+    resolved.path_prefixes.dedup();
+    Ok(resolved)
+}
+
+fn normalize_sync_selection_path(
+    paths: &ResolvedPaths,
+    raw: &str,
+) -> Result<Option<(String, bool)>> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let raw_path = PathBuf::from(trimmed);
+    let raw_is_relative = raw_path.is_relative();
+    let candidate = if raw_path.is_absolute() {
+        raw_path.clone()
+    } else {
+        paths.project_root.join(&raw_path)
+    };
+    validate_scoped_path(paths, &candidate)?;
+
+    let normalized_candidate = normalize_path(&candidate);
+    let normalized_root = normalize_path(&paths.project_root);
+    let relative = normalized_candidate
+        .strip_prefix(&format!("{normalized_root}/"))
+        .map(ToString::to_string)
+        .or_else(|| {
+            if raw_is_relative {
+                Some(normalize_path(trimmed))
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| anyhow::anyhow!("selected path is outside the project root: {trimmed}"))?;
+
+    if !relative.starts_with("wiki_content/") && !relative.starts_with("templates/") {
+        bail!("selected path must be under wiki_content/ or templates/: {trimmed}");
+    }
+
+    let is_prefix = candidate.is_dir() || trimmed.ends_with('/') || trimmed.ends_with('\\');
+    let normalized_relative = relative.trim_end_matches('/').to_string();
+    Ok(Some((normalized_relative, is_prefix)))
+}
+
+fn build_content_diff(
+    paths: &ResolvedPaths,
+    snapshots: &BTreeMap<String, SyncSnapshotEntry>,
+    change: &PlannedSyncChangeInternal,
+) -> Result<(Option<DiffBaselineStatus>, Option<String>)> {
+    let key = normalized_title_key(&change.title);
+    let snapshot = snapshots.get(&key);
+    match change.change_type {
+        DiffChangeType::NewLocal => {
+            let absolute = absolute_path_from_relative(paths, &change.relative_path);
+            let local_content = fs::read_to_string(&absolute)
+                .with_context(|| format!("failed to read {}", absolute.display()))?;
+            Ok((
+                Some(DiffBaselineStatus::NotApplicable),
+                Some(render_unified_diff(
+                    &format!("a/{}", change.relative_path),
+                    &format!("b/{}", change.relative_path),
+                    "",
+                    &local_content,
+                )),
+            ))
+        }
+        DiffChangeType::ModifiedLocal => {
+            let Some(snapshot) = snapshot else {
+                return Ok((Some(DiffBaselineStatus::MissingSnapshot), None));
+            };
+            let absolute = absolute_path_from_relative(paths, &change.relative_path);
+            let local_content = fs::read_to_string(&absolute)
+                .with_context(|| format!("failed to read {}", absolute.display()))?;
+            Ok((
+                Some(DiffBaselineStatus::Available),
+                Some(render_unified_diff(
+                    &format!("a/{}", snapshot.relative_path),
+                    &format!("b/{}", change.relative_path),
+                    &snapshot.content_text,
+                    &local_content,
+                )),
+            ))
+        }
+        DiffChangeType::DeletedLocal => {
+            let Some(snapshot) = snapshot else {
+                return Ok((Some(DiffBaselineStatus::MissingSnapshot), None));
+            };
+            Ok((
+                Some(DiffBaselineStatus::Available),
+                Some(render_unified_diff(
+                    &format!("a/{}", snapshot.relative_path),
+                    &format!("b/{}", change.relative_path),
+                    &snapshot.content_text,
+                    "",
+                )),
+            ))
+        }
+    }
+}
+
+fn render_unified_diff(old_label: &str, new_label: &str, old_text: &str, new_text: &str) -> String {
+    TextDiff::from_lines(old_text, new_text)
+        .unified_diff()
+        .context_radius(3)
+        .header(old_label, new_label)
+        .to_string()
 }
 
 fn push_to_remote_with_api<A: WikiWriteApi>(
@@ -395,8 +852,33 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
         bail!("push requires a non-empty summary");
     }
 
-    let connection = open_sync_connection(paths)?;
-    initialize_sync_schema(&connection)?;
+    let Some(mut context) = collect_sync_planning_context(
+        paths,
+        &SyncPlanOptions {
+            include_templates: options.include_templates,
+            categories_only: options.categories_only,
+            include_deletes: options.delete,
+            include_remote_conflicts: true,
+            selection: options.selection.clone(),
+        },
+    )?
+    else {
+        return Ok(PushReport {
+            success: true,
+            dry_run: options.dry_run,
+            pushed: 0,
+            created: 0,
+            updated: 0,
+            deleted: 0,
+            unchanged: 0,
+            conflicts: Vec::new(),
+            errors: Vec::new(),
+            pages: Vec::new(),
+            request_count: 0,
+        });
+    };
+
+    hydrate_remote_conflicts(&mut context, api)?;
 
     let mut report = PushReport {
         success: true,
@@ -409,77 +891,32 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
         conflicts: Vec::new(),
         errors: Vec::new(),
         pages: Vec::new(),
-        request_count: 0,
+        request_count: context.request_count,
     };
 
-    let local_files = scan_files(
-        paths,
-        &ScanOptions {
-            include_content: true,
-            include_templates: options.include_templates,
-            ..ScanOptions::default()
-        },
-    )?;
-    let mut local_map = BTreeMap::new();
-    for file in local_files {
-        if options.categories_only && namespace_name_to_id(&file.namespace) != Some(NS_CATEGORY) {
-            continue;
-        }
-        local_map.insert(normalized_title_key(&file.title), file);
-    }
-
-    let ledger = load_sync_ledger_map(&connection, options.include_templates)?;
-    let mut candidates: Vec<(String, DiffChangeType)> = Vec::new();
-    for file in local_map.values() {
-        let key = normalized_title_key(&file.title);
-        match ledger.get(&key) {
-            None => candidates.push((file.title.clone(), DiffChangeType::NewLocal)),
-            Some(entry) if entry.content_hash != file.content_hash => {
-                candidates.push((file.title.clone(), DiffChangeType::ModifiedLocal));
-            }
-            Some(_) => {}
-        }
-    }
-    if options.delete {
-        for entry in ledger.values() {
-            if options.categories_only && entry.namespace != NS_CATEGORY {
-                continue;
-            }
-            let key = normalized_title_key(&entry.title);
-            if !local_map.contains_key(&key) {
-                candidates.push((entry.title.clone(), DiffChangeType::DeletedLocal));
-            }
-        }
-    }
-
-    candidates.sort_by(|left, right| {
-        change_order(&left.1)
-            .cmp(&change_order(&right.1))
-            .then(left.0.cmp(&right.0))
-    });
-    candidates.dedup_by(|left, right| {
-        normalized_title_key(&left.0) == normalized_title_key(&right.0) && left.1 == right.1
-    });
-
-    if candidates.is_empty() {
-        report.request_count = api.request_count();
+    if context.changes.is_empty() {
         return Ok(report);
     }
 
     if options.dry_run {
-        for (title, change_type) in candidates {
-            let action = match change_type {
-                DiffChangeType::NewLocal => "would_create",
-                DiffChangeType::ModifiedLocal => "would_update",
-                DiffChangeType::DeletedLocal => "would_delete",
-            };
+        for change in &context.changes {
+            if change.remote_conflict && !options.force {
+                report.conflicts.push(change.title.clone());
+                report.pages.push(PushPageResult {
+                    title: change.title.clone(),
+                    action: "conflict".to_string(),
+                    detail: Some("remote page changed since last sync".to_string()),
+                });
+                continue;
+            }
+
             report.pages.push(PushPageResult {
-                title,
-                action: action.to_string(),
+                title: change.title.clone(),
+                action: push_dry_run_action(&change.change_type).to_string(),
                 detail: None,
             });
         }
-        report.request_count = api.request_count();
+        report.success = report.errors.is_empty() && report.conflicts.is_empty();
         return Ok(report);
     }
 
@@ -487,36 +924,28 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
         .ok_or_else(|| anyhow::anyhow!("push credentials are required for write mode"))?;
     api.login(username, password)?;
 
-    let titles = candidates
-        .iter()
-        .map(|(title, _)| title.clone())
-        .collect::<Vec<_>>();
-    let remote_timestamps = api
-        .get_page_timestamps(&titles)?
-        .into_iter()
-        .map(|item| (normalized_title_key(&item.title), item))
-        .collect::<BTreeMap<_, _>>();
-
-    for (title, change_type) in candidates {
-        let key = normalized_title_key(&title);
-        if !options.force && push_has_conflict(&title, &change_type, &ledger, &remote_timestamps) {
-            report.conflicts.push(title.clone());
+    for change in &context.changes {
+        if change.remote_conflict && !options.force {
+            report.conflicts.push(change.title.clone());
             report.pages.push(PushPageResult {
-                title,
+                title: change.title.clone(),
                 action: "conflict".to_string(),
                 detail: Some("remote page changed since last sync".to_string()),
             });
             continue;
         }
 
-        match change_type {
+        let key = normalized_title_key(&change.title);
+        match change.change_type {
             DiffChangeType::NewLocal | DiffChangeType::ModifiedLocal => {
-                let file = match local_map.get(&key) {
+                let file = match context.local_map.get(&key) {
                     Some(file) => file,
                     None => {
-                        report.errors.push(format!("{title}: local file missing"));
+                        report
+                            .errors
+                            .push(format!("{}: local file missing", change.title));
                         report.pages.push(PushPageResult {
-                            title,
+                            title: change.title.clone(),
                             action: "error".to_string(),
                             detail: Some("local file missing".to_string()),
                         });
@@ -527,9 +956,9 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
                 let content = match fs::read_to_string(&absolute) {
                     Ok(content) => content,
                     Err(error) => {
-                        report.errors.push(format!("{title}: {error}"));
+                        report.errors.push(format!("{}: {error}", change.title));
                         report.pages.push(PushPageResult {
-                            title,
+                            title: change.title.clone(),
                             action: "error".to_string(),
                             detail: Some("failed to read local content".to_string()),
                         });
@@ -541,16 +970,15 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
                     Ok(remote_page) => {
                         let (is_redirect, redirect_target) = parse_redirect(&remote_page.content);
                         let content_hash = compute_hash(&remote_page.content);
-                        let relative_path = file.relative_path.clone();
                         if let Err(error) = upsert_sync_ledger(
-                            &connection,
+                            &context.connection,
                             &remote_page,
-                            &relative_path,
+                            &file.relative_path,
                             &content_hash,
                             is_redirect,
                             redirect_target.as_deref(),
                         ) {
-                            report.errors.push(format!("{}: {}", file.title, error));
+                            report.errors.push(format!("{}: {error}", file.title));
                             report.pages.push(PushPageResult {
                                 title: file.title.clone(),
                                 action: "error".to_string(),
@@ -558,8 +986,24 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
                             });
                             continue;
                         }
+                        if let Err(error) = upsert_sync_snapshot(
+                            &context.connection,
+                            &remote_page.title,
+                            &file.relative_path,
+                            &content_hash,
+                            &remote_page.content,
+                        ) {
+                            report.errors.push(format!("{}: {error}", file.title));
+                            report.pages.push(PushPageResult {
+                                title: file.title.clone(),
+                                action: "error".to_string(),
+                                detail: Some("failed to update sync snapshot".to_string()),
+                            });
+                            continue;
+                        }
+
                         report.pushed += 1;
-                        match change_type {
+                        match change.change_type {
                             DiffChangeType::NewLocal => {
                                 report.created += 1;
                                 report.pages.push(PushPageResult {
@@ -580,7 +1024,7 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
                         }
                     }
                     Err(error) => {
-                        report.errors.push(format!("{}: {}", file.title, error));
+                        report.errors.push(format!("{}: {error}", file.title));
                         report.pages.push(PushPageResult {
                             title: file.title.clone(),
                             action: "error".to_string(),
@@ -589,39 +1033,47 @@ fn push_to_remote_with_api<A: WikiWriteApi>(
                     }
                 }
             }
-            DiffChangeType::DeletedLocal => {
-                match api.delete_page(
-                    &title,
-                    &format!("wikitool push delete: {}", options.summary),
-                ) {
-                    Ok(()) => {
-                        if let Err(error) = remove_sync_ledger_entry(&connection, &title) {
-                            report.errors.push(format!("{title}: {error}"));
-                            report.pages.push(PushPageResult {
-                                title: title.clone(),
-                                action: "error".to_string(),
-                                detail: Some("failed to update sync ledger".to_string()),
-                            });
-                            continue;
-                        }
-                        report.pushed += 1;
-                        report.deleted += 1;
+            DiffChangeType::DeletedLocal => match api.delete_page(
+                &change.title,
+                &format!("wikitool push delete: {}", options.summary),
+            ) {
+                Ok(()) => {
+                    if let Err(error) = remove_sync_ledger_entry(&context.connection, &change.title)
+                    {
+                        report.errors.push(format!("{}: {error}", change.title));
                         report.pages.push(PushPageResult {
-                            title,
-                            action: "deleted".to_string(),
-                            detail: None,
-                        });
-                    }
-                    Err(error) => {
-                        report.errors.push(format!("{title}: {error}"));
-                        report.pages.push(PushPageResult {
-                            title,
+                            title: change.title.clone(),
                             action: "error".to_string(),
-                            detail: Some("delete failed".to_string()),
+                            detail: Some("failed to update sync ledger".to_string()),
                         });
+                        continue;
                     }
+                    if let Err(error) = remove_sync_snapshot(&context.connection, &change.title) {
+                        report.errors.push(format!("{}: {error}", change.title));
+                        report.pages.push(PushPageResult {
+                            title: change.title.clone(),
+                            action: "error".to_string(),
+                            detail: Some("failed to update sync snapshot".to_string()),
+                        });
+                        continue;
+                    }
+                    report.pushed += 1;
+                    report.deleted += 1;
+                    report.pages.push(PushPageResult {
+                        title: change.title.clone(),
+                        action: "deleted".to_string(),
+                        detail: None,
+                    });
                 }
-            }
+                Err(error) => {
+                    report.errors.push(format!("{}: {error}", change.title));
+                    report.pages.push(PushPageResult {
+                        title: change.title.clone(),
+                        action: "error".to_string(),
+                        detail: Some("delete failed".to_string()),
+                    });
+                }
+            },
         }
     }
 
@@ -724,6 +1176,13 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
                 is_redirect,
                 redirect_target.as_deref(),
             )?;
+            upsert_sync_snapshot(
+                &connection,
+                &page.title,
+                &relative_path,
+                &remote_hash,
+                &page.content,
+            )?;
             ledger_by_title.insert(
                 key.clone(),
                 SyncLedgerEntry {
@@ -767,6 +1226,13 @@ fn pull_from_remote_with_api<A: WikiReadApi>(
             &remote_hash,
             is_redirect,
             redirect_target.as_deref(),
+        )?;
+        upsert_sync_snapshot(
+            &connection,
+            &page.title,
+            &relative_path,
+            &remote_hash,
+            &page.content,
         )?;
         ledger_by_title.insert(
             key.clone(),
@@ -973,6 +1439,112 @@ fn remove_sync_ledger_entry(connection: &Connection, title: &str) -> Result<()> 
             [title],
         )
         .with_context(|| format!("failed to delete sync ledger row for {title}"))?;
+    Ok(())
+}
+
+fn push_dry_run_action(change_type: &DiffChangeType) -> &'static str {
+    match change_type {
+        DiffChangeType::NewLocal => "would_create",
+        DiffChangeType::ModifiedLocal => "would_update",
+        DiffChangeType::DeletedLocal => "would_delete",
+    }
+}
+
+fn load_sync_snapshot_map(connection: &Connection) -> Result<BTreeMap<String, SyncSnapshotEntry>> {
+    if !table_exists(connection, "sync_snapshots")? {
+        return Ok(BTreeMap::new());
+    }
+    let mut statement = connection
+        .prepare(
+            "SELECT title, relative_path, content_text
+             FROM sync_snapshots",
+        )
+        .context("failed to prepare sync snapshot query")?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(SyncSnapshotEntry {
+                title: row.get(0)?,
+                relative_path: row.get(1)?,
+                content_text: row.get(2)?,
+            })
+        })
+        .context("failed to run sync snapshot query")?;
+
+    let mut out = BTreeMap::new();
+    for row in rows {
+        let row = row.context("failed to decode sync snapshot row")?;
+        out.insert(normalized_title_key(&row.title), row);
+    }
+    Ok(out)
+}
+
+fn backfill_sync_snapshots_from_local(
+    connection: &Connection,
+    paths: &ResolvedPaths,
+    local_map: &BTreeMap<String, ScannedFile>,
+    ledger: &BTreeMap<String, SyncLedgerEntry>,
+) -> Result<()> {
+    let snapshots = load_sync_snapshot_map(connection)?;
+    for (key, file) in local_map {
+        let Some(entry) = ledger.get(key) else {
+            continue;
+        };
+        if file.content_hash != entry.content_hash || snapshots.contains_key(key) {
+            continue;
+        }
+        let absolute = absolute_path_from_relative(paths, &file.relative_path);
+        let content = fs::read_to_string(&absolute)
+            .with_context(|| format!("failed to read {}", absolute.display()))?;
+        upsert_sync_snapshot(
+            connection,
+            &file.title,
+            &file.relative_path,
+            &file.content_hash,
+            &content,
+        )?;
+    }
+    Ok(())
+}
+
+fn upsert_sync_snapshot(
+    connection: &Connection,
+    title: &str,
+    relative_path: &str,
+    content_hash: &str,
+    content_text: &str,
+) -> Result<()> {
+    initialize_sync_schema(connection)?;
+    let now = unix_timestamp()?;
+    connection
+        .execute(
+            "INSERT INTO sync_snapshots (
+                title, relative_path, content_hash, content_text, synced_at_unix
+            ) VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(title) DO UPDATE SET
+                relative_path = excluded.relative_path,
+                content_hash = excluded.content_hash,
+                content_text = excluded.content_text,
+                synced_at_unix = excluded.synced_at_unix",
+            params![
+                title,
+                relative_path,
+                content_hash,
+                content_text,
+                i64::try_from(now).context("timestamp does not fit into i64")?
+            ],
+        )
+        .with_context(|| format!("failed to upsert sync snapshot for {title}"))?;
+    Ok(())
+}
+
+fn remove_sync_snapshot(connection: &Connection, title: &str) -> Result<()> {
+    initialize_sync_schema(connection)?;
+    connection
+        .execute(
+            "DELETE FROM sync_snapshots WHERE lower(title) = lower(?1)",
+            [title],
+        )
+        .with_context(|| format!("failed to delete sync snapshot for {title}"))?;
     Ok(())
 }
 
@@ -1232,10 +1804,11 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        DiffChangeType, DiffOptions, ExternalSearchHit, NS_MAIN, PageTimestampInfo, PullOptions,
-        PushOptions, RemotePage, SiteInfoNamespace, WikiReadApi, WikiWriteApi,
-        diff_local_against_sync, namespace_display_name, pull_from_remote_with_api,
-        push_to_remote_with_api, should_include_discovered_namespace,
+        DiffBaselineStatus, DiffChangeType, DiffOptions, ExternalSearchHit, NS_MAIN,
+        PageTimestampInfo, PullOptions, PushOptions, RemotePage, SiteInfoNamespace,
+        SyncPlanOptions, SyncSelection, WikiReadApi, WikiWriteApi, collect_changed_article_paths,
+        diff_local_against_sync, namespace_display_name, plan_sync_changes,
+        pull_from_remote_with_api, push_to_remote_with_api, should_include_discovered_namespace,
     };
     use crate::runtime::{ResolvedPaths, ValueSource};
 
@@ -1696,6 +2269,9 @@ mod tests {
             &paths,
             &DiffOptions {
                 include_templates: false,
+                categories_only: false,
+                include_content: false,
+                selection: SyncSelection::default(),
             },
         )
         .expect("diff")
@@ -1767,6 +2343,7 @@ mod tests {
                 delete: false,
                 include_templates: false,
                 categories_only: false,
+                selection: SyncSelection::default(),
             },
             &mut api,
             None,
@@ -1843,6 +2420,7 @@ mod tests {
                 delete: false,
                 include_templates: false,
                 categories_only: false,
+                selection: SyncSelection::default(),
             },
             &mut api,
             Some(("bot", "pass")),
@@ -1852,5 +2430,235 @@ mod tests {
         assert_eq!(report.conflicts.len(), 1);
         assert_eq!(report.conflicts[0], "Alpha");
         assert!(api.edited_pages.is_empty());
+    }
+
+    #[test]
+    fn push_dry_run_detects_remote_conflict_without_writes() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+        fs::create_dir_all(&paths.state_dir).expect("create state");
+
+        let mut api = MockApi::default();
+        api.all_pages_by_namespace
+            .insert(NS_MAIN, vec!["Alpha".to_string()]);
+        api.page_contents
+            .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+
+        pull_from_remote_with_api(
+            &paths,
+            &PullOptions {
+                namespaces: vec![NS_MAIN],
+                category: None,
+                full: true,
+                overwrite_local: false,
+            },
+            &mut api,
+        )
+        .expect("seed pull");
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "alpha local edit",
+        );
+        api.page_timestamps.insert(
+            "Alpha".to_string(),
+            PageTimestampInfo {
+                title: "Alpha".to_string(),
+                timestamp: "2026-02-22T00:00:00Z".to_string(),
+                revision_id: 9999,
+            },
+        );
+
+        let report = push_to_remote_with_api(
+            &paths,
+            &PushOptions {
+                summary: "test dry-run conflict".to_string(),
+                dry_run: true,
+                force: false,
+                delete: false,
+                include_templates: false,
+                categories_only: false,
+                selection: SyncSelection::default(),
+            },
+            &mut api,
+            None,
+        )
+        .expect("push dry run");
+
+        assert!(report.dry_run);
+        assert_eq!(report.conflicts, vec!["Alpha".to_string()]);
+        assert!(api.edited_pages.is_empty());
+    }
+
+    #[test]
+    fn diff_content_uses_snapshots_and_reports_missing_baseline() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+        fs::create_dir_all(&paths.state_dir).expect("create state");
+
+        let mut api = MockApi::default();
+        api.all_pages_by_namespace
+            .insert(NS_MAIN, vec!["Alpha".to_string(), "Beta".to_string()]);
+        api.page_contents
+            .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+        api.page_contents
+            .insert("Beta".to_string(), base_page("Beta", "beta body"));
+
+        pull_from_remote_with_api(
+            &paths,
+            &PullOptions {
+                namespaces: vec![NS_MAIN],
+                category: None,
+                full: true,
+                overwrite_local: false,
+            },
+            &mut api,
+        )
+        .expect("seed pull");
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "alpha local edit",
+        );
+
+        let diff = diff_local_against_sync(
+            &paths,
+            &DiffOptions {
+                include_templates: false,
+                categories_only: false,
+                include_content: true,
+                selection: SyncSelection::default(),
+            },
+        )
+        .expect("diff")
+        .expect("diff report");
+        let alpha = diff
+            .changes
+            .iter()
+            .find(|change| change.title == "Alpha")
+            .expect("alpha diff");
+        assert_eq!(alpha.baseline_status, Some(DiffBaselineStatus::Available));
+        assert!(
+            alpha.unified_diff.as_deref().is_some_and(
+                |diff| diff.contains("-alpha body") && diff.contains("+alpha local edit")
+            )
+        );
+
+        let connection = super::open_sync_connection(&paths).expect("open sync db");
+        connection
+            .execute("DELETE FROM sync_snapshots WHERE title = 'Alpha'", [])
+            .expect("delete snapshot");
+
+        let diff = diff_local_against_sync(
+            &paths,
+            &DiffOptions {
+                include_templates: false,
+                categories_only: false,
+                include_content: true,
+                selection: SyncSelection::default(),
+            },
+        )
+        .expect("diff after snapshot delete")
+        .expect("diff report");
+        let alpha = diff
+            .changes
+            .iter()
+            .find(|change| change.title == "Alpha")
+            .expect("alpha diff");
+        assert_eq!(
+            alpha.baseline_status,
+            Some(DiffBaselineStatus::MissingSnapshot)
+        );
+        assert!(alpha.unified_diff.is_none());
+    }
+
+    #[test]
+    fn sync_plan_selection_and_changed_article_paths_honor_scope() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+        fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+        fs::create_dir_all(&paths.state_dir).expect("create state");
+
+        let mut api = MockApi::default();
+        api.all_pages_by_namespace.insert(
+            NS_MAIN,
+            vec!["Alpha".to_string(), "Beta".to_string(), "Gamma".to_string()],
+        );
+        api.page_contents
+            .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+        api.page_contents
+            .insert("Beta".to_string(), base_page("Beta", "beta body"));
+        api.page_contents
+            .insert("Gamma".to_string(), base_page("Gamma", "gamma body"));
+
+        pull_from_remote_with_api(
+            &paths,
+            &PullOptions {
+                namespaces: vec![NS_MAIN],
+                category: None,
+                full: true,
+                overwrite_local: false,
+            },
+            &mut api,
+        )
+        .expect("seed pull");
+
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+            "alpha local edit",
+        );
+        write_file(
+            &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+            "#REDIRECT [[Alpha]]",
+        );
+
+        let selected = plan_sync_changes(
+            &paths,
+            &SyncPlanOptions {
+                include_templates: false,
+                categories_only: false,
+                include_deletes: true,
+                include_remote_conflicts: false,
+                selection: SyncSelection {
+                    titles: vec!["Alpha".to_string()],
+                    paths: Vec::new(),
+                },
+            },
+        )
+        .expect("plan selection")
+        .expect("plan report");
+        assert_eq!(selected.changes.len(), 1);
+        assert_eq!(selected.changes[0].title, "Alpha");
+
+        let changed_paths = collect_changed_article_paths(&paths, &SyncSelection::default(), false)
+            .expect("collect changed paths")
+            .expect("changed paths");
+        assert_eq!(
+            changed_paths,
+            vec!["wiki_content/Main/Alpha.wiki".to_string()]
+        );
+
+        let selected_redirect_paths = collect_changed_article_paths(
+            &paths,
+            &SyncSelection {
+                titles: vec!["Beta".to_string()],
+                paths: Vec::new(),
+            },
+            true,
+        )
+        .expect("collect changed paths with redirect")
+        .expect("changed paths");
+        assert_eq!(
+            selected_redirect_paths,
+            vec!["wiki_content/Main/Beta.wiki".to_string()]
+        );
     }
 }

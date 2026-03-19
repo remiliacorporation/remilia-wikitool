@@ -416,16 +416,16 @@ else
     fail "validate produces report (got: $OUTPUT)"
 fi
 
-# --- lint ---
-section "lint"
+# --- module lint ---
+section "module lint"
 PROJ_LINT=$(setup_project lint)
 wt "$PROJ_LINT" init --templates > /dev/null 2>&1
-OUTPUT=$(wt "$PROJ_LINT" lint 2>&1 || true)
+OUTPUT=$(wt "$PROJ_LINT" module lint 2>&1 || true)
 # lint may report "no modules found" or run successfully
 if echo "$OUTPUT" | grep -qi "lint\|module\|clean\|no.*found\|0 issues\|error"; then
-    pass "lint runs without crash"
+    pass "module lint runs without crash"
 else
-    fail "lint runs without crash (got: $OUTPUT)"
+    fail "module lint runs without crash (got: $OUTPUT)"
 fi
 
 # --- db stats ---
@@ -768,11 +768,16 @@ fi
 
 # --- push --dry-run ---
 section "push --dry-run"
-OUTPUT=$(wt "$PROJ" push --dry-run --summary "test push" 2>&1 || true)
-if echo "$OUTPUT" | grep -qi "dry.run\|push\|no changes\|would\|skip\|sync"; then
-    pass "push --dry-run reports changes"
+if [ "$TIER" != "live" ]; then
+    skip "push --dry-run remote preflight requires live API target"
 else
-    fail "push --dry-run reports changes (got: $OUTPUT)"
+    write_live_env "$PROJ"
+    OUTPUT=$(wt "$PROJ" push --dry-run --summary "test push" 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "dry.run\|push\|no changes\|would\|skip\|sync"; then
+        pass "push --dry-run reports changes"
+    else
+        fail "push --dry-run reports changes (got: $OUTPUT)"
+    fi
 fi
 
 # --- release build-ai-pack ---

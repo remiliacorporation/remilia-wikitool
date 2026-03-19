@@ -17,6 +17,10 @@ use crate::knowledge::content_index::{load_stored_index_stats, rebuild_index};
 use crate::knowledge::inspect::{
     BrokenLinkIssue, query_backlinks, query_empty_categories, query_orphans, run_validation_checks,
 };
+use crate::knowledge::references::{
+    ReferenceAuditFilters, ReferenceDuplicateKind, inspect_reference_duplicates,
+    inspect_reference_list, inspect_reference_summary,
+};
 use crate::knowledge::retrieval::{
     LocalChunkAcrossRetrieval, LocalChunkRetrieval, build_local_context, query_search_local,
     retrieve_local_context_chunks, retrieve_local_context_chunks_across_pages,
@@ -1211,16 +1215,16 @@ fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
   "generated_at_unix": 1739000000,
   "source": "authoring_bridge_test",
   "technical": [
-{
-  "doc_type": "manual",
-  "pages": [
     {
-      "page_title": "Manual:Scribunto",
-      "local_path": "manual/Scribunto.md",
-      "content": "Scribunto supports {{#invoke:Infobox person|render|name=Alpha}} for Lua-backed templates. Template parameters should map cleanly to module functions."
+      "doc_type": "manual",
+      "pages": [
+        {
+          "page_title": "Manual:Scribunto",
+          "local_path": "manual/Scribunto.md",
+          "content": "Scribunto supports {{#invoke:Infobox person|render|name=Alpha}} for Lua-backed templates. Template parameters should map cleanly to module functions."
+        }
+      ]
     }
-  ]
-}
   ]
 }"#,
     );
@@ -1284,6 +1288,148 @@ fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
     assert!(report.retrieval_mode.contains("template-guides"));
     assert!(report.retrieval_mode.contains("module-patterns"));
     assert!(report.retrieval_mode.contains("docs-bridge"));
+}
+
+#[test]
+fn inspect_reference_summary_and_list_support_selection_and_filters() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "Alpha<ref>{{Cite web|title=Alpha Source|url=https://remilia.org/a|website=Remilia|doi=10.1234/alpha}}</ref>\n\
+         Alpha reuse<ref>{{Cite web|title=Shared ID|url=https://mirror.example/shared|website=Mirror|doi=10.5555/shared}}</ref>",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+        "Beta<ref>{{Cite web|title=Beta Copy|url=https://remilia.org/a|website=Remilia}}</ref>\n\
+         Beta reuse<ref>{{Cite web|title=Identifier Copy|url=https://elsewhere.example/other|website=Elsewhere|doi=10.5555/shared}}</ref>",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+        "Gamma<ref>{{Cite web|title=Gamma Similar|url=https://remilia.org/another|website=Remilia}}</ref>",
+    );
+
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let summary = inspect_reference_summary(&paths, &[], &ReferenceAuditFilters::default())
+        .expect("reference summary")
+        .expect("summary report");
+    assert_eq!(summary.reference_count, 5);
+    assert_eq!(summary.distinct_page_count, 3);
+    assert!(
+        summary
+            .top_domains
+            .iter()
+            .any(|domain| domain == "remilia.org")
+    );
+
+    let selected = inspect_reference_list(
+        &paths,
+        &["Alpha".to_string()],
+        &ReferenceAuditFilters::default(),
+    )
+    .expect("selected list")
+    .expect("selected report");
+    assert_eq!(selected.reference_count, 2);
+    assert!(
+        selected
+            .items
+            .iter()
+            .all(|item| item.source_title == "Alpha")
+    );
+
+    let filtered = inspect_reference_list(
+        &paths,
+        &[],
+        &ReferenceAuditFilters {
+            domain: Some("remilia.org".to_string()),
+            ..ReferenceAuditFilters::default()
+        },
+    )
+    .expect("domain filtered list")
+    .expect("filtered report");
+    assert_eq!(filtered.reference_count, 3);
+    assert!(
+        filtered
+            .items
+            .iter()
+            .all(|item| item.source_domain == "remilia.org")
+    );
+
+    let identifier_filtered = inspect_reference_list(
+        &paths,
+        &[],
+        &ReferenceAuditFilters {
+            identifier_key: Some("doi".to_string()),
+            identifier: Some("10.5555/shared".to_string()),
+            ..ReferenceAuditFilters::default()
+        },
+    )
+    .expect("identifier filtered list")
+    .expect("identifier report");
+    assert_eq!(identifier_filtered.reference_count, 2);
+    assert!(identifier_filtered.items.iter().all(|item| {
+        item.identifier_entries
+            .iter()
+            .any(|entry| entry == "doi:10.5555/shared")
+    }));
+}
+
+#[test]
+fn inspect_reference_duplicates_uses_strong_keys_only() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "Alpha<ref>{{Cite web|title=Alpha Source|url=https://remilia.org/a|website=Remilia|doi=10.1234/alpha}}</ref>\n\
+         Alpha reuse<ref>{{Cite web|title=Shared ID|url=https://mirror.example/shared|website=Mirror|doi=10.5555/shared}}</ref>",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+        "Beta<ref>{{Cite web|title=Beta Copy|url=https://remilia.org/a|website=Remilia}}</ref>\n\
+         Beta reuse<ref>{{Cite web|title=Identifier Copy|url=https://elsewhere.example/other|website=Elsewhere|doi=10.5555/shared}}</ref>",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Delta.wiki"),
+        "Delta<ref>{{Cite web|title=Alpha Source|url=https://remilia.org/a|website=Remilia|doi=10.1234/alpha}}</ref>",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+        "Gamma<ref>{{Cite web|title=Gamma Similar|url=https://remilia.org/another|website=Remilia}}</ref>",
+    );
+
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let duplicates = inspect_reference_duplicates(&paths, &[], &ReferenceAuditFilters::default())
+        .expect("duplicate report")
+        .expect("duplicates");
+    assert!(
+        duplicates
+            .groups
+            .iter()
+            .any(|group| group.kind == ReferenceDuplicateKind::CanonicalUrl
+                && group.match_key == "https://remilia.org/a"
+                && group.reference_count >= 3)
+    );
+    assert!(duplicates.groups.iter().any(|group| group.kind
+        == ReferenceDuplicateKind::NormalizedIdentifier
+        && group.match_key == "doi:10.5555/shared"
+        && group.reference_count == 2));
+    assert!(duplicates.groups.iter().any(|group| group.kind
+        == ReferenceDuplicateKind::ExactReferenceWikitext
+        && group.reference_count >= 2));
+    assert!(
+        duplicates
+            .groups
+            .iter()
+            .all(|group| { group.items.iter().all(|item| item.source_title != "Gamma") })
+    );
 }
 
 #[test]

@@ -7,5 +7,7 @@ Do not invent flags or cached behavior; verify against `wikitool --help`, `wikit
 
 Use `wikitool knowledge article-start "Topic" --format json` as the authoring front door.
 Use `wikitool knowledge pack "Topic" --format json` only when you need the raw authoring substrate behind article-start.
+Use `wikitool knowledge inspect references ...` for indexed citation audits and duplicate cleanup passes.
+Use `wikitool status --modified|--conflicts` and scoped `wikitool push --dry-run --title ...` for targeted sync review.
 
 Reach for `wikitool` when you need wiki-grounded retrieval, template/profile lookup, lint/fix, sync, or guarded push flows.

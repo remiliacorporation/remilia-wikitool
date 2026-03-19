@@ -20,8 +20,9 @@ wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 - The DB is disposable — delete it and repull/rebuild any time.
 - Authoring retrieval uses semantic page profiles, template implementation bundles, normalized source authorities, and bridged MediaWiki docs to narrow context for agents.
 - `knowledge article-start` is the interpreted authoring brief. `knowledge pack` is the raw substrate behind it.
-- `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check.
-- Push flows require `--dry-run` first. `--force` requires explicit user approval.
+- `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check. `module lint` is the Lua/module lane.
+- `article lint` / `article fix` accept repeated `--title`, repeated `--path`, `--titles-file`, and `--changed` for batch work.
+- Push flows require `--dry-run` first. Dry-run is the remote-aware preflight. `--force` requires explicit user approval.
 
 ## Authoring workflow
 
@@ -35,6 +36,8 @@ wikitool wiki profile show --format json
 # write the article
 wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool article fix wiki_content/Main/Title.wiki --apply safe
+wikitool knowledge inspect references summary --title "Title" --format json
+wikitool knowledge inspect references duplicates --title "Title" --format json
 wikitool validate
 ```
 
@@ -44,8 +47,13 @@ wikitool validate
 wikitool pull                          # latest content
 wikitool pull --full --all             # full refresh
 wikitool pull --templates              # templates only
-wikitool diff                          # review changes
-wikitool push --dry-run --summary "x"  # safe push
+wikitool status                        # sync-aware status summary
+wikitool status --modified --format json
+wikitool status --conflicts --title "Title"
+wikitool diff                          # review change set
+wikitool diff --content --title "Title"
+wikitool push --dry-run --summary "x"  # remote-safe preflight
+wikitool push --dry-run --title "Title" --summary "x"
 wikitool push --summary "x"            # actual push
 wikitool delete "Title" --reason "x" --dry-run
 ```
@@ -61,6 +69,9 @@ wikitool knowledge pack "Topic" --format json
 wikitool knowledge inspect stats
 wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480
 wikitool knowledge inspect chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify
+wikitool knowledge inspect references summary --format json
+wikitool knowledge inspect references list --title "Title" --domain remilia.org --format json
+wikitool knowledge inspect references duplicates --all --identifier-key doi --format json
 wikitool knowledge inspect backlinks "Title"
 wikitool knowledge inspect orphans
 wikitool knowledge inspect empty-categories
@@ -109,7 +120,7 @@ wikitool status
 wikitool db stats
 wikitool seo inspect "Page"
 wikitool net inspect "Page" --limit 25
-wikitool lint --format text
+wikitool module lint --format text
 ```
 
 ## Release packaging
