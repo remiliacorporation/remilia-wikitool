@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }, 
+  "gitAttribution": false,
+  "includeCoAuthoredBy": false,   
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "showThinkingSummaries": true    
+}
