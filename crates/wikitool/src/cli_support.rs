@@ -56,15 +56,23 @@ pub(crate) fn detect_host_context_root(
 
     let root = fs::canonicalize(path)
         .with_context(|| format!("failed to canonicalize {}", normalize_path(path)))?;
-    if !root.join("CLAUDE.md").is_file()
+    let claude_path = root.join("CLAUDE.md");
+    let agents_path = root.join("AGENTS.md");
+    if !claude_path.is_file()
+        || !agents_path.is_file()
         || !root.join(".claude/rules").is_dir()
         || !root.join(".claude/skills").is_dir()
     {
         bail!(
-            "invalid host project root {}: expected CLAUDE.md and .claude/{{rules,skills}}",
+            "invalid host project root {}: expected CLAUDE.md, AGENTS.md, and .claude/{{rules,skills}}",
             normalize_path(&root)
         );
     }
+    ensure_files_identical(
+        &claude_path,
+        &agents_path,
+        "host instruction contract violation",
+    )?;
     Ok(Some(root))
 }
 
@@ -377,4 +385,99 @@ pub(crate) fn normalize_path(path: impl AsRef<Path>) -> String {
 
 pub(crate) fn format_flag(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
+}
+
+#[cfg(all(test, feature = "maintainer-surface"))]
+mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::detect_host_context_root;
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(label: &str) -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "wikitool-cli-support-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temp test dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn write_host_context(root: &Path, claude: &str, agents: Option<&str>) {
+        fs::create_dir_all(root.join(".claude").join("rules")).expect("create rules dir");
+        fs::create_dir_all(root.join(".claude").join("skills")).expect("create skills dir");
+        fs::write(root.join("CLAUDE.md"), claude).expect("write CLAUDE.md");
+        if let Some(agents) = agents {
+            fs::write(root.join("AGENTS.md"), agents).expect("write AGENTS.md");
+        }
+    }
+
+    #[test]
+    fn detect_host_context_root_accepts_matching_guidance_files() {
+        let temp = TestDir::new("accepts");
+        let host_root = temp.path.join("host");
+        write_host_context(&host_root, "# Host guidance\n", Some("# Host guidance\n"));
+
+        let detected = detect_host_context_root(&temp.path, Some(&host_root))
+            .expect("detect host root")
+            .expect("host root should be present");
+
+        assert_eq!(
+            detected,
+            host_root.canonicalize().expect("canonical host root")
+        );
+    }
+
+    #[test]
+    fn detect_host_context_root_rejects_missing_agents_file() {
+        let temp = TestDir::new("missing-agents");
+        let host_root = temp.path.join("host");
+        write_host_context(&host_root, "# Host guidance\n", None);
+
+        let error =
+            detect_host_context_root(&temp.path, Some(&host_root)).expect_err("missing AGENTS");
+
+        assert!(
+            error
+                .to_string()
+                .contains("expected CLAUDE.md, AGENTS.md, and .claude/{rules,skills}")
+        );
+    }
+
+    #[test]
+    fn detect_host_context_root_rejects_guidance_drift() {
+        let temp = TestDir::new("drift");
+        let host_root = temp.path.join("host");
+        write_host_context(
+            &host_root,
+            "# Host guidance\n",
+            Some("# Diverged host guidance\n"),
+        );
+
+        let error =
+            detect_host_context_root(&temp.path, Some(&host_root)).expect_err("drifted AGENTS");
+
+        assert!(
+            error
+                .to_string()
+                .contains("host instruction contract violation")
+        );
+    }
 }

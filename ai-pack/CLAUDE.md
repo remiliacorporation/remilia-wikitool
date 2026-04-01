@@ -163,9 +163,10 @@ Release packaging may inject host context via `--host-project-root <PATH>`.
 
 When host overlay is used:
 
-1. Host `CLAUDE.md` becomes packaged `CLAUDE.md` and `AGENTS.md`.
-2. Wikitool-local guidance is preserved as `WIKITOOL_CLAUDE.md`.
-3. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
+1. Host `CLAUDE.md` and `AGENTS.md` must both exist and remain byte-identical or packaging fails.
+2. Packaged `CLAUDE.md` and `AGENTS.md` come from the host guidance contract.
+3. Wikitool-local guidance is preserved as `WIKITOOL_CLAUDE.md`.
+4. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
 
 Without host overlay, release bundles stay generic and ship only wikitool-maintained guidance.
 

@@ -57,6 +57,10 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             !body.contains("wiki.remilia.org/w/api.php"),
             "packaged guidance must not regress to the stale /w/api.php example"
         );
+        assert!(
+            body.contains("AGENTS.md") && body.contains("byte-identical"),
+            "packaged guidance must keep the host overlay instruction contract explicit"
+        );
     }
 }
 
