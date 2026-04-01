@@ -1,7 +1,8 @@
 use anyhow::{Result, bail};
 use clap::Args;
+use serde::Serialize;
 use wikitool_core::knowledge::inspect::{ValidationReport, run_validation_checks};
-use wikitool_core::lint::lint_modules;
+use wikitool_core::lint::{LuaLintReport, LuaLintResult, lint_modules};
 
 use crate::cli_support::{normalize_path, print_string_list, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
@@ -20,6 +21,20 @@ pub(crate) struct LintArgs {
     strict: bool,
     #[arg(long, help = "Omit metadata from JSON output")]
     no_meta: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct LintJson<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selene_available: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selene_path: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_path: Option<&'a str>,
+    inspected_modules: usize,
+    total_errors: usize,
+    total_warnings: usize,
+    results: &'a [LuaLintResult],
 }
 
 pub(crate) fn run_validate(runtime: &RuntimeOptions) -> Result<()> {
@@ -69,10 +84,11 @@ pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
         );
     }
 
-    let _ = args.no_meta;
-
     if format == "json" {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&lint_json_output(&report, args.no_meta))?
+        );
     } else {
         println!("module lint");
         println!(
@@ -122,6 +138,30 @@ pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
     Ok(())
 }
 
+fn lint_json_output<'a>(report: &'a LuaLintReport, no_meta: bool) -> LintJson<'a> {
+    LintJson {
+        selene_available: if no_meta {
+            None
+        } else {
+            Some(report.selene_available)
+        },
+        selene_path: if no_meta {
+            None
+        } else {
+            report.selene_path.as_deref()
+        },
+        config_path: if no_meta {
+            None
+        } else {
+            report.config_path.as_deref()
+        },
+        inspected_modules: report.inspected_modules,
+        total_errors: report.total_errors,
+        total_warnings: report.total_warnings,
+        results: &report.results,
+    }
+}
+
 fn print_validation_issues(report: &ValidationReport) {
     println!("validate.broken_links.count: {}", report.broken_links.len());
     if report.broken_links.is_empty() {
@@ -152,4 +192,45 @@ fn print_validation_issues(report: &ValidationReport) {
 
     print_string_list("validate.uncategorized_pages", &report.uncategorized_pages);
     print_string_list("validate.orphan_pages", &report.orphan_pages);
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use wikitool_core::lint::{LuaLintIssue, LuaLintSeverity};
+
+    #[test]
+    fn lint_no_meta_json_omits_runtime_fields() {
+        let report = LuaLintReport {
+            selene_available: true,
+            selene_path: Some("embedded:selene-lib".to_string()),
+            config_path: Some("config/selene.toml".to_string()),
+            inspected_modules: 1,
+            total_errors: 1,
+            total_warnings: 0,
+            results: vec![LuaLintResult {
+                title: "Module:Alpha".to_string(),
+                errors: vec![LuaLintIssue {
+                    line: 1,
+                    column: 2,
+                    end_line: None,
+                    end_column: None,
+                    code: "parse_error".to_string(),
+                    message: "bad".to_string(),
+                    severity: LuaLintSeverity::Error,
+                }],
+                warnings: vec![],
+            }],
+        };
+
+        let value = serde_json::to_value(lint_json_output(&report, true)).expect("serialize lint");
+
+        assert_eq!(value["inspected_modules"], json!(1));
+        assert_eq!(value["total_errors"], json!(1));
+        assert!(value.get("selene_available").is_none());
+        assert!(value.get("selene_path").is_none());
+        assert!(value.get("config_path").is_none());
+    }
 }

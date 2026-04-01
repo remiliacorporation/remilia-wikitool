@@ -11,7 +11,6 @@ use wikitool_core::sync::{
 
 use crate::cli_support::{
     normalize_path, normalize_title_query, print_string_list, resolve_runtime_paths,
-    resolve_runtime_with_config,
 };
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -28,17 +27,6 @@ pub(crate) struct ContextArgs {
 #[derive(Debug, Args)]
 pub(crate) struct SearchArgs {
     query: String,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
-    format: String,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct SearchExternalArgs {
-    query: String,
-    #[arg(long, default_value_t = 20, value_name = "N")]
-    limit: usize,
-    #[arg(long, default_value = "text", value_name = "SCOPE")]
-    what: String,
     #[arg(long, default_value = "text", value_name = "FORMAT")]
     format: String,
 }
@@ -116,40 +104,6 @@ pub(crate) fn run_search(runtime: &RuntimeOptions, args: SearchArgs) -> Result<(
             bail!("local knowledge index is not ready.\nRun `wikitool knowledge build` first.");
         }
     }
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-
-    Ok(())
-}
-
-pub(crate) fn run_search_external(
-    runtime: &RuntimeOptions,
-    args: SearchExternalArgs,
-) -> Result<()> {
-    eprintln!("warning: `wikitool search-external` is deprecated; use `wikitool research search`");
-    let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let format = normalize_output(&args.format)?;
-    let report = remote_wiki_search_report(
-        &config,
-        RemoteWikiSearchRequest {
-            command_name: "search-external",
-            query: &args.query,
-            limit: args.limit,
-            what: &args.what,
-        },
-    )?;
-
-    if format == "json" {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-        return Ok(());
-    }
-
-    println!("search-external");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("query: {}", report.query);
-    print_external_search_report("search_external", &report);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -333,14 +287,14 @@ mod tests {
     #[test]
     fn parse_remote_wiki_search_request_rejects_zero_limit() {
         let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "search-external",
+            command_name: "research search",
             query: "Alpha",
             limit: 0,
             what: "text",
         })
         .expect_err("zero limit should fail");
 
-        assert_eq!(error.to_string(), "search-external requires --limit >= 1");
+        assert_eq!(error.to_string(), "research search requires --limit >= 1");
     }
 
     #[test]

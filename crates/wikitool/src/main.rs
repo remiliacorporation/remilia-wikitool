@@ -87,12 +87,6 @@ enum Commands {
     Context(query_cli::ContextArgs),
     #[command(about = "Search indexed local page titles")]
     Search(query_cli::SearchArgs),
-    #[command(
-        name = "search-external",
-        about = "Deprecated alias for `wikitool research search`",
-        hide = true
-    )]
-    SearchExternal(query_cli::SearchExternalArgs),
     #[command(about = "Run structural and link integrity checks")]
     Validate,
     #[command(about = "Run Lua module linting and related checks")]
@@ -125,12 +119,6 @@ enum Commands {
     Article(article_cli::ArticleArgs),
     #[command(about = "Generate parser config and editor integration settings")]
     Lsp(lsp_cli::LspArgs),
-    #[command(name = "lsp:generate-config", hide = true)]
-    LegacyLspGenerateConfig(lsp_cli::LspGenerateConfigArgs),
-    #[command(name = "lsp:status", hide = true)]
-    LegacyLspStatus,
-    #[command(name = "lsp:info", hide = true)]
-    LegacyLspInfo,
     #[cfg(feature = "maintainer-surface")]
     #[command(about = "Run end-to-end setup and refresh workflows", hide = true)]
     Workflow(workflow_cli::WorkflowArgs),
@@ -166,7 +154,6 @@ fn main() -> Result<()> {
         Some(Commands::Status(args)) => sync_cli::run_status(&runtime, args),
         Some(Commands::Context(args)) => query_cli::run_context(&runtime, args),
         Some(Commands::Search(args)) => query_cli::run_search(&runtime, args),
-        Some(Commands::SearchExternal(args)) => query_cli::run_search_external(&runtime, args),
         Some(Commands::Validate) => quality_cli::run_validate(&runtime),
         Some(Commands::Module(args)) => module_cli::run_module(&runtime, args),
         Some(Commands::Fetch(args)) => export_cli::run_fetch(&runtime, args),
@@ -183,21 +170,6 @@ fn main() -> Result<()> {
         Some(Commands::Templates(args)) => templates_cli::run_templates(&runtime, args),
         Some(Commands::Article(args)) => article_cli::run_article(&runtime, args),
         Some(Commands::Lsp(args)) => lsp_cli::run_lsp(&runtime, args),
-        Some(Commands::LegacyLspGenerateConfig(args)) => {
-            print_deprecated_command_warning(
-                "wikitool lsp:generate-config",
-                "wikitool lsp generate-config",
-            );
-            lsp_cli::run_lsp_generate_config(&runtime, args)
-        }
-        Some(Commands::LegacyLspStatus) => {
-            print_deprecated_command_warning("wikitool lsp:status", "wikitool lsp status");
-            lsp_cli::run_lsp_status(&runtime)
-        }
-        Some(Commands::LegacyLspInfo) => {
-            print_deprecated_command_warning("wikitool lsp:info", "wikitool lsp info");
-            lsp_cli::run_lsp_info()
-        }
         #[cfg(feature = "maintainer-surface")]
         Some(Commands::Workflow(args)) => workflow_cli::run_workflow(&runtime, args),
         #[cfg(feature = "maintainer-surface")]
@@ -211,8 +183,4 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
-}
-
-fn print_deprecated_command_warning(current: &str, preferred: &str) {
-    eprintln!("warning: `{current}` is deprecated; use `{preferred}`");
 }

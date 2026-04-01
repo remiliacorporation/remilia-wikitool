@@ -142,29 +142,9 @@ mod tests {
         let mut paths = Vec::new();
         collect_command_paths(&command, &[], &mut paths);
 
-        assert!(
-            !paths
-                .iter()
-                .any(|path| path == &["search-external".to_string()])
-        );
         assert!(!paths.iter().any(|path| path == &["workflow".to_string()]));
         assert!(!paths.iter().any(|path| path == &["release".to_string()]));
         assert!(!paths.iter().any(|path| path == &["dev".to_string()]));
-        assert!(
-            !paths
-                .iter()
-                .any(|path| path == &["seo".to_string(), "inspect".to_string()])
-        );
-        assert!(
-            !paths
-                .iter()
-                .any(|path| path == &["net".to_string(), "inspect".to_string()])
-        );
-        assert!(
-            !paths
-                .iter()
-                .any(|path| path == &["lsp:generate-config".to_string()])
-        );
         assert!(
             !paths
                 .iter()
@@ -192,21 +172,8 @@ mod tests {
     }
 
     #[test]
-    fn hidden_compatibility_aliases_remain_invocable_directly() {
-        let search_external_help = help_text_for_command_path(&["search-external".to_string()])
-            .expect("render search-external help");
-        let lsp_alias_help = help_text_for_command_path(&["lsp:generate-config".to_string()])
-            .expect("render lsp alias help");
-        let seo_alias_help =
-            help_text_for_command_path(&["seo".to_string(), "inspect".to_string()])
-                .expect("render seo inspect alias help");
-        let net_alias_help =
-            help_text_for_command_path(&["net".to_string(), "inspect".to_string()])
-                .expect("render net inspect alias help");
-
-        assert!(search_external_help.contains("Usage: wikitool search-external"));
-        assert!(lsp_alias_help.contains("Usage: wikitool lsp:generate-config"));
-        assert!(seo_alias_help.contains("Usage: wikitool seo inspect"));
-        assert!(net_alias_help.contains("Usage: wikitool net inspect"));
+    fn removed_top_level_aliases_are_not_invocable() {
+        assert!(help_text_for_command_path(&["search-external".to_string()]).is_err());
+        assert!(help_text_for_command_path(&["lsp:generate-config".to_string()]).is_err());
     }
 }

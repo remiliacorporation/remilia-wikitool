@@ -3,8 +3,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
+use serde::Serialize;
 use wikitool_core::import_cargo::{
-    CargoImportOptions, ImportSourceType, ImportUpdateMode, import_to_cargo,
+    CargoImportOptions, ImportError, ImportPageResult, ImportSourceType, ImportUpdateMode,
+    import_to_cargo,
 };
 
 use crate::cli_support::{format_flag, normalize_option, normalize_path, resolve_runtime_paths};
@@ -58,6 +60,18 @@ enum ImportSubcommand {
     },
 }
 
+#[derive(Debug, Serialize)]
+struct ImportJson<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pages_created: Option<&'a [String]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pages_updated: Option<&'a [String]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pages_skipped: Option<&'a [String]>,
+    errors: &'a [ImportError],
+    pages: &'a [ImportPageResult],
+}
+
 pub(crate) fn run_import(runtime: &RuntimeOptions, args: ImportArgs) -> Result<()> {
     match args.command {
         ImportSubcommand::Cargo {
@@ -72,7 +86,7 @@ pub(crate) fn run_import(runtime: &RuntimeOptions, args: ImportArgs) -> Result<(
             write,
             format,
             article_header,
-            no_meta: _,
+            no_meta,
         } => run_import_cargo(
             runtime,
             &path,
@@ -86,6 +100,7 @@ pub(crate) fn run_import(runtime: &RuntimeOptions, args: ImportArgs) -> Result<(
             write,
             &format,
             article_header,
+            no_meta,
         ),
     }
 }
@@ -104,6 +119,7 @@ fn run_import_cargo(
     write: bool,
     format: &str,
     article_header: bool,
+    no_meta: bool,
 ) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let Some(source_type) = ImportSourceType::resolve(path, source_type) else {
@@ -133,7 +149,10 @@ fn run_import_cargo(
     )?;
 
     if format == "json" {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&import_json_output(&result, no_meta))?
+        );
     } else {
         println!("import cargo");
         println!("source_path: {}", normalize_path(&source_path));
@@ -171,6 +190,31 @@ fn run_import_cargo(
     Ok(())
 }
 
+fn import_json_output<'a>(
+    result: &'a wikitool_core::import_cargo::ImportResult,
+    no_meta: bool,
+) -> ImportJson<'a> {
+    ImportJson {
+        pages_created: if no_meta {
+            None
+        } else {
+            Some(&result.pages_created)
+        },
+        pages_updated: if no_meta {
+            None
+        } else {
+            Some(&result.pages_updated)
+        },
+        pages_skipped: if no_meta {
+            None
+        } else {
+            Some(&result.pages_skipped)
+        },
+        errors: &result.errors,
+        pages: &result.pages,
+    }
+}
+
 fn resolve_import_source_path(path: &str) -> Result<PathBuf> {
     if Path::new(path).is_absolute() {
         return Ok(PathBuf::from(path));
@@ -193,8 +237,10 @@ fn parse_import_mode(value: &str) -> Result<ImportUpdateMode> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_import_mode;
-    use wikitool_core::import_cargo::ImportUpdateMode;
+    use serde_json::json;
+
+    use super::*;
+    use wikitool_core::import_cargo::{ImportPageAction, ImportResult, ImportUpdateMode};
 
     #[test]
     fn parse_import_mode_accepts_supported_values() {
@@ -215,5 +261,34 @@ mod tests {
     #[test]
     fn parse_import_mode_rejects_unknown_values() {
         assert!(parse_import_mode("replace").is_err());
+    }
+
+    #[test]
+    fn import_no_meta_json_omits_summary_indexes() {
+        let result = ImportResult {
+            pages_created: vec!["Alpha".to_string()],
+            pages_updated: vec!["Beta".to_string()],
+            pages_skipped: vec!["Gamma".to_string()],
+            errors: vec![ImportError {
+                row: 3,
+                message: "Missing title".to_string(),
+                title: None,
+            }],
+            pages: vec![ImportPageResult {
+                title: "Alpha".to_string(),
+                relative_path: "wiki_content/Main/Alpha.wiki".to_string(),
+                action: ImportPageAction::Create,
+                content: Some("Alpha content".to_string()),
+            }],
+        };
+
+        let value =
+            serde_json::to_value(import_json_output(&result, true)).expect("serialize import");
+
+        assert!(value.get("pages_created").is_none());
+        assert!(value.get("pages_updated").is_none());
+        assert!(value.get("pages_skipped").is_none());
+        assert_eq!(value["errors"][0]["row"], json!(3));
+        assert_eq!(value["pages"][0]["title"], json!("Alpha"));
     }
 }

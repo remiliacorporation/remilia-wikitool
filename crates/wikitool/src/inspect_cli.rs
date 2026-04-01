@@ -1,32 +1,18 @@
+use std::collections::BTreeMap;
+
 use anyhow::Result;
-use clap::{Args, Subcommand};
-use wikitool_core::inspect::{NetInspectOptions, net_inspect, seo_inspect};
+use clap::Args;
+use serde::Serialize;
+use wikitool_core::inspect::{
+    NetInspectOptions, NetInspectResult, NetResource, NetSummary, SeoInspectResult, net_inspect,
+    seo_inspect,
+};
 
 use crate::cli_support::resolve_runtime_with_config;
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
 pub(crate) struct SeoArgs {
-    target: Option<String>,
-    #[arg(long, help = "Output JSON for AI consumption")]
-    json: bool,
-    #[arg(long, help = "Omit metadata from JSON output")]
-    no_meta: bool,
-    #[arg(long, value_name = "URL", help = "Override target URL")]
-    url: Option<String>,
-    #[command(subcommand)]
-    command: Option<SeoSubcommand>,
-}
-
-#[derive(Debug, Subcommand)]
-enum SeoSubcommand {
-    #[command(about = "Deprecated alias for `wikitool seo`", hide = true)]
-    Inspect(SeoInspectArgs),
-}
-
-#[derive(Debug, Clone, Args)]
-struct SeoInspectArgs {
     target: String,
     #[arg(long, help = "Output JSON for AI consumption")]
     json: bool,
@@ -37,36 +23,7 @@ struct SeoInspectArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
 pub(crate) struct NetArgs {
-    target: Option<String>,
-    #[arg(
-        long,
-        default_value_t = 25,
-        value_name = "N",
-        help = "Limit number of resources to probe"
-    )]
-    limit: usize,
-    #[arg(long, help = "Skip HEAD probes (faster, no size/cache info)")]
-    no_probe: bool,
-    #[arg(long, help = "Output JSON for AI consumption")]
-    json: bool,
-    #[arg(long, help = "Omit metadata from JSON output")]
-    no_meta: bool,
-    #[arg(long, value_name = "URL", help = "Override target URL")]
-    url: Option<String>,
-    #[command(subcommand)]
-    command: Option<NetSubcommand>,
-}
-
-#[derive(Debug, Subcommand)]
-enum NetSubcommand {
-    #[command(about = "Deprecated alias for `wikitool net`", hide = true)]
-    Inspect(NetInspectArgs),
-}
-
-#[derive(Debug, Clone, Args)]
-struct NetInspectArgs {
     target: String,
     #[arg(
         long,
@@ -85,53 +42,56 @@ struct NetInspectArgs {
     url: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct SeoInspectJson<'a> {
+    url: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    meta: Option<&'a BTreeMap<String, Vec<String>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    canonical: Option<&'a str>,
+    missing: &'a [String],
+}
+
+#[derive(Debug, Serialize)]
+struct NetInspectJson<'a> {
+    url: &'a str,
+    total_resources: usize,
+    inspected: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<NetSummaryJson<'a>>,
+    resources: Vec<NetResourceJson<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct NetSummaryJson<'a> {
+    known_bytes: u64,
+    unknown_count: usize,
+    largest: Vec<NetResourceJson<'a>>,
+    cache_warnings: &'a [String],
+}
+
+#[derive(Debug, Serialize)]
+struct NetResourceJson<'a> {
+    url: &'a str,
+    resource_type: &'a str,
+    tag: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_type: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    age: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x_cache: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x_varnish: Option<&'a str>,
+}
+
 pub(crate) fn run_seo(runtime: &RuntimeOptions, args: SeoArgs) -> Result<()> {
-    match args.command {
-        Some(SeoSubcommand::Inspect(args)) => {
-            print_deprecated_inspect_warning("wikitool seo inspect", "wikitool seo");
-            run_seo_inspect(runtime, &args)
-        }
-        None => run_seo_inspect(runtime, &seo_request_from_direct_args(args)?),
-    }
-}
-
-pub(crate) fn run_net(runtime: &RuntimeOptions, args: NetArgs) -> Result<()> {
-    match args.command {
-        Some(NetSubcommand::Inspect(args)) => {
-            print_deprecated_inspect_warning("wikitool net inspect", "wikitool net");
-            run_net_inspect(runtime, &args)
-        }
-        None => run_net_inspect(runtime, &net_request_from_direct_args(args)?),
-    }
-}
-
-fn seo_request_from_direct_args(args: SeoArgs) -> Result<SeoInspectArgs> {
-    let target = args
-        .target
-        .ok_or_else(|| anyhow::anyhow!("seo requires a target"))?;
-    Ok(SeoInspectArgs {
-        target,
-        json: args.json,
-        no_meta: args.no_meta,
-        url: args.url,
-    })
-}
-
-fn net_request_from_direct_args(args: NetArgs) -> Result<NetInspectArgs> {
-    let target = args
-        .target
-        .ok_or_else(|| anyhow::anyhow!("net requires a target"))?;
-    Ok(NetInspectArgs {
-        target,
-        limit: args.limit,
-        no_probe: args.no_probe,
-        json: args.json,
-        no_meta: args.no_meta,
-        url: args.url,
-    })
-}
-
-fn run_seo_inspect(runtime: &RuntimeOptions, args: &SeoInspectArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let result = seo_inspect(
         &args.target,
@@ -140,10 +100,11 @@ fn run_seo_inspect(runtime: &RuntimeOptions, args: &SeoInspectArgs) -> Result<()
         Some(config.article_path()),
     )?;
 
-    let _ = args.no_meta;
-
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&seo_json_output(&result, args.no_meta))?
+        );
     } else {
         println!("seo");
         println!("url: {}", result.url);
@@ -182,7 +143,7 @@ fn run_seo_inspect(runtime: &RuntimeOptions, args: &SeoInspectArgs) -> Result<()
     Ok(())
 }
 
-fn run_net_inspect(runtime: &RuntimeOptions, args: &NetInspectArgs) -> Result<()> {
+pub(crate) fn run_net(runtime: &RuntimeOptions, args: NetArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let options = NetInspectOptions {
         limit: args.limit,
@@ -196,10 +157,11 @@ fn run_net_inspect(runtime: &RuntimeOptions, args: &NetInspectArgs) -> Result<()
         &options,
     )?;
 
-    let _ = args.no_meta;
-
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&net_json_output(&result, args.no_meta))?
+        );
     } else {
         println!("net");
         println!("url: {}", result.url);
@@ -242,8 +204,79 @@ fn run_net_inspect(runtime: &RuntimeOptions, args: &NetInspectArgs) -> Result<()
     Ok(())
 }
 
-fn print_deprecated_inspect_warning(current: &str, preferred: &str) {
-    eprintln!("warning: `{current}` is deprecated; use `{preferred}`");
+fn seo_json_output<'a>(result: &'a SeoInspectResult, no_meta: bool) -> SeoInspectJson<'a> {
+    SeoInspectJson {
+        url: &result.url,
+        title: result.title.as_deref(),
+        meta: if no_meta { None } else { Some(&result.meta) },
+        canonical: result.canonical.as_deref(),
+        missing: &result.missing,
+    }
+}
+
+fn net_json_output<'a>(result: &'a NetInspectResult, no_meta: bool) -> NetInspectJson<'a> {
+    NetInspectJson {
+        url: &result.url,
+        total_resources: result.total_resources,
+        inspected: result.inspected,
+        summary: if no_meta {
+            None
+        } else {
+            Some(net_summary_json(&result.summary))
+        },
+        resources: result
+            .resources
+            .iter()
+            .map(|resource| net_resource_json(resource, no_meta))
+            .collect(),
+    }
+}
+
+fn net_summary_json<'a>(summary: &'a NetSummary) -> NetSummaryJson<'a> {
+    NetSummaryJson {
+        known_bytes: summary.known_bytes,
+        unknown_count: summary.unknown_count,
+        largest: summary
+            .largest
+            .iter()
+            .map(|resource| net_resource_json(resource, false))
+            .collect(),
+        cache_warnings: &summary.cache_warnings,
+    }
+}
+
+fn net_resource_json<'a>(resource: &'a NetResource, no_meta: bool) -> NetResourceJson<'a> {
+    NetResourceJson {
+        url: &resource.url,
+        resource_type: &resource.resource_type,
+        tag: &resource.tag,
+        size_bytes: if no_meta { None } else { resource.size_bytes },
+        content_type: if no_meta {
+            None
+        } else {
+            resource.content_type.as_deref()
+        },
+        cache_control: if no_meta {
+            None
+        } else {
+            resource.cache_control.as_deref()
+        },
+        age: if no_meta {
+            None
+        } else {
+            resource.age.as_deref()
+        },
+        x_cache: if no_meta {
+            None
+        } else {
+            resource.x_cache.as_deref()
+        },
+        x_varnish: if no_meta {
+            None
+        } else {
+            resource.x_varnish.as_deref()
+        },
+    }
 }
 
 fn print_meta_value(label: &str, values: Option<&Vec<String>>) {
@@ -260,7 +293,8 @@ fn print_meta_value(label: &str, values: Option<&Vec<String>>) {
 
 #[cfg(test)]
 mod tests {
-    use clap::Parser;
+    use clap::{Parser, Subcommand};
+    use serde_json::json;
 
     use super::*;
 
@@ -283,8 +317,7 @@ mod tests {
 
         match cli.command {
             InspectCommand::Seo(args) => {
-                assert!(args.command.is_none());
-                assert_eq!(args.target.as_deref(), Some("Main Page"));
+                assert_eq!(args.target, "Main Page");
                 assert!(args.json);
             }
             InspectCommand::Net(_) => panic!("expected seo command"),
@@ -292,17 +325,10 @@ mod tests {
     }
 
     #[test]
-    fn seo_legacy_inspect_alias_parses() {
-        let cli = InspectCli::try_parse_from(["inspect-cli", "seo", "inspect", "Main Page"])
-            .expect("parse seo inspect alias");
-
-        match cli.command {
-            InspectCommand::Seo(args) => match args.command {
-                Some(SeoSubcommand::Inspect(args)) => assert_eq!(args.target, "Main Page"),
-                None => panic!("expected legacy seo inspect alias"),
-            },
-            InspectCommand::Net(_) => panic!("expected seo command"),
-        }
+    fn seo_inspect_alias_no_longer_parses() {
+        assert!(
+            InspectCli::try_parse_from(["inspect-cli", "seo", "inspect", "Main Page"]).is_err()
+        );
     }
 
     #[test]
@@ -312,8 +338,7 @@ mod tests {
 
         match cli.command {
             InspectCommand::Net(args) => {
-                assert!(args.command.is_none());
-                assert_eq!(args.target.as_deref(), Some("Main Page"));
+                assert_eq!(args.target, "Main Page");
                 assert_eq!(args.limit, 10);
             }
             InspectCommand::Seo(_) => panic!("expected net command"),
@@ -321,16 +346,63 @@ mod tests {
     }
 
     #[test]
-    fn net_legacy_inspect_alias_parses() {
-        let cli = InspectCli::try_parse_from(["inspect-cli", "net", "inspect", "Main Page"])
-            .expect("parse net inspect alias");
+    fn net_inspect_alias_no_longer_parses() {
+        assert!(
+            InspectCli::try_parse_from(["inspect-cli", "net", "inspect", "Main Page"]).is_err()
+        );
+    }
 
-        match cli.command {
-            InspectCommand::Net(args) => match args.command {
-                Some(NetSubcommand::Inspect(args)) => assert_eq!(args.target, "Main Page"),
-                None => panic!("expected legacy net inspect alias"),
+    #[test]
+    fn seo_no_meta_json_omits_meta_map() {
+        let result = SeoInspectResult {
+            url: "https://wiki.example.org/Alpha".to_string(),
+            title: Some("Alpha".to_string()),
+            meta: BTreeMap::from([("description".to_string(), vec!["Summary".to_string()])]),
+            canonical: Some("https://wiki.example.org/Alpha".to_string()),
+            missing: vec!["twitter:card".to_string()],
+        };
+
+        let value = serde_json::to_value(seo_json_output(&result, true)).expect("serialize seo");
+
+        assert_eq!(value["url"], json!("https://wiki.example.org/Alpha"));
+        assert_eq!(value["canonical"], json!("https://wiki.example.org/Alpha"));
+        assert!(value.get("meta").is_none());
+    }
+
+    #[test]
+    fn net_no_meta_json_omits_summary_and_probe_fields() {
+        let resource = NetResource {
+            url: "https://wiki.example.org/load.js".to_string(),
+            resource_type: "script".to_string(),
+            tag: "script".to_string(),
+            size_bytes: Some(42),
+            content_type: Some("text/javascript".to_string()),
+            cache_control: Some("max-age=60".to_string()),
+            age: Some("12".to_string()),
+            x_cache: Some("hit".to_string()),
+            x_varnish: Some("123".to_string()),
+        };
+        let result = NetInspectResult {
+            url: "https://wiki.example.org/Alpha".to_string(),
+            total_resources: 3,
+            inspected: 1,
+            summary: NetSummary {
+                known_bytes: 42,
+                unknown_count: 0,
+                largest: vec![resource.clone()],
+                cache_warnings: vec![],
             },
-            InspectCommand::Seo(_) => panic!("expected net command"),
-        }
+            resources: vec![resource],
+        };
+
+        let value = serde_json::to_value(net_json_output(&result, true)).expect("serialize net");
+        let first = &value["resources"][0];
+
+        assert!(value.get("summary").is_none());
+        assert_eq!(first["url"], json!("https://wiki.example.org/load.js"));
+        assert_eq!(first["resource_type"], json!("script"));
+        assert_eq!(first["tag"], json!("script"));
+        assert!(first.get("size_bytes").is_none());
+        assert!(first.get("content_type").is_none());
     }
 }

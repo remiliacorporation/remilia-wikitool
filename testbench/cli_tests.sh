@@ -855,15 +855,6 @@ if [ "$TIER" = "live" ]; then
         fail "research search finds known page (got: ${OUTPUT:0:300})"
     fi
 
-    # --- search-external compatibility alias ---
-    section "search-external compatibility alias (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" search-external "Remilia" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "deprecated" && echo "$OUTPUT" | grep -qi "Remilia\|result\|title"; then
-        pass "search-external remains callable with deprecation warning"
-    else
-        fail "search-external remains callable with deprecation warning (got: ${OUTPUT:0:300})"
-    fi
-
     # --- seo ---
     section "seo (live)"
     OUTPUT=$(wt "$PROJ_LIVE" seo "Main Page" 2>&1 || true)
@@ -873,15 +864,6 @@ if [ "$TIER" = "live" ]; then
         fail "seo produces report (got: ${OUTPUT:0:300})"
     fi
 
-    # --- seo inspect compatibility alias ---
-    section "seo inspect compatibility alias (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" seo inspect "Main Page" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "deprecated" && echo "$OUTPUT" | grep -qi "seo\|title\|meta\|description"; then
-        pass "seo inspect remains callable with deprecation warning"
-    else
-        fail "seo inspect remains callable with deprecation warning (got: ${OUTPUT:0:300})"
-    fi
-
     # --- net ---
     section "net (live)"
     OUTPUT=$(wt "$PROJ_LIVE" net "Main Page" 2>&1 || true)
@@ -889,15 +871,6 @@ if [ "$TIER" = "live" ]; then
         pass "net produces report"
     else
         fail "net produces report (got: ${OUTPUT:0:300})"
-    fi
-
-    # --- net inspect compatibility alias ---
-    section "net inspect compatibility alias (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" net inspect "Main Page" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "deprecated" && echo "$OUTPUT" | grep -qi "net\|status\|response\|http\|dns"; then
-        pass "net inspect remains callable with deprecation warning"
-    else
-        fail "net inspect remains callable with deprecation warning (got: ${OUTPUT:0:300})"
     fi
 
     # --- fetch ---

@@ -593,10 +593,10 @@ Options:
 ```text
 Inspect SEO metadata for wiki pages
 
-Usage: wikitool seo [OPTIONS] [TARGET]
+Usage: wikitool seo [OPTIONS] <TARGET>
 
 Arguments:
-  [TARGET]  
+  <TARGET>  
 
 Options:
       --json                 Output JSON for AI consumption
@@ -614,10 +614,10 @@ Options:
 ```text
 Inspect link network and page relationships
 
-Usage: wikitool net [OPTIONS] [TARGET]
+Usage: wikitool net [OPTIONS] <TARGET>
 
 Arguments:
-  [TARGET]  
+  <TARGET>  
 
 Options:
       --limit <N>            Limit number of resources to probe [default: 25]
