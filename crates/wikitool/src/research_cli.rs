@@ -5,13 +5,13 @@ use wikitool_core::research::{
     ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
     ResearchCacheOptions, ResearchCacheStatus, fetch_page_by_url_cached,
 };
-use wikitool_core::sync::{
-    ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN,
-    NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE, search_external_wiki_report_with_config,
-};
+use wikitool_core::sync::{ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat};
 
-use crate::cli_support::{normalize_path, normalize_title_query, resolve_runtime_with_config};
-use crate::query_cli::{normalize_output, print_external_search_report};
+use crate::cli_support::{normalize_path, resolve_runtime_with_config};
+use crate::query_cli::{
+    RemoteWikiSearchRequest, normalize_output, print_external_search_report,
+    remote_wiki_search_report,
+};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -93,20 +93,17 @@ pub(crate) fn run_research(runtime: &RuntimeOptions, args: ResearchArgs) -> Resu
 }
 
 fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Result<()> {
-    if args.limit == 0 {
-        bail!("research search requires --limit >= 1");
-    }
     let format = normalize_output(&args.format)?;
-    let what = MediaWikiSearchWhat::parse(&args.what)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let query = normalize_title_query(&args.query);
-    if query.is_empty() {
-        bail!("research search requires a non-empty query");
-    }
-
-    let namespaces = [NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
-    let report =
-        search_external_wiki_report_with_config(&query, &namespaces, args.limit, what, &config)?;
+    let report = remote_wiki_search_report(
+        &config,
+        RemoteWikiSearchRequest {
+            command_name: "research search",
+            query: &args.query,
+            limit: args.limit,
+            what: &args.what,
+        },
+    )?;
 
     if format == "json" {
         let output = ResearchSearchOutput::from(report);
@@ -116,7 +113,7 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
 
     println!("research search");
     println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("query: {query}");
+    println!("query: {}", report.query);
     print_external_search_report("research_search", &report);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {

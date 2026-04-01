@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
 use clap::Args;
+use wikitool_core::config::WikiConfig;
 use wikitool_core::knowledge::retrieval::{
     LocalContextBundle, LocalSearchHit, build_local_context, query_search_local,
 };
@@ -13,6 +14,9 @@ use crate::cli_support::{
     resolve_runtime_with_config,
 };
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
+
+const REMOTE_WIKI_SEARCH_NAMESPACES: [i32; 5] =
+    [NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
 
 #[derive(Debug, Args)]
 pub(crate) struct ContextArgs {
@@ -37,6 +41,21 @@ pub(crate) struct SearchExternalArgs {
     what: String,
     #[arg(long, default_value = "text", value_name = "FORMAT")]
     format: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RemoteWikiSearchRequest<'a> {
+    pub(crate) command_name: &'a str,
+    pub(crate) query: &'a str,
+    pub(crate) limit: usize,
+    pub(crate) what: &'a str,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ParsedRemoteWikiSearchRequest {
+    query: String,
+    limit: usize,
+    what: MediaWikiSearchWhat,
 }
 
 pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result<()> {
@@ -110,20 +129,17 @@ pub(crate) fn run_search_external(
     args: SearchExternalArgs,
 ) -> Result<()> {
     eprintln!("warning: `wikitool search-external` is deprecated; use `wikitool research search`");
-    if args.limit == 0 {
-        bail!("search-external requires --limit >= 1");
-    }
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let format = normalize_output(&args.format)?;
-    let what = MediaWikiSearchWhat::parse(&args.what)?;
-    let query = normalize_title_query(&args.query);
-    if query.is_empty() {
-        bail!("search-external requires a non-empty query");
-    }
-
-    let namespaces = [NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
-    let report =
-        search_external_wiki_report_with_config(&query, &namespaces, args.limit, what, &config)?;
+    let report = remote_wiki_search_report(
+        &config,
+        RemoteWikiSearchRequest {
+            command_name: "search-external",
+            query: &args.query,
+            limit: args.limit,
+            what: &args.what,
+        },
+    )?;
 
     if format == "json" {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -132,7 +148,7 @@ pub(crate) fn run_search_external(
 
     println!("search-external");
     println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("query: {query}");
+    println!("query: {}", report.query);
     print_external_search_report("search_external", &report);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
@@ -140,6 +156,38 @@ pub(crate) fn run_search_external(
     }
 
     Ok(())
+}
+
+pub(crate) fn remote_wiki_search_report(
+    config: &WikiConfig,
+    request: RemoteWikiSearchRequest<'_>,
+) -> Result<ExternalSearchReport> {
+    let parsed = parse_remote_wiki_search_request(request)?;
+    search_external_wiki_report_with_config(
+        &parsed.query,
+        &REMOTE_WIKI_SEARCH_NAMESPACES,
+        parsed.limit,
+        parsed.what,
+        config,
+    )
+}
+
+fn parse_remote_wiki_search_request(
+    request: RemoteWikiSearchRequest<'_>,
+) -> Result<ParsedRemoteWikiSearchRequest> {
+    if request.limit == 0 {
+        bail!("{} requires --limit >= 1", request.command_name);
+    }
+    let query = normalize_title_query(request.query);
+    if query.is_empty() {
+        bail!("{} requires a non-empty query", request.command_name);
+    }
+
+    Ok(ParsedRemoteWikiSearchRequest {
+        query,
+        limit: request.limit,
+        what: MediaWikiSearchWhat::parse(request.what)?,
+    })
 }
 
 fn print_search_hits(prefix: &str, hits: &[LocalSearchHit]) {
@@ -255,6 +303,60 @@ pub(crate) fn normalize_output(value: &str) -> Result<&'static str> {
         "json" => Ok("json"),
         "text" => Ok("text"),
         _ => bail!("unsupported output format: {} (expected text|json)", value),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_remote_wiki_search_request_normalizes_query_and_scope() {
+        let parsed = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
+            command_name: "research search",
+            query: " Alpha_Beta ",
+            limit: 3,
+            what: "near-match",
+        })
+        .expect("parse remote wiki search request");
+
+        assert_eq!(
+            parsed,
+            ParsedRemoteWikiSearchRequest {
+                query: "Alpha Beta".to_string(),
+                limit: 3,
+                what: MediaWikiSearchWhat::NearMatch,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_remote_wiki_search_request_rejects_zero_limit() {
+        let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
+            command_name: "search-external",
+            query: "Alpha",
+            limit: 0,
+            what: "text",
+        })
+        .expect_err("zero limit should fail");
+
+        assert_eq!(error.to_string(), "search-external requires --limit >= 1");
+    }
+
+    #[test]
+    fn parse_remote_wiki_search_request_rejects_blank_query() {
+        let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
+            command_name: "research search",
+            query: "   ",
+            limit: 1,
+            what: "text",
+        })
+        .expect_err("blank query should fail");
+
+        assert_eq!(
+            error.to_string(),
+            "research search requires a non-empty query"
+        );
     }
 }
 
