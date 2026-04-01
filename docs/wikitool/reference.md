@@ -2,7 +2,9 @@
 
 This file is generated from Rust CLI help output. Do not edit manually.
 
-Regenerate:
+Maintainer-only commands hidden from default help are intentionally omitted.
+
+Regenerate (maintainer command):
 
 ```bash
 wikitool docs generate-reference
@@ -42,9 +44,6 @@ Commands:
   lsp:generate-config  
   lsp:status           
   lsp:info             
-  workflow             Run end-to-end setup and refresh workflows
-  release              Build AI companion packs and release bundles
-  dev                  Install local development helpers
   help                 Print this message or the help of the given subcommand(s)
 
 Options:
@@ -409,17 +408,16 @@ Manage and query pinned MediaWiki docs corpora
 Usage: wikitool docs [OPTIONS] <COMMAND>
 
 Commands:
-  import              Import docs from a bundle or extension source
-  import-technical    Import a targeted technical docs slice
-  import-profile      Hydrate a named docs profile
-  generate-reference  Generate CLI reference docs from help text
-  list                List imported docs corpora
-  update              Refresh outdated imported docs corpora
-  remove              Remove an imported docs corpus
-  search              Search pinned docs corpora by text
-  context             Build focused docs context from pinned corpora
-  symbols             Lookup docs symbols such as hooks, config vars, and APIs
-  help                Print this message or the help of the given subcommand(s)
+  import            Import docs from a bundle or extension source
+  import-technical  Import a targeted technical docs slice
+  import-profile    Hydrate a named docs profile
+  list              List imported docs corpora
+  update            Refresh outdated imported docs corpora
+  remove            Remove an imported docs corpus
+  search            Search pinned docs corpora by text
+  context           Build focused docs context from pinned corpora
+  symbols           Lookup docs symbols such as hooks, config vars, and APIs
+  help              Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>  
@@ -494,22 +492,6 @@ Options:
       --diagnostics            Print resolved runtime diagnostics
   -l, --limit <LIMIT>          Limit subpage imports per profile seed [default: 100]
   -h, --help                   Print help
-```
-
-## docs generate-reference
-
-```text
-Generate CLI reference docs from help text
-
-Usage: wikitool docs generate-reference [OPTIONS]
-
-Options:
-      --output <PATH>        Output markdown path (default: docs/wikitool/reference.md in current directory)
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
 ```
 
 ## docs list
@@ -1545,188 +1527,6 @@ Usage: wikitool lsp:info [OPTIONS]
 Options:
       --project-root <PATH>  
       --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## workflow
-
-```text
-Run end-to-end setup and refresh workflows
-
-Usage: wikitool workflow [OPTIONS] <COMMAND>
-
-Commands:
-  bootstrap     Initialize runtime, optionally pull content, and warm knowledge
-  full-refresh  Rebuild local runtime from scratch and re-warm knowledge
-  help          Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## workflow bootstrap
-
-```text
-Initialize runtime, optionally pull content, and warm knowledge
-
-Usage: wikitool workflow bootstrap [OPTIONS]
-
-Options:
-      --project-root <PATH>     
-      --templates               Create templates/ during initialization (default: true)
-      --data-dir <PATH>         
-      --no-templates            Do not create templates/ during initialization
-      --config <PATH>           
-      --pull                    Pull content after initialization (default: true)
-      --diagnostics             Print resolved runtime diagnostics
-      --no-pull                 Skip content pull after initialization
-      --skip-reference          Skip docs reference generation
-      --skip-git-hooks          Skip commit-msg hook installation
-      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-mw-1.44]
-  -h, --help                    Print help
-```
-
-## workflow full-refresh
-
-```text
-Rebuild local runtime from scratch and re-warm knowledge
-
-Usage: wikitool workflow full-refresh [OPTIONS]
-
-Options:
-      --project-root <PATH>     
-      --yes                     Assume yes; do not prompt for confirmation
-      --data-dir <PATH>         
-      --templates               Create templates/ during initialization (default: true)
-      --config <PATH>           
-      --no-templates            Do not create templates/ during initialization
-      --diagnostics             Print resolved runtime diagnostics
-      --skip-reference          Skip docs reference generation
-      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-mw-1.44]
-  -h, --help                    Print help
-```
-
-## release
-
-```text
-Build AI companion packs and release bundles
-
-Usage: wikitool release [OPTIONS] <COMMAND>
-
-Commands:
-  build-ai-pack  Stage the AI companion pack into a distributable folder
-  package        Stage one local binary together with the AI companion files
-  build-matrix   Build and package release bundles for one or more targets
-  help           Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## release build-ai-pack
-
-```text
-Stage the AI companion pack into a distributable folder
-
-Usage: wikitool release build-ai-pack [OPTIONS]
-
-Options:
-      --project-root <PATH>       
-      --repo-root <PATH>          Wikitool repository root (default: current directory)
-      --data-dir <PATH>           
-      --output-dir <PATH>         Output directory (default: <repo>/dist/ai-pack)
-      --config <PATH>             
-      --host-project-root <PATH>  Optional host project root containing CLAUDE.md + .claude/{rules,skills}
-      --diagnostics               Print resolved runtime diagnostics
-  -h, --help                      Print help
-```
-
-## release package
-
-```text
-Stage one local binary together with the AI companion files
-
-Usage: wikitool release package [OPTIONS]
-
-Options:
-      --project-root <PATH>       
-      --repo-root <PATH>          Wikitool repository root (default: current directory)
-      --binary-path <PATH>        Release binary path (default: <repo>/target/release/wikitool[.exe])
-      --data-dir <PATH>           
-      --config <PATH>             
-      --output-dir <PATH>         Output directory (default: <repo>/dist/release)
-      --diagnostics               Print resolved runtime diagnostics
-      --host-project-root <PATH>  Optional host project root containing CLAUDE.md + .claude/{rules,skills}
-  -h, --help                      Print help
-```
-
-## release build-matrix
-
-```text
-Build and package release bundles for one or more targets
-
-Usage: wikitool release build-matrix [OPTIONS]
-
-Options:
-      --project-root <PATH>       
-      --repo-root <PATH>          Wikitool repository root (default: current directory)
-      --data-dir <PATH>           
-      --targets <TRIPLE>          Target triples to build (repeat or use comma-separated list). Defaults to windows/linux/macos x86_64 targets.
-      --config <PATH>             
-      --output-dir <PATH>         Output directory for staged folders and zip artifacts (default: <repo>/dist/release-matrix)
-      --artifact-version <LABEL>  Version label used in bundle names (default: v<CARGO_PKG_VERSION>)
-      --diagnostics               Print resolved runtime diagnostics
-      --unversioned-names         Use unversioned bundle names (wikitool-<target>) for CI/ephemeral artifacts
-      --cargo-bin <PATH>          Cargo executable path used for target builds (default: cargo)
-      --skip-build                Skip cargo build and package existing target binaries
-      --locked                    Use cargo --locked for target builds (default: true)
-      --no-locked                 Do not pass --locked to cargo builds
-      --host-project-root <PATH>  Optional host project root containing CLAUDE.md + .claude/{rules,skills}
-  -h, --help                      Print help
-```
-
-## dev
-
-```text
-Install local development helpers
-
-Usage: wikitool dev [OPTIONS] <COMMAND>
-
-Commands:
-  install-git-hooks  Install the commit-msg hook into the target Git worktree
-  help               Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## dev install-git-hooks
-
-```text
-Install the commit-msg hook into the target Git worktree
-
-Usage: wikitool dev install-git-hooks [OPTIONS]
-
-Options:
-      --project-root <PATH>  
-      --repo-root <PATH>     Repository root containing .git/hooks (default: current directory)
-      --data-dir <PATH>      
-      --source <PATH>        Hook source file (default: scripts/git-hooks/commit-msg under repo root)
-      --allow-missing-git    Do not fail when .git/hooks is missing (useful for zip-distributed binaries)
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help

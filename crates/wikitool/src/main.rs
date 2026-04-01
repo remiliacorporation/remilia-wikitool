@@ -125,11 +125,11 @@ enum Commands {
     LspStatus,
     #[command(name = "lsp:info")]
     LspInfo,
-    #[command(about = "Run end-to-end setup and refresh workflows")]
+    #[command(about = "Run end-to-end setup and refresh workflows", hide = true)]
     Workflow(workflow_cli::WorkflowArgs),
-    #[command(about = "Build AI companion packs and release bundles")]
+    #[command(about = "Build AI companion packs and release bundles", hide = true)]
     Release(release::ReleaseArgs),
-    #[command(about = "Install local development helpers")]
+    #[command(about = "Install local development helpers", hide = true)]
     Dev(dev_cli::DevArgs),
 }
 

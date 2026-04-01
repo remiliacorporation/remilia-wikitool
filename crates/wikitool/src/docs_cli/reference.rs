@@ -44,7 +44,9 @@ fn generate_docs_reference_markdown() -> Result<String> {
         "".to_string(),
         "This file is generated from Rust CLI help output. Do not edit manually.".to_string(),
         "".to_string(),
-        "Regenerate:".to_string(),
+        "Maintainer-only commands hidden from default help are intentionally omitted.".to_string(),
+        "".to_string(),
+        "Regenerate (maintainer command):".to_string(),
         "".to_string(),
         "```bash".to_string(),
         "wikitool docs generate-reference".to_string(),
@@ -74,6 +76,9 @@ fn collect_command_paths(command: &Command, prefix: &[String], out: &mut Vec<Vec
     out.push(prefix.to_vec());
 
     for subcommand in command.get_subcommands() {
+        if subcommand.is_hide_set() {
+            continue;
+        }
         let mut next = prefix.to_vec();
         next.push(subcommand.get_name().to_string());
         collect_command_paths(subcommand, &next, out);
@@ -113,5 +118,38 @@ fn help_text_for_command_path(path: &[String]) -> Result<String> {
                 )
             }),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collect_command_paths_skips_hidden_commands() {
+        let command = Cli::command();
+        let mut paths = Vec::new();
+        collect_command_paths(&command, &[], &mut paths);
+
+        assert!(!paths.iter().any(|path| path == &["workflow".to_string()]));
+        assert!(!paths.iter().any(|path| path == &["release".to_string()]));
+        assert!(!paths.iter().any(|path| path == &["dev".to_string()]));
+        assert!(
+            !paths
+                .iter()
+                .any(|path| { path == &["docs".to_string(), "generate-reference".to_string()] })
+        );
+        assert!(paths.iter().any(|path| path == &["research".to_string()]));
+    }
+
+    #[test]
+    fn hidden_commands_remain_invocable_directly() {
+        let release_help =
+            help_text_for_command_path(&["release".to_string()]).expect("render release help");
+        let workflow_help =
+            help_text_for_command_path(&["workflow".to_string()]).expect("render workflow help");
+
+        assert!(release_help.contains("Usage: wikitool release"));
+        assert!(workflow_help.contains("Usage: wikitool workflow"));
     }
 }

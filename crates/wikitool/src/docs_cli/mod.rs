@@ -45,7 +45,8 @@ enum DocsSubcommand {
     ImportProfile(import::DocsImportProfileArgs),
     #[command(
         name = "generate-reference",
-        about = "Generate CLI reference docs from help text"
+        about = "Generate CLI reference docs from help text",
+        hide = true
     )]
     GenerateReference(reference::DocsGenerateReferenceArgs),
     #[command(about = "List imported docs corpora")]

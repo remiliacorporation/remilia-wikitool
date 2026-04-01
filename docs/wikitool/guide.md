@@ -125,6 +125,9 @@ wikitool module lint --format text
 
 ## Release packaging
 
+These maintainer commands are hidden from default `wikitool --help` output and the generated
+reference, but remain callable directly.
+
 ```bash
 wikitool release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin
 wikitool release build-matrix --targets x86_64-unknown-linux-gnu --unversioned-names
