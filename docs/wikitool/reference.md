@@ -593,27 +593,10 @@ Options:
 ```text
 Inspect SEO metadata for wiki pages
 
-Usage: wikitool seo [OPTIONS] <COMMAND>
-
-Commands:
-  inspect  
-  help     Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## seo inspect
-
-```text
-Usage: wikitool seo inspect [OPTIONS] <TARGET>
+Usage: wikitool seo [OPTIONS] [TARGET]
 
 Arguments:
-  <TARGET>  
+  [TARGET]  
 
 Options:
       --json                 Output JSON for AI consumption
@@ -631,27 +614,10 @@ Options:
 ```text
 Inspect link network and page relationships
 
-Usage: wikitool net [OPTIONS] <COMMAND>
-
-Commands:
-  inspect  
-  help     Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## net inspect
-
-```text
-Usage: wikitool net inspect [OPTIONS] <TARGET>
+Usage: wikitool net [OPTIONS] [TARGET]
 
 Arguments:
-  <TARGET>  
+  [TARGET]  
 
 Options:
       --limit <N>            Limit number of resources to probe [default: 25]

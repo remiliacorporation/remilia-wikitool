@@ -153,6 +153,16 @@ mod tests {
         assert!(
             !paths
                 .iter()
+                .any(|path| path == &["seo".to_string(), "inspect".to_string()])
+        );
+        assert!(
+            !paths
+                .iter()
+                .any(|path| path == &["net".to_string(), "inspect".to_string()])
+        );
+        assert!(
+            !paths
+                .iter()
                 .any(|path| path == &["lsp:generate-config".to_string()])
         );
         assert!(
@@ -187,8 +197,16 @@ mod tests {
             .expect("render search-external help");
         let lsp_alias_help = help_text_for_command_path(&["lsp:generate-config".to_string()])
             .expect("render lsp alias help");
+        let seo_alias_help =
+            help_text_for_command_path(&["seo".to_string(), "inspect".to_string()])
+                .expect("render seo inspect alias help");
+        let net_alias_help =
+            help_text_for_command_path(&["net".to_string(), "inspect".to_string()])
+                .expect("render net inspect alias help");
 
         assert!(search_external_help.contains("Usage: wikitool search-external"));
         assert!(lsp_alias_help.contains("Usage: wikitool lsp:generate-config"));
+        assert!(seo_alias_help.contains("Usage: wikitool seo inspect"));
+        assert!(net_alias_help.contains("Usage: wikitool net inspect"));
     }
 }

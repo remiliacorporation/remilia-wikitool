@@ -864,22 +864,40 @@ if [ "$TIER" = "live" ]; then
         fail "search-external remains callable with deprecation warning (got: ${OUTPUT:0:300})"
     fi
 
-    # --- seo inspect ---
-    section "seo inspect (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" seo inspect "Main Page" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "seo\|title\|meta\|inspect\|description"; then
-        pass "seo inspect produces report"
+    # --- seo ---
+    section "seo (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" seo "Main Page" 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "seo\|title\|meta\|description"; then
+        pass "seo produces report"
     else
-        fail "seo inspect produces report (got: ${OUTPUT:0:300})"
+        fail "seo produces report (got: ${OUTPUT:0:300})"
     fi
 
-    # --- net inspect ---
-    section "net inspect (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" net inspect "Main Page" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "net\|inspect\|status\|response\|http\|dns"; then
-        pass "net inspect produces report"
+    # --- seo inspect compatibility alias ---
+    section "seo inspect compatibility alias (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" seo inspect "Main Page" 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "deprecated" && echo "$OUTPUT" | grep -qi "seo\|title\|meta\|description"; then
+        pass "seo inspect remains callable with deprecation warning"
     else
-        fail "net inspect produces report (got: ${OUTPUT:0:300})"
+        fail "seo inspect remains callable with deprecation warning (got: ${OUTPUT:0:300})"
+    fi
+
+    # --- net ---
+    section "net (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" net "Main Page" 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "net\|status\|response\|http\|dns"; then
+        pass "net produces report"
+    else
+        fail "net produces report (got: ${OUTPUT:0:300})"
+    fi
+
+    # --- net inspect compatibility alias ---
+    section "net inspect compatibility alias (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" net inspect "Main Page" 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "deprecated" && echo "$OUTPUT" | grep -qi "net\|status\|response\|http\|dns"; then
+        pass "net inspect remains callable with deprecation warning"
+    else
+        fail "net inspect remains callable with deprecation warning (got: ${OUTPUT:0:300})"
     fi
 
     # --- fetch ---

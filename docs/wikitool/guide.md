@@ -127,8 +127,8 @@ wikitool status
 wikitool lsp status
 wikitool lsp info
 wikitool db stats
-wikitool seo inspect "Page"
-wikitool net inspect "Page" --limit 25
+wikitool seo "Page"
+wikitool net "Page" --limit 25
 wikitool module lint --format text
 ```
 
