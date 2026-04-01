@@ -375,17 +375,28 @@ where
 }
 
 fn detect_project_root_heuristic(cwd: &Path, executable_dir: Option<&Path>) -> PathBuf {
+    detect_project_root_from_candidates(candidate_roots(cwd, executable_dir), cwd)
+}
+
+fn detect_project_root_from_candidates<I>(candidates: I, fallback: &Path) -> PathBuf
+where
+    I: IntoIterator<Item = PathBuf>,
+{
     let mut seen = HashSet::new();
-    for candidate in candidate_roots(cwd, executable_dir) {
+    for candidate in candidates {
         let key = normalize_for_display(&candidate);
         if !seen.insert(key) {
             continue;
         }
-        if candidate.join("wiki_content").exists() || candidate.join(".wikitool").exists() {
+        if is_runtime_root_candidate(&candidate) {
             return candidate;
         }
     }
-    cwd.to_path_buf()
+    fallback.to_path_buf()
+}
+
+fn is_runtime_root_candidate(candidate: &Path) -> bool {
+    candidate.join(".wikitool").exists() || candidate.join("wiki_content").exists()
 }
 
 fn candidate_roots(cwd: &Path, executable_dir: Option<&Path>) -> Vec<PathBuf> {
@@ -561,5 +572,69 @@ mod tests {
             err.to_string()
                 .contains("Runtime layout is not initialized for sync")
         );
+    }
+
+    #[test]
+    fn heuristic_prefers_host_root_visible_from_cwd_ancestors() {
+        let temp = tempdir().expect("tempdir");
+        let host_root = temp.path().join("wiki");
+        let nested_cwd = host_root.join("workspace").join("notes");
+        let executable_dir = host_root
+            .join("tools")
+            .join("wikitool")
+            .join("target")
+            .join("debug");
+        fs::create_dir_all(host_root.join(".wikitool")).expect("create state dir");
+        fs::create_dir_all(&nested_cwd).expect("create nested cwd");
+        fs::create_dir_all(&executable_dir).expect("create executable dir");
+
+        let resolved = super::detect_project_root_from_candidates(
+            vec![
+                nested_cwd.clone(),
+                nested_cwd.parent().expect("parent").to_path_buf(),
+                host_root.clone(),
+                executable_dir,
+            ],
+            &nested_cwd,
+        );
+
+        assert_eq!(resolved, host_root);
+    }
+
+    #[test]
+    fn heuristic_can_find_host_root_from_executable_ancestors() {
+        let temp = tempdir().expect("tempdir");
+        let host_root = temp.path().join("wiki");
+        let cwd = temp.path().join("scratch");
+        let executable_dir = host_root
+            .join("tools")
+            .join("wikitool")
+            .join("target")
+            .join("debug");
+        fs::create_dir_all(host_root.join(".wikitool")).expect("create state dir");
+        fs::create_dir_all(&cwd).expect("create cwd");
+        fs::create_dir_all(&executable_dir).expect("create executable dir");
+
+        let resolved = super::detect_project_root_from_candidates(
+            vec![cwd.clone(), executable_dir.clone(), host_root.clone()],
+            &cwd,
+        );
+
+        assert_eq!(resolved, host_root);
+    }
+
+    #[test]
+    fn heuristic_falls_back_to_cwd_for_uninitialized_release_folder() {
+        let temp = tempdir().expect("tempdir");
+        let release_root = temp.path().join("wikitool-release");
+        let executable_dir = release_root.clone();
+        fs::create_dir_all(&release_root).expect("create release root");
+
+        let resolved = super::detect_project_root_from_candidates(
+            vec![release_root.clone(), executable_dir],
+            &release_root,
+        );
+
+        assert_eq!(resolved, release_root);
     }
 }
