@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,6 +13,7 @@ use wikitool_core::external::{
 
 use crate::cli_support::{normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
+use wikitool_core::support::compute_hash;
 
 #[derive(Debug, Args)]
 pub(crate) struct FetchArgs {
@@ -155,7 +157,8 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
             all_pages.push(main_page);
         }
 
-        let subpage_titles = list_subpages(&parent_title, &parsed, 500)?;
+        // Tree exports should walk the full MediaWiki allpages continuation chain.
+        let subpage_titles = list_subpages(&parent_title, &parsed, usize::MAX)?;
         let subpages = fetch_pages_by_titles(&subpage_titles, &parsed, &fetch_options)?;
         all_pages.extend(subpages);
         if all_pages.is_empty() {
@@ -201,18 +204,15 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
             fs::create_dir_all(&output_dir)
                 .with_context(|| format!("failed to create {}", normalize_path(&output_dir)))?;
 
-            for page in &all_pages {
+            let filenames = build_subpage_output_filenames(&all_pages, export_format);
+
+            for (page, filename) in all_pages.iter().zip(filenames.iter()) {
                 let rendered = render_export_page(
                     page,
                     export_format,
                     !args.no_frontmatter,
                     args.code_language.as_deref(),
                     &parsed.domain,
-                );
-                let filename = format!(
-                    "{}.{}",
-                    sanitize_filename(&page.title),
-                    export_format.file_extension()
                 );
                 let output_file = output_dir.join(filename);
                 fs::write(&output_file, rendered.as_bytes())
@@ -221,10 +221,10 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
 
             let index_content = build_subpage_index(
                 &all_pages,
+                &filenames,
                 &parsed.domain,
                 &args.url,
                 &parent_title,
-                export_format,
             );
             let index_path = output_dir.join("_index.md");
             fs::write(&index_path, index_content.as_bytes())
@@ -349,10 +349,10 @@ fn render_combined_export(
 
 fn build_subpage_index(
     pages: &[ExternalFetchResult],
+    filenames: &[String],
     domain: &str,
     source_url: &str,
     title: &str,
-    export_format: ExportFormat,
 ) -> String {
     let mut lines = vec![
         "---".to_string(),
@@ -368,15 +368,50 @@ fn build_subpage_index(
         "## Pages".to_string(),
         String::new(),
     ];
-    for page in pages {
-        let filename = format!(
-            "{}.{}",
-            sanitize_filename(&page.title),
-            export_format.file_extension()
-        );
+    for (page, filename) in pages.iter().zip(filenames.iter()) {
         lines.push(format!("- [{}](./{})", page.title, filename));
     }
     lines.join("\n")
+}
+
+fn build_subpage_output_filenames(
+    pages: &[ExternalFetchResult],
+    export_format: ExportFormat,
+) -> Vec<String> {
+    let extension = export_format.file_extension();
+    let stems = pages
+        .iter()
+        .map(|page| export_filename_stem(&page.title))
+        .collect::<Vec<_>>();
+    let mut counts = HashMap::<String, usize>::new();
+    for stem in &stems {
+        let key = format!("{stem}.{extension}").to_ascii_lowercase();
+        *counts.entry(key).or_default() += 1;
+    }
+
+    pages
+        .iter()
+        .zip(stems)
+        .map(|(page, stem)| {
+            let key = format!("{stem}.{extension}").to_ascii_lowercase();
+            if counts.get(&key).copied().unwrap_or_default() > 1 {
+                let hash = compute_hash(&page.title);
+                format!("{stem}-{}.{}", &hash[..8], extension)
+            } else {
+                format!("{stem}.{extension}")
+            }
+        })
+        .collect()
+}
+
+fn export_filename_stem(title: &str) -> String {
+    let stem = sanitize_filename(title);
+    if !stem.is_empty() {
+        return stem;
+    }
+
+    let hash = compute_hash(title);
+    format!("page-{}", &hash[..8])
 }
 
 fn write_or_print_export(content: &str, output_path: Option<&Path>) -> Result<()> {
@@ -403,5 +438,47 @@ fn now_timestamp_string() -> String {
 fn format_rendered_fetch_mode(mode: wikitool_core::external::RenderedFetchMode) -> &'static str {
     match mode {
         wikitool_core::external::RenderedFetchMode::ParseApi => "parse_api",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_subpage_output_filenames;
+    use wikitool_core::external::{ExportFormat, ExternalFetchResult};
+
+    fn page(title: &str) -> ExternalFetchResult {
+        ExternalFetchResult {
+            title: title.to_string(),
+            content: String::new(),
+            timestamp: String::new(),
+            extract: None,
+            url: String::new(),
+            source_wiki: String::new(),
+            source_domain: String::new(),
+            content_format: String::new(),
+            content_hash: String::new(),
+            revision_id: None,
+            display_title: None,
+            rendered_fetch_mode: None,
+            canonical_url: None,
+            site_name: None,
+            byline: None,
+            published_at: None,
+            fetch_mode: None,
+            extraction_quality: None,
+        }
+    }
+
+    #[test]
+    fn build_subpage_output_filenames_disambiguates_case_collisions() {
+        let filenames = build_subpage_output_filenames(
+            &[page("DB/GtArmorMitigationByLvl"), page("DB/gtArmorMitigationByLvl")],
+            ExportFormat::Markdown,
+        );
+
+        assert_eq!(filenames.len(), 2);
+        assert_ne!(filenames[0].to_ascii_lowercase(), filenames[1].to_ascii_lowercase());
+        assert!(filenames[0].ends_with(".md"));
+        assert!(filenames[1].ends_with(".md"));
     }
 }
