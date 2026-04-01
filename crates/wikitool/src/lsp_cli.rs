@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::Args;
+use clap::{Args, Subcommand};
 use wikitool_core::runtime::{
     embedded_parser_config, lsp_settings_json, materialize_parser_config,
 };
@@ -8,9 +8,33 @@ use crate::cli_support::{normalize_path, resolve_runtime_paths, resolve_runtime_
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
+pub(crate) struct LspArgs {
+    #[command(subcommand)]
+    command: LspSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum LspSubcommand {
+    #[command(about = "Write parser config and print editor settings JSON")]
+    GenerateConfig(LspGenerateConfigArgs),
+    #[command(about = "Show parser config and runtime config status")]
+    Status,
+    #[command(about = "Show the preferred LSP integration entry point")]
+    Info,
+}
+
+#[derive(Debug, Args)]
 pub(crate) struct LspGenerateConfigArgs {
     #[arg(long, help = "Overwrite parser config if it already exists")]
     force: bool,
+}
+
+pub(crate) fn run_lsp(runtime: &RuntimeOptions, args: LspArgs) -> Result<()> {
+    match args.command {
+        LspSubcommand::GenerateConfig(args) => run_lsp_generate_config(runtime, args),
+        LspSubcommand::Status => run_lsp_status(runtime),
+        LspSubcommand::Info => run_lsp_info(),
+    }
 }
 
 pub(crate) fn run_lsp_generate_config(
@@ -71,7 +95,7 @@ pub(crate) fn run_lsp_status(runtime: &RuntimeOptions) -> Result<()> {
 
 pub(crate) fn run_lsp_info() -> Result<()> {
     println!("wikitext LSP integration");
-    println!("  command: wikitool lsp:generate-config");
+    println!("  command: wikitool lsp generate-config");
     println!("  output parser config: <project-root>/.wikitool/parser-config.json");
     println!("  policy: {LOCAL_DB_POLICY_MESSAGE}");
     Ok(())

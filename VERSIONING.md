@@ -67,8 +67,8 @@ Experimental / top-level steered:
 
 Packaged / distributable:
 
-1. Use `wikitool release build-matrix` to emit per-target zip bundles.
-2. Bundles are generic by default and include ai-pack baseline `.claude` + instruction files.
+1. Use `wikitool release build-matrix` from a source checkout build with maintainer surface enabled to emit per-target zip bundles.
+2. Bundles are generic by default, include ai-pack baseline `.claude` + instruction files, and compile the packaged binary with `--no-default-features`.
 3. Host context overlay is opt-in via `--host-project-root <PATH>`.
 
 ## Manual release checklist

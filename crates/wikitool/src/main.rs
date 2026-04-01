@@ -8,6 +8,7 @@ pub(crate) use wikitool_core::schema::LOCAL_DB_POLICY_MESSAGE;
 mod article_cli;
 mod cli_support;
 mod db_cli;
+#[cfg(feature = "maintainer-surface")]
 mod dev_cli;
 mod docs_cli;
 mod export_cli;
@@ -21,11 +22,13 @@ mod lsp_cli;
 mod module_cli;
 mod quality_cli;
 mod query_cli;
+#[cfg(feature = "maintainer-surface")]
 mod release;
 mod research_cli;
 mod sync_cli;
 mod templates_cli;
 mod wiki_cli;
+#[cfg(feature = "maintainer-surface")]
 mod workflow_cli;
 
 const LICENSE_AGPL: &str = include_str!("../../../LICENSE");
@@ -86,7 +89,8 @@ enum Commands {
     Search(query_cli::SearchArgs),
     #[command(
         name = "search-external",
-        about = "Search the remote wiki API without using the local index"
+        about = "Deprecated alias for `wikitool research search`",
+        hide = true
     )]
     SearchExternal(query_cli::SearchExternalArgs),
     #[command(about = "Run structural and link integrity checks")]
@@ -119,16 +123,21 @@ enum Commands {
     Templates(templates_cli::TemplatesArgs),
     #[command(about = "Lint and mechanically remediate article drafts")]
     Article(article_cli::ArticleArgs),
-    #[command(name = "lsp:generate-config")]
-    LspGenerateConfig(lsp_cli::LspGenerateConfigArgs),
-    #[command(name = "lsp:status")]
-    LspStatus,
-    #[command(name = "lsp:info")]
-    LspInfo,
+    #[command(about = "Generate parser config and editor integration settings")]
+    Lsp(lsp_cli::LspArgs),
+    #[command(name = "lsp:generate-config", hide = true)]
+    LegacyLspGenerateConfig(lsp_cli::LspGenerateConfigArgs),
+    #[command(name = "lsp:status", hide = true)]
+    LegacyLspStatus,
+    #[command(name = "lsp:info", hide = true)]
+    LegacyLspInfo,
+    #[cfg(feature = "maintainer-surface")]
     #[command(about = "Run end-to-end setup and refresh workflows", hide = true)]
     Workflow(workflow_cli::WorkflowArgs),
+    #[cfg(feature = "maintainer-surface")]
     #[command(about = "Build AI companion packs and release bundles", hide = true)]
     Release(release::ReleaseArgs),
+    #[cfg(feature = "maintainer-surface")]
     #[command(about = "Install local development helpers", hide = true)]
     Dev(dev_cli::DevArgs),
 }
@@ -173,11 +182,27 @@ fn main() -> Result<()> {
         Some(Commands::Wiki(args)) => wiki_cli::run_wiki(&runtime, args),
         Some(Commands::Templates(args)) => templates_cli::run_templates(&runtime, args),
         Some(Commands::Article(args)) => article_cli::run_article(&runtime, args),
-        Some(Commands::LspGenerateConfig(args)) => lsp_cli::run_lsp_generate_config(&runtime, args),
-        Some(Commands::LspStatus) => lsp_cli::run_lsp_status(&runtime),
-        Some(Commands::LspInfo) => lsp_cli::run_lsp_info(),
+        Some(Commands::Lsp(args)) => lsp_cli::run_lsp(&runtime, args),
+        Some(Commands::LegacyLspGenerateConfig(args)) => {
+            print_deprecated_command_warning(
+                "wikitool lsp:generate-config",
+                "wikitool lsp generate-config",
+            );
+            lsp_cli::run_lsp_generate_config(&runtime, args)
+        }
+        Some(Commands::LegacyLspStatus) => {
+            print_deprecated_command_warning("wikitool lsp:status", "wikitool lsp status");
+            lsp_cli::run_lsp_status(&runtime)
+        }
+        Some(Commands::LegacyLspInfo) => {
+            print_deprecated_command_warning("wikitool lsp:info", "wikitool lsp info");
+            lsp_cli::run_lsp_info()
+        }
+        #[cfg(feature = "maintainer-surface")]
         Some(Commands::Workflow(args)) => workflow_cli::run_workflow(&runtime, args),
+        #[cfg(feature = "maintainer-surface")]
         Some(Commands::Release(args)) => release::run_release(args),
+        #[cfg(feature = "maintainer-surface")]
         Some(Commands::Dev(args)) => dev_cli::run_dev(args),
         None => {
             let mut command = Cli::command();
@@ -186,4 +211,8 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn print_deprecated_command_warning(current: &str, preferred: &str) {
+    eprintln!("warning: `{current}` is deprecated; use `{preferred}`");
 }

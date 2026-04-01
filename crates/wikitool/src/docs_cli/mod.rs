@@ -1,8 +1,7 @@
-use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, Command, CommandFactory, Subcommand, error::ErrorKind};
+use clap::{Args, Subcommand};
 use wikitool_core::docs::{
     DocsContextOptions, DocsImportOptions, DocsImportProfileOptions, DocsImportTechnicalOptions,
     DocsListOptions, DocsRemoveKind, DocsSearchOptions, DocsSymbolLookupOptions, TechnicalDocType,
@@ -12,18 +11,26 @@ use wikitool_core::docs::{
 };
 
 use crate::{
-    Cli, LOCAL_DB_POLICY_MESSAGE, RuntimeOptions,
+    LOCAL_DB_POLICY_MESSAGE, RuntimeOptions,
     cli_support::{
         collapse_whitespace, format_flag, normalize_path, normalize_title_query,
         resolve_runtime_paths, resolve_runtime_with_config,
     },
 };
 
+#[cfg(any(test, feature = "maintainer-surface"))]
+use crate::Cli;
+#[cfg(any(test, feature = "maintainer-surface"))]
+use clap::{Command, CommandFactory, error::ErrorKind};
+#[cfg(feature = "maintainer-surface")]
+use std::fs;
+
 mod admin;
 mod import;
 mod query;
 mod reference;
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) use reference::{DocsGenerateReferenceArgs, run_docs_generate_reference};
 
 #[derive(Debug, Args)]
@@ -48,6 +55,7 @@ enum DocsSubcommand {
         about = "Generate CLI reference docs from help text",
         hide = true
     )]
+    #[cfg(feature = "maintainer-surface")]
     GenerateReference(reference::DocsGenerateReferenceArgs),
     #[command(about = "List imported docs corpora")]
     List(admin::DocsListArgs),
@@ -68,6 +76,7 @@ pub(crate) fn run_docs(runtime: &RuntimeOptions, args: DocsArgs) -> Result<()> {
         DocsSubcommand::Import(args) => import::run_docs_import(runtime, args),
         DocsSubcommand::ImportTechnical(args) => import::run_docs_import_technical(runtime, args),
         DocsSubcommand::ImportProfile(args) => import::run_docs_import_profile(runtime, args),
+        #[cfg(feature = "maintainer-surface")]
         DocsSubcommand::GenerateReference(args) => reference::run_docs_generate_reference(args),
         DocsSubcommand::List(args) => admin::run_docs_list(runtime, args),
         DocsSubcommand::Update => admin::run_docs_update(runtime),

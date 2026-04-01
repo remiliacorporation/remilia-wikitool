@@ -1,25 +1,25 @@
+#[cfg(any(test, feature = "maintainer-surface"))]
 use super::*;
 
+#[cfg(feature = "maintainer-surface")]
 #[derive(Debug, Args)]
 pub(crate) struct DocsGenerateReferenceArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Output markdown path (default: docs/wikitool/reference.md in current directory)"
+        help = "Output markdown path (default: <repo>/docs/wikitool/reference.md)"
     )]
     pub(crate) output: Option<PathBuf>,
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn run_docs_generate_reference(args: DocsGenerateReferenceArgs) -> Result<()> {
-    let output = args
-        .output
-        .unwrap_or_else(|| PathBuf::from("docs/wikitool/reference.md"));
-    let output = if output.is_absolute() {
-        output
-    } else {
-        std::env::current_dir()
+    let output = match args.output {
+        Some(output) if output.is_absolute() => output,
+        Some(output) => std::env::current_dir()
             .context("failed to resolve current directory")?
-            .join(output)
+            .join(output),
+        None => source_repo_root()?.join("docs/wikitool/reference.md"),
     };
 
     let markdown = generate_docs_reference_markdown()?;
@@ -34,6 +34,7 @@ pub(crate) fn run_docs_generate_reference(args: DocsGenerateReferenceArgs) -> Re
     Ok(())
 }
 
+#[cfg(feature = "maintainer-surface")]
 fn generate_docs_reference_markdown() -> Result<String> {
     let command = Cli::command();
     let mut command_paths = Vec::new();
@@ -46,7 +47,7 @@ fn generate_docs_reference_markdown() -> Result<String> {
         "".to_string(),
         "Maintainer-only commands hidden from default help are intentionally omitted.".to_string(),
         "".to_string(),
-        "Regenerate (maintainer command):".to_string(),
+        "Regenerate from a source checkout with the maintainer surface enabled:".to_string(),
         "".to_string(),
         "```bash".to_string(),
         "wikitool docs generate-reference".to_string(),
@@ -72,6 +73,15 @@ fn generate_docs_reference_markdown() -> Result<String> {
     Ok(lines.join("\n"))
 }
 
+#[cfg(feature = "maintainer-surface")]
+fn source_repo_root() -> Result<PathBuf> {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .context("failed to resolve wikitool source repository root")
+}
+
+#[cfg(any(test, feature = "maintainer-surface"))]
 fn collect_command_paths(command: &Command, prefix: &[String], out: &mut Vec<Vec<String>>) {
     out.push(prefix.to_vec());
 
@@ -85,6 +95,7 @@ fn collect_command_paths(command: &Command, prefix: &[String], out: &mut Vec<Vec
     }
 }
 
+#[cfg(any(test, feature = "maintainer-surface"))]
 fn help_text_for_command_path(path: &[String]) -> Result<String> {
     let mut command = Cli::command();
     command = command.bin_name("wikitool");
@@ -131,18 +142,35 @@ mod tests {
         let mut paths = Vec::new();
         collect_command_paths(&command, &[], &mut paths);
 
+        assert!(
+            !paths
+                .iter()
+                .any(|path| path == &["search-external".to_string()])
+        );
         assert!(!paths.iter().any(|path| path == &["workflow".to_string()]));
         assert!(!paths.iter().any(|path| path == &["release".to_string()]));
         assert!(!paths.iter().any(|path| path == &["dev".to_string()]));
         assert!(
             !paths
                 .iter()
+                .any(|path| path == &["lsp:generate-config".to_string()])
+        );
+        assert!(
+            !paths
+                .iter()
                 .any(|path| { path == &["docs".to_string(), "generate-reference".to_string()] })
         );
         assert!(paths.iter().any(|path| path == &["research".to_string()]));
+        assert!(paths.iter().any(|path| path == &["lsp".to_string()]));
+        assert!(
+            paths
+                .iter()
+                .any(|path| path == &["lsp".to_string(), "generate-config".to_string()])
+        );
     }
 
     #[test]
+    #[cfg(feature = "maintainer-surface")]
     fn hidden_commands_remain_invocable_directly() {
         let release_help =
             help_text_for_command_path(&["release".to_string()]).expect("render release help");
@@ -151,5 +179,16 @@ mod tests {
 
         assert!(release_help.contains("Usage: wikitool release"));
         assert!(workflow_help.contains("Usage: wikitool workflow"));
+    }
+
+    #[test]
+    fn hidden_compatibility_aliases_remain_invocable_directly() {
+        let search_external_help = help_text_for_command_path(&["search-external".to_string()])
+            .expect("render search-external help");
+        let lsp_alias_help = help_text_for_command_path(&["lsp:generate-config".to_string()])
+            .expect("render lsp alias help");
+
+        assert!(search_external_help.contains("Usage: wikitool search-external"));
+        assert!(lsp_alias_help.contains("Usage: wikitool lsp:generate-config"));
     }
 }

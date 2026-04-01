@@ -12,6 +12,9 @@ Download a release zip for your platform and extract it, or build from source:
 cargo build --package wikitool --release
 ```
 
+Source builds keep the maintainer surface enabled by default. To build the release-equivalent
+end-user binary, use `cargo build --package wikitool --release --no-default-features`.
+
 Then:
 
 ```bash
@@ -97,7 +100,8 @@ WIKI_API_URL=https://your-wiki.example.org/api.php
 | `VERSIONING.md` | Version policy and release checklist |
 | `RELEASE_LOG.md` | Release history |
 
-Every command has `--help`. Regenerate the reference with `wikitool docs generate-reference`.
+Every command has `--help`. In a source checkout with the maintainer surface enabled, regenerate
+the reference with `wikitool docs generate-reference`.
 
 ## Platforms
 

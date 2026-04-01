@@ -182,7 +182,7 @@ When behavior changes, update all of:
 7. `docs/wikitool/guide.md`
 8. `docs/wikitool/reference.md`
 
-Regenerate command reference after CLI changes:
+Regenerate command reference after CLI changes from a source checkout with the maintainer surface enabled:
 
 ```bash
 wikitool docs generate-reference

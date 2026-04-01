@@ -84,10 +84,17 @@ wikitool research search "topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
 wikitool fetch "URL" --format wikitext --save
 wikitool export "URL" --subpages --combined
-wikitool search-external "query"
 ```
 
 `fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs.
+
+## Editor integration
+
+```bash
+wikitool lsp generate-config
+wikitool lsp status
+wikitool lsp info
+```
 
 ## Docs
 
@@ -117,6 +124,8 @@ wikitool wiki rules show --format json
 
 ```bash
 wikitool status
+wikitool lsp status
+wikitool lsp info
 wikitool db stats
 wikitool seo inspect "Page"
 wikitool net inspect "Page" --limit 25
@@ -125,8 +134,9 @@ wikitool module lint --format text
 
 ## Release packaging
 
-These maintainer commands are hidden from default `wikitool --help` output and the generated
-reference, but remain callable directly.
+These maintainer commands are available from source-checkout builds with the maintainer surface
+enabled. Packaged end-user binaries do not include them, and they remain hidden from default
+`wikitool --help` output and the generated reference.
 
 ```bash
 wikitool release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin

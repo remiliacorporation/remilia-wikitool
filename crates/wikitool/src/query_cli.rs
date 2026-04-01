@@ -109,6 +109,7 @@ pub(crate) fn run_search_external(
     runtime: &RuntimeOptions,
     args: SearchExternalArgs,
 ) -> Result<()> {
+    eprintln!("warning: `wikitool search-external` is deprecated; use `wikitool research search`");
     if args.limit == 0 {
         bail!("search-external requires --limit >= 1");
     }

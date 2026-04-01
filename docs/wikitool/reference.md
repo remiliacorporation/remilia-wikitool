@@ -4,7 +4,7 @@ This file is generated from Rust CLI help output. Do not edit manually.
 
 Maintainer-only commands hidden from default help are intentionally omitted.
 
-Regenerate (maintainer command):
+Regenerate from a source checkout with the maintainer surface enabled:
 
 ```bash
 wikitool docs generate-reference
@@ -18,33 +18,30 @@ Wiki management CLI
 Usage: wikitool [OPTIONS] [COMMAND]
 
 Commands:
-  init                 Initialize a new wikitool project
-  pull                 Pull wiki content and templates to local files
-  push                 Push local changes to the live wiki
-  diff                 Show local changes not yet pushed to the wiki
-  status               Show sync status and local project state
-  context              Show indexed local page context for one title
-  search               Search indexed local page titles
-  search-external      Search the remote wiki API without using the local index
-  validate             Run structural and link integrity checks
-  module               Run Lua module linting and related checks
-  fetch                Fetch a remote URL as wikitext or rendered HTML
-  export               Export a remote wiki page tree to local files
-  delete               Delete a page from the live wiki
-  db                   Inspect or reset the local runtime database
-  docs                 Manage and query pinned MediaWiki docs corpora
-  seo                  Inspect SEO metadata for wiki pages
-  net                  Inspect link network and page relationships
-  import               Import content from external sources
-  knowledge            Build and query the local knowledge layer
-  research             Search and fetch subject evidence without mutating the wiki
-  wiki                 Sync and inspect live wiki capability metadata
-  templates            Build and inspect the local template catalog
-  article              Lint and mechanically remediate article drafts
-  lsp:generate-config  
-  lsp:status           
-  lsp:info             
-  help                 Print this message or the help of the given subcommand(s)
+  init       Initialize a new wikitool project
+  pull       Pull wiki content and templates to local files
+  push       Push local changes to the live wiki
+  diff       Show local changes not yet pushed to the wiki
+  status     Show sync status and local project state
+  context    Show indexed local page context for one title
+  search     Search indexed local page titles
+  validate   Run structural and link integrity checks
+  module     Run Lua module linting and related checks
+  fetch      Fetch a remote URL as wikitext or rendered HTML
+  export     Export a remote wiki page tree to local files
+  delete     Delete a page from the live wiki
+  db         Inspect or reset the local runtime database
+  docs       Manage and query pinned MediaWiki docs corpora
+  seo        Inspect SEO metadata for wiki pages
+  net        Inspect link network and page relationships
+  import     Import content from external sources
+  knowledge  Build and query the local knowledge layer
+  research   Search and fetch subject evidence without mutating the wiki
+  wiki       Sync and inspect live wiki capability metadata
+  templates  Build and inspect the local template catalog
+  article    Lint and mechanically remediate article drafts
+  lsp        Generate parser config and editor integration settings
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>  
@@ -202,27 +199,6 @@ Options:
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## search-external
-
-```text
-Search the remote wiki API without using the local index
-
-Usage: wikitool search-external [OPTIONS] <QUERY>
-
-Arguments:
-  <QUERY>  
-
-Options:
-      --limit <N>            [default: 20]
-      --project-root <PATH>  
-      --data-dir <PATH>      
-      --what <SCOPE>         [default: text]
-      --config <PATH>        
-      --format <FORMAT>      [default: text]
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -1492,10 +1468,33 @@ Options:
   -h, --help                 Print help
 ```
 
-## lsp:generate-config
+## lsp
 
 ```text
-Usage: wikitool lsp:generate-config [OPTIONS]
+Generate parser config and editor integration settings
+
+Usage: wikitool lsp [OPTIONS] <COMMAND>
+
+Commands:
+  generate-config  Write parser config and print editor settings JSON
+  status           Show parser config and runtime config status
+  info             Show the preferred LSP integration entry point
+  help             Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>  
+      --data-dir <PATH>      
+      --config <PATH>        
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## lsp generate-config
+
+```text
+Write parser config and print editor settings JSON
+
+Usage: wikitool lsp generate-config [OPTIONS]
 
 Options:
       --force                Overwrite parser config if it already exists
@@ -1506,10 +1505,12 @@ Options:
   -h, --help                 Print help
 ```
 
-## lsp:status
+## lsp status
 
 ```text
-Usage: wikitool lsp:status [OPTIONS]
+Show parser config and runtime config status
+
+Usage: wikitool lsp status [OPTIONS]
 
 Options:
       --project-root <PATH>  
@@ -1519,10 +1520,12 @@ Options:
   -h, --help                 Print help
 ```
 
-## lsp:info
+## lsp info
 
 ```text
-Usage: wikitool lsp:info [OPTIONS]
+Show the preferred LSP integration entry point
+
+Usage: wikitool lsp info [OPTIONS]
 
 Options:
       --project-root <PATH>  

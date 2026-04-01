@@ -627,31 +627,31 @@ else
     skip "import cargo JSON (fixture missing)"
 fi
 
-# --- lsp:generate-config ---
-section "lsp:generate-config"
-OUTPUT=$(wt "$PROJ" lsp:generate-config 2>&1 || true)
+# --- lsp generate-config ---
+section "lsp generate-config"
+OUTPUT=$(wt "$PROJ" lsp generate-config 2>&1 || true)
 if echo "$OUTPUT" | grep -qi "wikiparser\|json\|config\|lsp"; then
-    pass "lsp:generate-config produces output"
+    pass "lsp generate-config produces output"
 else
-    fail "lsp:generate-config produces output (got: $OUTPUT)"
+    fail "lsp generate-config produces output (got: $OUTPUT)"
 fi
 
-# --- lsp:status ---
-section "lsp:status"
-OUTPUT=$(wt "$PROJ" lsp:status 2>&1 || true)
+# --- lsp status ---
+section "lsp status"
+OUTPUT=$(wt "$PROJ" lsp status 2>&1 || true)
 if echo "$OUTPUT" | grep -qi "lsp\|status\|parser\|config"; then
-    pass "lsp:status produces output"
+    pass "lsp status produces output"
 else
-    fail "lsp:status produces output (got: $OUTPUT)"
+    fail "lsp status produces output (got: $OUTPUT)"
 fi
 
-# --- lsp:info ---
-section "lsp:info"
-OUTPUT=$(wt "$PROJ" lsp:info 2>&1 || true)
+# --- lsp info ---
+section "lsp info"
+OUTPUT=$(wt "$PROJ" lsp info 2>&1 || true)
 if echo "$OUTPUT" | grep -qi "lsp\|wikitext\|parser\|info"; then
-    pass "lsp:info produces output"
+    pass "lsp info produces output"
 else
-    fail "lsp:info produces output (got: $OUTPUT)"
+    fail "lsp info produces output (got: $OUTPUT)"
 fi
 
 # --- docs import --bundle ---
@@ -846,13 +846,22 @@ if [ "$TIER" = "live" ]; then
         fail "pull fetches from live wiki (got: ${OUTPUT:0:300})"
     fi
 
-    # --- search-external ---
-    section "search-external (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" search-external "Remilia" 2>&1 || true)
+    # --- research search ---
+    section "research search (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" research search "Remilia" 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "Remilia\|result\|title"; then
-        pass "search-external finds known page"
+        pass "research search finds known page"
     else
-        fail "search-external finds known page (got: ${OUTPUT:0:300})"
+        fail "research search finds known page (got: ${OUTPUT:0:300})"
+    fi
+
+    # --- search-external compatibility alias ---
+    section "search-external compatibility alias (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" search-external "Remilia" 2>&1 || true)
+    if echo "$OUTPUT" | grep -qi "deprecated" && echo "$OUTPUT" | grep -qi "Remilia\|result\|title"; then
+        pass "search-external remains callable with deprecation warning"
+    else
+        fail "search-external remains callable with deprecation warning (got: ${OUTPUT:0:300})"
     fi
 
     # --- seo inspect ---

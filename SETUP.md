@@ -14,6 +14,12 @@ Option B: build from source:
 cargo build --package wikitool --release
 ```
 
+That source build keeps maintainer commands enabled. For a release-equivalent end-user binary, use:
+
+```bash
+cargo build --package wikitool --release --no-default-features
+```
+
 ## 2) Initialize runtime
 
 From the project root (or pass `--project-root`):
@@ -139,10 +145,10 @@ wikitool validate
 Canonical command docs:
 
 - `docs/wikitool/reference.md`
-- regenerate with:
+- regenerate from a source checkout with the maintainer surface enabled:
 
 ```bash
-wikitool docs generate-reference
+cargo run --package wikitool -- docs generate-reference
 ```
 
 AI companion source assets are maintained under `ai-pack/` in this repository.
@@ -166,11 +172,11 @@ If `ai/docs-bundle-v1.json` is present, you can use it as an offline preload:
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
 ```
 
-Release assembly commands:
+Release assembly commands from a source checkout with the maintainer surface enabled:
 
 ```bash
-wikitool release package
-wikitool release build-matrix
+cargo run --package wikitool -- release package
+cargo run --package wikitool -- release build-matrix
 ```
 
 `release build-matrix` uses versioned artifact names by default (`wikitool-vX.Y.Z-<target>.zip`).

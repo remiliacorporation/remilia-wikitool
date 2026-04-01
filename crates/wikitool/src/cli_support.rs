@@ -1,8 +1,7 @@
-use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use wikitool_core::config::{WikiConfig, load_config};
 use wikitool_core::filesystem::ScanStats;
 use wikitool_core::knowledge::content_index::StoredIndexStats;
@@ -11,6 +10,15 @@ use wikitool_core::schema::{DatabaseSchemaState, schema_state};
 
 use crate::RuntimeOptions;
 
+#[cfg(feature = "maintainer-surface")]
+use std::fs;
+#[cfg(feature = "maintainer-surface")]
+use std::path::PathBuf;
+
+#[cfg(feature = "maintainer-surface")]
+use anyhow::bail;
+
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn resolve_default_true_flag(
     enabled: bool,
     disabled: bool,
@@ -36,6 +44,7 @@ pub(crate) fn prompt_yes_no(prompt: &str) -> Result<bool> {
     Ok(matches!(normalized.as_str(), "y" | "yes"))
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn detect_host_context_root(
     repo_root: &Path,
     explicit: Option<&Path>,
@@ -59,6 +68,7 @@ pub(crate) fn detect_host_context_root(
     Ok(Some(root))
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn resolve_git_hooks_dir(repo_root: &Path) -> Result<Option<PathBuf>> {
     let git_path = repo_root.join(".git");
     if git_path.is_dir() {
@@ -88,6 +98,7 @@ pub(crate) fn resolve_git_hooks_dir(repo_root: &Path) -> Result<Option<PathBuf>>
     Ok(None)
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn ensure_files_identical(left: &Path, right: &Path, label: &str) -> Result<()> {
     let left_bytes =
         fs::read(left).with_context(|| format!("failed to read {}", normalize_path(left)))?;
@@ -103,6 +114,7 @@ pub(crate) fn ensure_files_identical(left: &Path, right: &Path, label: &str) -> 
     Ok(())
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn reset_directory(path: &Path) -> Result<()> {
     if path.exists() {
         fs::remove_dir_all(path)
@@ -111,6 +123,7 @@ pub(crate) fn reset_directory(path: &Path) -> Result<()> {
     fs::create_dir_all(path).with_context(|| format!("failed to create {}", normalize_path(path)))
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
     if !source.is_file() {
         bail!("file not found: {}", normalize_path(source));
@@ -129,6 +142,7 @@ pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
     if !source.is_dir() {
         bail!("directory not found: {}", normalize_path(source));
@@ -154,6 +168,7 @@ pub(crate) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()
     Ok(())
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn copy_dir_contents(source: &Path, destination: &Path) -> Result<()> {
     if !source.is_dir() {
         bail!("directory not found: {}", normalize_path(source));
@@ -179,6 +194,7 @@ pub(crate) fn copy_dir_contents(source: &Path, destination: &Path) -> Result<()>
     Ok(())
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn paths_equivalent(left: &Path, right: &Path) -> Result<bool> {
     let left = fs::canonicalize(left)
         .with_context(|| format!("failed to canonicalize {}", normalize_path(left)))?;
@@ -187,6 +203,7 @@ pub(crate) fn paths_equivalent(left: &Path, right: &Path) -> Result<bool> {
     Ok(left == right)
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn is_markdown_file(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
@@ -194,6 +211,7 @@ pub(crate) fn is_markdown_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(feature = "maintainer-surface")]
 fn parse_gitdir_pointer(repo_root: &Path, raw: &str) -> Option<PathBuf> {
     let trimmed = raw.trim();
     let remainder = trimmed.strip_prefix("gitdir:")?.trim();
@@ -205,6 +223,7 @@ fn parse_gitdir_pointer(repo_root: &Path, raw: &str) -> Option<PathBuf> {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn set_executable_if_unix(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
@@ -218,6 +237,7 @@ pub(crate) fn set_executable_if_unix(path: &Path) -> Result<()> {
 }
 
 #[cfg(not(unix))]
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn set_executable_if_unix(_path: &Path) -> Result<()> {
     Ok(())
 }
@@ -278,6 +298,7 @@ pub(crate) fn resolve_runtime_with_config(
     Ok((paths, config))
 }
 
+#[cfg(feature = "maintainer-surface")]
 pub(crate) fn resolve_repo_root(value: Option<PathBuf>) -> Result<PathBuf> {
     let repo_root = match value {
         Some(path) => path,
