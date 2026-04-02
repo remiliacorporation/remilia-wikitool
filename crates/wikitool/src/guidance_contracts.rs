@@ -39,7 +39,7 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
     let claude = read_repo_file("ai-pack/CLAUDE.md");
     let agents = read_repo_file("ai-pack/AGENTS.md");
 
-    assert_eq!(claude, agents, "ai-pack AGENTS.md must mirror CLAUDE.md");
+    assert_eq!(claude, agents, "shipped AGENTS.md must mirror CLAUDE.md");
     for body in [&claude, &agents] {
         assert!(
             body.contains("wikitool knowledge article-start"),
@@ -58,8 +58,8 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             "packaged guidance must not regress to the stale /w/api.php example"
         );
         assert!(
-            body.contains("AGENTS.md") && body.contains("byte-identical"),
-            "packaged guidance must keep the host overlay instruction contract explicit"
+            body.contains("same guidance body"),
+            "packaged guidance must explain that both shipped filenames carry the same instructions"
         );
     }
 }

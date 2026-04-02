@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, bail};
 
 use crate::cli_support::{
-    copy_dir_recursive, copy_file, detect_host_context_root, ensure_files_identical, format_flag,
-    is_markdown_file, normalize_path, paths_equivalent, reset_directory, resolve_repo_root,
+    copy_dir_recursive, copy_file, detect_host_context_root, format_flag, is_markdown_file,
+    normalize_path, paths_equivalent, reset_directory, resolve_repo_root,
 };
 
 use super::ReleaseBuildAiPackArgs;
@@ -78,7 +78,7 @@ pub(super) fn build_ai_pack(
         docs_bundle_included: false,
     };
 
-    let effective_claude_source = prepare_ai_pack_claude_context(
+    let effective_claude_source = prepare_ai_pack_guidance_context(
         repo_root,
         &ai_pack_root,
         output_dir,
@@ -128,7 +128,7 @@ fn copy_required_ai_pack_top_level_files(repo_root: &Path, output_dir: &Path) ->
     Ok(())
 }
 
-fn prepare_ai_pack_claude_context(
+fn prepare_ai_pack_guidance_context(
     repo_root: &Path,
     ai_pack_root: &Path,
     output_dir: &Path,
@@ -139,11 +139,6 @@ fn prepare_ai_pack_claude_context(
     let ai_pack_claude = ai_pack_root.join("CLAUDE.md");
     require_file(&ai_pack_agents, "missing required AI pack source file")?;
     require_file(&ai_pack_claude, "missing required AI pack source file")?;
-    ensure_files_identical(
-        &ai_pack_agents,
-        &ai_pack_claude,
-        "ai-pack instruction contract violation",
-    )?;
 
     let claude_rules_source = ai_pack_root.join(".claude/rules");
     require_dir(
@@ -228,7 +223,6 @@ fn write_ai_pack_manifest(result: &AiPackBuildResult) -> Result<()> {
         "claude_skills_included": result.claude_skills_included,
         "codex_skills_included": result.codex_skills_included,
         "docs_bundle_included": result.docs_bundle_included,
-        "agents_mirrors_claude": true,
         "notes": "AI companion pack for wikitool; content is intentionally shipped outside the binary."
     });
 
@@ -250,4 +244,127 @@ fn require_dir(path: &Path, message: &str) -> Result<()> {
         bail!("{message}: {}", normalize_path(path));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::build_ai_pack;
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(label: &str) -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "wikitool-ai-pack-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temp test dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn write_file(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dir");
+        }
+        fs::write(path, contents).expect("write file");
+    }
+
+    fn create_repo(root: &Path) {
+        for file in [
+            "SETUP.md",
+            "README.md",
+            "LICENSE",
+            "LICENSE-SSL",
+            "LICENSE-VPL",
+        ] {
+            write_file(&root.join(file), file);
+        }
+        write_file(&root.join("ai-pack/CLAUDE.md"), "# Packaged CLAUDE\n");
+        write_file(&root.join("ai-pack/AGENTS.md"), "# Packaged AGENTS\n");
+        write_file(
+            &root.join("ai-pack/llm_instructions/writing_guide.md"),
+            "# Guide\n",
+        );
+        write_file(
+            &root.join("ai-pack/.claude/rules/wiki-style.md"),
+            "# Rule\n",
+        );
+        write_file(
+            &root.join("ai-pack/.claude/skills/wikitool.md"),
+            "# Skill\n",
+        );
+    }
+
+    fn create_host(root: &Path, claude: &str, agents: Option<&str>) {
+        write_file(&root.join("CLAUDE.md"), claude);
+        if let Some(agents) = agents {
+            write_file(&root.join("AGENTS.md"), agents);
+        }
+        write_file(&root.join(".claude/rules/dev.md"), "# Host Rule\n");
+        write_file(&root.join(".claude/skills/wt.md"), "# Host Skill\n");
+    }
+
+    #[test]
+    fn build_ai_pack_host_overlay_uses_host_claude_for_both_guidance_files() {
+        let temp = TestDir::new("fallback");
+        let repo_root = temp.path.join("repo");
+        let host_root = temp.path.join("host");
+        let output_dir = temp.path.join("out");
+        create_repo(&repo_root);
+        create_host(&host_root, "# Host CLAUDE\n", None);
+
+        build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
+
+        assert_eq!(
+            fs::read_to_string(output_dir.join("CLAUDE.md")).expect("read packaged CLAUDE"),
+            "# Host CLAUDE\n"
+        );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("AGENTS.md")).expect("read packaged AGENTS"),
+            "# Host CLAUDE\n"
+        );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("WIKITOOL_CLAUDE.md"))
+                .expect("read preserved wikitool guidance"),
+            "# Packaged CLAUDE\n"
+        );
+    }
+
+    #[test]
+    fn build_ai_pack_host_overlay_ignores_distinct_host_agents_file() {
+        let temp = TestDir::new("distinct-agents");
+        let repo_root = temp.path.join("repo");
+        let host_root = temp.path.join("host");
+        let output_dir = temp.path.join("out");
+        create_repo(&repo_root);
+        create_host(&host_root, "# Host CLAUDE\n", Some("# Host AGENTS\n"));
+
+        build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
+
+        assert_eq!(
+            fs::read_to_string(output_dir.join("CLAUDE.md")).expect("read packaged CLAUDE"),
+            "# Host CLAUDE\n"
+        );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("AGENTS.md")).expect("read packaged AGENTS"),
+            "# Host CLAUDE\n"
+        );
+    }
 }

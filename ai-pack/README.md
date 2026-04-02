@@ -14,7 +14,7 @@ Contents:
 
 Instruction contract:
 
-1. `AGENTS.md` and `CLAUDE.md` are intentionally mirrored and must stay in lockstep.
+1. `AGENTS.md` and `CLAUDE.md` are intentionally mirrored in shipped bundles so both agent front doors see the same guidance body.
 2. Paths in these files must work in packaged artifacts (bundle-root relative), not only in source-repo layout.
 3. Baseline `.claude/` content in this folder is packaged by default.
 4. Host overlay may replace/extend `.claude/` when `--host-project-root` is used.

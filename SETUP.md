@@ -183,7 +183,8 @@ cargo run --package wikitool -- release build-matrix
 For ephemeral CI-style output names, add `--unversioned-names`.
 
 By default, release output is wikitool-generic and includes ai-pack `.claude/rules` and `.claude/skills`.
-To layer host `.claude/rules`, host `.claude/skills`, and matching host `CLAUDE.md` / `AGENTS.md` on top, pass `--host-project-root <PATH>`.
+To layer host `.claude/rules`, host `.claude/skills`, and host `CLAUDE.md` on top, pass `--host-project-root <PATH>`.
+Release bundles always ship the same guidance body as both `CLAUDE.md` and `AGENTS.md`.
 When host overlay is used, wikitool-local guidance is preserved as `WIKITOOL_CLAUDE.md`.
 
 Codex skill templates are also included under `codex_skills/` and can be copied into `$CODEX_HOME/skills`.

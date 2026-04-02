@@ -56,23 +56,15 @@ pub(crate) fn detect_host_context_root(
 
     let root = fs::canonicalize(path)
         .with_context(|| format!("failed to canonicalize {}", normalize_path(path)))?;
-    let claude_path = root.join("CLAUDE.md");
-    let agents_path = root.join("AGENTS.md");
-    if !claude_path.is_file()
-        || !agents_path.is_file()
+    if !root.join("CLAUDE.md").is_file()
         || !root.join(".claude/rules").is_dir()
         || !root.join(".claude/skills").is_dir()
     {
         bail!(
-            "invalid host project root {}: expected CLAUDE.md, AGENTS.md, and .claude/{{rules,skills}}",
+            "invalid host project root {}: expected CLAUDE.md and .claude/{{rules,skills}}",
             normalize_path(&root)
         );
     }
-    ensure_files_identical(
-        &claude_path,
-        &agents_path,
-        "host instruction contract violation",
-    )?;
     Ok(Some(root))
 }
 
@@ -104,22 +96,6 @@ pub(crate) fn resolve_git_hooks_dir(repo_root: &Path) -> Result<Option<PathBuf>>
         return Ok(Some(hooks_dir));
     }
     Ok(None)
-}
-
-#[cfg(feature = "maintainer-surface")]
-pub(crate) fn ensure_files_identical(left: &Path, right: &Path, label: &str) -> Result<()> {
-    let left_bytes =
-        fs::read(left).with_context(|| format!("failed to read {}", normalize_path(left)))?;
-    let right_bytes =
-        fs::read(right).with_context(|| format!("failed to read {}", normalize_path(right)))?;
-    if left_bytes != right_bytes {
-        bail!(
-            "{label}: {} and {} must match",
-            normalize_path(left),
-            normalize_path(right)
-        );
-    }
-    Ok(())
 }
 
 #[cfg(feature = "maintainer-surface")]
@@ -446,23 +422,23 @@ mod tests {
     }
 
     #[test]
-    fn detect_host_context_root_rejects_missing_agents_file() {
+    fn detect_host_context_root_accepts_missing_agents_file() {
         let temp = TestDir::new("missing-agents");
         let host_root = temp.path.join("host");
         write_host_context(&host_root, "# Host guidance\n", None);
 
-        let error =
-            detect_host_context_root(&temp.path, Some(&host_root)).expect_err("missing AGENTS");
+        let detected = detect_host_context_root(&temp.path, Some(&host_root))
+            .expect("detect host root")
+            .expect("host root should be present");
 
-        assert!(
-            error
-                .to_string()
-                .contains("expected CLAUDE.md, AGENTS.md, and .claude/{rules,skills}")
+        assert_eq!(
+            detected,
+            host_root.canonicalize().expect("canonical host root")
         );
     }
 
     #[test]
-    fn detect_host_context_root_rejects_guidance_drift() {
+    fn detect_host_context_root_accepts_distinct_agents_file() {
         let temp = TestDir::new("drift");
         let host_root = temp.path.join("host");
         write_host_context(
@@ -471,13 +447,13 @@ mod tests {
             Some("# Diverged host guidance\n"),
         );
 
-        let error =
-            detect_host_context_root(&temp.path, Some(&host_root)).expect_err("drifted AGENTS");
+        let detected = detect_host_context_root(&temp.path, Some(&host_root))
+            .expect("detect host root")
+            .expect("host root should be present");
 
-        assert!(
-            error
-                .to_string()
-                .contains("host instruction contract violation")
+        assert_eq!(
+            detected,
+            host_root.canonicalize().expect("canonical host root")
         );
     }
 }

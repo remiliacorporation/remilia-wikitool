@@ -7,8 +7,6 @@ This file is designed for two contexts:
 1. Source context: `tools/wikitool/ai-pack/`
 2. Packaged context: unzipped release bundle root
 
-`AGENTS.md` must remain byte-identical to this file.
-
 ## Mission
 
 Provide a comprehensive wiki editing suite that works out of the box in release artifacts:
@@ -163,8 +161,8 @@ Release packaging may inject host context via `--host-project-root <PATH>`.
 
 When host overlay is used:
 
-1. Host `CLAUDE.md` and `AGENTS.md` must both exist and remain byte-identical or packaging fails.
-2. Packaged `CLAUDE.md` and `AGENTS.md` come from the host guidance contract.
+1. Host `CLAUDE.md` becomes the effective guidance source.
+2. Release packaging writes that same guidance body to both packaged `CLAUDE.md` and packaged `AGENTS.md`.
 3. Wikitool-local guidance is preserved as `WIKITOOL_CLAUDE.md`.
 4. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
 
