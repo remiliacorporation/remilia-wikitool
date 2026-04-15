@@ -8,7 +8,7 @@ use wikitool_core::external::{
     ExportFormat, ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile,
     ExternalFetchResult, ParsedWikiUrl, default_export_path, fetch_mediawiki_page,
     fetch_page_by_url, fetch_pages_by_titles, generate_frontmatter, list_subpages, parse_wiki_url,
-    sanitize_filename, wikitext_to_markdown,
+    sanitize_filename, source_content_to_markdown,
 };
 
 use crate::cli_support::{
@@ -244,8 +244,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
             println!("index_path: {}", normalize_path(&index_path));
         }
     } else {
-        let page = fetch_page_by_url(&args.url, &fetch_options)?
-            .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
+        let page = fetch_single_export_page(&args.url, export_format)?;
         let rendered = render_export_page(
             &page,
             export_format,
@@ -289,6 +288,29 @@ fn fetch_mediawiki_export_page(
     fetch_mediawiki_page(title, parsed, options)
 }
 
+fn fetch_single_export_page(url: &str, export_format: ExportFormat) -> Result<ExternalFetchResult> {
+    let is_mediawiki = parse_wiki_url(url).is_some();
+    if !is_mediawiki && export_format == ExportFormat::Wikitext {
+        bail!(
+            "wikitext export requires a recognizable MediaWiki URL; use markdown for arbitrary web pages"
+        );
+    }
+    let options = if is_mediawiki {
+        ExternalFetchOptions {
+            format: ExternalFetchFormat::Wikitext,
+            max_bytes: 1_000_000,
+            profile: ExternalFetchProfile::Legacy,
+        }
+    } else {
+        ExternalFetchOptions {
+            format: ExternalFetchFormat::Html,
+            max_bytes: 1_000_000,
+            profile: ExternalFetchProfile::Research,
+        }
+    };
+    fetch_page_by_url(url, &options)?.ok_or_else(|| anyhow::anyhow!("page not found: {url}"))
+}
+
 fn render_export_page(
     page: &ExternalFetchResult,
     export_format: ExportFormat,
@@ -298,7 +320,9 @@ fn render_export_page(
 ) -> String {
     let converted = match export_format {
         ExportFormat::Wikitext => page.content.clone(),
-        ExportFormat::Markdown => wikitext_to_markdown(&page.content, code_language),
+        ExportFormat::Markdown => {
+            source_content_to_markdown(&page.content, &page.content_format, code_language)
+        }
     };
     if !include_frontmatter {
         return converted;
@@ -308,12 +332,61 @@ fn render_export_page(
         &page.url,
         domain,
         &page.timestamp,
-        &[(
-            "format".to_string(),
-            export_format.file_extension().to_string(),
-        )],
+        &export_frontmatter_fields(page, export_format),
     );
     format!("{frontmatter}\n{converted}")
+}
+
+fn export_frontmatter_fields(
+    page: &ExternalFetchResult,
+    export_format: ExportFormat,
+) -> Vec<(String, String)> {
+    let mut fields = vec![
+        (
+            "format".to_string(),
+            export_format.file_extension().to_string(),
+        ),
+        ("source_wiki".to_string(), page.source_wiki.clone()),
+        ("content_format".to_string(), page.content_format.clone()),
+        ("content_hash".to_string(), page.content_hash.clone()),
+    ];
+    if let Some(value) = page.revision_id {
+        fields.push(("revision_id".to_string(), value.to_string()));
+    }
+    if let Some(value) = page.display_title.as_deref() {
+        fields.push(("display_title".to_string(), value.to_string()));
+    }
+    if let Some(value) = page.canonical_url.as_deref() {
+        fields.push(("canonical_url".to_string(), value.to_string()));
+    }
+    if let Some(value) = page.site_name.as_deref() {
+        fields.push(("site_name".to_string(), value.to_string()));
+    }
+    if let Some(value) = page.byline.as_deref() {
+        fields.push(("byline".to_string(), value.to_string()));
+    }
+    if let Some(value) = page.published_at.as_deref() {
+        fields.push(("published_at".to_string(), value.to_string()));
+    }
+    if let Some(value) = page.fetch_mode {
+        fields.push((
+            "fetch_mode".to_string(),
+            format_fetch_mode(value).to_string(),
+        ));
+    }
+    if let Some(value) = page.extraction_quality {
+        fields.push((
+            "extraction_quality".to_string(),
+            format_extraction_quality(value).to_string(),
+        ));
+    }
+    if let Some(value) = page.rendered_fetch_mode {
+        fields.push((
+            "rendered_fetch_mode".to_string(),
+            format_rendered_fetch_mode(value).to_string(),
+        ));
+    }
+    fields
 }
 
 fn render_combined_export(
@@ -329,7 +402,9 @@ fn render_combined_export(
     for page in pages {
         let converted = match export_format {
             ExportFormat::Wikitext => page.content.clone(),
-            ExportFormat::Markdown => wikitext_to_markdown(&page.content, code_language),
+            ExportFormat::Markdown => {
+                source_content_to_markdown(&page.content, &page.content_format, code_language)
+            }
         };
         let heading = match export_format {
             ExportFormat::Markdown => format!("# {}", page.title),
@@ -445,10 +520,26 @@ fn format_rendered_fetch_mode(mode: wikitool_core::external::RenderedFetchMode) 
     }
 }
 
+fn format_fetch_mode(mode: wikitool_core::external::FetchMode) -> &'static str {
+    match mode {
+        wikitool_core::external::FetchMode::Static => "static",
+    }
+}
+
+fn format_extraction_quality(quality: wikitool_core::external::ExtractionQuality) -> &'static str {
+    match quality {
+        wikitool_core::external::ExtractionQuality::Low => "low",
+        wikitool_core::external::ExtractionQuality::Medium => "medium",
+        wikitool_core::external::ExtractionQuality::High => "high",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::build_subpage_output_filenames;
-    use wikitool_core::external::{ExportFormat, ExternalFetchResult};
+    use super::{build_subpage_output_filenames, render_export_page};
+    use wikitool_core::external::{
+        ExportFormat, ExternalFetchResult, ExtractionQuality, FetchMode,
+    };
 
     fn page(title: &str) -> ExternalFetchResult {
         ExternalFetchResult {
@@ -491,5 +582,33 @@ mod tests {
         );
         assert!(filenames[0].ends_with(".md"));
         assert!(filenames[1].ends_with(".md"));
+    }
+
+    #[test]
+    fn render_export_page_uses_content_format_and_agent_metadata() {
+        let mut page = page("Readable Source");
+        page.content = "Readable paragraph.\n\nSecond paragraph.".to_string();
+        page.content_format = "text".to_string();
+        page.content_hash = "hash".to_string();
+        page.source_wiki = "web".to_string();
+        page.source_domain = "example.org".to_string();
+        page.url = "https://example.org/source".to_string();
+        page.canonical_url = Some("https://example.org/source".to_string());
+        page.site_name = Some("Example".to_string());
+        page.fetch_mode = Some(FetchMode::Static);
+        page.extraction_quality = Some(ExtractionQuality::High);
+
+        let rendered = render_export_page(
+            &page,
+            ExportFormat::Markdown,
+            true,
+            None,
+            &page.source_domain,
+        );
+
+        assert!(rendered.contains("content_format: \"text\""));
+        assert!(rendered.contains("canonical_url: \"https://example.org/source\""));
+        assert!(rendered.contains("extraction_quality: \"high\""));
+        assert!(rendered.contains("Readable paragraph.\n\nSecond paragraph."));
     }
 }

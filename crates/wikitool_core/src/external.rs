@@ -3,5 +3,5 @@ pub use crate::research::{
     ExternalFetchProfile, ExternalFetchResult, ExtractionQuality, FetchMode, ParsedWikiUrl,
     RenderedFetchMode, default_export_path, fetch_mediawiki_page, fetch_page_by_url,
     fetch_pages_by_titles, generate_frontmatter, list_subpages, parse_wiki_url, sanitize_filename,
-    wikitext_to_markdown,
+    source_content_to_markdown, wikitext_to_markdown,
 };

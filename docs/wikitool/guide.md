@@ -92,7 +92,7 @@ wikitool export "URL" --subpages --combined
 
 `research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind`, `error.attempts`, and `error.discovery`; access challenges and HTTP failures are explicit source-access failures, not citable source content. `research discover` is the same machine-surface discovery pass as a standalone command.
 
-`fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs.
+`fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs. `export` defaults to markdown: MediaWiki URLs are fetched as wikitext and rendered into agent-readable markdown, while arbitrary web pages use the research extractor and include source/extraction metadata in frontmatter. Wikitext export requires a recognizable MediaWiki URL; blocked arbitrary sources fail explicitly instead of producing challenge-page content.
 
 ## Editor integration
 

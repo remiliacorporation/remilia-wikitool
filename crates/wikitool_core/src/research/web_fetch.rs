@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::support::{compute_hash, env_value, env_value_u64, env_value_usize, unix_timestamp};
 
+use super::entities::decode_html_entities;
 use super::model::{
     ExternalAccessRoute, ExternalContentSignal, ExternalFetchAttempt, ExternalFetchFailure,
     ExternalFetchFailureError, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
@@ -1898,14 +1899,7 @@ fn starts_with_at(text: &str, index: usize, sequence: &str) -> bool {
 }
 
 fn decode_html(text: &str) -> String {
-    let mut value = text.to_string();
-    value = value.replace("&amp;", "&");
-    value = value.replace("&quot;", "\"");
-    value = value.replace("&#39;", "'");
-    value = value.replace("&lt;", "<");
-    value = value.replace("&gt;", ">");
-    value = value.replace("&nbsp;", " ");
-    value
+    decode_html_entities(text)
 }
 
 #[cfg(test)]

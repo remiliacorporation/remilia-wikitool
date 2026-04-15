@@ -1,4 +1,5 @@
 pub mod cache;
+mod entities;
 pub mod export;
 pub mod mediawiki_fetch;
 pub mod model;
@@ -11,7 +12,8 @@ pub use cache::{
     CachedFetchResult, ResearchCacheOptions, ResearchCacheStatus, fetch_page_by_url_cached,
 };
 pub use export::{
-    default_export_path, generate_frontmatter, sanitize_filename, wikitext_to_markdown,
+    default_export_path, generate_frontmatter, sanitize_filename, source_content_to_markdown,
+    wikitext_to_markdown,
 };
 pub use mediawiki_fetch::{fetch_mediawiki_page, fetch_pages_by_titles, list_subpages};
 pub use model::{
