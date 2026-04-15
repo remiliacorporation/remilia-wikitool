@@ -4,10 +4,11 @@ use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;
 
-use crate::authoring::article_start::build_article_start;
+use crate::authoring::{article_start::build_article_start, model::ArticleStartIntent};
 use crate::content_store::parsing::{
     extract_first_url, extract_media_records, extract_module_invocations,
     extract_reference_records, extract_template_invocations, extract_wikilinks,
+    extract_wikilinks_for_namespace,
 };
 use crate::filesystem::{Namespace, ScanOptions};
 use crate::knowledge::authoring::{
@@ -139,6 +140,18 @@ fn extract_wikilinks_parses_titles_and_category_membership() {
     assert!(!links[2].is_category_membership);
     assert_eq!(links[3].target_title, "Module:Navbar/configuration");
     assert_eq!(links[4].target_title, "Alpha");
+}
+
+#[test]
+fn namespace_aware_wikilinks_skip_non_rendered_template_and_module_regions() {
+    let template_content = "[[Visible]] <!-- [[Commented]] --> <noinclude>[[Doc only]]</noinclude> <templatedata>{\"params\":{\"[[Pseudo]]\":{}}}</templatedata>";
+    let links = extract_wikilinks_for_namespace(template_content, Namespace::Template.as_str());
+
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target_title, "Visible");
+
+    let module_content = "local docs = --[[ [[Not a page]] ]] return {}";
+    assert!(extract_wikilinks_for_namespace(module_content, Namespace::Module.as_str()).is_empty());
 }
 
 #[test]
@@ -1499,10 +1512,12 @@ fn build_article_start_uses_neutral_surfaces_without_forced_type() {
         AuthoringKnowledgePack::Found(report) => *report,
         other => panic!("expected found authoring pack, got {other:?}"),
     };
-    let article_start = build_article_start(&report, &test_profile_overlay());
+    let article_start =
+        build_article_start(&report, &test_profile_overlay(), ArticleStartIntent::New);
     let serialized = serde_json::to_string(&article_start).expect("serialize article start");
 
     assert_eq!(article_start.schema_version, "article_start");
+    assert_eq!(article_start.intent, ArticleStartIntent::New);
     assert!(!serialized.contains("\"article_type\""));
     assert!(!serialized.contains("confidence"));
     assert_eq!(

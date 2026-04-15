@@ -1,10 +1,15 @@
 use anyhow::{Result, bail};
-use clap::Args;
+use clap::{Args, ValueEnum};
 use serde::Serialize;
-use wikitool_core::knowledge::inspect::{ValidationReport, run_validation_checks};
+use wikitool_core::knowledge::inspect::{
+    LiveValidationReport, ValidationReport, run_validation_checks, verify_validation_report_live,
+};
 use wikitool_core::lint::{LuaLintReport, LuaLintResult, lint_modules};
 
-use crate::cli_support::{OutputFormat, normalize_path, print_string_list, resolve_runtime_paths};
+use crate::cli_support::{
+    OutputFormat, normalize_path, print_string_list, resolve_runtime_paths,
+    resolve_runtime_with_config,
+};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -19,6 +24,30 @@ pub(crate) struct ValidateArgs {
     format: OutputFormat,
     #[arg(long, help = "Omit detailed issue lists and print category counts")]
     summary: bool,
+    #[arg(
+        long = "category",
+        value_enum,
+        value_name = "CATEGORY",
+        help = "Limit validation to one issue category; repeat for multiple categories"
+    )]
+    categories: Vec<ValidateCategory>,
+    #[arg(
+        long,
+        value_name = "N",
+        help = "Limit issues returned per selected category"
+    )]
+    limit: Option<usize>,
+    #[arg(
+        long = "title",
+        value_name = "TITLE",
+        help = "Limit issues to a page title"
+    )]
+    titles: Vec<String>,
+    #[arg(
+        long,
+        help = "Verify selected broken links and redirect issues against the live wiki API"
+    )]
+    verify_live: bool,
 }
 
 impl Default for ValidateArgs {
@@ -26,6 +55,33 @@ impl Default for ValidateArgs {
         Self {
             format: OutputFormat::Text,
             summary: false,
+            categories: Vec::new(),
+            limit: None,
+            titles: Vec::new(),
+            verify_live: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ValueEnum)]
+enum ValidateCategory {
+    #[value(alias = "broken")]
+    BrokenLinks,
+    #[value(alias = "redirects", alias = "double")]
+    DoubleRedirects,
+    #[value(alias = "uncategorized")]
+    UncategorizedPages,
+    #[value(alias = "orphans")]
+    OrphanPages,
+}
+
+impl ValidateCategory {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::BrokenLinks => "broken_links",
+            Self::DoubleRedirects => "double_redirects",
+            Self::UncategorizedPages => "uncategorized_pages",
+            Self::OrphanPages => "orphan_pages",
         }
     }
 }
@@ -53,12 +109,23 @@ struct ValidateJson<'a> {
     index_ready: bool,
     status: &'static str,
     issue_count: usize,
+    filters: ValidateFiltersJson,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<ValidateSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     report: Option<&'a ValidationReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    live_verification: Option<&'a LiveValidationReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ValidateFiltersJson {
+    categories: Vec<&'static str>,
+    limit: Option<usize>,
+    titles: Vec<String>,
+    verify_live: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,6 +151,10 @@ struct LintJson<'a> {
 }
 
 pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Result<()> {
+    if matches!(args.limit, Some(0)) {
+        bail!("validate requires --limit >= 1");
+    }
+
     let paths = resolve_runtime_paths(runtime)?;
 
     let report = match run_validation_checks(&paths)? {
@@ -98,8 +169,10 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
                         index_ready: false,
                         status: "not_ready",
                         issue_count: 0,
+                        filters: validate_filters_json(&args),
                         summary: None,
                         report: None,
+                        live_verification: None,
                         message: Some(message),
                     })?
                 );
@@ -116,6 +189,13 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
         }
     };
 
+    let report = filter_validation_report(&report, &args);
+    let live_verification = if args.verify_live {
+        let (_, config) = resolve_runtime_with_config(runtime)?;
+        Some(verify_validation_report_live(&report, &config)?)
+    } else {
+        None
+    };
     let issue_count = validation_issue_count(&report);
     let status = if issue_count == 0 { "clean" } else { "failed" };
     if args.format.is_json() {
@@ -127,8 +207,10 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
                 index_ready: true,
                 status,
                 issue_count,
+                filters: validate_filters_json(&args),
                 summary,
                 report: if args.summary { None } else { Some(&report) },
+                live_verification: live_verification.as_ref(),
                 message: None,
             })?
         );
@@ -140,10 +222,14 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
 
     println!("validate");
     println!("project_root: {}", normalize_path(&paths.project_root));
+    print_validation_filters(&args);
     if args.summary {
         print_validation_summary(&report);
     } else {
         print_validation_issues(&report);
+    }
+    if let Some(live_verification) = &live_verification {
+        print_live_validation(live_verification);
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
@@ -164,6 +250,136 @@ fn validation_issue_count(report: &ValidationReport) -> usize {
         + report.double_redirects.len()
         + report.uncategorized_pages.len()
         + report.orphan_pages.len()
+}
+
+fn filter_validation_report(report: &ValidationReport, args: &ValidateArgs) -> ValidationReport {
+    let title_filters = args
+        .titles
+        .iter()
+        .map(|title| validation_title_key(title))
+        .filter(|title| !title.is_empty())
+        .collect::<Vec<_>>();
+
+    let include_broken_links =
+        validation_category_selected(&args.categories, ValidateCategory::BrokenLinks);
+    let include_double_redirects =
+        validation_category_selected(&args.categories, ValidateCategory::DoubleRedirects);
+    let include_uncategorized =
+        validation_category_selected(&args.categories, ValidateCategory::UncategorizedPages);
+    let include_orphans =
+        validation_category_selected(&args.categories, ValidateCategory::OrphanPages);
+
+    ValidationReport {
+        broken_links: if include_broken_links {
+            limit_items(
+                report
+                    .broken_links
+                    .iter()
+                    .filter(|issue| {
+                        validation_issue_title_matches(
+                            &title_filters,
+                            [&issue.source_title, &issue.target_title],
+                        )
+                    })
+                    .cloned(),
+                args.limit,
+            )
+        } else {
+            Vec::new()
+        },
+        double_redirects: if include_double_redirects {
+            limit_items(
+                report
+                    .double_redirects
+                    .iter()
+                    .filter(|issue| {
+                        validation_issue_title_matches(
+                            &title_filters,
+                            [&issue.title, &issue.first_target, &issue.final_target],
+                        )
+                    })
+                    .cloned(),
+                args.limit,
+            )
+        } else {
+            Vec::new()
+        },
+        uncategorized_pages: if include_uncategorized {
+            limit_items(
+                report
+                    .uncategorized_pages
+                    .iter()
+                    .filter(|title| validation_issue_title_matches(&title_filters, [*title]))
+                    .cloned(),
+                args.limit,
+            )
+        } else {
+            Vec::new()
+        },
+        orphan_pages: if include_orphans {
+            limit_items(
+                report
+                    .orphan_pages
+                    .iter()
+                    .filter(|title| validation_issue_title_matches(&title_filters, [*title]))
+                    .cloned(),
+                args.limit,
+            )
+        } else {
+            Vec::new()
+        },
+    }
+}
+
+fn validation_category_selected(
+    categories: &[ValidateCategory],
+    category: ValidateCategory,
+) -> bool {
+    categories.is_empty() || categories.contains(&category)
+}
+
+fn limit_items<T>(items: impl IntoIterator<Item = T>, limit: Option<usize>) -> Vec<T> {
+    match limit {
+        Some(limit) => items.into_iter().take(limit).collect(),
+        None => items.into_iter().collect(),
+    }
+}
+
+fn validation_issue_title_matches<'a>(
+    title_filters: &[String],
+    titles: impl IntoIterator<Item = &'a String>,
+) -> bool {
+    title_filters.is_empty()
+        || titles
+            .into_iter()
+            .any(|title| title_filters.contains(&validation_title_key(title)))
+}
+
+fn validation_title_key(value: &str) -> String {
+    let normalized = value.trim().replace('_', " ");
+    let normalized = normalized
+        .strip_prefix("Main:")
+        .or_else(|| normalized.strip_prefix("main:"))
+        .unwrap_or(&normalized);
+    normalized
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+fn validate_filters_json(args: &ValidateArgs) -> ValidateFiltersJson {
+    ValidateFiltersJson {
+        categories: args
+            .categories
+            .iter()
+            .copied()
+            .map(ValidateCategory::as_str)
+            .collect(),
+        limit: args.limit,
+        titles: args.titles.clone(),
+        verify_live: args.verify_live,
+    }
 }
 
 fn validation_summary(report: &ValidationReport) -> ValidateSummary {
@@ -304,6 +520,88 @@ fn print_validation_summary(report: &ValidationReport) {
     println!("validate.orphan_pages.count: {}", summary.orphan_pages);
 }
 
+fn print_validation_filters(args: &ValidateArgs) {
+    if args.categories.is_empty() && args.limit.is_none() && args.titles.is_empty() {
+        println!("filters: <none>");
+        println!(
+            "verify_live: {}",
+            if args.verify_live { "true" } else { "false" }
+        );
+        return;
+    }
+
+    println!(
+        "filters.categories: {}",
+        if args.categories.is_empty() {
+            "<all>".to_string()
+        } else {
+            args.categories
+                .iter()
+                .copied()
+                .map(ValidateCategory::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    );
+    println!(
+        "filters.limit: {}",
+        args.limit
+            .map(|limit| limit.to_string())
+            .unwrap_or_else(|| "<none>".to_string())
+    );
+    println!(
+        "filters.titles: {}",
+        if args.titles.is_empty() {
+            "<none>".to_string()
+        } else {
+            args.titles.join(", ")
+        }
+    );
+    println!(
+        "verify_live: {}",
+        if args.verify_live { "true" } else { "false" }
+    );
+}
+
+fn print_live_validation(report: &LiveValidationReport) {
+    println!("validate.live.request_count: {}", report.request_count);
+    println!(
+        "validate.live.broken_links.count: {}",
+        report.broken_links.len()
+    );
+    for issue in &report.broken_links {
+        println!(
+            "validate.live.broken_link: source={} target={} status={} resolved={} page_id={}",
+            issue.source_title,
+            issue.target_title,
+            serde_json::to_string(&issue.live_status).unwrap_or_else(|_| "\"unknown\"".to_string()),
+            issue.resolved_title.as_deref().unwrap_or("<none>"),
+            issue
+                .page_id
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "<none>".to_string())
+        );
+    }
+    println!(
+        "validate.live.double_redirects.count: {}",
+        report.double_redirects.len()
+    );
+    for issue in &report.double_redirects {
+        println!(
+            "validate.live.double_redirect: title={} first_target={} final_target={} status={} resolved={} page_id={}",
+            issue.title,
+            issue.first_target,
+            issue.final_target,
+            serde_json::to_string(&issue.live_status).unwrap_or_else(|_| "\"unknown\"".to_string()),
+            issue.resolved_title.as_deref().unwrap_or("<none>"),
+            issue
+                .page_id
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "<none>".to_string())
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -333,8 +631,15 @@ mod tests {
             index_ready: true,
             status: "failed",
             issue_count: validation_issue_count(&report),
+            filters: ValidateFiltersJson {
+                categories: Vec::new(),
+                limit: None,
+                titles: Vec::new(),
+                verify_live: false,
+            },
             summary: None,
             report: Some(&report),
+            live_verification: None,
             message: None,
         })
         .expect("serialize validate json");
@@ -355,8 +660,15 @@ mod tests {
             index_ready: false,
             status: "not_ready",
             issue_count: 0,
+            filters: ValidateFiltersJson {
+                categories: Vec::new(),
+                limit: None,
+                titles: Vec::new(),
+                verify_live: false,
+            },
             summary: None,
             report: None,
+            live_verification: None,
             message: Some("build the index"),
         })
         .expect("serialize validate not-ready json");
@@ -384,8 +696,15 @@ mod tests {
             index_ready: true,
             status: "failed",
             issue_count: validation_issue_count(&report),
+            filters: ValidateFiltersJson {
+                categories: Vec::new(),
+                limit: None,
+                titles: Vec::new(),
+                verify_live: false,
+            },
             summary: Some(validation_summary(&report)),
             report: None,
+            live_verification: None,
             message: None,
         })
         .expect("serialize validate summary json");
@@ -395,6 +714,45 @@ mod tests {
         assert_eq!(value["summary"]["uncategorized_pages"], json!(1));
         assert_eq!(value["summary"]["orphan_pages"], json!(1));
         assert!(value.get("report").is_none());
+    }
+
+    #[test]
+    fn validate_filters_issue_categories_titles_and_limits() {
+        let report = ValidationReport {
+            broken_links: vec![
+                BrokenLinkIssue {
+                    source_title: "Alpha".to_string(),
+                    target_title: "Missing One".to_string(),
+                },
+                BrokenLinkIssue {
+                    source_title: "Beta".to_string(),
+                    target_title: "Missing Two".to_string(),
+                },
+            ],
+            double_redirects: vec![DoubleRedirectIssue {
+                title: "Redirect A".to_string(),
+                first_target: "Redirect B".to_string(),
+                final_target: "Target".to_string(),
+            }],
+            uncategorized_pages: vec!["Alpha".to_string()],
+            orphan_pages: vec!["Beta".to_string()],
+        };
+        let args = ValidateArgs {
+            format: OutputFormat::Json,
+            summary: false,
+            categories: vec![ValidateCategory::BrokenLinks],
+            limit: Some(1),
+            titles: vec!["Main:Alpha".to_string()],
+            verify_live: false,
+        };
+
+        let filtered = filter_validation_report(&report, &args);
+
+        assert_eq!(filtered.broken_links.len(), 1);
+        assert_eq!(filtered.broken_links[0].source_title, "Alpha");
+        assert!(filtered.double_redirects.is_empty());
+        assert!(filtered.uncategorized_pages.is_empty());
+        assert!(filtered.orphan_pages.is_empty());
     }
 
     #[test]

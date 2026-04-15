@@ -306,7 +306,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         }
 
         let content = load_scanned_file_content(paths, file)?;
-        let links = extract_wikilinks(&content);
+        let links = extract_wikilinks_for_namespace(&content, &file.namespace);
         for link in &links {
             let affected = link_statement
                 .execute(params![

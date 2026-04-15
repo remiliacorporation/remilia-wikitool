@@ -20,14 +20,15 @@ wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 - The DB is disposable — delete it and repull/rebuild any time.
 - Authoring retrieval uses semantic page profiles, template implementation bundles, normalized source authorities, and bridged MediaWiki docs to narrow context for agents.
 - `knowledge article-start` is the interpreted authoring brief. `knowledge pack` is the raw substrate behind it.
-- `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check. `module lint` is the Lua/module lane.
+- `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check; use `--summary` for the global signal and scoped `--category`/`--title` slices for targeted investigation. `module lint` is the Lua/module lane.
 - `article lint` / `article fix` accept repeated `--title`, repeated `--path`, `--titles-file`, and `--changed` for batch work.
+- `review` is the structured pre-push gate: status plan, changed article lint, validation summary, and push dry-run in one JSON report.
 - Push flows require `--dry-run` first. Dry-run is the remote-aware preflight. `--force` requires explicit user approval.
 
 ## Authoring workflow
 
 ```bash
-wikitool knowledge article-start "Topic" --format json
+wikitool knowledge article-start "Topic" --intent new --format json
 wikitool research search "Topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
 wikitool templates show "Template:Infobox person"
@@ -38,7 +39,8 @@ wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool article fix wiki_content/Main/Title.wiki --apply safe
 wikitool knowledge inspect references summary --title "Title" --format json
 wikitool knowledge inspect references duplicates --title "Title" --format json
-wikitool validate
+wikitool validate --summary
+wikitool review --format json --summary "Summary"
 ```
 
 ## Sync
@@ -52,6 +54,7 @@ wikitool status --modified --format json
 wikitool status --conflicts --title "Title"
 wikitool diff                          # review change set
 wikitool diff --content --title "Title"
+wikitool review --format json --summary "x"
 wikitool push --dry-run --summary "x"  # remote-safe preflight
 wikitool push --dry-run --title "Title" --summary "x"
 wikitool push --summary "x"            # actual push
@@ -64,7 +67,7 @@ wikitool delete "Title" --reason "x" --dry-run
 wikitool knowledge build                # content index only
 wikitool knowledge warm --docs-profile remilia-mw-1.44  # index + docs
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
-wikitool knowledge article-start "Topic" --format json
+wikitool knowledge article-start "Topic" --intent new --format json
 wikitool knowledge pack "Topic" --format json
 wikitool knowledge inspect stats
 wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480

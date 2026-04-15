@@ -297,6 +297,12 @@ fn print_template_entry(entry: &TemplateCatalogEntry) {
         if !parameter.aliases.is_empty() {
             println!("parameter.aliases: {}", parameter.aliases.join(", "));
         }
+        if !parameter.observed_names.is_empty() {
+            println!(
+                "parameter.observed_names: {}",
+                parameter.observed_names.join(", ")
+            );
+        }
         if !parameter.example_values.is_empty() {
             println!(
                 "parameter.example_values: {}",

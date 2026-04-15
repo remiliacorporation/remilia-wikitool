@@ -21,13 +21,13 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 
 1. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
 2. **Refresh local authoring state** â€” run `wikitool knowledge warm --docs-profile remilia-mw-1.44` and `wikitool wiki profile sync` so docs/profile/capability signals are current.
-3. **Build the interpreted authoring brief** â€” run `wikitool knowledge article-start “<Topic>” --format json`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks` to fetch targeted content before writing.
+3. **Build the interpreted authoring brief** â€” run `wikitool knowledge article-start “<Topic>” --intent new --format json`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks` to fetch targeted content before writing.
 4. **Fetch external evidence selectively** â€” use `wikitool research search “<Topic>” --format json`, then `wikitool research fetch “<URL>” --output json` only for sources you expect to cite.
 5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name"`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
 6. **Write the article** following the structure in `article_structure.md`.
 7. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
 8. **Run article-aware lint** â€” `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`. For large reference cleanups, use `wikitool knowledge inspect references summary --title "{Article_Title}" --format json` and `wikitool knowledge inspect references duplicates --title "{Article_Title}" --format json`.
-9. **Validate** â€” run `wikitool validate` for the lower-level integrity checks before diff/push.
+9. **Review** â€” run `wikitool review --format json --summary "Summary"` before push. Use `wikitool validate --summary` for the lower-level global integrity signal and scoped validation flags when investigating a specific issue.
 
 Use `wikitool knowledge pack ... --format json` when you need the deeper raw retrieval bundle behind `article-start`.
 
@@ -37,8 +37,8 @@ Use `wikitool knowledge pack ... --format json` when you need the deeper raw ret
 2. Read the existing article.
 3. Make changes following all the same rules.
 4. Lint the draft: `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`
-5. Validate: `wikitool validate`
-6. Review: `wikitool diff`
+5. Review: `wikitool review --title "{Article_Title}" --format json --summary "Summary"`
+6. Diff: `wikitool diff --title "{Article_Title}"`
 7. Preflight conflicts: `wikitool push --dry-run --title "{Article_Title}" --summary "Summary"`
 8. Push: `wikitool push --title "{Article_Title}" --summary "Summary"`
 

@@ -25,6 +25,7 @@ mod query_cli;
 #[cfg(feature = "maintainer-surface")]
 mod release;
 mod research_cli;
+mod review_cli;
 mod sync_cli;
 mod templates_cli;
 mod wiki_cli;
@@ -89,6 +90,8 @@ enum Commands {
     Search(query_cli::SearchArgs),
     #[command(about = "Run structural and link integrity checks")]
     Validate(quality_cli::ValidateArgs),
+    #[command(about = "Run the structured pre-push review gate")]
+    Review(review_cli::ReviewArgs),
     #[command(about = "Run Lua module linting and related checks")]
     Module(module_cli::ModuleArgs),
     #[command(about = "Fetch a remote URL as wikitext or rendered HTML")]
@@ -155,6 +158,7 @@ fn main() -> Result<()> {
         Some(Commands::Context(args)) => query_cli::run_context(&runtime, args),
         Some(Commands::Search(args)) => query_cli::run_search(&runtime, args),
         Some(Commands::Validate(args)) => quality_cli::run_validate(&runtime, args),
+        Some(Commands::Review(args)) => review_cli::run_review(&runtime, args),
         Some(Commands::Module(args)) => module_cli::run_module(&runtime, args),
         Some(Commands::Fetch(args)) => export_cli::run_fetch(&runtime, args),
         Some(Commands::Export(args)) => export_cli::run_export(&runtime, args),

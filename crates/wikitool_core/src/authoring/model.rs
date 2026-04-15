@@ -28,6 +28,16 @@ pub enum ContextSurfaceSource {
     Both,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ArticleStartIntent {
+    #[default]
+    New,
+    Expand,
+    Audit,
+    Refresh,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EvidenceRef {
     pub id: String,
@@ -156,6 +166,7 @@ impl Default for ArticleStartOptions {
 pub struct ArticleStartResult {
     pub schema_version: String,
     pub topic: String,
+    pub intent: ArticleStartIntent,
     pub local_state: LocalExistenceState,
     pub subject_research: SubjectResearchLane,
     pub local_integration: LocalIntegrationLane,

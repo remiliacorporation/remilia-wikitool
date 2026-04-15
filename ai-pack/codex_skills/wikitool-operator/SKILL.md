@@ -10,9 +10,11 @@ Thin wrapper for the `wikitool` CLI.
 Use normal reasoning, ordinary shell/file tools, and direct editing by default.
 Do not invent flags or workflow details; verify against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
-Use `knowledge article-start` as the authoring front door.
+Use `knowledge article-start --intent new|expand|audit|refresh` as the authoring front door.
 Use `knowledge pack` only when the raw authoring substrate is needed behind article-start.
 Use `knowledge inspect references` for indexed citation audits and duplicate cleanup prep.
+Use scoped `validate --category ... --title ... --limit ...` when investigating a specific validation class. Use `--verify-live` for broken-link or redirect findings that need production API corroboration.
 Use scoped `status`, `diff`, and `push --dry-run` selectors when working on a subset of pages.
+Use `review --format json --summary "..."` for the full pre-push gate.
 
 Reach for `wikitool` when you need wiki-grounded retrieval, template/profile lookup, lint/fix, sync, or guarded push flows.

@@ -95,8 +95,8 @@ Do not route every step through `wikitool`.
 
 1. Do not perform write pushes by default.
 2. For requested writes, require:
+   - `wikitool review --format json --summary "..."`
    - `wikitool diff`
-   - `wikitool validate`
    - `wikitool push --dry-run --summary "..."`
 3. Do not use `--force` without explicit user approval.
 4. Keep output factual, neutral, and encyclopedic.
@@ -111,7 +111,7 @@ wikitool pull --full --all
 wikitool knowledge warm --docs-profile remilia-mw-1.44
 wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
-wikitool knowledge article-start "Topic" --format json
+wikitool knowledge article-start "Topic" --intent new --format json
 wikitool research search "Topic" --format json
 wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
 wikitool templates show "Template:Infobox person"
@@ -131,7 +131,9 @@ wikitool docs import-profile remilia-mw-1.44
 wikitool docs context "extension name" --profile remilia-mw-1.44 --format json
 wikitool fetch "https://www.mediawiki.org/wiki/Manual:Hooks"
 wikitool export "https://www.mediawiki.org/wiki/Manual:Hooks" --subpages --combined
-wikitool validate
+wikitool validate --summary
+wikitool validate --category broken-links --title "Title" --limit 20 --verify-live --format json
+wikitool review --format json --summary "Summary"
 wikitool diff
 ```
 

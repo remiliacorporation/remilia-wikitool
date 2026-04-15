@@ -26,6 +26,7 @@ Commands:
   context    Show indexed local page context for one title
   search     Search indexed local page titles
   validate   Run structural and link integrity checks
+  review     Run the structured pre-push review gate
   module     Run Lua module linting and related checks
   fetch      Fetch a remote URL as wikitext or rendered HTML
   export     Export a remote wiki page tree to local files
@@ -215,8 +216,36 @@ Options:
       --project-root <PATH>
       --data-dir <PATH>
       --summary              Omit detailed issue lists and print category counts
+      --category <CATEGORY>  Limit validation to one issue category; repeat for multiple categories [possible values: broken-links, double-redirects, uncategorized-pages, orphan-pages]
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
+      --limit <N>            Limit issues returned per selected category
+      --title <TITLE>        Limit issues to a page title
+      --verify-live          Verify selected broken links and redirect issues against the live wiki API
+  -h, --help                 Print help
+```
+
+## review
+
+```text
+Run the structured pre-push review gate
+
+Usage: wikitool review [OPTIONS]
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --profile <PROFILE>    [default: remilia]
+      --config <PATH>
+      --strict               Treat article lint warnings as review failures
+      --diagnostics          Print resolved runtime diagnostics
+      --templates            Include template/module/mediawiki namespaces in sync checks
+      --categories           Limit sync checks to Category namespace pages
+      --title <TITLE>
+      --path <PATH>
+      --titles-file <PATH>   Read one canonical page title per line
+      --summary <TEXT>       Edit summary used for the push dry-run report [default: "wikitool review dry-run"]
   -h, --help                 Print help
 ```
 
@@ -810,6 +839,7 @@ Options:
       --docs-profile <PROFILE>  Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
       --format <FORMAT>         Output format: text|json [default: json] [possible values: text, json]
       --include-pack            Include the raw knowledge pack in JSON output
+      --intent <INTENT>         Authoring intent: new|expand|audit|refresh [default: new] [possible values: new, expand, audit, refresh]
       --diversify               Enable lexical chunk de-duplication and diversification
       --no-diversify            Disable lexical chunk de-duplication and diversification
   -h, --help                    Print help

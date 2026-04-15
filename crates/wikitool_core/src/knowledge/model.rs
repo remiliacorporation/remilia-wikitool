@@ -580,3 +580,46 @@ pub struct ValidationReport {
     pub uncategorized_pages: Vec<String>,
     pub orphan_pages: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LivePageVerificationStatus {
+    Exists,
+    Missing,
+    RedirectResolved,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LiveBrokenLinkVerification {
+    pub source_title: String,
+    pub target_title: String,
+    pub live_status: LivePageVerificationStatus,
+    pub resolved_title: Option<String>,
+    pub page_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveRedirectVerificationStatus {
+    SourceMissing,
+    ResolvesToExpectedFinal,
+    ResolvesToDifferentTarget,
+    SourceExistsWithoutRedirectResolution,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LiveDoubleRedirectVerification {
+    pub title: String,
+    pub first_target: String,
+    pub final_target: String,
+    pub live_status: LiveRedirectVerificationStatus,
+    pub resolved_title: Option<String>,
+    pub page_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LiveValidationReport {
+    pub request_count: usize,
+    pub broken_links: Vec<LiveBrokenLinkVerification>,
+    pub double_redirects: Vec<LiveDoubleRedirectVerification>,
+}

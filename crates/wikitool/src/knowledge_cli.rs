@@ -2,10 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 use wikitool_core::authoring::article_start::build_article_start;
-use wikitool_core::authoring::model::ArticleStartResult;
+use wikitool_core::authoring::model::{ArticleStartIntent, ArticleStartResult};
 use wikitool_core::docs::{
     DocsImportProfileOptions, DocsImportProfileReport, import_docs_profile_with_config,
     is_transient_docs_error,
@@ -267,6 +267,14 @@ pub(crate) struct KnowledgeArticleStartArgs {
     format: OutputFormat,
     #[arg(long, help = "Include the raw knowledge pack in JSON output")]
     include_pack: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = ArticleStartIntentArg::New,
+        value_name = "INTENT",
+        help = "Authoring intent: new|expand|audit|refresh"
+    )]
+    intent: ArticleStartIntentArg,
     #[arg(long, help = "Enable lexical chunk de-duplication and diversification")]
     diversify: bool,
     #[arg(
@@ -274,6 +282,25 @@ pub(crate) struct KnowledgeArticleStartArgs {
         help = "Disable lexical chunk de-duplication and diversification"
     )]
     no_diversify: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ArticleStartIntentArg {
+    New,
+    Expand,
+    Audit,
+    Refresh,
+}
+
+impl From<ArticleStartIntentArg> for ArticleStartIntent {
+    fn from(value: ArticleStartIntentArg) -> Self {
+        match value {
+            ArticleStartIntentArg::New => Self::New,
+            ArticleStartIntentArg::Expand => Self::Expand,
+            ArticleStartIntentArg::Audit => Self::Audit,
+            ArticleStartIntentArg::Refresh => Self::Refresh,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -729,7 +756,7 @@ fn run_knowledge_article_start(
         },
         AuthoringKnowledgePack::Found(report) => {
             let overlay = load_or_build_remilia_profile_overlay(&paths)?;
-            let article_start = build_article_start(&report, &overlay);
+            let article_start = build_article_start(&report, &overlay, args.intent.into());
             KnowledgeArticleStartOutput {
                 docs_profile_requested: status.docs_profile_requested.clone(),
                 readiness: status.readiness.clone(),
@@ -777,6 +804,10 @@ fn run_knowledge_article_start(
             println!(
                 "article_start.schema_version: {}",
                 article_start.schema_version
+            );
+            println!(
+                "article_start.intent: {}",
+                serde_json::to_string(&article_start.intent)?
             );
             println!("article_start.topic: {}", article_start.topic);
             println!(

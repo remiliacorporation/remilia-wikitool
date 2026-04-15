@@ -10,9 +10,11 @@ Thin wrapper for content gating with `wikitool`.
 Use normal reasoning and editorial judgment. Verify the live command surface against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 Typical gate loop:
+- Preferred full gate: `wikitool review --format json --summary "..."`
 - `wikitool article lint <path> --format json`
 - `wikitool article fix <path> --apply safe`
 - `wikitool knowledge inspect references duplicates --title "<Title>" --format json`
-- `wikitool validate`
+- `wikitool validate --summary`
+- Targeted integrity follow-up when requested: `wikitool validate --category broken-links --title "<Title>" --limit 20 --verify-live --format json`
 - `wikitool diff`
 - `wikitool push --dry-run --summary "..."`

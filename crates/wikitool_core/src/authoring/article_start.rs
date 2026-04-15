@@ -4,15 +4,16 @@ use crate::knowledge::model::AuthoringKnowledgePackResult;
 use crate::profile::ProfileOverlay;
 
 use super::model::{
-    ArticleStartResult, AuthoringConstraint, CategorySurfaceEntry, ContextSurfaceSource,
-    EvidenceRef, LinkSurfaceEntry, LocalExistenceState, LocalIntegrationLane, OpenQuestion,
-    RecommendedAction, RequiredTemplate, SectionSkeleton, SubjectResearchLane, SubjectTypeHint,
-    TemplateSurfaceEntry,
+    ArticleStartIntent, ArticleStartResult, AuthoringConstraint, CategorySurfaceEntry,
+    ContextSurfaceSource, EvidenceRef, LinkSurfaceEntry, LocalExistenceState, LocalIntegrationLane,
+    OpenQuestion, RecommendedAction, RequiredTemplate, SectionSkeleton, SubjectResearchLane,
+    SubjectTypeHint, TemplateSurfaceEntry,
 };
 
 pub fn build_article_start(
     pack: &AuthoringKnowledgePackResult,
     overlay: &ProfileOverlay,
+    intent: ArticleStartIntent,
 ) -> ArticleStartResult {
     let local_state = if let Some(exact_page) = &pack.topic_assessment.exact_page {
         if exact_page.is_redirect {
@@ -112,21 +113,12 @@ pub fn build_article_start(
         });
     }
 
-    let next_actions = vec![
-        RecommendedAction {
-            label: "Review comparables".to_string(),
-            why: "Use local pages as the fit check for terminology, scope, and structure."
-                .to_string(),
-        },
-        RecommendedAction {
-            label: "Draft structure".to_string(),
-            why: "Start from the section skeleton and required templates before prose.".to_string(),
-        },
-    ];
+    let next_actions = build_next_actions(intent, &local_state);
 
     ArticleStartResult {
         schema_version: "article_start".to_string(),
         topic: pack.topic.clone(),
+        intent,
         local_state,
         subject_research,
         local_integration,
@@ -134,6 +126,86 @@ pub fn build_article_start(
         open_questions,
         next_actions,
         raw_pack_ref: Some("knowledge.pack".to_string()),
+    }
+}
+
+fn build_next_actions(
+    intent: ArticleStartIntent,
+    local_state: &LocalExistenceState,
+) -> Vec<RecommendedAction> {
+    match intent {
+        ArticleStartIntent::New => {
+            let mut actions = Vec::new();
+            if matches!(
+                local_state,
+                LocalExistenceState::ExactPageExists | LocalExistenceState::RedirectExists
+            ) {
+                actions.push(RecommendedAction {
+                    label: "Confirm new-page target".to_string(),
+                    why: "The requested title already resolves locally; choose a missing title or switch to expand, audit, or refresh intent.".to_string(),
+                });
+            }
+            actions.push(RecommendedAction {
+                label: "Review comparables".to_string(),
+                why: "Use local pages as the fit check for terminology, scope, and structure."
+                    .to_string(),
+            });
+            actions.push(RecommendedAction {
+                label: "Draft structure".to_string(),
+                why: "Start from the section skeleton and required templates before prose."
+                    .to_string(),
+            });
+            actions
+        }
+        ArticleStartIntent::Expand => vec![
+            RecommendedAction {
+                label: "Read the existing page".to_string(),
+                why: "Expansion should preserve current scope and add only evidenced gaps."
+                    .to_string(),
+            },
+            RecommendedAction {
+                label: "Compare section coverage".to_string(),
+                why: "Use comparable pages and the skeleton to identify missing local structure."
+                    .to_string(),
+            },
+            RecommendedAction {
+                label: "Draft additive edits".to_string(),
+                why: "Keep the next pass scoped to new sections, citations, or integration links."
+                    .to_string(),
+            },
+        ],
+        ArticleStartIntent::Audit => vec![
+            RecommendedAction {
+                label: "Run title-scoped checks".to_string(),
+                why: "Use article lint and validate --title before changing content.".to_string(),
+            },
+            RecommendedAction {
+                label: "Inspect sources and templates".to_string(),
+                why: "Verify citations, required appendices, categories, and template parameters against local evidence.".to_string(),
+            },
+            RecommendedAction {
+                label: "Report actionable findings".to_string(),
+                why: "Separate blocking defects from ordinary future-work links and orphan signals."
+                    .to_string(),
+            },
+        ],
+        ArticleStartIntent::Refresh => vec![
+            RecommendedAction {
+                label: "Check local and live state".to_string(),
+                why: "Refresh work should start by confirming the current page and sync surface."
+                    .to_string(),
+            },
+            RecommendedAction {
+                label: "Refresh dated claims".to_string(),
+                why: "Prioritize sources, citations, template usage, categories, and stale wording."
+                    .to_string(),
+            },
+            RecommendedAction {
+                label: "Run fix and lint".to_string(),
+                why: "Close with safe mechanical fixes and article lint before push review."
+                    .to_string(),
+            },
+        ],
     }
 }
 

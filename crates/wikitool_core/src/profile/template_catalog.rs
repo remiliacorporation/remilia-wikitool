@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use crate::content_store::parsing::open_indexed_connection;
+use crate::content_store::parsing::{normalize_template_parameter_key, open_indexed_connection};
 use crate::filesystem::{ScanOptions, scan_files};
 use crate::knowledge::status::KNOWLEDGE_GENERATION;
 use crate::knowledge::templates::{
@@ -25,12 +25,14 @@ use super::template_data::{
 };
 
 const TEMPLATE_CATALOG_ARTIFACT_KIND: &str = "template_catalog";
-const TEMPLATE_CATALOG_SCHEMA_VERSION: &str = "template_catalog_v1";
+const TEMPLATE_CATALOG_SCHEMA_VERSION: &str = "template_catalog_v2";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TemplateCatalogParameter {
     pub name: String,
     pub aliases: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observed_names: Vec<String>,
     pub sources: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
@@ -219,8 +221,9 @@ pub fn load_template_catalog(
         .with_context(|| format!("failed to load template catalog for {profile_id}"))?;
 
     catalog_json
-        .map(|value| serde_json::from_str(&value).context("failed to decode template catalog"))
+        .map(|value| decode_current_template_catalog(&value))
         .transpose()
+        .map(Option::flatten)
 }
 
 pub fn load_latest_template_catalog(paths: &ResolvedPaths) -> Result<Option<TemplateCatalog>> {
@@ -239,8 +242,9 @@ pub fn load_latest_template_catalog(paths: &ResolvedPaths) -> Result<Option<Temp
         .context("failed to load latest template catalog")?;
 
     catalog_json
-        .map(|value| serde_json::from_str(&value).context("failed to decode template catalog"))
+        .map(|value| decode_current_template_catalog(&value))
         .transpose()
+        .map(Option::flatten)
 }
 
 pub fn find_template_catalog_entry(
@@ -397,35 +401,37 @@ fn merge_parameters(
 ) -> Vec<TemplateCatalogParameter> {
     let mut templatedata_map = BTreeMap::<String, &TemplateDataParameter>::new();
     let mut alias_to_canonical = BTreeMap::<String, String>::new();
+    let mut observed_names = BTreeMap::<String, BTreeSet<String>>::new();
     let mut order = Vec::<String>::new();
     let mut seen = BTreeSet::new();
     if let Some(templatedata) = templatedata {
         for parameter in &templatedata.parameters {
             let canonical_name = canonical_parameter_key(&parameter.name);
-            let key = canonical_name.to_ascii_lowercase();
+            let key = parameter_match_key(&canonical_name);
             templatedata_map.insert(key.clone(), parameter);
             if seen.insert(key) {
                 order.push(canonical_name.clone());
             }
+            record_parameter_surface(&mut observed_names, &canonical_name, &parameter.name);
             for alias in &parameter.aliases {
-                alias_to_canonical.insert(
-                    canonical_parameter_key(alias).to_ascii_lowercase(),
-                    canonical_name.clone(),
-                );
+                alias_to_canonical.insert(parameter_match_key(alias), canonical_name.clone());
+                record_parameter_surface(&mut observed_names, &canonical_name, alias);
             }
         }
     }
 
     let declared_set = declared_parameter_keys
         .iter()
-        .map(|item| canonical_parameter_key(item).to_ascii_lowercase())
+        .map(|item| parameter_match_key(item))
         .collect::<BTreeSet<_>>();
     for key in declared_parameter_keys {
         let canonical = canonical_parameter_key(key);
-        let lower = canonical.to_ascii_lowercase();
-        if seen.insert(lower) {
+        let match_key = parameter_match_key(&canonical);
+        if seen.insert(match_key) {
             order.push(canonical);
         }
+        let canonical = canonical_parameter_key(key);
+        record_parameter_surface(&mut observed_names, &canonical, key);
     }
 
     let mut usage_map = BTreeMap::<String, LocalUsageAccumulator>::new();
@@ -438,11 +444,11 @@ fn merge_parameters(
         usage_keys.sort();
         for key in usage_keys {
             let canonical = alias_to_canonical
-                .get(&key.to_ascii_lowercase())
+                .get(&parameter_match_key(&key))
                 .cloned()
                 .unwrap_or_else(|| key.clone());
-            let lower = canonical.to_ascii_lowercase();
-            if seen.insert(lower) {
+            let match_key = parameter_match_key(&canonical);
+            if seen.insert(match_key) {
                 order.push(canonical);
             }
         }
@@ -450,40 +456,53 @@ fn merge_parameters(
         for parameter in &usage.parameter_stats {
             let usage_key = canonical_parameter_key(&parameter.key);
             let canonical = alias_to_canonical
-                .get(&usage_key.to_ascii_lowercase())
+                .get(&parameter_match_key(&usage_key))
                 .cloned()
                 .unwrap_or(usage_key);
-            let entry = usage_map.entry(canonical.to_ascii_lowercase()).or_default();
+            let entry = usage_map
+                .entry(parameter_match_key(&canonical))
+                .or_default();
             entry.usage_count = entry.usage_count.saturating_add(parameter.usage_count);
             for value in &parameter.example_values {
                 if !entry.example_values.iter().any(|item| item == value) {
                     entry.example_values.push(value.clone());
                 }
             }
+            record_parameter_surface(&mut observed_names, &canonical, &parameter.key);
         }
     }
 
     let mut out = Vec::new();
     for name in order {
-        let lower = name.to_ascii_lowercase();
-        let templatedata_parameter = templatedata_map.get(&lower).copied();
-        let usage_parameter = usage_map.get(&lower);
+        let match_key = parameter_match_key(&name);
+        let templatedata_parameter = templatedata_map.get(&match_key).copied();
+        let usage_parameter = usage_map.get(&match_key);
         let mut sources = Vec::new();
         if templatedata_parameter.is_some() {
             sources.push("templatedata".to_string());
         }
-        if declared_set.contains(&lower) {
+        if declared_set.contains(&match_key) {
             sources.push("source".to_string());
         }
         if usage_parameter.is_some() {
             sources.push("usage".to_string());
         }
+        let observed_names_for_parameter = observed_names
+            .remove(&match_key)
+            .map(|items| items.into_iter().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let aliases = merged_parameter_aliases(
+            &name,
+            templatedata_parameter
+                .map(|item| item.aliases.as_slice())
+                .unwrap_or(&[]),
+            &observed_names_for_parameter,
+        );
 
         out.push(TemplateCatalogParameter {
             name: name.clone(),
-            aliases: templatedata_parameter
-                .map(|item| item.aliases.clone())
-                .unwrap_or_default(),
+            aliases,
+            observed_names: observed_names_for_parameter,
             sources,
             label: templatedata_parameter.and_then(|item| item.label.clone()),
             description: templatedata_parameter.and_then(|item| item.description.clone()),
@@ -735,6 +754,41 @@ fn canonical_parameter_key(value: &str) -> String {
     trimmed.to_string()
 }
 
+fn parameter_match_key(value: &str) -> String {
+    normalize_template_parameter_key(&canonical_parameter_key(value))
+}
+
+fn record_parameter_surface(
+    observed_names: &mut BTreeMap<String, BTreeSet<String>>,
+    canonical_name: &str,
+    observed_name: &str,
+) {
+    let observed_name = canonical_parameter_key(observed_name);
+    if observed_name.is_empty() {
+        return;
+    }
+    observed_names
+        .entry(parameter_match_key(canonical_name))
+        .or_default()
+        .insert(observed_name);
+}
+
+fn merged_parameter_aliases(
+    canonical_name: &str,
+    templatedata_aliases: &[String],
+    observed_names: &[String],
+) -> Vec<String> {
+    let canonical_match = parameter_match_key(canonical_name);
+    let mut aliases = templatedata_aliases
+        .iter()
+        .chain(observed_names)
+        .map(|alias| canonical_parameter_key(alias))
+        .filter(|alias| !alias.is_empty() && alias != canonical_name)
+        .collect::<BTreeSet<_>>();
+    aliases.retain(|alias| parameter_match_key(alias) == canonical_match);
+    aliases.into_iter().collect()
+}
+
 fn store_template_catalog(paths: &ResolvedPaths, catalog: &TemplateCatalog) -> Result<()> {
     let connection = open_initialized_database_connection(&paths.db_path)?;
     let metadata_json =
@@ -784,6 +838,16 @@ fn template_catalog_artifact_key(profile_id: &str) -> String {
         "template_catalog:{}",
         profile_id.trim().to_ascii_lowercase()
     )
+}
+
+fn decode_current_template_catalog(value: &str) -> Result<Option<TemplateCatalog>> {
+    let catalog: TemplateCatalog =
+        serde_json::from_str(value).context("failed to decode template catalog")?;
+    if catalog.schema_version == TEMPLATE_CATALOG_SCHEMA_VERSION {
+        Ok(Some(catalog))
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
@@ -863,18 +927,19 @@ mod tests {
 
         write_file(
             &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
-            "{{Infobox person|name=Alpha|occupation=Writer}}\n'''Alpha''' is a page.",
+            "{{Infobox person|name=Alpha|occupation=Writer|birth date=2000}}\n'''Alpha''' is a page.",
         );
         write_file(
             &paths
                 .templates_dir
                 .join("infobox")
                 .join("Template_Infobox_person.wiki"),
-            r#"<includeonly>{{#invoke:Infobox|render|name={{{name|}}}|occupation={{{occupation|}}}}}</includeonly><noinclude>
+            r#"<includeonly>{{#invoke:Infobox|render|name={{{name|}}}|occupation={{{occupation|}}}|birth_date={{{birth_date|}}}}}</includeonly><noinclude>
 <syntaxhighlight lang="wikitext">
 {{Infobox person
 | name = Example
 | occupation = Writer
+| birth_date = 2000
 }}
 </syntaxhighlight>
 <templatedata>
@@ -882,7 +947,8 @@ mod tests {
   "description": "Infobox for biographical articles.",
   "params": {
     "name": {"label": "Name", "required": true},
-    "occupation": {"label": "Occupation", "suggested": true}
+    "occupation": {"label": "Occupation", "suggested": true},
+    "birth_date": {"label": "Birth date", "suggested": true}
   }
 }
 </templatedata>
@@ -928,6 +994,18 @@ mod tests {
                 .iter()
                 .any(|param| param.name == "name" && param.required)
         );
+        let birth_date = entry
+            .parameters
+            .iter()
+            .find(|param| param.name == "birth_date")
+            .expect("birth_date parameter");
+        assert!(birth_date.aliases.contains(&"birth date".to_string()));
+        assert!(
+            birth_date
+                .observed_names
+                .contains(&"birth date".to_string())
+        );
+        assert!(birth_date.usage_count >= 1);
         assert!(
             entry
                 .examples
