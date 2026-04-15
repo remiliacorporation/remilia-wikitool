@@ -114,8 +114,19 @@ pub fn build_article_start(
             evidence: evidence.iter().take(1).cloned().collect(),
         });
     }
+    if !has_local_authoring_evidence(&evidence_profile) {
+        open_questions.push(OpenQuestion {
+            question: "What source-backed scope justifies this page on the target wiki?"
+                .to_string(),
+            reason:
+                "The local index returned no exact page, chunks, backlinks, or comparable pages."
+                    .to_string(),
+            blocking: false,
+            evidence: Vec::new(),
+        });
+    }
 
-    let next_actions = build_next_actions(intent, &local_state);
+    let next_actions = build_next_actions(intent, &local_state, &evidence_profile);
 
     ArticleStartResult {
         schema_version: "article_start".to_string(),
@@ -331,6 +342,7 @@ fn missing_query_terms(query_terms: &[String], matched_terms: &[String]) -> Vec<
 fn build_next_actions(
     intent: ArticleStartIntent,
     local_state: &LocalExistenceState,
+    evidence_profile: &ArticleEvidenceProfile,
 ) -> Vec<RecommendedAction> {
     match intent {
         ArticleStartIntent::New => {
@@ -344,15 +356,25 @@ fn build_next_actions(
                     why: "The requested title already resolves locally; choose a missing title or switch to expand, audit, or refresh intent.".to_string(),
                 });
             }
-            actions.push(RecommendedAction {
-                label: "Review comparables".to_string(),
-                why: "Use local pages as the fit check for terminology, scope, and structure."
-                    .to_string(),
-            });
+            if has_local_authoring_evidence(evidence_profile) {
+                actions.push(RecommendedAction {
+                    label: "Review local context".to_string(),
+                    why: "Use exact pages, returned chunks, backlinks, or comparables as the local fit check for terminology, scope, and structure.".to_string(),
+                });
+            } else {
+                actions.push(RecommendedAction {
+                    label: "Gather independent sources".to_string(),
+                    why: "No local evidence was returned; establish the subject from reliable external sources before drafting.".to_string(),
+                });
+                actions.push(RecommendedAction {
+                    label: "Decide wiki fit".to_string(),
+                    why: "Use the target wiki's scope and style once source-backed facts are available."
+                        .to_string(),
+                });
+            }
             actions.push(RecommendedAction {
                 label: "Draft structure".to_string(),
-                why: "Start from the section skeleton and required templates before prose."
-                    .to_string(),
+                why: "Start from the section skeleton, required templates, and gathered evidence before prose.".to_string(),
             });
             actions
         }
@@ -406,6 +428,14 @@ fn build_next_actions(
             },
         ],
     }
+}
+
+fn has_local_authoring_evidence(evidence_profile: &ArticleEvidenceProfile) -> bool {
+    evidence_profile.exact_local_title.is_some()
+        || evidence_profile.backlink_count > 0
+        || !evidence_profile.direct_subject_evidence.is_empty()
+        || !evidence_profile.broad_context.is_empty()
+        || !evidence_profile.comparable_pages.is_empty()
 }
 
 fn build_required_templates(overlay: &ProfileOverlay) -> Vec<RequiredTemplate> {
@@ -597,11 +627,14 @@ fn build_link_surface(pack: &AuthoringKnowledgePackResult) -> Vec<LinkSurfaceEnt
 }
 
 fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSkeleton> {
+    let lead_content_backed = pack.topic_assessment.exact_page.is_some() || !pack.chunks.is_empty();
     let mut sections = vec![SectionSkeleton {
         heading: "Overview".to_string(),
-        rationale: "Use a concise lead anchored in local terminology.".to_string(),
+        rationale:
+            "Use a concise lead anchored in cited evidence and local terminology when available."
+                .to_string(),
         required: true,
-        content_backed: true,
+        content_backed: lead_content_backed,
         supporting_pages: Vec::new(),
     }];
 

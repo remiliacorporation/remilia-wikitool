@@ -79,11 +79,23 @@ pub(crate) struct ResearchFetchArgs {
     refresh: bool,
     #[arg(long, help = "Bypass the research cache for this fetch")]
     no_cache: bool,
+    #[arg(
+        long,
+        value_name = "CHARS",
+        help = "Limit returned content characters; cached source content remains complete"
+    )]
+    content_limit: Option<usize>,
+    #[arg(
+        long,
+        help = "Omit fetched content from output while keeping metadata and extract"
+    )]
+    no_content: bool,
 }
 
 #[derive(Debug, Serialize)]
 struct ResearchSearchOutput {
     schema_version: String,
+    source_scope: String,
     query: String,
     what: MediaWikiSearchWhat,
     namespaces: Vec<i32>,
@@ -103,7 +115,17 @@ struct ResearchFetchOutput {
     cache_status: ResearchCacheStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     cache_path: Option<String>,
+    content: ResearchFetchContent,
     result: ExternalFetchResult,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct ResearchFetchContent {
+    full_length: usize,
+    returned_length: usize,
+    truncated: bool,
+    omitted: bool,
+    limit: Option<usize>,
 }
 
 pub(crate) fn run_research(runtime: &RuntimeOptions, args: ResearchArgs) -> Result<()> {
@@ -133,6 +155,7 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
 
     println!("research search");
     println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("source_scope: configured_wiki_api");
     println!("query: {}", report.query);
     print_external_search_report("research_search", &report);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -145,6 +168,12 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
 fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Result<()> {
     if args.refresh && args.no_cache {
         bail!("research fetch does not allow --refresh together with --no-cache");
+    }
+    if args.no_content && args.content_limit.is_some() {
+        bail!("research fetch does not allow --no-content together with --content-limit");
+    }
+    if matches!(args.content_limit, Some(0)) {
+        bail!("research fetch requires --content-limit >= 1");
     }
     let fetch_format = ExternalFetchFormat::from(args.format);
     let (paths, _) = resolve_runtime_with_config(runtime)?;
@@ -164,13 +193,15 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
     let cache_status = cached.status;
     let cache_path = cached.cache_path.as_deref().map(normalize_path);
-    let result = cached.result;
+    let (result, content) =
+        prepare_fetch_result(cached.result, args.content_limit, args.no_content);
 
     if args.output.is_json() {
         let output = ResearchFetchOutput {
             schema_version: "research_document_v1".to_string(),
             cache_status,
             cache_path,
+            content,
             result,
         };
         println!("{}", serde_json::to_string_pretty(&output)?);
@@ -215,9 +246,14 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     if let Some(value) = result.extraction_quality {
         println!("extraction_quality: {}", format_extraction_quality(value));
     }
-    println!("content_length: {}", result.content.len());
-    println!("content:");
-    println!("{}", result.content);
+    println!("content_full_length: {}", content.full_length);
+    println!("content_returned_length: {}", content.returned_length);
+    println!("content_truncated: {}", content.truncated);
+    println!("content_omitted: {}", content.omitted);
+    if !content.omitted {
+        println!("content:");
+        println!("{}", result.content);
+    }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -240,6 +276,7 @@ impl From<ExternalSearchReport> for ResearchSearchOutput {
 
         Self {
             schema_version: "research_search_v1".to_string(),
+            source_scope: "configured_wiki_api".to_string(),
             query,
             what,
             namespaces,
@@ -250,6 +287,52 @@ impl From<ExternalSearchReport> for ResearchSearchOutput {
             hits,
         }
     }
+}
+
+fn prepare_fetch_result(
+    mut result: ExternalFetchResult,
+    content_limit: Option<usize>,
+    no_content: bool,
+) -> (ExternalFetchResult, ResearchFetchContent) {
+    let full_length = result.content.chars().count();
+    if no_content {
+        result.content.clear();
+        return (
+            result,
+            ResearchFetchContent {
+                full_length,
+                returned_length: 0,
+                truncated: false,
+                omitted: true,
+                limit: None,
+            },
+        );
+    }
+
+    let mut truncated = false;
+    if let Some(limit) = content_limit {
+        let (limited, was_truncated) = truncate_to_chars(&result.content, limit);
+        result.content = limited;
+        truncated = was_truncated;
+    }
+    let returned_length = result.content.chars().count();
+    (
+        result,
+        ResearchFetchContent {
+            full_length,
+            returned_length,
+            truncated,
+            omitted: false,
+            limit: content_limit,
+        },
+    )
+}
+
+fn truncate_to_chars(value: &str, limit: usize) -> (String, bool) {
+    if value.chars().count() <= limit {
+        return (value.to_string(), false);
+    }
+    (value.chars().take(limit).collect(), true)
 }
 
 fn format_rendered_fetch_mode(mode: wikitool_core::research::RenderedFetchMode) -> &'static str {
@@ -278,5 +361,60 @@ fn format_cache_status(status: ResearchCacheStatus) -> &'static str {
         ResearchCacheStatus::Miss => "miss",
         ResearchCacheStatus::Refresh => "refresh",
         ResearchCacheStatus::Bypass => "bypass",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prepare_fetch_result_limits_returned_content_without_touching_metadata() {
+        let result = sample_fetch_result("abcdef");
+
+        let (result, content) = prepare_fetch_result(result, Some(3), false);
+
+        assert_eq!(result.content, "abc");
+        assert_eq!(result.content_hash, "hash");
+        assert_eq!(content.full_length, 6);
+        assert_eq!(content.returned_length, 3);
+        assert!(content.truncated);
+        assert!(!content.omitted);
+    }
+
+    #[test]
+    fn prepare_fetch_result_can_omit_content() {
+        let result = sample_fetch_result("abcdef");
+
+        let (result, content) = prepare_fetch_result(result, None, true);
+
+        assert!(result.content.is_empty());
+        assert_eq!(content.full_length, 6);
+        assert_eq!(content.returned_length, 0);
+        assert!(!content.truncated);
+        assert!(content.omitted);
+    }
+
+    fn sample_fetch_result(content: &str) -> ExternalFetchResult {
+        ExternalFetchResult {
+            title: "Source".to_string(),
+            content: content.to_string(),
+            timestamp: "2026-04-15T00:00:00Z".to_string(),
+            extract: Some("Extract".to_string()),
+            url: "https://example.org/source".to_string(),
+            source_wiki: "example".to_string(),
+            source_domain: "example.org".to_string(),
+            content_format: "html".to_string(),
+            content_hash: "hash".to_string(),
+            revision_id: None,
+            display_title: None,
+            rendered_fetch_mode: None,
+            canonical_url: None,
+            site_name: None,
+            byline: None,
+            published_at: None,
+            fetch_mode: None,
+            extraction_quality: None,
+        }
     }
 }

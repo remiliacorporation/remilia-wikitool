@@ -1172,15 +1172,17 @@ Arguments:
   <URL>
 
 Options:
-      --format <FORMAT>      Output format: wikitext|html|rendered-html [default: html] [possible values: wikitext, html, rendered-html]
+      --format <FORMAT>        Output format: wikitext|html|rendered-html [default: html] [possible values: wikitext, html, rendered-html]
       --project-root <PATH>
       --data-dir <PATH>
-      --output <FORMAT>      Output wrapper: text|json [default: json] [possible values: text, json]
+      --output <FORMAT>        Output wrapper: text|json [default: json] [possible values: text, json]
       --config <PATH>
-      --refresh              Refresh the research cache entry before returning output
-      --diagnostics          Print resolved runtime diagnostics
-      --no-cache             Bypass the research cache for this fetch
-  -h, --help                 Print help
+      --refresh                Refresh the research cache entry before returning output
+      --diagnostics            Print resolved runtime diagnostics
+      --no-cache               Bypass the research cache for this fetch
+      --content-limit <CHARS>  Limit returned content characters; cached source content remains complete
+      --no-content             Omit fetched content from output while keeping metadata and extract
+  -h, --help                   Print help
 ```
 
 ## wiki

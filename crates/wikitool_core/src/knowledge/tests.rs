@@ -1572,6 +1572,59 @@ fn build_article_start_uses_neutral_surfaces_without_forced_type() {
 }
 
 #[test]
+fn build_article_start_marks_empty_local_evidence_without_forcing_comparables() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "'''Alpha''' is an unrelated local page.\n== History ==\nAlpha context.",
+    );
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let report = build_authoring_knowledge_pack(
+        &paths,
+        Some("Cheetah"),
+        None,
+        &AuthoringKnowledgePackOptions::default(),
+    )
+    .expect("authoring pack");
+    let report = match report {
+        AuthoringKnowledgePack::Found(report) => *report,
+        other => panic!("expected found authoring pack, got {other:?}"),
+    };
+    let article_start =
+        build_article_start(&report, &test_profile_overlay(), ArticleStartIntent::New);
+
+    assert_eq!(
+        article_start.evidence_profile.missing_query_terms,
+        vec!["cheetah".to_string()]
+    );
+    assert!(article_start.local_integration.comparable_pages.is_empty());
+    assert!(
+        article_start
+            .local_integration
+            .section_skeleton
+            .iter()
+            .any(|section| section.heading == "Overview" && !section.content_backed)
+    );
+    assert!(
+        article_start
+            .next_actions
+            .iter()
+            .any(|action| action.label == "Gather independent sources")
+    );
+    assert!(
+        article_start
+            .open_questions
+            .iter()
+            .any(|question| question.question.contains("source-backed scope"))
+    );
+}
+
+#[test]
 fn translation_variants_are_discovery_only_and_do_not_pollute_editing_context() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
