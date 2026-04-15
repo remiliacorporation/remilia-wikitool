@@ -7,7 +7,9 @@ use wikitool_core::research::{
 };
 use wikitool_core::sync::{ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat};
 
-use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_with_config};
+use crate::cli_support::{
+    FetchContentFormat, OutputFormat, normalize_path, resolve_runtime_with_config,
+};
 use crate::query_cli::{
     RemoteSearchScope, RemoteWikiSearchRequest, print_external_search_report,
     remote_wiki_search_report,
@@ -56,11 +58,12 @@ pub(crate) struct ResearchFetchArgs {
     url: String,
     #[arg(
         long,
-        default_value = "html",
+        value_enum,
+        default_value_t = FetchContentFormat::Html,
         value_name = "FORMAT",
         help = "Output format: wikitext|html|rendered-html"
     )]
-    format: String,
+    format: FetchContentFormat,
     #[arg(
         long,
         value_enum,
@@ -143,7 +146,7 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     if args.refresh && args.no_cache {
         bail!("research fetch does not allow --refresh together with --no-cache");
     }
-    let fetch_format = ExternalFetchFormat::parse(&args.format)?;
+    let fetch_format = ExternalFetchFormat::from(args.format);
     let (paths, _) = resolve_runtime_with_config(runtime)?;
     let cached = fetch_page_by_url_cached(
         &paths,

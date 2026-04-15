@@ -270,7 +270,7 @@ Arguments:
   <URL>
 
 Options:
-      --format <FORMAT>      Output format: wikitext|html|rendered-html [default: wikitext]
+      --format <FORMAT>      Output format: wikitext|html|rendered-html [default: wikitext] [possible values: wikitext, html, rendered-html]
       --project-root <PATH>
       --data-dir <PATH>
       --save                 Save output under reference/<source>/ in project root
@@ -294,7 +294,7 @@ Options:
   -o, --output <PATH>         Output file or directory path
       --project-root <PATH>
       --data-dir <PATH>
-      --format <FORMAT>       Output format: markdown|wikitext [default: markdown]
+      --format <FORMAT>       Output format: markdown|wikitext [default: markdown] [possible values: markdown, wikitext]
       --code-language <LANG>  Code language hint (reserved for markdown export)
       --config <PATH>
       --diagnostics           Print resolved runtime diagnostics
@@ -482,9 +482,9 @@ Options:
       --outdated             Show only outdated docs
       --project-root <PATH>
       --data-dir <PATH>
-      --type <TYPE>          Filter technical docs by type
+      --type <TYPE>          Filter technical docs by type: hooks|config|api|manual|help [possible values: hooks, config, api, manual, help]
       --config <PATH>
-      --kind <KIND>          Filter corpora by kind
+      --kind <KIND>          Filter corpora by kind: extension|technical|profile [possible values: extension, technical, profile]
       --diagnostics          Print resolved runtime diagnostics
       --profile <PROFILE>    Filter corpora by source profile
   -h, --help                 Print help
@@ -535,7 +535,7 @@ Arguments:
 
 Options:
       --project-root <PATH>
-      --tier <TIER>          Search tier: page|section|symbol|example|extension|technical|profile
+      --tier <TIER>          Search tier: page|section|symbol|example|extension|technical|profile [possible values: page, section, symbol, example, extension, technical, profile]
       --data-dir <PATH>
       --profile <PROFILE>    Restrict search to a docs profile
       --config <PATH>
@@ -664,14 +664,14 @@ Options:
       --project-root <PATH>
       --table <NAME>           Cargo table name
       --data-dir <PATH>
-      --type <TYPE>            Input type: csv|json
+      --type <TYPE>            Input type: csv|json [possible values: csv, json]
       --config <PATH>
       --template <NAME>        Template wrapper name
       --diagnostics            Print resolved runtime diagnostics
       --title-field <FIELD>    Field name to use as page title
       --title-prefix <PREFIX>  Prefix for generated page titles
       --category <NAME>        Category to add to generated pages
-      --mode <MODE>            create|update|upsert [default: create]
+      --mode <MODE>            create|update|upsert [default: create] [possible values: create, update, upsert]
       --write                  Write files (default: dry-run)
       --format <FORMAT>        Output format: text|json [default: text] [possible values: text, json]
       --article-header         Add SHORTDESC + Article quality header in main namespace
@@ -1136,7 +1136,7 @@ Arguments:
   <URL>
 
 Options:
-      --format <FORMAT>      Output format: wikitext|html|rendered-html [default: html]
+      --format <FORMAT>      Output format: wikitext|html|rendered-html [default: html] [possible values: wikitext, html, rendered-html]
       --project-root <PATH>
       --data-dir <PATH>
       --output <FORMAT>      Output wrapper: text|json [default: json] [possible values: text, json]
@@ -1464,7 +1464,7 @@ Arguments:
 Options:
       --profile <PROFILE>    [default: remilia]
       --project-root <PATH>
-      --apply <MODE>         Apply mode: none|safe [default: none]
+      --apply <MODE>         Apply mode: none|safe [default: none] [possible values: none, safe]
       --data-dir <PATH>
       --config <PATH>
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]

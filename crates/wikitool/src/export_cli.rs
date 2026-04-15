@@ -11,7 +11,9 @@ use wikitool_core::external::{
     sanitize_filename, wikitext_to_markdown,
 };
 
-use crate::cli_support::{normalize_path, resolve_runtime_paths};
+use crate::cli_support::{
+    ExportContentFormat, FetchContentFormat, normalize_path, resolve_runtime_paths,
+};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 use wikitool_core::support::compute_hash;
 
@@ -20,11 +22,12 @@ pub(crate) struct FetchArgs {
     url: String,
     #[arg(
         long,
-        default_value = "wikitext",
+        value_enum,
+        default_value_t = FetchContentFormat::Wikitext,
         value_name = "FORMAT",
         help = "Output format: wikitext|html|rendered-html"
     )]
-    format: String,
+    format: FetchContentFormat,
     #[arg(long, help = "Save output under reference/<source>/ in project root")]
     save: bool,
     #[arg(
@@ -47,11 +50,12 @@ pub(crate) struct ExportArgs {
     output: Option<PathBuf>,
     #[arg(
         long,
-        default_value = "markdown",
+        value_enum,
+        default_value_t = ExportContentFormat::Markdown,
         value_name = "FORMAT",
         help = "Output format: markdown|wikitext"
     )]
-    format: String,
+    format: ExportContentFormat,
     #[arg(
         long,
         value_name = "LANG",
@@ -68,7 +72,7 @@ pub(crate) struct ExportArgs {
 
 pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let format = ExternalFetchFormat::parse(&args.format)?;
+    let format = ExternalFetchFormat::from(args.format);
     let result = fetch_page_by_url(
         &args.url,
         &ExternalFetchOptions {
@@ -137,7 +141,7 @@ pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()>
 
 pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let export_format = ExportFormat::parse(&args.format)?;
+    let export_format = ExportFormat::from(args.format);
     let fetch_options = ExternalFetchOptions {
         format: ExternalFetchFormat::Wikitext,
         max_bytes: 1_000_000,
@@ -185,7 +189,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
             println!("project_root: {}", normalize_path(&paths.project_root));
             println!("source_url: {}", args.url);
             println!("pages_exported: {}", all_pages.len());
-            println!("format: {}", args.format.to_ascii_lowercase());
+            println!("format: {}", args.format.as_str());
             if let Some(path) = output_path {
                 println!("output_path: {}", normalize_path(&path));
             } else {
@@ -235,7 +239,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
             println!("project_root: {}", normalize_path(&paths.project_root));
             println!("source_url: {}", args.url);
             println!("pages_exported: {}", all_pages.len());
-            println!("format: {}", args.format.to_ascii_lowercase());
+            println!("format: {}", args.format.as_str());
             println!("output_dir: {}", normalize_path(&output_dir));
             println!("index_path: {}", normalize_path(&index_path));
         }
@@ -260,7 +264,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
         println!("source_url: {}", args.url);
         println!("resolved_url: {}", page.url);
         println!("title: {}", page.title);
-        println!("format: {}", args.format.to_ascii_lowercase());
+        println!("format: {}", args.format.as_str());
         println!("source_domain: {}", page.source_domain);
         println!("content_length: {}", page.content.len());
         if let Some(path) = output_path {

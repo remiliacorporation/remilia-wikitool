@@ -1,14 +1,16 @@
 use super::*;
+use clap::ValueEnum;
 
 #[derive(Debug, Args)]
 pub(super) struct DocsSearchArgs {
     query: String,
     #[arg(
         long,
+        value_enum,
         value_name = "TIER",
         help = "Search tier: page|section|symbol|example|extension|technical|profile"
     )]
-    tier: Option<String>,
+    tier: Option<DocsSearchTier>,
     #[arg(
         long,
         value_name = "PROFILE",
@@ -19,6 +21,37 @@ pub(super) struct DocsSearchArgs {
     format: OutputFormat,
     #[arg(short = 'l', long, default_value_t = 20, help = "Limit result count")]
     limit: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum DocsSearchTier {
+    Page,
+    Section,
+    Symbol,
+    Example,
+    Extension,
+    Technical,
+    Profile,
+}
+
+impl DocsSearchTier {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Page => "page",
+            Self::Section => "section",
+            Self::Symbol => "symbol",
+            Self::Example => "example",
+            Self::Extension => "extension",
+            Self::Technical => "technical",
+            Self::Profile => "profile",
+        }
+    }
+}
+
+impl std::fmt::Display for DocsSearchTier {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Args)]
@@ -65,7 +98,7 @@ pub(super) fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) ->
         &paths,
         &args.query,
         &DocsSearchOptions {
-            tier: args.tier.clone(),
+            tier: args.tier.map(|tier| tier.as_str().to_string()),
             profile: args.profile.clone(),
             limit: args.limit.max(1),
         },
@@ -79,7 +112,10 @@ pub(super) fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) ->
     println!("docs search");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("query: {}", collapse_whitespace(&args.query));
-    println!("tier: {}", args.tier.as_deref().unwrap_or("<all>"));
+    println!(
+        "tier: {}",
+        args.tier.map(DocsSearchTier::as_str).unwrap_or("<all>")
+    );
     println!("profile: {}", args.profile.as_deref().unwrap_or("<all>"));
     println!("limit: {}", args.limit.max(1));
     println!("hits.count: {}", hits.len());

@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 use wikitool_core::article_lint::{
     ArticleFixApplyMode, ArticleFixResult, ArticleLintReport, fix_article, lint_article,
@@ -66,11 +66,12 @@ pub(crate) struct ArticleFixArgs {
     profile: String,
     #[arg(
         long,
-        default_value = "none",
+        value_enum,
+        default_value_t = ArticleFixApplyArg::None,
         value_name = "MODE",
         help = "Apply mode: none|safe"
     )]
-    apply: String,
+    apply: ArticleFixApplyArg,
     #[arg(
         long,
         value_enum,
@@ -126,6 +127,36 @@ struct ArticleFixBatchReport {
     remaining_warnings: usize,
     remaining_suggestions: usize,
     results: Vec<ArticleFixResult>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ArticleFixApplyArg {
+    None,
+    Safe,
+}
+
+impl ArticleFixApplyArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Safe => "safe",
+        }
+    }
+}
+
+impl From<ArticleFixApplyArg> for ArticleFixApplyMode {
+    fn from(value: ArticleFixApplyArg) -> Self {
+        match value {
+            ArticleFixApplyArg::None => Self::None,
+            ArticleFixApplyArg::Safe => Self::Safe,
+        }
+    }
+}
+
+impl std::fmt::Display for ArticleFixApplyArg {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
 }
 
 pub(crate) fn run_article(runtime: &RuntimeOptions, args: ArticleArgs) -> Result<()> {
@@ -239,7 +270,7 @@ fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) -> Result<(
 
 fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let apply_mode = parse_apply_mode(&args.apply)?;
+    let apply_mode = ArticleFixApplyMode::from(args.apply);
     if uses_single_path_mode(
         args.path.as_deref(),
         &args.titles,
@@ -368,14 +399,6 @@ fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) -> Result<()>
         );
     }
     Ok(())
-}
-
-fn parse_apply_mode(value: &str) -> Result<ArticleFixApplyMode> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "none" => Ok(ArticleFixApplyMode::None),
-        "safe" => Ok(ArticleFixApplyMode::Safe),
-        other => bail!("unsupported article fix apply mode: {other} (expected none|safe)"),
-    }
 }
 
 fn uses_single_path_mode(

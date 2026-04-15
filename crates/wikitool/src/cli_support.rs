@@ -6,6 +6,7 @@ use clap::ValueEnum;
 use wikitool_core::config::{WikiConfig, load_config};
 use wikitool_core::filesystem::ScanStats;
 use wikitool_core::knowledge::content_index::StoredIndexStats;
+use wikitool_core::research::{ExportFormat, ExternalFetchFormat};
 use wikitool_core::runtime::{PathOverrides, ResolutionContext, ResolvedPaths, resolve_paths};
 use wikitool_core::schema::{DatabaseSchemaState, schema_state};
 
@@ -31,6 +32,71 @@ impl OutputFormat {
 }
 
 impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum FetchContentFormat {
+    Wikitext,
+    Html,
+    #[value(alias = "rendered_html")]
+    RenderedHtml,
+}
+
+impl FetchContentFormat {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Wikitext => "wikitext",
+            Self::Html => "html",
+            Self::RenderedHtml => "rendered-html",
+        }
+    }
+}
+
+impl From<FetchContentFormat> for ExternalFetchFormat {
+    fn from(value: FetchContentFormat) -> Self {
+        match value {
+            FetchContentFormat::Wikitext => Self::Wikitext,
+            FetchContentFormat::Html | FetchContentFormat::RenderedHtml => Self::Html,
+        }
+    }
+}
+
+impl std::fmt::Display for FetchContentFormat {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ExportContentFormat {
+    #[value(alias = "md")]
+    Markdown,
+    #[value(alias = "wiki")]
+    Wikitext,
+}
+
+impl ExportContentFormat {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Markdown => "markdown",
+            Self::Wikitext => "wikitext",
+        }
+    }
+}
+
+impl From<ExportContentFormat> for ExportFormat {
+    fn from(value: ExportContentFormat) -> Self {
+        match value {
+            ExportContentFormat::Markdown => Self::Markdown,
+            ExportContentFormat::Wikitext => Self::Wikitext,
+        }
+    }
+}
+
+impl std::fmt::Display for ExportContentFormat {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.as_str())
     }

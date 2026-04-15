@@ -1,13 +1,24 @@
 use super::*;
+use clap::ValueEnum;
 
 #[derive(Debug, Args)]
 pub(super) struct DocsListArgs {
     #[arg(long, help = "Show only outdated docs")]
     outdated: bool,
-    #[arg(long, value_name = "TYPE", help = "Filter technical docs by type")]
-    r#type: Option<String>,
-    #[arg(long, value_name = "KIND", help = "Filter corpora by kind")]
-    kind: Option<String>,
+    #[arg(
+        long,
+        value_enum,
+        value_name = "TYPE",
+        help = "Filter technical docs by type: hooks|config|api|manual|help"
+    )]
+    r#type: Option<DocsTechnicalTypeArg>,
+    #[arg(
+        long,
+        value_enum,
+        value_name = "KIND",
+        help = "Filter corpora by kind: extension|technical|profile"
+    )]
+    kind: Option<DocsCorpusKindArg>,
     #[arg(
         long,
         value_name = "PROFILE",
@@ -16,13 +27,51 @@ pub(super) struct DocsListArgs {
     profile: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum DocsTechnicalTypeArg {
+    Hooks,
+    Config,
+    Api,
+    Manual,
+    Help,
+}
+
+impl DocsTechnicalTypeArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Hooks => "hooks",
+            Self::Config => "config",
+            Self::Api => "api",
+            Self::Manual => "manual",
+            Self::Help => "help",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum DocsCorpusKindArg {
+    Extension,
+    Technical,
+    Profile,
+}
+
+impl DocsCorpusKindArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Extension => "extension",
+            Self::Technical => "technical",
+            Self::Profile => "profile",
+        }
+    }
+}
+
 pub(super) fn run_docs_list(runtime: &RuntimeOptions, args: DocsListArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let listing = list_docs(
         &paths,
         &DocsListOptions {
-            technical_type: args.r#type.clone(),
-            corpus_kind: args.kind.clone(),
+            technical_type: args.r#type.map(|value| value.as_str().to_string()),
+            corpus_kind: args.kind.map(|value| value.as_str().to_string()),
             profile: args.profile.clone(),
         },
     )?;

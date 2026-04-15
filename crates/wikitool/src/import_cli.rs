@@ -2,7 +2,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 use wikitool_core::import_cargo::{
     CargoImportOptions, ImportError, ImportPageResult, ImportSourceType, ImportUpdateMode,
@@ -26,8 +26,8 @@ enum ImportSubcommand {
         path: String,
         #[arg(long, value_name = "NAME", help = "Cargo table name")]
         table: String,
-        #[arg(long, value_name = "TYPE", help = "Input type: csv|json")]
-        r#type: Option<String>,
+        #[arg(long, value_enum, value_name = "TYPE", help = "Input type: csv|json")]
+        r#type: Option<ImportSourceTypeArg>,
         #[arg(long, value_name = "NAME", help = "Template wrapper name")]
         template: Option<String>,
         #[arg(long, value_name = "FIELD", help = "Field name to use as page title")]
@@ -38,11 +38,12 @@ enum ImportSubcommand {
         category: Option<String>,
         #[arg(
             long,
-            default_value = "create",
+            value_enum,
+            default_value_t = ImportUpdateModeArg::Create,
             value_name = "MODE",
             help = "create|update|upsert"
         )]
-        mode: String,
+        mode: ImportUpdateModeArg,
         #[arg(long, help = "Write files (default: dry-run)")]
         write: bool,
         #[arg(
@@ -75,6 +76,54 @@ struct ImportJson<'a> {
     pages: &'a [ImportPageResult],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ImportSourceTypeArg {
+    Csv,
+    Json,
+}
+
+impl From<ImportSourceTypeArg> for ImportSourceType {
+    fn from(value: ImportSourceTypeArg) -> Self {
+        match value {
+            ImportSourceTypeArg::Csv => Self::Csv,
+            ImportSourceTypeArg::Json => Self::Json,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ImportUpdateModeArg {
+    Create,
+    Update,
+    Upsert,
+}
+
+impl ImportUpdateModeArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Update => "update",
+            Self::Upsert => "upsert",
+        }
+    }
+}
+
+impl From<ImportUpdateModeArg> for ImportUpdateMode {
+    fn from(value: ImportUpdateModeArg) -> Self {
+        match value {
+            ImportUpdateModeArg::Create => Self::Create,
+            ImportUpdateModeArg::Update => Self::Update,
+            ImportUpdateModeArg::Upsert => Self::Upsert,
+        }
+    }
+}
+
+impl std::fmt::Display for ImportUpdateModeArg {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 pub(crate) fn run_import(runtime: &RuntimeOptions, args: ImportArgs) -> Result<()> {
     match args.command {
         ImportSubcommand::Cargo {
@@ -94,12 +143,12 @@ pub(crate) fn run_import(runtime: &RuntimeOptions, args: ImportArgs) -> Result<(
             runtime,
             &path,
             &table,
-            r#type.as_deref(),
+            r#type.map(ImportSourceType::from),
             template.as_deref(),
             title_field.as_deref(),
             title_prefix.as_deref(),
             category.as_deref(),
-            &mode,
+            ImportUpdateMode::from(mode),
             write,
             format,
             article_header,
@@ -113,22 +162,21 @@ fn run_import_cargo(
     runtime: &RuntimeOptions,
     path: &str,
     table: &str,
-    source_type: Option<&str>,
+    source_type: Option<ImportSourceType>,
     template: Option<&str>,
     title_field: Option<&str>,
     title_prefix: Option<&str>,
     category: Option<&str>,
-    mode: &str,
+    update_mode: ImportUpdateMode,
     write: bool,
     format: OutputFormat,
     article_header: bool,
     no_meta: bool,
 ) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let Some(source_type) = ImportSourceType::resolve(path, source_type) else {
+    let Some(source_type) = source_type.or_else(|| ImportSourceType::resolve(path, None)) else {
         bail!("unable to determine import type (use --type csv|json)");
     };
-    let update_mode = parse_import_mode(mode)?;
 
     let source_path = resolve_import_source_path(path)?;
     let result = import_to_cargo(
@@ -157,7 +205,7 @@ fn run_import_cargo(
         println!("source_path: {}", normalize_path(&source_path));
         println!("source_type: {}", source_type.as_str());
         println!("table: {table}");
-        println!("update_mode: {}", mode.to_ascii_lowercase());
+        println!("update_mode: {}", update_mode.as_str());
         println!("write: {}", format_flag(write));
         println!("created: {}", result.pages_created.len());
         println!("updated: {}", result.pages_updated.len());
@@ -224,43 +272,12 @@ fn resolve_import_source_path(path: &str) -> Result<PathBuf> {
         .join(path))
 }
 
-fn parse_import_mode(value: &str) -> Result<ImportUpdateMode> {
-    let normalized = value.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "create" => Ok(ImportUpdateMode::Create),
-        "update" => Ok(ImportUpdateMode::Update),
-        "upsert" => Ok(ImportUpdateMode::Upsert),
-        _ => bail!("unsupported import mode: {value} (expected create|update|upsert)"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::*;
-    use wikitool_core::import_cargo::{ImportPageAction, ImportResult, ImportUpdateMode};
-
-    #[test]
-    fn parse_import_mode_accepts_supported_values() {
-        assert!(matches!(
-            parse_import_mode("create").expect("create"),
-            ImportUpdateMode::Create
-        ));
-        assert!(matches!(
-            parse_import_mode("update").expect("update"),
-            ImportUpdateMode::Update
-        ));
-        assert!(matches!(
-            parse_import_mode("upsert").expect("upsert"),
-            ImportUpdateMode::Upsert
-        ));
-    }
-
-    #[test]
-    fn parse_import_mode_rejects_unknown_values() {
-        assert!(parse_import_mode("replace").is_err());
-    }
+    use wikitool_core::import_cargo::{ImportPageAction, ImportResult};
 
     #[test]
     fn import_no_meta_json_omits_summary_indexes() {

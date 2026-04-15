@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::filesystem::{NamespaceMapper, validate_scoped_path};
@@ -52,14 +52,21 @@ pub enum ImportUpdateMode {
 }
 
 impl ImportUpdateMode {
-    pub fn parse(value: &str) -> Self {
-        if value.eq_ignore_ascii_case("update") {
-            return Self::Update;
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "create" => Ok(Self::Create),
+            "update" => Ok(Self::Update),
+            "upsert" => Ok(Self::Upsert),
+            _ => bail!("unsupported import mode: {value} (expected create|update|upsert)"),
         }
-        if value.eq_ignore_ascii_case("upsert") {
-            return Self::Upsert;
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Update => "update",
+            Self::Upsert => "upsert",
         }
-        Self::Create
     }
 }
 
@@ -499,6 +506,19 @@ mod tests {
                 .iter()
                 .any(|(key, value)| key == "x" && value.is_empty())
         );
+    }
+
+    #[test]
+    fn import_update_mode_parse_rejects_unknown_values() {
+        assert_eq!(
+            ImportUpdateMode::parse("update").expect("update"),
+            ImportUpdateMode::Update
+        );
+        assert_eq!(
+            ImportUpdateMode::parse("upsert").expect("upsert"),
+            ImportUpdateMode::Upsert
+        );
+        assert!(ImportUpdateMode::parse("replace").is_err());
     }
 
     #[test]
