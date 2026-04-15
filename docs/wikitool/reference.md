@@ -214,6 +214,7 @@ Options:
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
+      --summary              Omit detailed issue lists and print category counts
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help

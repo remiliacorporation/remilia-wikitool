@@ -17,12 +17,15 @@ pub(crate) struct ValidateArgs {
         help = "Output format: text|json"
     )]
     format: OutputFormat,
+    #[arg(long, help = "Omit detailed issue lists and print category counts")]
+    summary: bool,
 }
 
 impl Default for ValidateArgs {
     fn default() -> Self {
         Self {
             format: OutputFormat::Text,
+            summary: false,
         }
     }
 }
@@ -51,9 +54,19 @@ struct ValidateJson<'a> {
     status: &'static str,
     issue_count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<ValidateSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     report: Option<&'a ValidationReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct ValidateSummary {
+    broken_links: usize,
+    double_redirects: usize,
+    uncategorized_pages: usize,
+    orphan_pages: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -85,6 +98,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
                         index_ready: false,
                         status: "not_ready",
                         issue_count: 0,
+                        summary: None,
                         report: None,
                         message: Some(message),
                     })?
@@ -105,6 +119,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
     let issue_count = validation_issue_count(&report);
     let status = if issue_count == 0 { "clean" } else { "failed" };
     if args.format.is_json() {
+        let summary = args.summary.then(|| validation_summary(&report));
         println!(
             "{}",
             serde_json::to_string_pretty(&ValidateJson {
@@ -112,7 +127,8 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
                 index_ready: true,
                 status,
                 issue_count,
-                report: Some(&report),
+                summary,
+                report: if args.summary { None } else { Some(&report) },
                 message: None,
             })?
         );
@@ -124,7 +140,11 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
 
     println!("validate");
     println!("project_root: {}", normalize_path(&paths.project_root));
-    print_validation_issues(&report);
+    if args.summary {
+        print_validation_summary(&report);
+    } else {
+        print_validation_issues(&report);
+    }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -144,6 +164,15 @@ fn validation_issue_count(report: &ValidationReport) -> usize {
         + report.double_redirects.len()
         + report.uncategorized_pages.len()
         + report.orphan_pages.len()
+}
+
+fn validation_summary(report: &ValidationReport) -> ValidateSummary {
+    ValidateSummary {
+        broken_links: report.broken_links.len(),
+        double_redirects: report.double_redirects.len(),
+        uncategorized_pages: report.uncategorized_pages.len(),
+        orphan_pages: report.orphan_pages.len(),
+    }
 }
 
 pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
@@ -260,6 +289,21 @@ fn print_validation_issues(report: &ValidationReport) {
     print_string_list("validate.orphan_pages", &report.orphan_pages);
 }
 
+fn print_validation_summary(report: &ValidationReport) {
+    let summary = validation_summary(report);
+    println!("validate.issue_count: {}", validation_issue_count(report));
+    println!("validate.broken_links.count: {}", summary.broken_links);
+    println!(
+        "validate.double_redirects.count: {}",
+        summary.double_redirects
+    );
+    println!(
+        "validate.uncategorized_pages.count: {}",
+        summary.uncategorized_pages
+    );
+    println!("validate.orphan_pages.count: {}", summary.orphan_pages);
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -289,6 +333,7 @@ mod tests {
             index_ready: true,
             status: "failed",
             issue_count: validation_issue_count(&report),
+            summary: None,
             report: Some(&report),
             message: None,
         })
@@ -310,6 +355,7 @@ mod tests {
             index_ready: false,
             status: "not_ready",
             issue_count: 0,
+            summary: None,
             report: None,
             message: Some("build the index"),
         })
@@ -318,6 +364,36 @@ mod tests {
         assert_eq!(value["index_ready"], json!(false));
         assert_eq!(value["status"], json!("not_ready"));
         assert_eq!(value["message"], json!("build the index"));
+        assert!(value.get("report").is_none());
+    }
+
+    #[test]
+    fn validate_summary_json_omits_detailed_report() {
+        let report = ValidationReport {
+            broken_links: vec![BrokenLinkIssue {
+                source_title: "Alpha".to_string(),
+                target_title: "Missing".to_string(),
+            }],
+            double_redirects: Vec::new(),
+            uncategorized_pages: vec!["Uncategorized".to_string()],
+            orphan_pages: vec!["Orphan".to_string()],
+        };
+
+        let value = serde_json::to_value(ValidateJson {
+            project_root: "/repo".to_string(),
+            index_ready: true,
+            status: "failed",
+            issue_count: validation_issue_count(&report),
+            summary: Some(validation_summary(&report)),
+            report: None,
+            message: None,
+        })
+        .expect("serialize validate summary json");
+
+        assert_eq!(value["issue_count"], json!(3));
+        assert_eq!(value["summary"]["broken_links"], json!(1));
+        assert_eq!(value["summary"]["uncategorized_pages"], json!(1));
+        assert_eq!(value["summary"]["orphan_pages"], json!(1));
         assert!(value.get("report").is_none());
     }
 

@@ -470,6 +470,9 @@ fn resolve_article_targets(
     }
 
     if target_paths.is_empty() {
+        if selection.changed {
+            return Ok(Vec::new());
+        }
         bail!("article command requires a file path, selector, or --changed");
     }
 
