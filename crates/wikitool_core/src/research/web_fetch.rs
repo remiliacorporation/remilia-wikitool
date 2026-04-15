@@ -11,7 +11,8 @@ use serde_json::Value;
 use crate::support::{compute_hash, env_value, env_value_u64, env_value_usize, unix_timestamp};
 
 use super::model::{
-    ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExtractionQuality, FetchMode,
+    ExternalFetchAttempt, ExternalFetchFailure, ExternalFetchFailureError, ExternalFetchOptions,
+    ExternalFetchProfile, ExternalFetchResult, ExtractionQuality, FetchMode,
 };
 use super::url::decode_title;
 
@@ -20,6 +21,7 @@ const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const DEFAULT_RETRIES: usize = 2;
 const DEFAULT_RETRY_DELAY_MS: u64 = 350;
 const MAX_CLIENT_REDIRECTS: usize = 1;
+const DIRECT_ACCEPT: &str = "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,text/markdown;q=0.8,application/json;q=0.7,*/*;q=0.1";
 
 pub(crate) struct ExternalClient {
     pub(crate) client: Client,
@@ -42,6 +44,14 @@ struct HtmlMetadata {
     byline: Option<String>,
     published_at: Option<String>,
     description: Option<String>,
+}
+
+struct TextHttpResponse {
+    final_url: String,
+    http_status: u16,
+    content_type: String,
+    cf_mitigated: Option<String>,
+    body: String,
 }
 
 impl ExternalClient {
@@ -155,78 +165,258 @@ pub(crate) fn fetch_web_url(
     let client = external_client()?;
     let mut current_url = url.to_string();
     let mut client_redirects = 0usize;
+    let mut attempts = Vec::new();
 
     loop {
-        let response = client
-            .client
-            .get(&current_url)
-            .header("User-Agent", DEFAULT_USER_AGENT)
-            .header(
-                "Accept",
-                "text/html, text/plain;q=0.9, text/markdown;q=0.9,*/*;q=0.1",
-            )
-            .send()
-            .with_context(|| format!("failed to fetch {current_url}"))?;
-        let status = response.status();
-        if !status.is_success() {
-            bail!("HTTP {} while fetching {}", status.as_u16(), current_url);
+        let response =
+            request_text_candidate(&client, "direct_static", &current_url, options.max_bytes);
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => {
+                attempts.push(ExternalFetchAttempt {
+                    mode: "direct_static".to_string(),
+                    url: current_url.clone(),
+                    outcome: "request_error".to_string(),
+                    http_status: None,
+                    content_type: None,
+                    message: Some(error.to_string()),
+                });
+                return Err(fetch_failure(url, attempts).into());
+            }
+        };
+        if response.http_status >= 400 {
+            let outcome = if detect_access_challenge_response(&response) {
+                "access_challenge"
+            } else {
+                "http_error"
+            };
+            attempts.push(ExternalFetchAttempt {
+                mode: "direct_static".to_string(),
+                url: current_url.clone(),
+                outcome: outcome.to_string(),
+                http_status: Some(response.http_status),
+                content_type: Some(response.content_type.clone()),
+                message: Some(if outcome == "access_challenge" {
+                    access_challenge_message(&response)
+                } else {
+                    format!(
+                        "HTTP {} while fetching {}",
+                        response.http_status, current_url
+                    )
+                }),
+            });
+            return Err(fetch_failure(url, attempts).into());
         }
-        let final_url = response.url().to_string();
-        let content_type = response
-            .headers()
-            .get("content-type")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("")
-            .to_string();
-        let is_text = content_type.contains("text/html")
-            || content_type.contains("text/plain")
-            || content_type.contains("text/markdown");
-        if !is_text {
-            bail!("unsupported content-type: {content_type}");
+        if !is_supported_text_content_type(&response.content_type) {
+            attempts.push(ExternalFetchAttempt {
+                mode: "direct_static".to_string(),
+                url: current_url.clone(),
+                outcome: "unsupported_content_type".to_string(),
+                http_status: Some(response.http_status),
+                content_type: Some(response.content_type.clone()),
+                message: Some(format!(
+                    "unsupported content-type: {}",
+                    response.content_type
+                )),
+            });
+            return Err(fetch_failure(url, attempts).into());
         }
-        let body = read_text_body_limited(response, options.max_bytes)?;
+        if options.profile == ExternalFetchProfile::Research
+            && detect_access_challenge_response(&response)
+        {
+            attempts.push(ExternalFetchAttempt {
+                mode: "direct_static".to_string(),
+                url: current_url.clone(),
+                outcome: "access_challenge".to_string(),
+                http_status: Some(response.http_status),
+                content_type: Some(response.content_type.clone()),
+                message: Some(access_challenge_message(&response)),
+            });
+            return Err(fetch_failure(url, attempts).into());
+        }
+        attempts.push(ExternalFetchAttempt {
+            mode: "direct_static".to_string(),
+            url: current_url.clone(),
+            outcome: "success".to_string(),
+            http_status: Some(response.http_status),
+            content_type: Some(response.content_type.clone()),
+            message: None,
+        });
 
-        if content_type.contains("text/html")
+        if response.content_type.contains("text/html")
             && options.profile == ExternalFetchProfile::Research
             && client_redirects < MAX_CLIENT_REDIRECTS
-            && let Some(redirect_url) = extract_client_redirect_url(&body, &final_url)
-            && redirect_url != final_url
+            && let Some(redirect_url) =
+                extract_client_redirect_url(&response.body, &response.final_url)
+            && redirect_url != response.final_url
         {
             current_url = redirect_url;
             client_redirects += 1;
             continue;
         }
 
-        let parsed_url = Url::parse(&final_url).ok();
-        let fallback_title = derive_title_from_url(parsed_url.as_ref(), &final_url);
+        let parsed_url = Url::parse(&response.final_url).ok();
+        let fallback_title = derive_title_from_url(parsed_url.as_ref(), &response.final_url);
         let source_domain = parsed_url
             .as_ref()
             .and_then(|value| value.host_str())
             .unwrap_or("web")
             .to_string();
 
-        if content_type.contains("text/html") {
-            return Ok(build_html_fetch_result(
-                &body,
-                &final_url,
+        let mut result = if response.content_type.contains("text/html") {
+            build_html_fetch_result(
+                &response.body,
+                &response.final_url,
                 &source_domain,
                 &fallback_title,
                 options,
-            ));
-        }
+            )
+        } else {
+            build_text_fetch_result(
+                &response.body,
+                &response.final_url,
+                &source_domain,
+                &fallback_title,
+                content_format_for_content_type(&response.content_type),
+                options,
+            )
+        };
+        result.fetch_attempts = attempts;
+        return Ok(result);
+    }
+}
 
-        return Ok(build_text_fetch_result(
-            &body,
-            &final_url,
-            &source_domain,
-            &fallback_title,
-            if content_type.contains("text/markdown") {
-                "markdown"
-            } else {
-                "text"
-            },
-            options,
-        ));
+fn request_text_candidate(
+    client: &ExternalClient,
+    mode: &str,
+    url: &str,
+    max_bytes: usize,
+) -> Result<TextHttpResponse> {
+    let mut request = client
+        .client
+        .get(url)
+        .header("User-Agent", client.user_agent.clone())
+        .header("Accept", DIRECT_ACCEPT)
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .header("Cache-Control", "no-cache")
+        .header("Pragma", "no-cache");
+    if mode == "direct_static" {
+        request = request
+            .header("Upgrade-Insecure-Requests", "1")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Sec-Fetch-User", "?1");
+    }
+    let response = request
+        .send()
+        .with_context(|| format!("failed to fetch {url}"))?;
+    let final_url = response.url().to_string();
+    let http_status = response.status().as_u16();
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let cf_mitigated = response
+        .headers()
+        .get("cf-mitigated")
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string);
+    let body = if is_supported_text_content_type(&content_type) {
+        read_text_body_limited(response, max_bytes)?
+    } else {
+        String::new()
+    };
+    Ok(TextHttpResponse {
+        final_url,
+        http_status,
+        content_type,
+        cf_mitigated,
+        body,
+    })
+}
+
+fn detect_access_challenge_response(response: &TextHttpResponse) -> bool {
+    response
+        .cf_mitigated
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("challenge"))
+        || (response.content_type.contains("text/html")
+            && (detect_access_challenge(&response.body)
+                || response
+                    .body
+                    .to_ascii_lowercase()
+                    .contains("just a moment...")))
+}
+
+fn access_challenge_message(response: &TextHttpResponse) -> String {
+    if response
+        .cf_mitigated
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("challenge"))
+    {
+        return "access challenge detected from cf-mitigated: challenge header".to_string();
+    }
+    "access challenge detected in response body".to_string()
+}
+
+fn is_supported_text_content_type(content_type: &str) -> bool {
+    content_type.contains("text/html")
+        || content_type.contains("text/plain")
+        || content_type.contains("text/markdown")
+        || content_type.contains("application/json")
+        || content_type.is_empty()
+}
+
+fn content_format_for_content_type(content_type: &str) -> &'static str {
+    if content_type.contains("text/markdown") {
+        "markdown"
+    } else if content_type.contains("application/json") {
+        "json"
+    } else {
+        "text"
+    }
+}
+
+fn fetch_failure(
+    source_url: &str,
+    attempts: Vec<ExternalFetchAttempt>,
+) -> ExternalFetchFailureError {
+    let kind = if attempts
+        .iter()
+        .any(|attempt| attempt.outcome == "access_challenge")
+    {
+        "access_challenge"
+    } else if attempts
+        .iter()
+        .any(|attempt| attempt.outcome == "http_error")
+    {
+        "http_error"
+    } else if attempts
+        .iter()
+        .any(|attempt| attempt.outcome == "unsupported_content_type")
+    {
+        "unsupported_content_type"
+    } else {
+        "fetch_failed"
+    };
+    let message = match kind {
+        "access_challenge" => format!("access challenge prevented readable fetch for {source_url}"),
+        "http_error" => format!("HTTP error prevented readable fetch for {source_url}"),
+        "unsupported_content_type" => {
+            format!("unsupported content type prevented readable fetch for {source_url}")
+        }
+        _ => format!("failed to fetch readable source content for {source_url}"),
+    };
+    ExternalFetchFailureError {
+        failure: ExternalFetchFailure {
+            source_url: source_url.to_string(),
+            kind: kind.to_string(),
+            message,
+            attempts,
+        },
     }
 }
 
@@ -276,6 +466,7 @@ fn build_html_fetch_result(
                 published_at: metadata.published_at,
                 fetch_mode: Some(FetchMode::Static),
                 extraction_quality: None,
+                fetch_attempts: Vec::new(),
             }
         }
         ExternalFetchProfile::Research => {
@@ -300,6 +491,7 @@ fn build_html_fetch_result(
                     published_at: None,
                     fetch_mode: Some(FetchMode::Static),
                     extraction_quality: Some(ExtractionQuality::Low),
+                    fetch_attempts: Vec::new(),
                 };
             }
             let extracted = extract_readable_text(html, options.max_bytes);
@@ -336,6 +528,7 @@ fn build_html_fetch_result(
                     published_at: metadata.published_at,
                     fetch_mode: Some(FetchMode::Static),
                     extraction_quality: Some(ExtractionQuality::Low),
+                    fetch_attempts: Vec::new(),
                 };
             }
             let content = extracted;
@@ -365,6 +558,7 @@ fn build_html_fetch_result(
                 published_at: metadata.published_at,
                 fetch_mode: Some(FetchMode::Static),
                 extraction_quality,
+                fetch_attempts: Vec::new(),
             }
         }
     }
@@ -443,6 +637,7 @@ fn build_text_fetch_result(
         published_at: None,
         fetch_mode: Some(FetchMode::Static),
         extraction_quality,
+        fetch_attempts: Vec::new(),
     }
 }
 
@@ -1201,9 +1396,10 @@ fn decode_html(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        HtmlMetadata, build_html_fetch_result, build_metadata_fallback_content,
-        collapse_inline_whitespace, detect_access_challenge, detect_app_shell_html,
-        extract_client_redirect_url, extract_html_metadata, extract_readable_text,
+        HtmlMetadata, TextHttpResponse, access_challenge_message, build_html_fetch_result,
+        build_metadata_fallback_content, collapse_inline_whitespace, detect_access_challenge,
+        detect_access_challenge_response, detect_app_shell_html, extract_client_redirect_url,
+        extract_html_metadata, extract_readable_text,
     };
     use crate::research::model::{
         ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExtractionQuality,
@@ -1411,6 +1607,20 @@ mod tests {
         assert!(!detect_access_challenge(
             "<html><body><article><p>Readable essay text.</p></article></body></html>"
         ));
+    }
+
+    #[test]
+    fn detects_cloudflare_challenge_header() {
+        let response = TextHttpResponse {
+            final_url: "https://example.com/protected".to_string(),
+            http_status: 403,
+            content_type: "text/html; charset=UTF-8".to_string(),
+            cf_mitigated: Some("challenge".to_string()),
+            body: "<html><body>generic challenge shell</body></html>".to_string(),
+        };
+
+        assert!(detect_access_challenge_response(&response));
+        assert!(access_challenge_message(&response).contains("cf-mitigated"));
     }
 
     #[test]

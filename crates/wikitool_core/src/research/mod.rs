@@ -15,9 +15,9 @@ pub use export::{
 };
 pub use mediawiki_fetch::{fetch_mediawiki_page, fetch_pages_by_titles, list_subpages};
 pub use model::{
-    DEFAULT_EXPORTS_DIR, ExportFormat, ExternalFetchFormat, ExternalFetchOptions,
-    ExternalFetchProfile, ExternalFetchResult, ExtractionQuality, FetchMode, ParsedWikiUrl,
-    RenderedFetchMode,
+    DEFAULT_EXPORTS_DIR, ExportFormat, ExternalFetchAttempt, ExternalFetchFailure,
+    ExternalFetchFailureError, ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile,
+    ExternalFetchResult, ExtractionQuality, FetchMode, ParsedWikiUrl, RenderedFetchMode,
 };
 pub use url::parse_wiki_url;
 

@@ -22,7 +22,7 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 1. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
 2. **Refresh local authoring state** â€” run `wikitool knowledge warm --docs-profile remilia-mw-1.44` and `wikitool wiki profile sync` so docs/profile/capability signals are current.
 3. **Build the interpreted authoring brief** â€” run `wikitool knowledge article-start “<Topic>” --intent new --format json`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks` to fetch targeted content before writing.
-4. **Fetch external evidence selectively** â€” use `wikitool research search “<Topic>” --format json`, then `wikitool research fetch “<URL>” --output json` only for sources you expect to cite.
+4. **Fetch external evidence selectively** â€” use `wikitool research search “<Topic>” --format json`, then `wikitool research fetch “<URL>” --output json` only for sources you expect to cite. If fetch output has `status: "error"`, treat it as a source-access failure; do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
 5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name"`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
 6. **Write the article** following the structure in `article_structure.md`.
 7. **Save** to `wiki_content/Main/{Article_Title}.wiki`.

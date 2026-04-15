@@ -392,6 +392,7 @@ fn parse_mediawiki_content_page(
             published_at: None,
             fetch_mode: None,
             extraction_quality: None,
+            fetch_attempts: Vec::new(),
         },
     )))
 }
@@ -531,6 +532,7 @@ mod tests {
             published_at: None,
             fetch_mode: None,
             extraction_quality: None,
+            fetch_attempts: Vec::new(),
         };
 
         let rendered = RenderedPageHtml {

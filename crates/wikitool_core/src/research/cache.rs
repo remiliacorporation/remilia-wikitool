@@ -271,6 +271,7 @@ mod tests {
             published_at: None,
             fetch_mode: Some(crate::research::FetchMode::Static),
             extraction_quality: Some(crate::research::ExtractionQuality::Medium),
+            fetch_attempts: Vec::new(),
         }
     }
 
@@ -294,6 +295,7 @@ mod tests {
             published_at: None,
             fetch_mode: None,
             extraction_quality: None,
+            fetch_attempts: Vec::new(),
         }
     }
 

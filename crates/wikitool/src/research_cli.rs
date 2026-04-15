@@ -2,8 +2,9 @@ use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 use wikitool_core::research::{
-    ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
-    ResearchCacheOptions, ResearchCacheStatus, fetch_page_by_url_cached,
+    ExternalFetchAttempt, ExternalFetchFailureError, ExternalFetchFormat, ExternalFetchOptions,
+    ExternalFetchProfile, ExternalFetchResult, ResearchCacheOptions, ResearchCacheStatus,
+    fetch_page_by_url_cached,
 };
 use wikitool_core::sync::{ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat};
 
@@ -112,11 +113,25 @@ struct ResearchSearchOutput {
 #[derive(Debug, Serialize)]
 struct ResearchFetchOutput {
     schema_version: String,
-    cache_status: ResearchCacheStatus,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_status: Option<ResearchCacheStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cache_path: Option<String>,
-    content: ResearchFetchContent,
-    result: ExternalFetchResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<ResearchFetchContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<ExternalFetchResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<ResearchFetchErrorOutput>,
+}
+
+#[derive(Debug, Serialize)]
+struct ResearchFetchErrorOutput {
+    source_url: String,
+    kind: String,
+    message: String,
+    attempts: Vec<ExternalFetchAttempt>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -177,7 +192,7 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     }
     let fetch_format = ExternalFetchFormat::from(args.format);
     let (paths, _) = resolve_runtime_with_config(runtime)?;
-    let cached = fetch_page_by_url_cached(
+    let cached = match fetch_page_by_url_cached(
         &paths,
         &args.url,
         &ExternalFetchOptions {
@@ -189,8 +204,30 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
             use_cache: !args.no_cache,
             refresh: args.refresh,
         },
-    )?
-    .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
+    ) {
+        Ok(Some(cached)) => cached,
+        Ok(None) => {
+            return handle_research_fetch_error(
+                runtime,
+                &paths,
+                &args,
+                ResearchFetchErrorOutput {
+                    source_url: args.url.clone(),
+                    kind: "not_found".to_string(),
+                    message: format!("page not found: {}", args.url),
+                    attempts: Vec::new(),
+                },
+            );
+        }
+        Err(error) => {
+            return handle_research_fetch_error(
+                runtime,
+                &paths,
+                &args,
+                research_fetch_error_output(&args.url, &error),
+            );
+        }
+    };
     let cache_status = cached.status;
     let cache_path = cached.cache_path.as_deref().map(normalize_path);
     let (result, content) =
@@ -199,10 +236,12 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     if args.output.is_json() {
         let output = ResearchFetchOutput {
             schema_version: "research_document_v1".to_string(),
-            cache_status,
+            status: "ok",
+            cache_status: Some(cache_status),
             cache_path,
-            content,
-            result,
+            content: Some(content),
+            result: Some(result),
+            error: None,
         };
         println!("{}", serde_json::to_string_pretty(&output)?);
         return Ok(());
@@ -259,6 +298,51 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+fn handle_research_fetch_error(
+    runtime: &RuntimeOptions,
+    paths: &wikitool_core::runtime::ResolvedPaths,
+    args: &ResearchFetchArgs,
+    error: ResearchFetchErrorOutput,
+) -> Result<()> {
+    if args.output.is_json() {
+        let output = ResearchFetchOutput {
+            schema_version: "research_document_v1".to_string(),
+            status: "error",
+            cache_status: None,
+            cache_path: None,
+            content: None,
+            result: None,
+            error: Some(error),
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        if runtime.diagnostics {
+            eprintln!("\n[diagnostics]\n{}", paths.diagnostics());
+        }
+        return Ok(());
+    }
+    bail!("{}", error.message)
+}
+
+fn research_fetch_error_output(
+    source_url: &str,
+    error: &anyhow::Error,
+) -> ResearchFetchErrorOutput {
+    if let Some(failure) = error.downcast_ref::<ExternalFetchFailureError>() {
+        return ResearchFetchErrorOutput {
+            source_url: failure.failure.source_url.clone(),
+            kind: failure.failure.kind.clone(),
+            message: failure.failure.message.clone(),
+            attempts: failure.failure.attempts.clone(),
+        };
+    }
+    ResearchFetchErrorOutput {
+        source_url: source_url.to_string(),
+        kind: "fetch_failed".to_string(),
+        message: error.to_string(),
+        attempts: Vec::new(),
+    }
 }
 
 impl From<ExternalSearchReport> for ResearchSearchOutput {
@@ -367,6 +451,7 @@ fn format_cache_status(status: ResearchCacheStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wikitool_core::research::ExternalFetchFailure;
 
     #[test]
     fn prepare_fetch_result_limits_returned_content_without_touching_metadata() {
@@ -395,6 +480,33 @@ mod tests {
         assert!(content.omitted);
     }
 
+    #[test]
+    fn research_fetch_error_output_preserves_structured_failure() {
+        let error = anyhow::Error::new(ExternalFetchFailureError {
+            failure: ExternalFetchFailure {
+                source_url: "https://example.com/protected".to_string(),
+                kind: "access_challenge".to_string(),
+                message: "access challenge prevented readable fetch".to_string(),
+                attempts: vec![ExternalFetchAttempt {
+                    mode: "direct_static".to_string(),
+                    url: "https://example.com/protected".to_string(),
+                    outcome: "access_challenge".to_string(),
+                    http_status: Some(403),
+                    content_type: Some("text/html; charset=UTF-8".to_string()),
+                    message: Some("cf-mitigated: challenge".to_string()),
+                }],
+            },
+        });
+
+        let output = research_fetch_error_output("https://example.com/protected", &error);
+
+        assert_eq!(output.source_url, "https://example.com/protected");
+        assert_eq!(output.kind, "access_challenge");
+        assert_eq!(output.attempts.len(), 1);
+        assert_eq!(output.attempts[0].outcome, "access_challenge");
+        assert_eq!(output.attempts[0].http_status, Some(403));
+    }
+
     fn sample_fetch_result(content: &str) -> ExternalFetchResult {
         ExternalFetchResult {
             title: "Source".to_string(),
@@ -415,6 +527,7 @@ mod tests {
             published_at: None,
             fetch_mode: None,
             extraction_quality: None,
+            fetch_attempts: Vec::new(),
         }
     }
 }

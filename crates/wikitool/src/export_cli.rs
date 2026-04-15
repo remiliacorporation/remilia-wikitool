@@ -470,6 +470,7 @@ mod tests {
             published_at: None,
             fetch_mode: None,
             extraction_quality: None,
+            fetch_attempts: Vec::new(),
         }
     }
 

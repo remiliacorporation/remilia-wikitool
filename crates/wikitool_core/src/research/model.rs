@@ -83,6 +83,40 @@ pub struct ParsedWikiUrl {
     pub base_url: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalFetchAttempt {
+    pub mode: String,
+    pub url: String,
+    pub outcome: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalFetchFailure {
+    pub source_url: String,
+    pub kind: String,
+    pub message: String,
+    pub attempts: Vec<ExternalFetchAttempt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternalFetchFailureError {
+    pub failure: ExternalFetchFailure,
+}
+
+impl std::fmt::Display for ExternalFetchFailureError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.failure.message)
+    }
+}
+
+impl std::error::Error for ExternalFetchFailureError {}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalFetchResult {
     pub title: String,
@@ -112,6 +146,8 @@ pub struct ExternalFetchResult {
     pub fetch_mode: Option<FetchMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extraction_quality: Option<ExtractionQuality>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fetch_attempts: Vec<ExternalFetchAttempt>,
 }
 
 #[derive(Debug, Clone)]

@@ -89,6 +89,8 @@ wikitool fetch "URL" --format wikitext --save
 wikitool export "URL" --subpages --combined
 ```
 
+`research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind` and `error.attempts`; access challenges and HTTP failures are explicit source-access failures, not citable source content.
+
 `fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs.
 
 ## Editor integration
