@@ -36,7 +36,12 @@ pub(crate) struct ArticleLintArgs {
     path: Option<PathBuf>,
     #[arg(long, default_value = "remilia", value_name = "PROFILE")]
     profile: String,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
     #[arg(long, help = "Treat warnings as errors")]
     strict: bool,
@@ -66,7 +71,12 @@ pub(crate) struct ArticleFixArgs {
         help = "Apply mode: none|safe"
     )]
     apply: String,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
     #[arg(long = "title", value_name = "TITLE")]
     titles: Vec<String>,

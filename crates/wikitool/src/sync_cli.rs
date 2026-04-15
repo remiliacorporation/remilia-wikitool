@@ -51,7 +51,12 @@ pub(crate) struct PullArgs {
     pub(crate) categories: bool,
     #[arg(long, help = "Pull everything (articles, categories, and templates)")]
     pub(crate) all: bool,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     pub(crate) format: String,
 }
 
@@ -79,7 +84,12 @@ pub(crate) struct PushArgs {
         help = "Read one canonical page title per line"
     )]
     pub(crate) titles_file: Option<PathBuf>,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     pub(crate) format: String,
 }
 
@@ -106,7 +116,12 @@ pub(crate) struct DiffArgs {
         help = "Read one canonical page title per line"
     )]
     pub(crate) titles_file: Option<PathBuf>,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     pub(crate) format: String,
 }
 
@@ -130,7 +145,12 @@ pub(crate) struct StatusArgs {
         help = "Read one canonical page title per line"
     )]
     pub(crate) titles_file: Option<PathBuf>,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     pub(crate) format: String,
 }
 

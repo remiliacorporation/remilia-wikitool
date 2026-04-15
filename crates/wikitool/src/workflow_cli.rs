@@ -204,7 +204,7 @@ fn run_workflow_full_refresh(
         },
     )?;
 
-    if let Err(error) = quality_cli::run_validate(runtime) {
+    if let Err(error) = quality_cli::run_validate(runtime, quality_cli::ValidateArgs::default()) {
         if error.to_string().starts_with("validation detected ") {
             println!("workflow full-refresh: validate reported content issues; continuing");
         } else {

@@ -44,9 +44,19 @@ enum WikiCapabilitiesSubcommand {
 
 #[derive(Debug, Args)]
 struct WikiCapabilitiesFormatArgs {
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
-    #[arg(long, default_value = "summary", value_name = "VIEW")]
+    #[arg(
+        long,
+        default_value = "summary",
+        value_name = "VIEW",
+        help = "JSON view: summary|full"
+    )]
     view: String,
 }
 

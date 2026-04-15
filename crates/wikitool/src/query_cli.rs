@@ -20,14 +20,24 @@ const REMOTE_WIKI_SEARCH_NAMESPACES: [i32; 5] =
 #[derive(Debug, Args)]
 pub(crate) struct ContextArgs {
     title: String,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct SearchArgs {
     query: String,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
 }
 
@@ -260,60 +270,6 @@ pub(crate) fn normalize_output(value: &str) -> Result<&'static str> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_remote_wiki_search_request_normalizes_query_and_scope() {
-        let parsed = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research search",
-            query: " Alpha_Beta ",
-            limit: 3,
-            what: "near-match",
-        })
-        .expect("parse remote wiki search request");
-
-        assert_eq!(
-            parsed,
-            ParsedRemoteWikiSearchRequest {
-                query: "Alpha Beta".to_string(),
-                limit: 3,
-                what: MediaWikiSearchWhat::NearMatch,
-            }
-        );
-    }
-
-    #[test]
-    fn parse_remote_wiki_search_request_rejects_zero_limit() {
-        let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research search",
-            query: "Alpha",
-            limit: 0,
-            what: "text",
-        })
-        .expect_err("zero limit should fail");
-
-        assert_eq!(error.to_string(), "research search requires --limit >= 1");
-    }
-
-    #[test]
-    fn parse_remote_wiki_search_request_rejects_blank_query() {
-        let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research search",
-            query: "   ",
-            limit: 1,
-            what: "text",
-        })
-        .expect_err("blank query should fail");
-
-        assert_eq!(
-            error.to_string(),
-            "research search requires a non-empty query"
-        );
-    }
-}
-
 fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     println!("{prefix}.title: {}", bundle.title);
     println!("{prefix}.namespace: {}", bundle.namespace);
@@ -394,4 +350,58 @@ fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     }
     println!("{prefix}.references.count: {}", bundle.references.len());
     println!("{prefix}.media.count: {}", bundle.media.len());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_remote_wiki_search_request_normalizes_query_and_scope() {
+        let parsed = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
+            command_name: "research search",
+            query: " Alpha_Beta ",
+            limit: 3,
+            what: "near-match",
+        })
+        .expect("parse remote wiki search request");
+
+        assert_eq!(
+            parsed,
+            ParsedRemoteWikiSearchRequest {
+                query: "Alpha Beta".to_string(),
+                limit: 3,
+                what: MediaWikiSearchWhat::NearMatch,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_remote_wiki_search_request_rejects_zero_limit() {
+        let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
+            command_name: "research search",
+            query: "Alpha",
+            limit: 0,
+            what: "text",
+        })
+        .expect_err("zero limit should fail");
+
+        assert_eq!(error.to_string(), "research search requires --limit >= 1");
+    }
+
+    #[test]
+    fn parse_remote_wiki_search_request_rejects_blank_query() {
+        let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
+            command_name: "research search",
+            query: "   ",
+            limit: 1,
+            what: "text",
+        })
+        .expect_err("blank query should fail");
+
+        assert_eq!(
+            error.to_string(),
+            "research search requires a non-empty query"
+        );
+    }
 }

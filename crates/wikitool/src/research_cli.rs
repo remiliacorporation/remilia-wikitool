@@ -33,9 +33,19 @@ pub(crate) struct ResearchSearchArgs {
     query: String,
     #[arg(long, default_value_t = 20, value_name = "N")]
     limit: usize,
-    #[arg(long, default_value = "text", value_name = "SCOPE")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "SCOPE",
+        help = "Search scope: text|title|nearmatch"
+    )]
     what: String,
-    #[arg(long, default_value = "json", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "json",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
 }
 
@@ -49,7 +59,12 @@ pub(crate) struct ResearchFetchArgs {
         help = "Output format: wikitext|html|rendered-html"
     )]
     format: String,
-    #[arg(long, default_value = "json", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "json",
+        value_name = "FORMAT",
+        help = "Output wrapper: text|json"
+    )]
     output: String,
     #[arg(
         long,

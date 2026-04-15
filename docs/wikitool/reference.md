@@ -90,7 +90,7 @@ Options:
       --templates            Pull templates instead of articles
       --categories           Pull Category: namespace pages
       --all                  Pull everything (articles, categories, and templates)
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
   -h, --help                 Print help
 ```
 
@@ -115,7 +115,7 @@ Options:
       --title <TITLE>        
       --path <PATH>          
       --titles-file <PATH>   Read one canonical page title per line
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
   -h, --help                 Print help
 ```
 
@@ -138,7 +138,7 @@ Options:
       --title <TITLE>        
       --path <PATH>          
       --titles-file <PATH>   Read one canonical page title per line
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
   -h, --help                 Print help
 ```
 
@@ -161,7 +161,7 @@ Options:
       --title <TITLE>        
       --path <PATH>          
       --titles-file <PATH>   Read one canonical page title per line
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
   -h, --help                 Print help
 ```
 
@@ -176,7 +176,7 @@ Arguments:
   <TITLE>  
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
@@ -195,7 +195,7 @@ Arguments:
   <QUERY>  
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
@@ -211,6 +211,7 @@ Run structural and link integrity checks
 Usage: wikitool validate [OPTIONS]
 
 Options:
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
@@ -1075,9 +1076,9 @@ Options:
       --limit <N>            [default: 20]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --what <SCOPE>         [default: text]
+      --what <SCOPE>         Search scope: text|title|nearmatch [default: text]
       --config <PATH>        
-      --format <FORMAT>      [default: json]
+      --format <FORMAT>      Output format: text|json [default: json]
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -1096,7 +1097,7 @@ Options:
       --format <FORMAT>      Output format: wikitext|html|rendered-html [default: html]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --output <FORMAT>      [default: json]
+      --output <FORMAT>      Output wrapper: text|json [default: json]
       --config <PATH>        
       --refresh              Refresh the research cache entry before returning output
       --diagnostics          Print resolved runtime diagnostics
@@ -1153,10 +1154,10 @@ Fetch and store the current live wiki capability manifest
 Usage: wikitool wiki capabilities sync [OPTIONS]
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --view <VIEW>          [default: summary]
+      --view <VIEW>          JSON view: summary|full [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1170,10 +1171,10 @@ Show the last stored wiki capability manifest
 Usage: wikitool wiki capabilities show [OPTIONS]
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --view <VIEW>          [default: summary]
+      --view <VIEW>          JSON view: summary|full [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1207,10 +1208,10 @@ Refresh the local rules overlay and live capability snapshot
 Usage: wikitool wiki profile sync [OPTIONS]
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --view <VIEW>          [default: summary]
+      --view <VIEW>          JSON view: summary|full [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1224,10 +1225,10 @@ Show the current combined profile snapshot
 Usage: wikitool wiki profile show [OPTIONS]
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --view <VIEW>          [default: summary]
+      --view <VIEW>          JSON view: summary|full [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1260,10 +1261,10 @@ Show the current Remilia rules overlay
 Usage: wikitool wiki rules show [OPTIONS]
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --view <VIEW>          [default: summary]
+      --view <VIEW>          JSON view: summary|full [default: summary]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1317,7 +1318,7 @@ Build the catalog from tracked templates plus local index usage
 Usage: wikitool templates catalog build [OPTIONS]
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
@@ -1336,7 +1337,7 @@ Arguments:
   <TEMPLATE>  
 
 Options:
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --project-root <PATH>  
       --data-dir <PATH>      
       --config <PATH>        
@@ -1358,7 +1359,7 @@ Options:
       --limit <N>            [default: 8]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --config <PATH>        
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
@@ -1398,7 +1399,7 @@ Options:
       --profile <PROFILE>    [default: remilia]
       --project-root <PATH>  
       --data-dir <PATH>      
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --config <PATH>        
       --strict               Treat warnings as errors
       --diagnostics          Print resolved runtime diagnostics
@@ -1425,7 +1426,7 @@ Options:
       --apply <MODE>         Apply mode: none|safe [default: none]
       --data-dir <PATH>      
       --config <PATH>        
-      --format <FORMAT>      [default: text]
+      --format <FORMAT>      Output format: text|json [default: text]
       --diagnostics          Print resolved runtime diagnostics
       --title <TITLE>        
       --path <PATH>          

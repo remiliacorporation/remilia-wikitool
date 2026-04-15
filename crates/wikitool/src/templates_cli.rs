@@ -40,14 +40,24 @@ enum TemplatesCatalogSubcommand {
 
 #[derive(Debug, Args)]
 struct TemplatesFormatArgs {
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct TemplatesShowArgs {
     template: String,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
 }
 
@@ -56,7 +66,12 @@ pub(crate) struct TemplatesExamplesArgs {
     template: String,
     #[arg(long, default_value_t = 8, value_name = "N")]
     limit: usize,
-    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    #[arg(
+        long,
+        default_value = "text",
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
     format: String,
 }
 
