@@ -1520,6 +1520,25 @@ fn build_article_start_uses_neutral_surfaces_without_forced_type() {
     assert_eq!(article_start.intent, ArticleStartIntent::New);
     assert!(!serialized.contains("\"article_type\""));
     assert!(!serialized.contains("confidence"));
+    assert!(
+        article_start
+            .evidence_profile
+            .query_terms
+            .contains(&"hyperstition".to_string())
+    );
+    assert!(
+        article_start
+            .evidence_profile
+            .direct_subject_evidence
+            .iter()
+            .any(|item| item.source_kind == "local_chunk")
+    );
+    assert!(
+        article_start
+            .evidence_profile
+            .missing_query_terms
+            .is_empty()
+    );
     assert_eq!(
         article_start.local_integration.required_templates[0].template_title,
         "Template:Article quality"

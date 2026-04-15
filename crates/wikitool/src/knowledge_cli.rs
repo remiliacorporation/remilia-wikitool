@@ -815,6 +815,26 @@ fn run_knowledge_article_start(
                 serde_json::to_string(&article_start.local_state)?
             );
             println!(
+                "article_start.evidence.direct_subject_evidence.count: {}",
+                article_start.evidence_profile.direct_subject_evidence.len()
+            );
+            println!(
+                "article_start.evidence.broad_context.count: {}",
+                article_start.evidence_profile.broad_context.len()
+            );
+            println!(
+                "article_start.evidence.missing_query_terms: {}",
+                format_list(&article_start.evidence_profile.missing_query_terms)
+            );
+            for warning in article_start
+                .evidence_profile
+                .missing_evidence_warnings
+                .iter()
+                .take(4)
+            {
+                println!("article_start.evidence.warning: {warning}");
+            }
+            println!(
                 "article_start.comparable_pages: {}",
                 format_list(&article_start.local_integration.comparable_pages)
             );

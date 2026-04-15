@@ -4,10 +4,11 @@ use crate::knowledge::model::AuthoringKnowledgePackResult;
 use crate::profile::ProfileOverlay;
 
 use super::model::{
-    ArticleStartIntent, ArticleStartResult, AuthoringConstraint, CategorySurfaceEntry,
-    ContextSurfaceSource, EvidenceRef, LinkSurfaceEntry, LocalExistenceState, LocalIntegrationLane,
-    OpenQuestion, RecommendedAction, RequiredTemplate, SectionSkeleton, SubjectResearchLane,
-    SubjectTypeHint, TemplateSurfaceEntry,
+    ArticleEvidenceProfile, ArticleStartIntent, ArticleStartResult, AuthoringConstraint,
+    CategorySurfaceEntry, ContextSurfaceSource, EvidenceCoverageItem, EvidenceRef,
+    LinkSurfaceEntry, LocalExistenceState, LocalIntegrationLane, OpenQuestion, QueryTermCoverage,
+    RecommendedAction, RequiredTemplate, SectionSkeleton, SubjectResearchLane, SubjectTypeHint,
+    TemplateSurfaceEntry,
 };
 
 pub fn build_article_start(
@@ -59,6 +60,7 @@ pub fn build_article_start(
         ambiguity_notes: pack.stub_missing_links.clone(),
         evidence: evidence.clone(),
     };
+    let evidence_profile = build_evidence_profile(pack, &evidence);
 
     let comparable_pages = pack
         .related_pages
@@ -120,6 +122,7 @@ pub fn build_article_start(
         topic: pack.topic.clone(),
         intent,
         local_state,
+        evidence_profile,
         subject_research,
         local_integration,
         constraints,
@@ -127,6 +130,202 @@ pub fn build_article_start(
         next_actions,
         raw_pack_ref: Some("knowledge.pack".to_string()),
     }
+}
+
+fn build_evidence_profile(
+    pack: &AuthoringKnowledgePackResult,
+    evidence_refs: &[EvidenceRef],
+) -> ArticleEvidenceProfile {
+    let query_terms = normalized_query_terms(&pack.query_terms, &pack.query);
+    let exact_local_title = pack
+        .topic_assessment
+        .exact_page
+        .as_ref()
+        .map(|page| page.title.clone());
+
+    let mut direct_subject_evidence = Vec::new();
+    let mut broad_context = Vec::new();
+    let mut comparable_pages = Vec::new();
+    let mut query_term_coverage = query_terms
+        .iter()
+        .map(|term| QueryTermCoverage {
+            term: term.clone(),
+            local_chunk_matches: 0,
+            comparable_page_matches: 0,
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(title) = &exact_local_title {
+        direct_subject_evidence.push(EvidenceCoverageItem {
+            source_kind: "exact_local_title".to_string(),
+            source_title: title.clone(),
+            locator: None,
+            matched_query_terms: query_terms.clone(),
+            missing_query_terms: Vec::new(),
+            evidence_id: None,
+        });
+    }
+
+    for (index, chunk) in pack.chunks.iter().enumerate() {
+        let mut text = String::new();
+        text.push_str(&chunk.source_title);
+        text.push('\n');
+        if let Some(heading) = chunk.section_heading.as_deref() {
+            text.push_str(heading);
+            text.push('\n');
+        }
+        text.push_str(&chunk.chunk_text);
+        let matched = matched_query_terms(&text, &query_terms);
+        if matched.is_empty() {
+            continue;
+        }
+        for term in &matched {
+            if let Some(coverage) = query_term_coverage
+                .iter_mut()
+                .find(|coverage| coverage.term == *term)
+            {
+                coverage.local_chunk_matches += 1;
+            }
+        }
+        let missing = missing_query_terms(&query_terms, &matched);
+        let item = EvidenceCoverageItem {
+            source_kind: "local_chunk".to_string(),
+            source_title: chunk.source_title.clone(),
+            locator: chunk.section_heading.clone(),
+            matched_query_terms: matched,
+            missing_query_terms: missing,
+            evidence_id: evidence_refs.get(index).map(|evidence| evidence.id.clone()),
+        };
+        if item.missing_query_terms.is_empty() {
+            direct_subject_evidence.push(item);
+        } else {
+            broad_context.push(item);
+        }
+    }
+
+    for page in &pack.related_pages {
+        let text = format!("{}\n{}", page.title, page.summary);
+        let matched = matched_query_terms(&text, &query_terms);
+        for term in &matched {
+            if let Some(coverage) = query_term_coverage
+                .iter_mut()
+                .find(|coverage| coverage.term == *term)
+            {
+                coverage.comparable_page_matches += 1;
+            }
+        }
+        let missing = missing_query_terms(&query_terms, &matched);
+        comparable_pages.push(EvidenceCoverageItem {
+            source_kind: page.source.clone(),
+            source_title: page.title.clone(),
+            locator: None,
+            matched_query_terms: matched,
+            missing_query_terms: missing,
+            evidence_id: None,
+        });
+    }
+
+    let missing_query_terms = query_term_coverage
+        .iter()
+        .filter(|coverage| {
+            coverage.local_chunk_matches == 0 && coverage.comparable_page_matches == 0
+        })
+        .map(|coverage| coverage.term.clone())
+        .collect::<Vec<_>>();
+    let mut missing_evidence_warnings = Vec::new();
+    if exact_local_title.is_none() {
+        missing_evidence_warnings
+            .push("No exact local page resolved for the requested topic.".to_string());
+    }
+    if !query_terms.is_empty()
+        && !direct_subject_evidence
+            .iter()
+            .any(|item| item.source_kind != "exact_local_title")
+    {
+        missing_evidence_warnings
+            .push("No returned local content chunk matched every query term.".to_string());
+    }
+    if !missing_query_terms.is_empty() {
+        missing_evidence_warnings.push(format!(
+            "These query terms were not observed in returned local evidence: {}.",
+            missing_query_terms.join(", ")
+        ));
+    }
+    if exact_local_title.is_none()
+        || !missing_query_terms.is_empty()
+        || !direct_subject_evidence
+            .iter()
+            .any(|item| item.source_kind != "exact_local_title")
+    {
+        missing_evidence_warnings.push(
+            "Live research is not run by article-start; use `wikitool research search` when local evidence is incomplete.".to_string(),
+        );
+    }
+
+    ArticleEvidenceProfile {
+        query: pack.query.clone(),
+        query_terms,
+        exact_local_title,
+        local_title_hit_count: pack.topic_assessment.local_title_hit_count,
+        backlink_count: pack.topic_assessment.backlink_count,
+        direct_subject_evidence,
+        broad_context,
+        comparable_pages,
+        live_leads_status: "not_checked_by_article_start".to_string(),
+        live_leads: Vec::new(),
+        missing_query_terms,
+        query_term_coverage,
+        missing_evidence_warnings,
+    }
+}
+
+fn normalized_query_terms(raw_terms: &[String], fallback_query: &str) -> Vec<String> {
+    let mut out = BTreeSet::new();
+    for value in raw_terms {
+        for token in tokenize_for_coverage(value) {
+            out.insert(token);
+        }
+    }
+    for token in tokenize_for_coverage(fallback_query) {
+        out.insert(token);
+    }
+    out.into_iter().collect()
+}
+
+fn tokenize_for_coverage(value: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut current = String::new();
+    for ch in value.chars() {
+        if ch.is_alphanumeric() {
+            current.extend(ch.to_lowercase());
+        } else if !current.is_empty() {
+            out.insert(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        out.insert(current);
+    }
+    out
+}
+
+fn matched_query_terms(text: &str, query_terms: &[String]) -> Vec<String> {
+    if query_terms.is_empty() {
+        return Vec::new();
+    }
+    let tokens = tokenize_for_coverage(text);
+    query_terms
+        .iter()
+        .filter(|term| tokens.contains(*term))
+        .cloned()
+        .collect()
+}
+
+fn missing_query_terms(query_terms: &[String], matched_terms: &[String]) -> Vec<String> {
+    query_terms
+        .iter()
+        .filter(|term| !matched_terms.contains(*term))
+        .cloned()
+        .collect()
 }
 
 fn build_next_actions(

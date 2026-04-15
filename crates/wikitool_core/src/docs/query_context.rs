@@ -48,21 +48,31 @@ pub fn build_docs_context(
     for symbol in symbols.into_iter().take(limit) {
         let estimated =
             estimate_tokens(&format!("{} {}", symbol.summary_text, symbol.detail_text)).max(1);
-        if !selected_symbols.is_empty() && used_tokens + estimated > token_budget {
+        if used_tokens + estimated > token_budget {
             continue;
         }
         used_tokens += estimated;
         selected_symbols.push(symbol);
     }
     for section in sections.into_iter().take(limit) {
-        if !selected_sections.is_empty() && used_tokens + section.token_estimate > token_budget {
+        let remaining = token_budget.saturating_sub(used_tokens);
+        if remaining == 0 {
+            continue;
+        }
+        let section = fit_section_to_budget(section, remaining);
+        if used_tokens + section.token_estimate > token_budget {
             continue;
         }
         used_tokens += section.token_estimate;
         selected_sections.push(section);
     }
     for example in examples.into_iter().take(limit) {
-        if !selected_examples.is_empty() && used_tokens + example.token_estimate > token_budget {
+        let remaining = token_budget.saturating_sub(used_tokens);
+        if remaining == 0 {
+            continue;
+        }
+        let example = fit_example_to_budget(example, remaining);
+        if used_tokens + example.token_estimate > token_budget {
             continue;
         }
         used_tokens += example.token_estimate;
@@ -70,7 +80,7 @@ pub fn build_docs_context(
     }
     for page in pages.into_iter().take(limit) {
         let estimated = estimate_tokens(&page.snippet).max(1);
-        if !selected_pages.is_empty() && used_tokens + estimated > token_budget {
+        if used_tokens + estimated > token_budget {
             continue;
         }
         used_tokens += estimated;
@@ -86,6 +96,72 @@ pub fn build_docs_context(
         examples: selected_examples,
         token_estimate: used_tokens,
     })
+}
+
+fn fit_section_to_budget(
+    mut section: DocsContextSection,
+    token_budget: usize,
+) -> DocsContextSection {
+    if section.token_estimate <= token_budget {
+        return section;
+    }
+    let (section_text, token_estimate, truncated) =
+        truncate_text_to_token_budget(&section.section_text, token_budget);
+    section.section_text = section_text;
+    section.token_estimate = token_estimate;
+    if truncated {
+        section.signals.push("token-budget-truncated".to_string());
+    }
+    section
+}
+
+fn fit_example_to_budget(
+    mut example: DocsContextExample,
+    token_budget: usize,
+) -> DocsContextExample {
+    if example.token_estimate <= token_budget {
+        return example;
+    }
+    let (example_text, token_estimate, truncated) =
+        truncate_text_to_token_budget(&example.example_text, token_budget);
+    example.example_text = example_text;
+    example.token_estimate = token_estimate;
+    if truncated {
+        example.signals.push("token-budget-truncated".to_string());
+    }
+    example
+}
+
+fn truncate_text_to_token_budget(value: &str, token_budget: usize) -> (String, usize, bool) {
+    let token_budget = token_budget.max(1);
+    if estimate_tokens(value).max(1) <= token_budget {
+        return (value.to_string(), estimate_tokens(value).max(1), false);
+    }
+
+    let mut end = value
+        .len()
+        .min(token_budget.saturating_mul(4).saturating_sub(3).max(1));
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut truncated = if end == 0 {
+        "...".to_string()
+    } else {
+        format!("{}...", value[..end].trim_end())
+    };
+    while estimate_tokens(&truncated).max(1) > token_budget && end > 0 {
+        end = end.saturating_sub(8);
+        while end > 0 && !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        truncated = if end == 0 {
+            "...".to_string()
+        } else {
+            format!("{}...", value[..end].trim_end())
+        };
+    }
+    let token_estimate = estimate_tokens(&truncated).max(1);
+    (truncated, token_estimate, true)
 }
 
 fn load_context_sections(
@@ -475,4 +551,19 @@ fn load_context_examples_like(
         });
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_text_to_token_budget_caps_estimate() {
+        let text = "TemplateData parameters ".repeat(200);
+        let (truncated, token_estimate, did_truncate) = truncate_text_to_token_budget(&text, 50);
+
+        assert!(did_truncate);
+        assert!(truncated.ends_with("..."));
+        assert!(token_estimate <= 50);
+    }
 }

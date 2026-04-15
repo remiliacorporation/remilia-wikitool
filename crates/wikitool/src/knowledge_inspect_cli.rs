@@ -86,7 +86,17 @@ enum KnowledgeInspectSubcommand {
         no_diversify: bool,
     },
     /// Show indexed pages that link to a title
-    Backlinks { title: String },
+    Backlinks {
+        title: String,
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = OutputFormat::Text,
+            value_name = "FORMAT",
+            help = "Output format: text|json"
+        )]
+        format: OutputFormat,
+    },
     /// Inspect active template usage and implementation references
     Templates {
         #[arg(value_name = "TEMPLATE", help = "Optional specific template title")]
@@ -213,6 +223,15 @@ struct ReferenceInspectEnvelope<T> {
     report: Option<T>,
 }
 
+#[derive(Debug, Serialize)]
+struct BacklinksJson {
+    project_root: String,
+    storage_ready: bool,
+    title: String,
+    count: usize,
+    backlinks: Vec<String>,
+}
+
 pub(crate) fn run_knowledge_inspect(
     runtime: &RuntimeOptions,
     args: KnowledgeInspectArgs,
@@ -241,7 +260,9 @@ pub(crate) fn run_knowledge_inspect(
             diversify,
             no_diversify,
         ),
-        KnowledgeInspectSubcommand::Backlinks { title } => run_inspect_backlinks(runtime, &title),
+        KnowledgeInspectSubcommand::Backlinks { title, format } => {
+            run_inspect_backlinks(runtime, &title, format)
+        }
         KnowledgeInspectSubcommand::Templates {
             template,
             limit,
@@ -407,17 +428,38 @@ fn run_inspect_chunks(
     Ok(())
 }
 
-fn run_inspect_backlinks(runtime: &RuntimeOptions, title: &str) -> Result<()> {
+fn run_inspect_backlinks(
+    runtime: &RuntimeOptions,
+    title: &str,
+    format: OutputFormat,
+) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let normalized = normalize_title_query(title);
     if normalized.is_empty() {
         bail!("knowledge inspect backlinks requires a non-empty TITLE");
     }
 
+    let backlinks = query_backlinks(&paths, &normalized)?;
+    if format.is_json() {
+        let storage_ready = backlinks.is_some();
+        let backlinks = backlinks.unwrap_or_default();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&BacklinksJson {
+                project_root: normalize_path(&paths.project_root),
+                storage_ready,
+                title: normalized.clone(),
+                count: backlinks.len(),
+                backlinks,
+            })?
+        );
+        return Ok(());
+    }
+
     println!("knowledge inspect backlinks");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("title: {normalized}");
-    match query_backlinks(&paths, &normalized)? {
+    match backlinks {
         Some(backlinks) => {
             println!("backlinks.count: {}", backlinks.len());
             if backlinks.is_empty() {

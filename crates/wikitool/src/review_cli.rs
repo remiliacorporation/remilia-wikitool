@@ -79,6 +79,8 @@ struct ReviewFilters {
 #[derive(Debug, Serialize)]
 struct ReviewStatusPlan {
     sync_ledger_ready: bool,
+    selection_state: &'static str,
+    selected_change_count: usize,
     plan: Option<SyncPlanReport>,
 }
 
@@ -145,8 +147,20 @@ pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
         },
         &config,
     )?;
+    let selected_change_count = plan
+        .as_ref()
+        .map(|plan| plan.changes.len())
+        .unwrap_or_default();
     let status_plan = ReviewStatusPlan {
         sync_ledger_ready: plan.is_some(),
+        selection_state: if plan.is_some() && selected_change_count == 0 {
+            "no_selected_changes"
+        } else if plan.is_some() {
+            "selected_changes"
+        } else {
+            "sync_ledger_missing"
+        },
+        selected_change_count,
         plan,
     };
 
@@ -390,6 +404,14 @@ fn print_review_report(report: &ReviewReport) {
     println!(
         "status.sync_ledger_ready: {}",
         report.status_plan.sync_ledger_ready
+    );
+    println!(
+        "status.selection_state: {}",
+        report.status_plan.selection_state
+    );
+    println!(
+        "status.selected_change_count: {}",
+        report.status_plan.selected_change_count
     );
     if let Some(plan) = &report.status_plan.plan {
         println!("status.new_local: {}", plan.new_local);

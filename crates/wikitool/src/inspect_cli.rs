@@ -8,7 +8,7 @@ use wikitool_core::inspect::{
     seo_inspect,
 };
 
-use crate::cli_support::resolve_runtime_with_config;
+use crate::cli_support::{OutputFormat, resolve_runtime_with_config};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -16,6 +16,14 @@ pub(crate) struct SeoArgs {
     target: String,
     #[arg(long, help = "Output JSON for AI consumption")]
     json: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
     #[arg(long, help = "Omit metadata from JSON output")]
     no_meta: bool,
     #[arg(long, value_name = "URL", help = "Override target URL")]
@@ -36,6 +44,14 @@ pub(crate) struct NetArgs {
     no_probe: bool,
     #[arg(long, help = "Output JSON for AI consumption")]
     json: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
     #[arg(long, help = "Omit metadata from JSON output")]
     no_meta: bool,
     #[arg(long, value_name = "URL", help = "Override target URL")]
@@ -100,11 +116,12 @@ pub(crate) fn run_seo(runtime: &RuntimeOptions, args: SeoArgs) -> Result<()> {
         Some(config.article_path()),
     )?;
 
-    if args.json {
+    if args.json || args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&seo_json_output(&result, args.no_meta))?
         );
+        return Ok(());
     } else {
         println!("seo");
         println!("url: {}", result.url);
@@ -157,11 +174,12 @@ pub(crate) fn run_net(runtime: &RuntimeOptions, args: NetArgs) -> Result<()> {
         &options,
     )?;
 
-    if args.json {
+    if args.json || args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&net_json_output(&result, args.no_meta))?
         );
+        return Ok(());
     } else {
         println!("net");
         println!("url: {}", result.url);
@@ -319,7 +337,20 @@ mod tests {
             InspectCommand::Seo(args) => {
                 assert_eq!(args.target, "Main Page");
                 assert!(args.json);
+                assert!(!args.format.is_json());
             }
+            InspectCommand::Net(_) => panic!("expected seo command"),
+        }
+    }
+
+    #[test]
+    fn seo_direct_form_accepts_format_json() {
+        let cli =
+            InspectCli::try_parse_from(["inspect-cli", "seo", "Main Page", "--format", "json"])
+                .expect("parse seo format");
+
+        match cli.command {
+            InspectCommand::Seo(args) => assert!(args.format.is_json()),
             InspectCommand::Net(_) => panic!("expected seo command"),
         }
     }
@@ -340,6 +371,7 @@ mod tests {
             InspectCommand::Net(args) => {
                 assert_eq!(args.target, "Main Page");
                 assert_eq!(args.limit, 10);
+                assert!(!args.format.is_json());
             }
             InspectCommand::Seo(_) => panic!("expected net command"),
         }

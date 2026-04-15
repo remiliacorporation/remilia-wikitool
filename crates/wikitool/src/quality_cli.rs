@@ -48,6 +48,12 @@ pub(crate) struct ValidateArgs {
         help = "Verify selected broken links and redirect issues against the live wiki API"
     )]
     verify_live: bool,
+    #[arg(
+        long,
+        alias = "no-fail",
+        help = "Report validation issues without exiting non-zero"
+    )]
+    advisory: bool,
 }
 
 impl Default for ValidateArgs {
@@ -59,6 +65,7 @@ impl Default for ValidateArgs {
             limit: None,
             titles: Vec::new(),
             verify_live: false,
+            advisory: false,
         }
     }
 }
@@ -126,6 +133,7 @@ struct ValidateFiltersJson {
     limit: Option<usize>,
     titles: Vec<String>,
     verify_live: bool,
+    advisory: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -197,7 +205,13 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
         None
     };
     let issue_count = validation_issue_count(&report);
-    let status = if issue_count == 0 { "clean" } else { "failed" };
+    let status = if issue_count == 0 {
+        "clean"
+    } else if args.advisory {
+        "advisory"
+    } else {
+        "failed"
+    };
     if args.format.is_json() {
         let summary = args.summary.then(|| validation_summary(&report));
         println!(
@@ -215,6 +229,9 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
             })?
         );
         if issue_count == 0 {
+            return Ok(());
+        }
+        if args.advisory {
             return Ok(());
         }
         bail!("validation detected {issue_count} issue(s)");
@@ -238,6 +255,9 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
 
     if issue_count == 0 {
         println!("validate.status: clean");
+        Ok(())
+    } else if args.advisory {
+        println!("validate.status: advisory");
         Ok(())
     } else {
         println!("validate.status: failed");
@@ -379,6 +399,7 @@ fn validate_filters_json(args: &ValidateArgs) -> ValidateFiltersJson {
         limit: args.limit,
         titles: args.titles.clone(),
         verify_live: args.verify_live,
+        advisory: args.advisory,
     }
 }
 
@@ -400,6 +421,14 @@ pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
             "{}",
             serde_json::to_string_pretty(&lint_json_output(&report, args.no_meta))?
         );
+        if report.total_errors > 0 || (args.strict && report.total_warnings > 0) {
+            bail!(
+                "lint found {} error(s) and {} warning(s)",
+                report.total_errors,
+                report.total_warnings
+            );
+        }
+        return Ok(());
     } else {
         println!("module lint");
         println!(
@@ -636,6 +665,7 @@ mod tests {
                 limit: None,
                 titles: Vec::new(),
                 verify_live: false,
+                advisory: false,
             },
             summary: None,
             report: Some(&report),
@@ -665,6 +695,7 @@ mod tests {
                 limit: None,
                 titles: Vec::new(),
                 verify_live: false,
+                advisory: false,
             },
             summary: None,
             report: None,
@@ -701,6 +732,7 @@ mod tests {
                 limit: None,
                 titles: Vec::new(),
                 verify_live: false,
+                advisory: false,
             },
             summary: Some(validation_summary(&report)),
             report: None,
@@ -744,6 +776,7 @@ mod tests {
             limit: Some(1),
             titles: vec!["Main:Alpha".to_string()],
             verify_live: false,
+            advisory: false,
         };
 
         let filtered = filter_validation_report(&report, &args);

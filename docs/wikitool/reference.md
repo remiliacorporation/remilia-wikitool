@@ -222,6 +222,7 @@ Options:
       --limit <N>            Limit issues returned per selected category
       --title <TITLE>        Limit issues to a page title
       --verify-live          Verify selected broken links and redirect issues against the live wiki API
+      --advisory             Report validation issues without exiting non-zero
   -h, --help                 Print help
 ```
 
@@ -384,6 +385,7 @@ Show local database state and knowledge readiness
 Usage: wikitool db stats [OPTIONS]
 
 Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
       --config <PATH>
@@ -633,10 +635,11 @@ Options:
       --json                 Output JSON for AI consumption
       --project-root <PATH>
       --data-dir <PATH>
-      --no-meta              Omit metadata from JSON output
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --config <PATH>
-      --url <URL>            Override target URL
+      --no-meta              Omit metadata from JSON output
       --diagnostics          Print resolved runtime diagnostics
+      --url <URL>            Override target URL
   -h, --help                 Print help
 ```
 
@@ -658,6 +661,7 @@ Options:
       --config <PATH>
       --json                 Output JSON for AI consumption
       --diagnostics          Print resolved runtime diagnostics
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --no-meta              Omit metadata from JSON output
       --url <URL>            Override target URL
   -h, --help                 Print help
@@ -922,6 +926,7 @@ Arguments:
   <TITLE>
 
 Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
       --config <PATH>
@@ -1552,6 +1557,7 @@ Show parser config and runtime config status
 Usage: wikitool lsp status [OPTIONS]
 
 Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
       --config <PATH>

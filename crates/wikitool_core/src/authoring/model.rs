@@ -119,6 +119,40 @@ pub struct SubjectResearchLane {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QueryTermCoverage {
+    pub term: String,
+    pub local_chunk_matches: usize,
+    pub comparable_page_matches: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EvidenceCoverageItem {
+    pub source_kind: String,
+    pub source_title: String,
+    pub locator: Option<String>,
+    pub matched_query_terms: Vec<String>,
+    pub missing_query_terms: Vec<String>,
+    pub evidence_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ArticleEvidenceProfile {
+    pub query: String,
+    pub query_terms: Vec<String>,
+    pub exact_local_title: Option<String>,
+    pub local_title_hit_count: usize,
+    pub backlink_count: usize,
+    pub direct_subject_evidence: Vec<EvidenceCoverageItem>,
+    pub broad_context: Vec<EvidenceCoverageItem>,
+    pub comparable_pages: Vec<EvidenceCoverageItem>,
+    pub live_leads_status: String,
+    pub live_leads: Vec<EvidenceCoverageItem>,
+    pub missing_query_terms: Vec<String>,
+    pub query_term_coverage: Vec<QueryTermCoverage>,
+    pub missing_evidence_warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalIntegrationLane {
     pub comparable_pages: Vec<String>,
     pub required_templates: Vec<RequiredTemplate>,
@@ -168,6 +202,7 @@ pub struct ArticleStartResult {
     pub topic: String,
     pub intent: ArticleStartIntent,
     pub local_state: LocalExistenceState,
+    pub evidence_profile: ArticleEvidenceProfile,
     pub subject_research: SubjectResearchLane,
     pub local_integration: LocalIntegrationLane,
     pub constraints: Vec<AuthoringConstraint>,

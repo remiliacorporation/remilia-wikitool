@@ -2,13 +2,15 @@ use std::fs;
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use serde::Serialize;
 use wikitool_core::knowledge::content_index::load_stored_index_stats;
 use wikitool_core::knowledge::status::{DEFAULT_DOCS_PROFILE, knowledge_status};
 use wikitool_core::runtime::inspect_runtime;
+use wikitool_core::schema::{DatabaseSchemaState, schema_state};
 
 use crate::cli_support::{
-    format_flag, normalize_path, print_database_schema_status, print_stored_index_stats,
-    prompt_yes_no, resolve_runtime_paths,
+    OutputFormat, format_flag, normalize_path, print_database_schema_status,
+    print_stored_index_stats, prompt_yes_no, resolve_runtime_paths,
 };
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -20,8 +22,11 @@ pub(crate) struct DbArgs {
 
 #[derive(Debug, Subcommand)]
 enum DbSubcommand {
-    #[command(about = "Show local database state and knowledge readiness")]
-    Stats,
+    #[command(
+        alias = "status",
+        about = "Show local database state and knowledge readiness"
+    )]
+    Stats(DbStatsArgs),
     #[command(about = "Delete the local runtime database")]
     Reset {
         #[arg(
@@ -32,18 +37,68 @@ enum DbSubcommand {
     },
 }
 
+#[derive(Debug, Args)]
+struct DbStatsArgs {
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
+#[derive(Debug, Serialize)]
+struct DbStatsJson {
+    db_path: String,
+    data_dir: String,
+    db_exists: bool,
+    db_size_bytes: Option<u64>,
+    content_index: Option<wikitool_core::knowledge::content_index::StoredIndexStats>,
+    docs_profile_requested: String,
+    readiness: wikitool_core::knowledge::status::KnowledgeReadinessLevel,
+    degradations: Vec<String>,
+    knowledge_generation: String,
+    database_schema: DbSchemaJson,
+}
+
+#[derive(Debug, Serialize)]
+struct DbSchemaJson {
+    status: String,
+    reason: Option<String>,
+}
+
 pub(crate) fn run_db(runtime: &RuntimeOptions, args: DbArgs) -> Result<()> {
     match args.command {
-        DbSubcommand::Stats => run_db_stats(runtime),
+        DbSubcommand::Stats(args) => run_db_stats(runtime, args),
         DbSubcommand::Reset { yes } => run_db_reset(runtime, yes),
     }
 }
 
-fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
+fn run_db_stats(runtime: &RuntimeOptions, args: DbStatsArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let status = inspect_runtime(&paths)?;
     let stored = load_stored_index_stats(&paths)?;
     let knowledge = knowledge_status(&paths, DEFAULT_DOCS_PROFILE)?;
+    if args.format.is_json() {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&DbStatsJson {
+                db_path: normalize_path(&paths.db_path),
+                data_dir: normalize_path(&paths.data_dir),
+                db_exists: status.db_exists,
+                db_size_bytes: status.db_size_bytes,
+                content_index: stored,
+                docs_profile_requested: knowledge.docs_profile_requested,
+                readiness: knowledge.readiness,
+                degradations: knowledge.degradations,
+                knowledge_generation: knowledge.knowledge_generation,
+                database_schema: db_schema_json(&paths)?,
+            })?
+        );
+        return Ok(());
+    }
 
     println!("db stats");
     println!("db_path: {}", normalize_path(&paths.db_path));
@@ -92,6 +147,23 @@ fn run_db_stats(runtime: &RuntimeOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn db_schema_json(paths: &wikitool_core::runtime::ResolvedPaths) -> Result<DbSchemaJson> {
+    Ok(match schema_state(paths)? {
+        DatabaseSchemaState::Missing => DbSchemaJson {
+            status: "absent".to_string(),
+            reason: None,
+        },
+        DatabaseSchemaState::Ready => DbSchemaJson {
+            status: "ready".to_string(),
+            reason: None,
+        },
+        DatabaseSchemaState::Incompatible { reason } => DbSchemaJson {
+            status: "incompatible".to_string(),
+            reason: Some(reason),
+        },
+    })
 }
 
 fn run_db_reset(runtime: &RuntimeOptions, yes: bool) -> Result<()> {

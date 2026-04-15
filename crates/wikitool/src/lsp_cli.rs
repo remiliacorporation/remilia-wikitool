@@ -1,10 +1,13 @@
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use serde::Serialize;
 use wikitool_core::runtime::{
     embedded_parser_config, lsp_settings_json, materialize_parser_config,
 };
 
-use crate::cli_support::{normalize_path, resolve_runtime_paths, resolve_runtime_with_config};
+use crate::cli_support::{
+    OutputFormat, normalize_path, resolve_runtime_paths, resolve_runtime_with_config,
+};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -18,7 +21,7 @@ enum LspSubcommand {
     #[command(about = "Write parser config and print editor settings JSON")]
     GenerateConfig(LspGenerateConfigArgs),
     #[command(about = "Show parser config and runtime config status")]
-    Status,
+    Status(LspStatusArgs),
     #[command(about = "Show the preferred LSP integration entry point")]
     Info,
 }
@@ -29,10 +32,31 @@ pub(crate) struct LspGenerateConfigArgs {
     force: bool,
 }
 
+#[derive(Debug, Args)]
+pub(crate) struct LspStatusArgs {
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
+#[derive(Debug, Serialize)]
+struct LspStatusJson {
+    parser_config_path: String,
+    parser_config_exists: bool,
+    runtime_config_path: String,
+    runtime_config_exists: bool,
+    embedded_parser_baseline_bytes: usize,
+}
+
 pub(crate) fn run_lsp(runtime: &RuntimeOptions, args: LspArgs) -> Result<()> {
     match args.command {
         LspSubcommand::GenerateConfig(args) => run_lsp_generate_config(runtime, args),
-        LspSubcommand::Status => run_lsp_status(runtime),
+        LspSubcommand::Status(args) => run_lsp_status(runtime, args),
         LspSubcommand::Info => run_lsp_info(),
     }
 }
@@ -62,12 +86,28 @@ pub(crate) fn run_lsp_generate_config(
     Ok(())
 }
 
-pub(crate) fn run_lsp_status(runtime: &RuntimeOptions) -> Result<()> {
+pub(crate) fn run_lsp_status(runtime: &RuntimeOptions, args: LspStatusArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
+    let parser_config_exists = paths.parser_config_path.exists();
+    let runtime_config_exists = paths.config_path.exists();
+    let embedded_parser_baseline_bytes = embedded_parser_config().len();
+    if args.format.is_json() {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&LspStatusJson {
+                parser_config_path: normalize_path(&paths.parser_config_path),
+                parser_config_exists,
+                runtime_config_path: normalize_path(&paths.config_path),
+                runtime_config_exists,
+                embedded_parser_baseline_bytes,
+            })?
+        );
+        return Ok(());
+    }
     println!(
         "parser config: {} ({})",
         normalize_path(&paths.parser_config_path),
-        if paths.parser_config_path.exists() {
+        if parser_config_exists {
             "found"
         } else {
             "missing"
@@ -76,7 +116,7 @@ pub(crate) fn run_lsp_status(runtime: &RuntimeOptions) -> Result<()> {
     println!(
         "runtime config: {} ({})",
         normalize_path(&paths.config_path),
-        if paths.config_path.exists() {
+        if runtime_config_exists {
             "found"
         } else {
             "missing"
@@ -84,7 +124,7 @@ pub(crate) fn run_lsp_status(runtime: &RuntimeOptions) -> Result<()> {
     );
     println!(
         "embedded parser baseline bytes: {}",
-        embedded_parser_config().len()
+        embedded_parser_baseline_bytes
     );
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
