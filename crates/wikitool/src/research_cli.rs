@@ -3,8 +3,9 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 use wikitool_core::research::{
     ExternalFetchAttempt, ExternalFetchFailureError, ExternalFetchFormat, ExternalFetchOptions,
-    ExternalFetchProfile, ExternalFetchResult, ResearchCacheOptions, ResearchCacheStatus,
-    fetch_page_by_url_cached,
+    ExternalFetchProfile, ExternalFetchResult, ExternalMachineSurfaceReport,
+    MachineSurfaceDiscoveryOptions, ResearchCacheOptions, ResearchCacheStatus,
+    discover_machine_surfaces, fetch_page_by_url_cached,
 };
 use wikitool_core::sync::{ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat};
 
@@ -29,6 +30,8 @@ pub(crate) enum ResearchSubcommand {
     Search(ResearchSearchArgs),
     #[command(about = "Fetch readable reference material from a URL")]
     Fetch(ResearchFetchArgs),
+    #[command(about = "Discover public machine-readable source surfaces for a URL")]
+    Discover(ResearchDiscoverArgs),
 }
 
 #[derive(Debug, Args)]
@@ -91,6 +94,35 @@ pub(crate) struct ResearchFetchArgs {
         help = "Omit fetched content from output while keeping metadata and extract"
     )]
     no_content: bool,
+    #[arg(long, help = "Skip machine-surface discovery when a fetch fails")]
+    no_discover: bool,
+    #[arg(
+        long,
+        default_value_t = 12,
+        value_name = "N",
+        help = "Limit machine-surface entries included with failed fetch diagnostics"
+    )]
+    discover_limit: usize,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ResearchDiscoverArgs {
+    url: String,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Json,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+    #[arg(
+        long,
+        default_value_t = 20,
+        value_name = "N",
+        help = "Limit machine-surface entries"
+    )]
+    limit: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,6 +164,10 @@ struct ResearchFetchErrorOutput {
     kind: String,
     message: String,
     attempts: Vec<ExternalFetchAttempt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    discovery: Option<ExternalMachineSurfaceReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    discovery_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -147,6 +183,7 @@ pub(crate) fn run_research(runtime: &RuntimeOptions, args: ResearchArgs) -> Resu
     match args.command {
         ResearchSubcommand::Search(args) => run_research_search(runtime, args),
         ResearchSubcommand::Fetch(args) => run_research_fetch(runtime, args),
+        ResearchSubcommand::Discover(args) => run_research_discover(runtime, args),
     }
 }
 
@@ -180,6 +217,56 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
     Ok(())
 }
 
+fn run_research_discover(runtime: &RuntimeOptions, args: ResearchDiscoverArgs) -> Result<()> {
+    if args.limit == 0 {
+        bail!("research discover requires --limit >= 1");
+    }
+    let (paths, _) = resolve_runtime_with_config(runtime)?;
+    let report = discover_machine_surfaces(
+        &args.url,
+        MachineSurfaceDiscoveryOptions {
+            max_bytes: 1_000_000,
+            surface_limit: args.limit,
+            probe_source_page: true,
+        },
+    )?;
+
+    if args.format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    println!("research discover");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("source_url: {}", report.source_url);
+    println!("origin_url: {}", report.origin_url);
+    println!("content_signals: {}", report.content_signals.len());
+    for signal in &report.content_signals {
+        println!(
+            "content_signal: {}={} ({}, line {})",
+            signal.key, signal.value, signal.source_url, signal.line
+        );
+    }
+    println!("surfaces: {}", report.surfaces.len());
+    for surface in &report.surfaces {
+        println!(
+            "surface: {} {} [{}]",
+            surface.kind, surface.url, surface.source
+        );
+    }
+    println!("access_routes: {}", report.access_routes.len());
+    for route in &report.access_routes {
+        println!(
+            "access_route: {} {} - {}",
+            route.kind, route.status, route.description
+        );
+    }
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
 fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Result<()> {
     if args.refresh && args.no_cache {
         bail!("research fetch does not allow --refresh together with --no-cache");
@@ -189,6 +276,9 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     }
     if matches!(args.content_limit, Some(0)) {
         bail!("research fetch requires --content-limit >= 1");
+    }
+    if args.discover_limit == 0 {
+        bail!("research fetch requires --discover-limit >= 1");
     }
     let fetch_format = ExternalFetchFormat::from(args.format);
     let (paths, _) = resolve_runtime_with_config(runtime)?;
@@ -216,6 +306,8 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
                     kind: "not_found".to_string(),
                     message: format!("page not found: {}", args.url),
                     attempts: Vec::new(),
+                    discovery: None,
+                    discovery_error: None,
                 },
             );
         }
@@ -304,9 +396,22 @@ fn handle_research_fetch_error(
     runtime: &RuntimeOptions,
     paths: &wikitool_core::runtime::ResolvedPaths,
     args: &ResearchFetchArgs,
-    error: ResearchFetchErrorOutput,
+    mut error: ResearchFetchErrorOutput,
 ) -> Result<()> {
     if args.output.is_json() {
+        if !args.no_discover {
+            match discover_machine_surfaces(
+                &args.url,
+                MachineSurfaceDiscoveryOptions {
+                    max_bytes: 1_000_000,
+                    surface_limit: args.discover_limit,
+                    probe_source_page: false,
+                },
+            ) {
+                Ok(report) => error.discovery = Some(report),
+                Err(discovery_error) => error.discovery_error = Some(discovery_error.to_string()),
+            }
+        }
         let output = ResearchFetchOutput {
             schema_version: "research_document_v1".to_string(),
             status: "error",
@@ -335,6 +440,8 @@ fn research_fetch_error_output(
             kind: failure.failure.kind.clone(),
             message: failure.failure.message.clone(),
             attempts: failure.failure.attempts.clone(),
+            discovery: None,
+            discovery_error: None,
         };
     }
     ResearchFetchErrorOutput {
@@ -342,6 +449,8 @@ fn research_fetch_error_output(
         kind: "fetch_failed".to_string(),
         message: error.to_string(),
         attempts: Vec::new(),
+        discovery: None,
+        discovery_error: None,
     }
 }
 
@@ -505,6 +614,8 @@ mod tests {
         assert_eq!(output.attempts.len(), 1);
         assert_eq!(output.attempts[0].outcome, "access_challenge");
         assert_eq!(output.attempts[0].http_status, Some(403));
+        assert!(output.discovery.is_none());
+        assert!(output.discovery_error.is_none());
     }
 
     fn sample_fetch_result(content: &str) -> ExternalFetchResult {

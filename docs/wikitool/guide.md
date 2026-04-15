@@ -85,11 +85,12 @@ wikitool knowledge inspect empty-categories
 ```bash
 wikitool research search "topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
+wikitool research discover "URL" --format json
 wikitool fetch "URL" --format wikitext --save
 wikitool export "URL" --subpages --combined
 ```
 
-`research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind` and `error.attempts`; access challenges and HTTP failures are explicit source-access failures, not citable source content.
+`research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind`, `error.attempts`, and `error.discovery`; access challenges and HTTP failures are explicit source-access failures, not citable source content. `research discover` is the same machine-surface discovery pass as a standalone command.
 
 `fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs.
 

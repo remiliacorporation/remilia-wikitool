@@ -117,6 +117,50 @@ impl std::fmt::Display for ExternalFetchFailureError {
 
 impl std::error::Error for ExternalFetchFailureError {}
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalContentSignal {
+    pub key: String,
+    pub value: String,
+    pub source_url: String,
+    pub line: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalMachineSurface {
+    pub kind: String,
+    pub url: String,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalAccessRoute {
+    pub kind: String,
+    pub status: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalMachineSurfaceReport {
+    pub source_url: String,
+    pub origin_url: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content_signals: Vec<ExternalContentSignal>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surfaces: Vec<ExternalMachineSurface>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub access_routes: Vec<ExternalAccessRoute>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attempts: Vec<ExternalFetchAttempt>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalFetchResult {
     pub title: String,

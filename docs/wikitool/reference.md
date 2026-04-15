@@ -1128,9 +1128,10 @@ Search and fetch subject evidence without mutating the wiki
 Usage: wikitool research [OPTIONS] <COMMAND>
 
 Commands:
-  search  Search the remote wiki API for subject evidence
-  fetch   Fetch readable reference material from a URL
-  help    Print this message or the help of the given subcommand(s)
+  search    Search the remote wiki API for subject evidence
+  fetch     Fetch readable reference material from a URL
+  discover  Discover public machine-readable source surfaces for a URL
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -1182,7 +1183,29 @@ Options:
       --no-cache               Bypass the research cache for this fetch
       --content-limit <CHARS>  Limit returned content characters; cached source content remains complete
       --no-content             Omit fetched content from output while keeping metadata and extract
+      --no-discover            Skip machine-surface discovery when a fetch fails
+      --discover-limit <N>     Limit machine-surface entries included with failed fetch diagnostics [default: 12]
   -h, --help                   Print help
+```
+
+## research discover
+
+```text
+Discover public machine-readable source surfaces for a URL
+
+Usage: wikitool research discover [OPTIONS] <URL>
+
+Arguments:
+  <URL>
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --limit <N>            Limit machine-surface entries [default: 20]
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
 ```
 
 ## wiki

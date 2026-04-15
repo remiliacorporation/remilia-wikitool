@@ -15,11 +15,13 @@ pub use export::{
 };
 pub use mediawiki_fetch::{fetch_mediawiki_page, fetch_pages_by_titles, list_subpages};
 pub use model::{
-    DEFAULT_EXPORTS_DIR, ExportFormat, ExternalFetchAttempt, ExternalFetchFailure,
-    ExternalFetchFailureError, ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile,
-    ExternalFetchResult, ExtractionQuality, FetchMode, ParsedWikiUrl, RenderedFetchMode,
+    DEFAULT_EXPORTS_DIR, ExportFormat, ExternalAccessRoute, ExternalContentSignal,
+    ExternalFetchAttempt, ExternalFetchFailure, ExternalFetchFailureError, ExternalFetchFormat,
+    ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExternalMachineSurface,
+    ExternalMachineSurfaceReport, ExtractionQuality, FetchMode, ParsedWikiUrl, RenderedFetchMode,
 };
 pub use url::parse_wiki_url;
+pub use web_fetch::MachineSurfaceDiscoveryOptions;
 
 pub fn fetch_page_by_url(
     url: &str,
@@ -33,6 +35,13 @@ pub fn fetch_page_by_url(
     }
 
     web_fetch::fetch_web_url(url, options).map(Some)
+}
+
+pub fn discover_machine_surfaces(
+    url: &str,
+    options: web_fetch::MachineSurfaceDiscoveryOptions,
+) -> Result<ExternalMachineSurfaceReport> {
+    web_fetch::discover_machine_surfaces(url, options)
 }
 
 fn title_or_url<'a>(parsed: &'a ParsedWikiUrl, _url: &'a str) -> &'a str {
