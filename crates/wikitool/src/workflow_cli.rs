@@ -9,8 +9,9 @@ use crate::knowledge_cli::{self, KnowledgeWarmArgs};
 use crate::quality_cli;
 use crate::sync_cli::{self, InitArgs, PullArgs, StatusArgs};
 use crate::{
-    RuntimeOptions, cli_support::normalize_path, cli_support::prompt_yes_no,
-    cli_support::resolve_default_true_flag, cli_support::resolve_runtime_paths,
+    RuntimeOptions, cli_support::OutputFormat, cli_support::normalize_path,
+    cli_support::prompt_yes_no, cli_support::resolve_default_true_flag,
+    cli_support::resolve_runtime_paths,
 };
 
 #[derive(Debug, Args)]
@@ -124,7 +125,7 @@ fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs)
                 templates: false,
                 categories: false,
                 all: true,
-                format: "text".to_string(),
+                format: OutputFormat::Text,
             },
         )?;
     } else {
@@ -135,7 +136,7 @@ fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs)
         runtime,
         KnowledgeWarmArgs {
             docs_profile: args.docs_profile,
-            format: "text".to_string(),
+            format: OutputFormat::Text,
         },
     )?;
 
@@ -192,7 +193,7 @@ fn run_workflow_full_refresh(
             templates: false,
             categories: false,
             all: true,
-            format: "text".to_string(),
+            format: OutputFormat::Text,
         },
     )?;
 
@@ -200,7 +201,7 @@ fn run_workflow_full_refresh(
         runtime,
         KnowledgeWarmArgs {
             docs_profile: args.docs_profile,
-            format: "text".to_string(),
+            format: OutputFormat::Text,
         },
     )?;
 
@@ -221,7 +222,7 @@ fn run_workflow_full_refresh(
             titles: Vec::new(),
             paths: Vec::new(),
             titles_file: None,
-            format: "text".to_string(),
+            format: OutputFormat::Text,
         },
     )?;
     Ok(())

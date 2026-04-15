@@ -22,8 +22,8 @@ use wikitool_core::knowledge::templates::{
 };
 
 use crate::cli_support::{
-    normalize_path, normalize_title_query, print_scan_stats, print_stored_index_stats,
-    resolve_runtime_paths,
+    OutputFormat, normalize_path, normalize_title_query, print_scan_stats,
+    print_stored_index_stats, resolve_runtime_paths,
 };
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -74,11 +74,12 @@ enum KnowledgeInspectSubcommand {
         max_pages: usize,
         #[arg(
             long,
-            default_value = "text",
+            value_enum,
+            default_value_t = OutputFormat::Text,
             value_name = "FORMAT",
             help = "Output format: text|json"
         )]
-        format: String,
+        format: OutputFormat,
         #[arg(long, help = "Enable lexical de-duplication and diversification")]
         diversify: bool,
         #[arg(long, help = "Disable lexical de-duplication and diversification")]
@@ -101,11 +102,12 @@ enum KnowledgeInspectSubcommand {
         all: bool,
         #[arg(
             long,
-            default_value = "text",
+            value_enum,
+            default_value_t = OutputFormat::Text,
             value_name = "FORMAT",
             help = "Output format: text|json"
         )]
-        format: String,
+        format: OutputFormat,
     },
     /// Audit indexed references for cleanup work
     References(ReferenceInspectArgs),
@@ -156,11 +158,12 @@ struct ReferenceInspectSummaryArgs {
     identifier: Option<String>,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -187,11 +190,12 @@ struct ReferenceInspectListArgs {
     identifier: Option<String>,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -233,7 +237,7 @@ pub(crate) fn run_knowledge_inspect(
             limit,
             token_budget,
             max_pages,
-            &format,
+            format,
             diversify,
             no_diversify,
         ),
@@ -243,7 +247,7 @@ pub(crate) fn run_knowledge_inspect(
             limit,
             all,
             format,
-        } => run_inspect_templates(runtime, template.as_deref(), limit, all, &format),
+        } => run_inspect_templates(runtime, template.as_deref(), limit, all, format),
         KnowledgeInspectSubcommand::References(args) => run_inspect_references(runtime, args),
         KnowledgeInspectSubcommand::Orphans => run_inspect_orphans(runtime),
         KnowledgeInspectSubcommand::EmptyCategories => run_inspect_empty_categories(runtime),
@@ -269,7 +273,7 @@ fn run_inspect_chunks(
     limit: usize,
     token_budget: usize,
     max_pages: usize,
-    format: &str,
+    format: OutputFormat,
     diversify: bool,
     no_diversify: bool,
 ) -> Result<()> {
@@ -286,7 +290,6 @@ fn run_inspect_chunks(
         bail!("cannot use --diversify and --no-diversify together");
     }
 
-    let format = normalize_format(format)?;
     let use_diversify = !no_diversify;
     let paths = resolve_runtime_paths(runtime)?;
 
@@ -306,7 +309,7 @@ fn run_inspect_chunks(
             max_pages,
             use_diversify,
         )?;
-        if format == "json" {
+        if format.is_json() {
             println!("{}", serde_json::to_string_pretty(&retrieval)?);
             return Ok(());
         }
@@ -360,7 +363,7 @@ fn run_inspect_chunks(
             token_budget,
             use_diversify,
         )?;
-        if format == "json" {
+        if format.is_json() {
             println!("{}", serde_json::to_string_pretty(&retrieval)?);
             return Ok(());
         }
@@ -441,7 +444,7 @@ fn run_inspect_templates(
     template: Option<&str>,
     limit: usize,
     all: bool,
-    format: &str,
+    format: OutputFormat,
 ) -> Result<()> {
     if limit == 0 {
         bail!("knowledge inspect templates requires --limit >= 1");
@@ -451,12 +454,11 @@ fn run_inspect_templates(
             "cannot use `knowledge inspect templates TEMPLATE --all`; omit TEMPLATE in catalog mode"
         );
     }
-    let format = normalize_format(format)?;
     let paths = resolve_runtime_paths(runtime)?;
 
     if let Some(template_title) = template {
         let lookup = query_template_reference(&paths, template_title)?;
-        if format == "json" {
+        if format.is_json() {
             println!("{}", serde_json::to_string_pretty(&lookup)?);
             return Ok(());
         }
@@ -499,7 +501,7 @@ fn run_inspect_templates(
         }
     } else {
         let lookup = query_active_template_catalog(&paths, if all { limit.max(1) } else { limit })?;
-        if format == "json" {
+        if format.is_json() {
             println!("{}", serde_json::to_string_pretty(&lookup)?);
             return Ok(());
         }
@@ -617,7 +619,6 @@ fn run_inspect_reference_summary(
     runtime: &RuntimeOptions,
     args: ReferenceInspectSummaryArgs,
 ) -> Result<()> {
-    let format = normalize_format(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let selection = load_reference_selection(&args.titles, args.titles_file.as_ref(), args.all)?;
     let filters = reference_audit_filters_from_args(
@@ -634,7 +635,7 @@ fn run_inspect_reference_summary(
     };
     let report = inspect_reference_summary(&paths, &selected_titles, &filters)?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&ReferenceInspectEnvelope {
@@ -667,7 +668,6 @@ fn run_inspect_reference_list(
     runtime: &RuntimeOptions,
     args: ReferenceInspectListArgs,
 ) -> Result<()> {
-    let format = normalize_format(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let selection = load_reference_selection(&args.titles, args.titles_file.as_ref(), args.all)?;
     if !selection.all && selection.titles.is_empty() {
@@ -687,7 +687,7 @@ fn run_inspect_reference_list(
     };
     let report = inspect_reference_list(&paths, &selected_titles, &filters)?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&ReferenceInspectEnvelope {
@@ -720,7 +720,6 @@ fn run_inspect_reference_duplicates(
     runtime: &RuntimeOptions,
     args: ReferenceInspectListArgs,
 ) -> Result<()> {
-    let format = normalize_format(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let selection = load_reference_selection(&args.titles, args.titles_file.as_ref(), args.all)?;
     if !selection.all && selection.titles.is_empty() {
@@ -740,7 +739,7 @@ fn run_inspect_reference_duplicates(
     };
     let report = inspect_reference_duplicates(&paths, &selected_titles, &filters)?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&ReferenceInspectEnvelope {
@@ -1060,12 +1059,4 @@ fn join_or_none(values: &[String]) -> String {
     } else {
         values.join(" | ")
     }
-}
-
-fn normalize_format(value: &str) -> Result<String> {
-    let format = value.trim().to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!("unsupported format: {} (expected text|json)", value);
-    }
-    Ok(format)
 }

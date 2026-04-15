@@ -472,12 +472,18 @@ mod tests {
     #[test]
     fn build_subpage_output_filenames_disambiguates_case_collisions() {
         let filenames = build_subpage_output_filenames(
-            &[page("DB/GtArmorMitigationByLvl"), page("DB/gtArmorMitigationByLvl")],
+            &[
+                page("DB/GtArmorMitigationByLvl"),
+                page("DB/gtArmorMitigationByLvl"),
+            ],
             ExportFormat::Markdown,
         );
 
         assert_eq!(filenames.len(), 2);
-        assert_ne!(filenames[0].to_ascii_lowercase(), filenames[1].to_ascii_lowercase());
+        assert_ne!(
+            filenames[0].to_ascii_lowercase(),
+            filenames[1].to_ascii_lowercase()
+        );
         assert!(filenames[0].ends_with(".md"));
         assert!(filenames[1].ends_with(".md"));
     }

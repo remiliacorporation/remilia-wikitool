@@ -6,8 +6,7 @@ use wikitool_core::profile::{
     sync_template_catalog_with_overlay,
 };
 
-use crate::cli_support::{normalize_path, resolve_runtime_paths};
-use crate::query_cli::normalize_output;
+use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -42,11 +41,12 @@ enum TemplatesCatalogSubcommand {
 struct TemplatesFormatArgs {
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -54,11 +54,12 @@ pub(crate) struct TemplatesShowArgs {
     template: String,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -68,11 +69,12 @@ pub(crate) struct TemplatesExamplesArgs {
     limit: usize,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 pub(crate) fn run_templates(runtime: &RuntimeOptions, args: TemplatesArgs) -> Result<()> {
@@ -86,18 +88,17 @@ pub(crate) fn run_templates(runtime: &RuntimeOptions, args: TemplatesArgs) -> Re
 fn run_templates_catalog(runtime: &RuntimeOptions, args: TemplatesCatalogArgs) -> Result<()> {
     match args.command {
         TemplatesCatalogSubcommand::Build(args) => {
-            run_templates_catalog_build(runtime, &args.format)
+            run_templates_catalog_build(runtime, args.format)
         }
     }
 }
 
-fn run_templates_catalog_build(runtime: &RuntimeOptions, format: &str) -> Result<()> {
-    let output_format = normalize_output(format)?;
+fn run_templates_catalog_build(runtime: &RuntimeOptions, format: OutputFormat) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let overlay = load_or_build_remilia_profile_overlay(&paths)?;
     let catalog = sync_template_catalog_with_overlay(&paths, &overlay)?;
 
-    if output_format == "json" {
+    if format.is_json() {
         println!("{}", serde_json::to_string_pretty(&catalog)?);
         return Ok(());
     }
@@ -113,7 +114,6 @@ fn run_templates_catalog_build(runtime: &RuntimeOptions, format: &str) -> Result
 }
 
 fn run_templates_show(runtime: &RuntimeOptions, args: TemplatesShowArgs) -> Result<()> {
-    let output_format = normalize_output(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let catalog = load_or_sync_catalog(&paths)?;
     let entry = match find_template_catalog_entry(&catalog, &args.template) {
@@ -126,7 +126,7 @@ fn run_templates_show(runtime: &RuntimeOptions, args: TemplatesShowArgs) -> Resu
         }
     };
 
-    if output_format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&entry)?);
         return Ok(());
     }
@@ -146,7 +146,6 @@ fn run_templates_examples(runtime: &RuntimeOptions, args: TemplatesExamplesArgs)
         bail!("templates examples requires --limit >= 1");
     }
 
-    let output_format = normalize_output(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let catalog = load_or_sync_catalog(&paths)?;
     let entry = match find_template_catalog_entry(&catalog, &args.template) {
@@ -165,7 +164,7 @@ fn run_templates_examples(runtime: &RuntimeOptions, args: TemplatesExamplesArgs)
         .take(args.limit)
         .collect::<Vec<_>>();
 
-    if output_format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&examples)?);
         return Ok(());
     }

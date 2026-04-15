@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use clap::Args;
+use clap::{Args, ValueEnum};
 use wikitool_core::config::WikiConfig;
 use wikitool_core::knowledge::retrieval::{
     LocalContextBundle, LocalSearchHit, build_local_context, query_search_local,
@@ -10,7 +10,7 @@ use wikitool_core::sync::{
 };
 
 use crate::cli_support::{
-    normalize_path, normalize_title_query, print_string_list, resolve_runtime_paths,
+    OutputFormat, normalize_path, normalize_title_query, print_string_list, resolve_runtime_paths,
 };
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -22,11 +22,12 @@ pub(crate) struct ContextArgs {
     title: String,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -34,11 +35,12 @@ pub(crate) struct SearchArgs {
     query: String,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,7 +48,36 @@ pub(crate) struct RemoteWikiSearchRequest<'a> {
     pub(crate) command_name: &'a str,
     pub(crate) query: &'a str,
     pub(crate) limit: usize,
-    pub(crate) what: &'a str,
+    pub(crate) what: RemoteSearchScope,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum RemoteSearchScope {
+    Text,
+    Title,
+    #[value(name = "nearmatch", alias = "near-match")]
+    Nearmatch,
+}
+
+impl RemoteSearchScope {
+    fn as_search_what(self) -> MediaWikiSearchWhat {
+        match self {
+            Self::Text => MediaWikiSearchWhat::Text,
+            Self::Title => MediaWikiSearchWhat::Title,
+            Self::Nearmatch => MediaWikiSearchWhat::NearMatch,
+        }
+    }
+}
+
+impl std::fmt::Display for RemoteSearchScope {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Text => "text",
+            Self::Title => "title",
+            Self::Nearmatch => "nearmatch",
+        };
+        formatter.write_str(value)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -58,7 +89,6 @@ struct ParsedRemoteWikiSearchRequest {
 
 pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let format = normalize_output(&args.format)?;
     let title = normalize_title_query(&args.title);
     if title.is_empty() {
         bail!("context requires a non-empty title");
@@ -66,7 +96,7 @@ pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result
 
     match build_local_context(&paths, &title)? {
         Some(bundle) => {
-            if format == "json" {
+            if args.format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&bundle)?);
                 return Ok(());
             }
@@ -92,7 +122,6 @@ pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result
 
 pub(crate) fn run_search(runtime: &RuntimeOptions, args: SearchArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let format = normalize_output(&args.format)?;
     let query = normalize_title_query(&args.query);
     if query.is_empty() {
         bail!("search requires a non-empty query");
@@ -100,7 +129,7 @@ pub(crate) fn run_search(runtime: &RuntimeOptions, args: SearchArgs) -> Result<(
 
     match query_search_local(&paths, &query, 20)? {
         Some(results) => {
-            if format == "json" {
+            if args.format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&results)?);
                 return Ok(());
             }
@@ -150,7 +179,7 @@ fn parse_remote_wiki_search_request(
     Ok(ParsedRemoteWikiSearchRequest {
         query,
         limit: request.limit,
-        what: MediaWikiSearchWhat::parse(request.what)?,
+        what: request.what.as_search_what(),
     })
 }
 
@@ -261,15 +290,6 @@ pub(crate) fn print_external_search_report(prefix: &str, report: &ExternalSearch
     }
 }
 
-pub(crate) fn normalize_output(value: &str) -> Result<&'static str> {
-    let normalized = value.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "json" => Ok("json"),
-        "text" => Ok("text"),
-        _ => bail!("unsupported output format: {} (expected text|json)", value),
-    }
-}
-
 fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
     println!("{prefix}.title: {}", bundle.title);
     println!("{prefix}.namespace: {}", bundle.namespace);
@@ -362,7 +382,7 @@ mod tests {
             command_name: "research search",
             query: " Alpha_Beta ",
             limit: 3,
-            what: "near-match",
+            what: RemoteSearchScope::Nearmatch,
         })
         .expect("parse remote wiki search request");
 
@@ -382,7 +402,7 @@ mod tests {
             command_name: "research search",
             query: "Alpha",
             limit: 0,
-            what: "text",
+            what: RemoteSearchScope::Text,
         })
         .expect_err("zero limit should fail");
 
@@ -395,7 +415,7 @@ mod tests {
             command_name: "research search",
             query: "   ",
             limit: 1,
-            what: "text",
+            what: RemoteSearchScope::Text,
         })
         .expect_err("blank query should fail");
 

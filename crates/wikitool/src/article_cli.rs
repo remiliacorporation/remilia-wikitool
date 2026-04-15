@@ -13,8 +13,7 @@ use wikitool_core::filesystem::{
 };
 use wikitool_core::sync::{SyncSelection, collect_changed_article_paths};
 
-use crate::cli_support::{normalize_path, resolve_runtime_paths};
-use crate::query_cli::normalize_output;
+use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -38,11 +37,12 @@ pub(crate) struct ArticleLintArgs {
     profile: String,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
     #[arg(long, help = "Treat warnings as errors")]
     strict: bool,
     #[arg(long = "title", value_name = "TITLE")]
@@ -73,11 +73,12 @@ pub(crate) struct ArticleFixArgs {
     apply: String,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
     #[arg(long = "title", value_name = "TITLE")]
     titles: Vec<String>,
     #[arg(long = "path", value_name = "PATH")]
@@ -135,7 +136,6 @@ pub(crate) fn run_article(runtime: &RuntimeOptions, args: ArticleArgs) -> Result
 }
 
 fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) -> Result<()> {
-    let format = normalize_output(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     if uses_single_path_mode(
         args.path.as_deref(),
@@ -150,7 +150,7 @@ fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) -> Result<(
             Some(&args.profile),
         )?;
 
-        if format == "json" {
+        if args.format.is_json() {
             println!("{}", serde_json::to_string_pretty(&report)?);
         } else {
             println!("article lint");
@@ -199,7 +199,7 @@ fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) -> Result<(
         reports,
     };
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&batch_report)?);
     } else {
         println!("article lint");
@@ -238,7 +238,6 @@ fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) -> Result<(
 }
 
 fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) -> Result<()> {
-    let format = normalize_output(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let apply_mode = parse_apply_mode(&args.apply)?;
     if uses_single_path_mode(
@@ -255,7 +254,7 @@ fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) -> Result<()>
             apply_mode,
         )?;
 
-        if format == "json" {
+        if args.format.is_json() {
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
             println!("article fix");
@@ -328,7 +327,7 @@ fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) -> Result<()>
         results,
     };
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&batch_report)?);
     } else {
         println!("article fix");

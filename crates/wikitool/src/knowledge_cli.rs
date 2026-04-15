@@ -23,7 +23,7 @@ use wikitool_core::profile::load_or_build_remilia_profile_overlay;
 use wikitool_core::runtime::{ResolvedPaths, ensure_runtime_ready_for_sync, inspect_runtime};
 
 use crate::cli_support::{
-    collapse_whitespace, format_flag, normalize_option, normalize_path,
+    OutputFormat, collapse_whitespace, format_flag, normalize_option, normalize_path,
     print_database_schema_status, print_scan_stats, resolve_runtime_paths,
     resolve_runtime_with_config,
 };
@@ -56,11 +56,12 @@ enum KnowledgeSubcommand {
 pub(crate) struct KnowledgeBuildArgs {
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -74,11 +75,12 @@ pub(crate) struct KnowledgeWarmArgs {
     pub(crate) docs_profile: String,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    pub(crate) format: String,
+    pub(crate) format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -92,11 +94,12 @@ pub(crate) struct KnowledgeStatusArgs {
     docs_profile: String,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -170,11 +173,12 @@ pub(crate) struct KnowledgePackArgs {
     docs_profile: String,
     #[arg(
         long,
-        default_value = "json",
+        value_enum,
+        default_value_t = OutputFormat::Json,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
     #[arg(long, help = "Enable lexical chunk de-duplication and diversification")]
     diversify: bool,
     #[arg(
@@ -255,11 +259,12 @@ pub(crate) struct KnowledgeArticleStartArgs {
     docs_profile: String,
     #[arg(
         long,
-        default_value = "json",
+        value_enum,
+        default_value_t = OutputFormat::Json,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
     #[arg(long, help = "Include the raw knowledge pack in JSON output")]
     include_pack: bool,
     #[arg(long, help = "Enable lexical chunk de-duplication and diversification")]
@@ -335,7 +340,6 @@ pub(crate) fn run_knowledge(runtime: &RuntimeOptions, args: KnowledgeArgs) -> Re
 }
 
 pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmArgs) -> Result<()> {
-    let format = normalize_format(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let rebuild = rebuild_knowledge_index(&paths)?;
     let docs = match import_docs_profile_with_config(
@@ -359,7 +363,7 @@ pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmAr
         status,
     };
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(());
     }
@@ -407,13 +411,12 @@ fn transient_docs_profile_report(profile: &str, error: &anyhow::Error) -> DocsIm
 }
 
 fn run_knowledge_build(runtime: &RuntimeOptions, args: KnowledgeBuildArgs) -> Result<()> {
-    let format = normalize_format(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let rebuild = rebuild_knowledge_index(&paths)?;
     let status = knowledge_status(&paths, DEFAULT_DOCS_PROFILE)?;
     let report = KnowledgeBuildReport { rebuild, status };
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(());
     }
@@ -441,11 +444,10 @@ fn run_knowledge_build(runtime: &RuntimeOptions, args: KnowledgeBuildArgs) -> Re
 }
 
 fn run_knowledge_status(runtime: &RuntimeOptions, args: KnowledgeStatusArgs) -> Result<()> {
-    let format = normalize_format(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let status = knowledge_status(&paths, &args.docs_profile)?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&status)?);
         return Ok(());
     }
@@ -487,7 +489,6 @@ fn run_knowledge_pack(runtime: &RuntimeOptions, args: KnowledgePackArgs) -> Resu
         bail!("cannot use --diversify and --no-diversify together");
     }
 
-    let format = normalize_format(&args.format)?;
     let use_diversify = !args.no_diversify;
     let paths = resolve_runtime_paths(runtime)?;
     let topic = normalize_option(args.topic.as_deref())
@@ -522,7 +523,7 @@ fn run_knowledge_pack(runtime: &RuntimeOptions, args: KnowledgePackArgs) -> Resu
         },
     };
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&output)?);
         return Ok(());
     }
@@ -689,7 +690,6 @@ fn run_knowledge_article_start(
         bail!("cannot use --diversify and --no-diversify together");
     }
 
-    let format = normalize_format(&args.format)?;
     let use_diversify = !args.no_diversify;
     let paths = resolve_runtime_paths(runtime)?;
     let topic = normalize_option(args.topic.as_deref())
@@ -747,7 +747,7 @@ fn run_knowledge_article_start(
         }
     };
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&output)?);
         return Ok(());
     }
@@ -956,14 +956,6 @@ fn format_list(values: &[String]) -> String {
     } else {
         values.join(", ")
     }
-}
-
-fn normalize_format(value: &str) -> Result<String> {
-    let format = value.trim().to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!("unsupported format: {} (expected text|json)", value);
-    }
-    Ok(format)
 }
 
 fn load_knowledge_stub_content(

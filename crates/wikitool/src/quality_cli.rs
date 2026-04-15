@@ -4,24 +4,25 @@ use serde::Serialize;
 use wikitool_core::knowledge::inspect::{ValidationReport, run_validation_checks};
 use wikitool_core::lint::{LuaLintReport, LuaLintResult, lint_modules};
 
-use crate::cli_support::{normalize_path, print_string_list, resolve_runtime_paths};
+use crate::cli_support::{OutputFormat, normalize_path, print_string_list, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
 pub(crate) struct ValidateArgs {
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 impl Default for ValidateArgs {
     fn default() -> Self {
         Self {
-            format: "text".to_string(),
+            format: OutputFormat::Text,
         }
     }
 }
@@ -31,11 +32,12 @@ pub(crate) struct LintArgs {
     title: Option<String>,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
     #[arg(long, help = "Treat warnings as errors")]
     strict: bool,
     #[arg(long, help = "Omit metadata from JSON output")]
@@ -70,19 +72,12 @@ struct LintJson<'a> {
 
 pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let format = args.format.trim().to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!(
-            "unsupported validate format: {} (expected text|json)",
-            args.format
-        );
-    }
 
     let report = match run_validation_checks(&paths)? {
         Some(report) => report,
         None => {
             let message = "content_index.storage: <not built> (run `wikitool knowledge build`)";
-            if format == "json" {
+            if args.format.is_json() {
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&ValidateJson {
@@ -109,7 +104,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
 
     let issue_count = validation_issue_count(&report);
     let status = if issue_count == 0 { "clean" } else { "failed" };
-    if format == "json" {
+    if args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&ValidateJson {
@@ -154,15 +149,8 @@ fn validation_issue_count(report: &ValidationReport) -> usize {
 pub(crate) fn run_lint(runtime: &RuntimeOptions, args: LintArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let report = lint_modules(&paths, args.title.as_deref())?;
-    let format = args.format.to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!(
-            "unsupported lint format: {} (expected text|json)",
-            args.format
-        );
-    }
 
-    if format == "json" {
+    if args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&lint_json_output(&report, args.no_meta))?

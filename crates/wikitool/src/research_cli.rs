@@ -7,9 +7,9 @@ use wikitool_core::research::{
 };
 use wikitool_core::sync::{ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat};
 
-use crate::cli_support::{normalize_path, resolve_runtime_with_config};
+use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_with_config};
 use crate::query_cli::{
-    RemoteWikiSearchRequest, normalize_output, print_external_search_report,
+    RemoteSearchScope, RemoteWikiSearchRequest, print_external_search_report,
     remote_wiki_search_report,
 };
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
@@ -35,18 +35,20 @@ pub(crate) struct ResearchSearchArgs {
     limit: usize,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = RemoteSearchScope::Text,
         value_name = "SCOPE",
         help = "Search scope: text|title|nearmatch"
     )]
-    what: String,
+    what: RemoteSearchScope,
     #[arg(
         long,
-        default_value = "json",
+        value_enum,
+        default_value_t = OutputFormat::Json,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -61,11 +63,12 @@ pub(crate) struct ResearchFetchArgs {
     format: String,
     #[arg(
         long,
-        default_value = "json",
+        value_enum,
+        default_value_t = OutputFormat::Json,
         value_name = "FORMAT",
         help = "Output wrapper: text|json"
     )]
-    output: String,
+    output: OutputFormat,
     #[arg(
         long,
         help = "Refresh the research cache entry before returning output"
@@ -108,7 +111,6 @@ pub(crate) fn run_research(runtime: &RuntimeOptions, args: ResearchArgs) -> Resu
 }
 
 fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Result<()> {
-    let format = normalize_output(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let report = remote_wiki_search_report(
         &config,
@@ -116,11 +118,11 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
             command_name: "research search",
             query: &args.query,
             limit: args.limit,
-            what: &args.what,
+            what: args.what,
         },
     )?;
 
-    if format == "json" {
+    if args.format.is_json() {
         let output = ResearchSearchOutput::from(report);
         println!("{}", serde_json::to_string_pretty(&output)?);
         return Ok(());
@@ -141,7 +143,6 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     if args.refresh && args.no_cache {
         bail!("research fetch does not allow --refresh together with --no-cache");
     }
-    let output_format = normalize_output(&args.output)?;
     let fetch_format = ExternalFetchFormat::parse(&args.format)?;
     let (paths, _) = resolve_runtime_with_config(runtime)?;
     let cached = fetch_page_by_url_cached(
@@ -162,7 +163,7 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
     let cache_path = cached.cache_path.as_deref().map(normalize_path);
     let result = cached.result;
 
-    if output_format == "json" {
+    if args.output.is_json() {
         let output = ResearchFetchOutput {
             schema_version: "research_document_v1".to_string(),
             cache_status,

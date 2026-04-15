@@ -19,10 +19,9 @@ use wikitool_core::sync::{
 };
 
 use crate::cli_support::{
-    format_flag, normalize_path, print_scan_stats, resolve_runtime_paths,
+    OutputFormat, format_flag, normalize_path, print_scan_stats, resolve_runtime_paths,
     resolve_runtime_with_config,
 };
-use crate::query_cli::normalize_output;
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -53,11 +52,12 @@ pub(crate) struct PullArgs {
     pub(crate) all: bool,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    pub(crate) format: String,
+    pub(crate) format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -86,11 +86,12 @@ pub(crate) struct PushArgs {
     pub(crate) titles_file: Option<PathBuf>,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    pub(crate) format: String,
+    pub(crate) format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -118,11 +119,12 @@ pub(crate) struct DiffArgs {
     pub(crate) titles_file: Option<PathBuf>,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    pub(crate) format: String,
+    pub(crate) format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -147,11 +149,12 @@ pub(crate) struct StatusArgs {
     pub(crate) titles_file: Option<PathBuf>,
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    pub(crate) format: String,
+    pub(crate) format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -361,7 +364,6 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
 }
 
 pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
-    let format = normalize_output(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
@@ -378,7 +380,7 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
         &config,
     )?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&PullJsonReport {
@@ -462,7 +464,6 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
 }
 
 pub(crate) fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
-    let format = normalize_output(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
@@ -490,7 +491,7 @@ pub(crate) fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
         &config,
     )?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&PushJsonReport {
@@ -575,7 +576,6 @@ pub(crate) fn run_push(runtime: &RuntimeOptions, args: PushArgs) -> Result<()> {
 }
 
 pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
-    let format = normalize_output(&args.format)?;
     let paths = resolve_runtime_paths(runtime)?;
     let status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &status)?;
@@ -592,7 +592,7 @@ pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
     )? {
         Some(report) => report,
         None => {
-            if format == "json" {
+            if args.format.is_json() {
                 println!(
                     "{}",
                     serde_json::json!({
@@ -623,7 +623,7 @@ pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
         }
     };
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(());
     }
@@ -691,7 +691,6 @@ pub(crate) fn run_diff(runtime: &RuntimeOptions, args: DiffArgs) -> Result<()> {
 }
 
 pub(crate) fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<()> {
-    let format = normalize_output(&args.format)?;
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let status = inspect_runtime(&paths)?;
     let selection = load_sync_selection(&args.titles, &args.paths, args.titles_file.as_ref())?;
@@ -721,7 +720,7 @@ pub(crate) fn run_status(runtime: &RuntimeOptions, args: StatusArgs) -> Result<(
         &config,
     )?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&StatusJsonReport {

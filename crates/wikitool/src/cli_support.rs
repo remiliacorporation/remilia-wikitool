@@ -2,6 +2,7 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use clap::ValueEnum;
 use wikitool_core::config::{WikiConfig, load_config};
 use wikitool_core::filesystem::ScanStats;
 use wikitool_core::knowledge::content_index::StoredIndexStats;
@@ -9,6 +10,31 @@ use wikitool_core::runtime::{PathOverrides, ResolutionContext, ResolvedPaths, re
 use wikitool_core::schema::{DatabaseSchemaState, schema_state};
 
 use crate::RuntimeOptions;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum OutputFormat {
+    Text,
+    Json,
+}
+
+impl OutputFormat {
+    pub(crate) fn is_json(self) -> bool {
+        self == Self::Json
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Json => "json",
+        }
+    }
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
 
 #[cfg(feature = "maintainer-surface")]
 use std::fs;

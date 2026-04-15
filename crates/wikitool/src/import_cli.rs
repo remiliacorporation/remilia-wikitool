@@ -9,7 +9,9 @@ use wikitool_core::import_cargo::{
     import_to_cargo,
 };
 
-use crate::cli_support::{format_flag, normalize_option, normalize_path, resolve_runtime_paths};
+use crate::cli_support::{
+    OutputFormat, format_flag, normalize_option, normalize_path, resolve_runtime_paths,
+};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -45,11 +47,12 @@ enum ImportSubcommand {
         write: bool,
         #[arg(
             long,
-            default_value = "text",
+            value_enum,
+            default_value_t = OutputFormat::Text,
             value_name = "FORMAT",
             help = "Output format: text|json"
         )]
-        format: String,
+        format: OutputFormat,
         #[arg(
             long,
             help = "Add SHORTDESC + Article quality header in main namespace"
@@ -98,7 +101,7 @@ pub(crate) fn run_import(runtime: &RuntimeOptions, args: ImportArgs) -> Result<(
             category.as_deref(),
             &mode,
             write,
-            &format,
+            format,
             article_header,
             no_meta,
         ),
@@ -117,7 +120,7 @@ fn run_import_cargo(
     category: Option<&str>,
     mode: &str,
     write: bool,
-    format: &str,
+    format: OutputFormat,
     article_header: bool,
     no_meta: bool,
 ) -> Result<()> {
@@ -126,10 +129,6 @@ fn run_import_cargo(
         bail!("unable to determine import type (use --type csv|json)");
     };
     let update_mode = parse_import_mode(mode)?;
-    let format = format.to_ascii_lowercase();
-    if format != "text" && format != "json" {
-        bail!("unsupported import format: {format} (expected text|json)");
-    }
 
     let source_path = resolve_import_source_path(path)?;
     let result = import_to_cargo(
@@ -148,7 +147,7 @@ fn run_import_cargo(
         },
     )?;
 
-    if format == "json" {
+    if format.is_json() {
         println!(
             "{}",
             serde_json::to_string_pretty(&import_json_output(&result, no_meta))?

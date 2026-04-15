@@ -13,7 +13,7 @@ use wikitool_core::docs::{
 use crate::{
     LOCAL_DB_POLICY_MESSAGE, RuntimeOptions,
     cli_support::{
-        collapse_whitespace, format_flag, normalize_path, normalize_title_query,
+        OutputFormat, collapse_whitespace, format_flag, normalize_path, normalize_title_query,
         resolve_runtime_paths, resolve_runtime_with_config,
     },
 };
@@ -85,14 +85,6 @@ pub(crate) fn run_docs(runtime: &RuntimeOptions, args: DocsArgs) -> Result<()> {
         DocsSubcommand::Context(args) => query::run_docs_context(runtime, args),
         DocsSubcommand::Symbols(args) => query::run_docs_symbols(runtime, args),
     }
-}
-
-fn normalize_output_format(value: &str) -> Result<String> {
-    let normalized = value.trim().to_ascii_lowercase();
-    if normalized != "text" && normalized != "json" {
-        bail!("unsupported docs format: {value} (expected text|json)");
-    }
-    Ok(normalized)
 }
 
 fn normalize_title_list(values: Vec<String>) -> Vec<String> {

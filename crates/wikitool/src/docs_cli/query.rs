@@ -15,8 +15,8 @@ pub(super) struct DocsSearchArgs {
         help = "Restrict search to a docs profile"
     )]
     profile: Option<String>,
-    #[arg(long, default_value = "text", help = "Output format: text|json")]
-    format: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format: text|json")]
+    format: OutputFormat,
     #[arg(short = 'l', long, default_value_t = 20, help = "Limit result count")]
     limit: usize,
 }
@@ -30,8 +30,8 @@ pub(super) struct DocsContextArgs {
         help = "Restrict context retrieval to a docs profile"
     )]
     profile: Option<String>,
-    #[arg(long, default_value = "json", help = "Output format: text|json")]
-    format: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Output format: text|json")]
+    format: OutputFormat,
     #[arg(short = 'l', long, default_value_t = 6, help = "Limit hits per tier")]
     limit: usize,
     #[arg(
@@ -53,15 +53,14 @@ pub(super) struct DocsSymbolsArgs {
         help = "Restrict symbol lookup to a docs profile"
     )]
     profile: Option<String>,
-    #[arg(long, default_value = "text", help = "Output format: text|json")]
-    format: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format: text|json")]
+    format: OutputFormat,
     #[arg(short = 'l', long, default_value_t = 20, help = "Limit result count")]
     limit: usize,
 }
 
 pub(super) fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let format = normalize_output_format(&args.format)?;
     let hits = search_docs(
         &paths,
         &args.query,
@@ -72,7 +71,7 @@ pub(super) fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) ->
         },
     )?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&hits)?);
         return Ok(());
     }
@@ -96,7 +95,6 @@ pub(super) fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) ->
 
 pub(super) fn run_docs_context(runtime: &RuntimeOptions, args: DocsContextArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let format = normalize_output_format(&args.format)?;
     let report = build_docs_context(
         &paths,
         &args.query,
@@ -107,7 +105,7 @@ pub(super) fn run_docs_context(runtime: &RuntimeOptions, args: DocsContextArgs) 
         },
     )?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(());
     }
@@ -155,7 +153,6 @@ pub(super) fn run_docs_context(runtime: &RuntimeOptions, args: DocsContextArgs) 
 
 pub(super) fn run_docs_symbols(runtime: &RuntimeOptions, args: DocsSymbolsArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let format = normalize_output_format(&args.format)?;
     let hits = lookup_docs_symbols(
         &paths,
         &args.query,
@@ -166,7 +163,7 @@ pub(super) fn run_docs_symbols(runtime: &RuntimeOptions, args: DocsSymbolsArgs) 
         },
     )?;
 
-    if format == "json" {
+    if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&hits)?);
         return Ok(());
     }

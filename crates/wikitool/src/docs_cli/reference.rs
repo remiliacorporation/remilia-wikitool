@@ -116,7 +116,7 @@ fn help_text_for_command_path(path: &[String]) -> Result<String> {
         ),
         Err(error) => match error.kind() {
             ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-                Ok(error.to_string().trim_end().to_string())
+                Ok(normalize_help_text(&error.to_string()))
             }
             _ => Err(error).with_context(|| {
                 format!(
@@ -130,6 +130,16 @@ fn help_text_for_command_path(path: &[String]) -> Result<String> {
             }),
         },
     }
+}
+
+#[cfg(any(test, feature = "maintainer-surface"))]
+fn normalize_help_text(help_text: &str) -> String {
+    help_text
+        .trim_end()
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -175,5 +185,13 @@ mod tests {
     fn removed_top_level_aliases_are_not_invocable() {
         assert!(help_text_for_command_path(&["search-external".to_string()]).is_err());
         assert!(help_text_for_command_path(&["lsp:generate-config".to_string()]).is_err());
+    }
+
+    #[test]
+    fn normalize_help_text_removes_clap_alignment_padding() {
+        assert_eq!(
+            normalize_help_text("Options:\n      --flag  \n  -h, --help  \n\n"),
+            "Options:\n      --flag\n  -h, --help"
+        );
     }
 }

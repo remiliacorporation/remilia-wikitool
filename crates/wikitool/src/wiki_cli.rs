@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 use wikitool_core::profile::{
     ProfileOverlay, TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
@@ -8,8 +8,7 @@ use wikitool_core::profile::{
     sync_wiki_profile_with_config,
 };
 
-use crate::cli_support::{normalize_path, resolve_runtime_with_config};
-use crate::query_cli::normalize_output;
+use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_with_config};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -46,18 +45,57 @@ enum WikiCapabilitiesSubcommand {
 struct WikiCapabilitiesFormatArgs {
     #[arg(
         long,
-        default_value = "text",
+        value_enum,
+        default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
-    format: String,
+    format: OutputFormat,
     #[arg(
         long,
-        default_value = "summary",
+        value_enum,
+        default_value_t = WikiJsonView::Summary,
         value_name = "VIEW",
         help = "JSON view: summary|full"
     )]
-    view: String,
+    view: WikiJsonView,
+}
+
+#[derive(Debug, Args)]
+struct WikiFormatArgs {
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum WikiJsonView {
+    Summary,
+    Full,
+}
+
+impl WikiJsonView {
+    fn is_full(self) -> bool {
+        self == Self::Full
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::Full => "full",
+        }
+    }
+}
+
+impl std::fmt::Display for WikiJsonView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 #[derive(Debug, Args)]
@@ -83,7 +121,7 @@ pub(crate) struct WikiRulesArgs {
 #[derive(Debug, Subcommand)]
 enum WikiRulesSubcommand {
     #[command(about = "Show the current Remilia rules overlay")]
-    Show(WikiCapabilitiesFormatArgs),
+    Show(WikiFormatArgs),
 }
 
 pub(crate) fn run_wiki(runtime: &RuntimeOptions, args: WikiArgs) -> Result<()> {
@@ -97,22 +135,24 @@ pub(crate) fn run_wiki(runtime: &RuntimeOptions, args: WikiArgs) -> Result<()> {
 fn run_wiki_capabilities(runtime: &RuntimeOptions, args: WikiCapabilitiesArgs) -> Result<()> {
     match args.command {
         WikiCapabilitiesSubcommand::Sync(args) => {
-            run_wiki_capabilities_sync(runtime, &args.format, &args.view)
+            run_wiki_capabilities_sync(runtime, args.format, args.view)
         }
         WikiCapabilitiesSubcommand::Show(args) => {
-            run_wiki_capabilities_show(runtime, &args.format, &args.view)
+            run_wiki_capabilities_show(runtime, args.format, args.view)
         }
     }
 }
 
-fn run_wiki_capabilities_sync(runtime: &RuntimeOptions, format: &str, view: &str) -> Result<()> {
-    let output_format = normalize_output(format)?;
-    let output_view = normalize_view(view)?;
+fn run_wiki_capabilities_sync(
+    runtime: &RuntimeOptions,
+    format: OutputFormat,
+    view: WikiJsonView,
+) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let manifest = sync_wiki_capabilities_with_config(&paths, &config)?;
 
-    if output_format == "json" {
-        if output_view == "full" {
+    if format.is_json() {
+        if view.is_full() {
             println!("{}", serde_json::to_string_pretty(&manifest)?);
         } else {
             println!(
@@ -133,9 +173,11 @@ fn run_wiki_capabilities_sync(runtime: &RuntimeOptions, format: &str, view: &str
     Ok(())
 }
 
-fn run_wiki_capabilities_show(runtime: &RuntimeOptions, format: &str, view: &str) -> Result<()> {
-    let output_format = normalize_output(format)?;
-    let output_view = normalize_view(view)?;
+fn run_wiki_capabilities_show(
+    runtime: &RuntimeOptions,
+    format: OutputFormat,
+    view: WikiJsonView,
+) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let manifest = load_wiki_capabilities_with_config(&paths, &config)?.ok_or_else(|| {
         anyhow::anyhow!(
@@ -143,8 +185,8 @@ fn run_wiki_capabilities_show(runtime: &RuntimeOptions, format: &str, view: &str
         )
     })?;
 
-    if output_format == "json" {
-        if output_view == "full" {
+    if format.is_json() {
+        if view.is_full() {
             println!("{}", serde_json::to_string_pretty(&manifest)?);
         } else {
             println!(
@@ -167,23 +209,21 @@ fn run_wiki_capabilities_show(runtime: &RuntimeOptions, format: &str, view: &str
 
 fn run_wiki_profile(runtime: &RuntimeOptions, args: WikiProfileArgs) -> Result<()> {
     match args.command {
-        WikiProfileSubcommand::Sync(args) => {
-            run_wiki_profile_sync(runtime, &args.format, &args.view)
-        }
-        WikiProfileSubcommand::Show(args) => {
-            run_wiki_profile_show(runtime, &args.format, &args.view)
-        }
+        WikiProfileSubcommand::Sync(args) => run_wiki_profile_sync(runtime, args.format, args.view),
+        WikiProfileSubcommand::Show(args) => run_wiki_profile_show(runtime, args.format, args.view),
     }
 }
 
-fn run_wiki_profile_sync(runtime: &RuntimeOptions, format: &str, view: &str) -> Result<()> {
-    let output_format = normalize_output(format)?;
-    let output_view = normalize_view(view)?;
+fn run_wiki_profile_sync(
+    runtime: &RuntimeOptions,
+    format: OutputFormat,
+    view: WikiJsonView,
+) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let snapshot = sync_wiki_profile_with_config(&paths, &config)?;
 
-    if output_format == "json" {
-        if output_view == "full" {
+    if format.is_json() {
+        if view.is_full() {
             println!("{}", serde_json::to_string_pretty(&snapshot)?);
         } else {
             println!(
@@ -204,14 +244,16 @@ fn run_wiki_profile_sync(runtime: &RuntimeOptions, format: &str, view: &str) -> 
     Ok(())
 }
 
-fn run_wiki_profile_show(runtime: &RuntimeOptions, format: &str, view: &str) -> Result<()> {
-    let output_format = normalize_output(format)?;
-    let output_view = normalize_view(view)?;
+fn run_wiki_profile_show(
+    runtime: &RuntimeOptions,
+    format: OutputFormat,
+    view: WikiJsonView,
+) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let snapshot = load_wiki_profile_with_config(&paths, &config)?;
 
-    if output_format == "json" {
-        if output_view == "full" {
+    if format.is_json() {
+        if view.is_full() {
             println!("{}", serde_json::to_string_pretty(&snapshot)?);
         } else {
             println!(
@@ -234,16 +276,15 @@ fn run_wiki_profile_show(runtime: &RuntimeOptions, format: &str, view: &str) -> 
 
 fn run_wiki_rules(runtime: &RuntimeOptions, args: WikiRulesArgs) -> Result<()> {
     match args.command {
-        WikiRulesSubcommand::Show(args) => run_wiki_rules_show(runtime, &args.format),
+        WikiRulesSubcommand::Show(args) => run_wiki_rules_show(runtime, args.format),
     }
 }
 
-fn run_wiki_rules_show(runtime: &RuntimeOptions, format: &str) -> Result<()> {
-    let output_format = normalize_output(format)?;
+fn run_wiki_rules_show(runtime: &RuntimeOptions, format: OutputFormat) -> Result<()> {
     let (paths, _) = resolve_runtime_with_config(runtime)?;
     let overlay = load_or_build_remilia_profile_overlay(&paths)?;
 
-    if output_format == "json" {
+    if format.is_json() {
         println!("{}", serde_json::to_string_pretty(&overlay)?);
         return Ok(());
     }
@@ -376,14 +417,6 @@ fn print_template_catalog_summary(summary: &TemplateCatalogSummary) {
         }
     );
     println!("template_catalog.refreshed_at: {}", summary.refreshed_at);
-}
-
-fn normalize_view(value: &str) -> Result<&'static str> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "summary" => Ok("summary"),
-        "full" => Ok("full"),
-        _ => anyhow::bail!("unsupported view: {value} (expected summary|full)"),
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -725,7 +758,7 @@ fn format_flag(value: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_view, summarize_capability_manifest, summarize_profile_snapshot};
+    use super::{WikiJsonView, summarize_capability_manifest, summarize_profile_snapshot};
     use wikitool_core::profile::{
         AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, GoldenSetRules,
         InfoboxPreference, LintRules, ProfileOverlay, ProfileSourceDocument, RemiliaRules,
@@ -844,10 +877,9 @@ mod tests {
     }
 
     #[test]
-    fn normalize_view_accepts_summary_and_full() {
-        assert_eq!(normalize_view("summary").expect("summary"), "summary");
-        assert_eq!(normalize_view("full").expect("full"), "full");
-        assert!(normalize_view("other").is_err());
+    fn wiki_json_view_exposes_summary_and_full_names() {
+        assert_eq!(WikiJsonView::Summary.as_str(), "summary");
+        assert_eq!(WikiJsonView::Full.as_str(), "full");
     }
 
     #[test]
