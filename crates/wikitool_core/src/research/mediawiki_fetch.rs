@@ -6,9 +6,8 @@ use super::model::{
     RenderedFetchMode,
 };
 use super::url::encode_title;
-use super::web_fetch::{
-    ExternalClient, external_client, now_timestamp_string, truncate_to_byte_limit,
-};
+use super::web_fetch::{ExternalClient, external_client, truncate_to_byte_limit};
+use crate::support::now_iso8601_utc;
 use crate::mw::render::{RenderedPageHtml, decode_rendered_page_payload};
 use crate::support::compute_hash;
 
@@ -364,11 +363,10 @@ fn parse_mediawiki_content_page(
         Some(content) => truncate_to_byte_limit(content, options.max_bytes),
         None => return Ok(MediaWikiFetchOutcome::NotExportable),
     };
-    let timestamp = revision
+    let revision_timestamp = revision
         .get("timestamp")
         .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .unwrap_or_else(now_timestamp_string);
+        .map(ToString::to_string);
     let revision_id = revision.get("revid").and_then(Value::as_i64);
     let content_hash = compute_hash(&content);
 
@@ -376,7 +374,8 @@ fn parse_mediawiki_content_page(
         ExternalFetchResult {
             title,
             content,
-            timestamp,
+            fetched_at: now_iso8601_utc(),
+            revision_timestamp,
             extract,
             url: String::new(),
             source_wiki: String::new(),
@@ -503,7 +502,14 @@ mod tests {
 
         assert_eq!(result.title, "Main Page");
         assert_eq!(result.revision_id, Some(55));
-        assert_eq!(result.timestamp, "2026-03-17T10:00:00Z");
+        assert_eq!(
+            result.revision_timestamp.as_deref(),
+            Some("2026-03-17T10:00:00Z")
+        );
+        assert!(
+            !result.fetched_at.is_empty(),
+            "fetched_at should be populated"
+        );
         assert_eq!(result.extract.as_deref(), Some("Lead summary"));
         assert_eq!(result.content_format, "wikitext");
         assert!(!result.content_hash.is_empty());
@@ -516,7 +522,8 @@ mod tests {
         let base = ExternalFetchResult {
             title: "Main Page".to_string(),
             content: "wikitext".to_string(),
-            timestamp: "2026-03-17T10:00:00Z".to_string(),
+            fetched_at: "2026-03-17T10:00:00Z".to_string(),
+            revision_timestamp: Some("2026-03-17T10:00:00Z".to_string()),
             extract: None,
             url: "https://wiki.example.org/Main_Page".to_string(),
             source_wiki: "mediawiki".to_string(),

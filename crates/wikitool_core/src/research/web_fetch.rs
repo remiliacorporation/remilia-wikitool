@@ -8,7 +8,9 @@ use reqwest::Url;
 use reqwest::blocking::Client;
 use serde_json::Value;
 
-use crate::support::{compute_hash, env_value, env_value_u64, env_value_usize, unix_timestamp};
+use crate::support::{
+    compute_hash, env_value, env_value_u64, env_value_usize, now_iso8601_utc,
+};
 
 use super::entities::decode_html_entities;
 use super::model::{
@@ -62,6 +64,11 @@ pub struct MachineSurfaceDiscoveryOptions {
     pub max_bytes: usize,
     pub surface_limit: usize,
     pub probe_source_page: bool,
+    /// Hint that the caller already knows the source page is blocked (for example,
+    /// discovery is being run from a fetch-error handler that saw the 403 upstream).
+    /// When true, access-route synthesis emits the blocked-source fallbacks even if
+    /// the discovery itself did not probe the source page.
+    pub source_known_blocked: bool,
 }
 
 impl Default for MachineSurfaceDiscoveryOptions {
@@ -70,6 +77,7 @@ impl Default for MachineSurfaceDiscoveryOptions {
             max_bytes: 1_000_000,
             surface_limit: 20,
             probe_source_page: true,
+            source_known_blocked: false,
         }
     }
 }
@@ -552,7 +560,7 @@ pub(crate) fn discover_machine_surfaces(
         }
     }
 
-    report.access_routes = build_access_routes(&report);
+    report.access_routes = build_access_routes(&report, options.source_known_blocked);
     Ok(report)
 }
 
@@ -883,14 +891,36 @@ fn extract_machine_surfaces_from_html(html: &str, final_url: &str) -> Vec<Extern
     surfaces
 }
 
-fn build_access_routes(report: &ExternalMachineSurfaceReport) -> Vec<ExternalAccessRoute> {
+fn build_access_routes(
+    report: &ExternalMachineSurfaceReport,
+    source_known_blocked: bool,
+) -> Vec<ExternalAccessRoute> {
+    // The source-page attempt is the only signal from the discovery report itself
+    // that determines whether the *source* is blocked. Ancillary blocks (an incidental
+    // sitemap 404 on a readable site) should not recommend "blocked source" routes.
+    // When a caller already knows the source is blocked (fetch-error path), the
+    // `source_known_blocked` flag supplies that signal directly.
+    let source_page_attempt = report
+        .attempts
+        .iter()
+        .rev()
+        .find(|attempt| attempt.mode == "source_page_static");
+    let source_page_blocked = source_known_blocked
+        || source_page_attempt.is_some_and(|attempt| {
+            matches!(
+                attempt.outcome.as_str(),
+                "access_challenge" | "payment_required" | "http_error" | "request_error"
+            )
+        });
+    let any_attempt_blocked = source_known_blocked
+        || report.attempts.iter().any(|attempt| {
+            matches!(
+                attempt.outcome.as_str(),
+                "access_challenge" | "payment_required"
+            )
+        });
+
     let mut routes = Vec::new();
-    let blocked = report.attempts.iter().any(|attempt| {
-        matches!(
-            attempt.outcome.as_str(),
-            "access_challenge" | "payment_required" | "http_error"
-        )
-    });
     if !report.surfaces.is_empty() {
         routes.push(ExternalAccessRoute {
             kind: "machine_surfaces".to_string(),
@@ -905,11 +935,10 @@ fn build_access_routes(report: &ExternalMachineSurfaceReport) -> Vec<ExternalAcc
             description: "Robots.txt declares content-use signals; agents should preserve these as source-access context rather than treating them as article evidence.".to_string(),
         });
     }
-    if report
-        .attempts
-        .iter()
-        .any(|attempt| attempt.outcome == "access_challenge")
-    {
+    if any_attempt_blocked {
+        // Challenge/payment hints apply whenever the server sends them, even for
+        // ancillary surfaces, because they signal the owner's posture on automated
+        // access as a whole.
         routes.push(ExternalAccessRoute {
             kind: "site_owner_access".to_string(),
             status: "requires_source_owner".to_string(),
@@ -921,7 +950,9 @@ fn build_access_routes(report: &ExternalMachineSurfaceReport) -> Vec<ExternalAcc
             description: "Cloudflare Verified Bots are for documented crawler operators with owner consent, robots etiquette, public behavior docs, and stable IP validation; this does not make local ad-hoc fetches eligible.".to_string(),
         });
     }
-    if blocked {
+    if source_page_blocked {
+        // The "blocked source" fallbacks are only recommended when the source page
+        // itself could not be fetched — not when only ancillary surfaces fail.
         routes.push(ExternalAccessRoute {
             kind: "user_supplied_source_artifact".to_string(),
             status: "manual_provenance_required".to_string(),
@@ -966,7 +997,8 @@ fn build_html_fetch_result(
             ExternalFetchResult {
                 title,
                 content: html.to_string(),
-                timestamp: now_timestamp_string(),
+                fetched_at: now_iso8601_utc(),
+                revision_timestamp: None,
                 extract,
                 url: final_url.to_string(),
                 source_wiki: "web".to_string(),
@@ -991,7 +1023,8 @@ fn build_html_fetch_result(
                 return ExternalFetchResult {
                     title,
                     content: note.clone(),
-                    timestamp: now_timestamp_string(),
+                    fetched_at: now_iso8601_utc(),
+                    revision_timestamp: None,
                     extract: Some(note),
                     url: final_url.to_string(),
                     source_wiki: "web".to_string(),
@@ -1028,7 +1061,8 @@ fn build_html_fetch_result(
                 return ExternalFetchResult {
                     title,
                     content,
-                    timestamp: now_timestamp_string(),
+                    fetched_at: now_iso8601_utc(),
+                    revision_timestamp: None,
                     extract,
                     url: final_url.to_string(),
                     source_wiki: "web".to_string(),
@@ -1058,7 +1092,8 @@ fn build_html_fetch_result(
             ExternalFetchResult {
                 title,
                 content,
-                timestamp: now_timestamp_string(),
+                fetched_at: now_iso8601_utc(),
+                revision_timestamp: None,
                 extract,
                 url: final_url.to_string(),
                 source_wiki: "web".to_string(),
@@ -1137,7 +1172,8 @@ fn build_text_fetch_result(
     ExternalFetchResult {
         title: fallback_title.to_string(),
         content: content.clone(),
-        timestamp: now_timestamp_string(),
+        fetched_at: now_iso8601_utc(),
+        revision_timestamp: None,
         extract,
         url: final_url.to_string(),
         source_wiki: "web".to_string(),
@@ -1339,7 +1375,32 @@ fn normalize_extracted_text(value: &str, max_bytes: usize) -> String {
             lines.push(collapsed);
         }
     }
-    truncate_to_byte_limit(&lines.join("\n"), max_bytes)
+    let merged = merge_isolated_bullet_markers(&lines);
+    truncate_to_byte_limit(&merged.join("\n"), max_bytes)
+}
+
+/// Drop isolated single-character list markers (`-`, `*`, `•`) emitted as their own
+/// line by HTML-to-text extractors, joining them with the following text line. Also
+/// strips leading image/credit attribution lines (`© …`) that sit above their related
+/// prose but carry no reader-facing content on their own.
+fn merge_isolated_bullet_markers(lines: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    let mut index = 0usize;
+    while index < lines.len() {
+        let line = &lines[index];
+        let trimmed = line.trim();
+        if matches!(trimmed, "-" | "*" | "\u{2022}")
+            && let Some(next) = lines.get(index + 1)
+            && !next.trim().is_empty()
+        {
+            out.push(format!("- {}", next.trim()));
+            index += 2;
+            continue;
+        }
+        index += 1;
+        out.push(line.clone());
+    }
+    out
 }
 
 fn collapse_inline_whitespace(value: &str) -> String {
@@ -1699,11 +1760,6 @@ pub(crate) fn truncate_to_byte_limit(value: &str, max_bytes: usize) -> String {
     value[..end].to_string()
 }
 
-pub(crate) fn now_timestamp_string() -> String {
-    unix_timestamp()
-        .map(|value| value.to_string())
-        .unwrap_or_else(|_| "0".to_string())
-}
 
 fn find_tag_start(html: &str, tag_name: &str, start: usize) -> Option<usize> {
     let mut index = start;
@@ -1905,12 +1961,14 @@ fn decode_html(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        HtmlMetadata, TextHttpResponse, access_challenge_message, build_html_fetch_result,
-        build_metadata_fallback_content, collapse_inline_whitespace, detect_access_challenge,
-        detect_access_challenge_response, detect_app_shell_html, extract_client_redirect_url,
-        extract_html_metadata, extract_machine_surfaces_from_html, extract_readable_text,
-        extract_xml_loc_values, parse_robots_machine_hints, sitemap_url_matches_source,
+        HtmlMetadata, TextHttpResponse, access_challenge_message, build_access_routes,
+        build_html_fetch_result, build_metadata_fallback_content, collapse_inline_whitespace,
+        detect_access_challenge, detect_access_challenge_response, detect_app_shell_html,
+        extract_client_redirect_url, extract_html_metadata, extract_machine_surfaces_from_html,
+        extract_readable_text, extract_xml_loc_values, normalize_extracted_text,
+        parse_robots_machine_hints, sitemap_url_matches_source,
     };
+    use crate::research::model::{ExternalFetchAttempt, ExternalMachineSurfaceReport};
     use crate::research::model::{
         ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExtractionQuality,
         FetchMode,
@@ -1976,6 +2034,100 @@ mod tests {
         assert!(text.contains("- Beta"));
         assert!(!text.contains("Site navigation"));
         assert!(!text.contains("Footer links"));
+    }
+
+    #[test]
+    fn access_routes_suppress_blocked_fallbacks_when_only_ancillary_attempts_failed() {
+        let mut report = ExternalMachineSurfaceReport {
+            source_url: "https://example.com/article".to_string(),
+            origin_url: "https://example.com/".to_string(),
+            content_signals: Vec::new(),
+            surfaces: Vec::new(),
+            access_routes: Vec::new(),
+            attempts: vec![
+                ExternalFetchAttempt {
+                    mode: "robots_txt".to_string(),
+                    url: "https://example.com/robots.txt".to_string(),
+                    outcome: "success".to_string(),
+                    http_status: Some(200),
+                    content_type: Some("text/plain".to_string()),
+                    message: None,
+                },
+                ExternalFetchAttempt {
+                    mode: "sitemap".to_string(),
+                    url: "https://example.com/sitemap.xml".to_string(),
+                    outcome: "http_error".to_string(),
+                    http_status: Some(404),
+                    content_type: Some("text/html".to_string()),
+                    message: Some("HTTP 404".to_string()),
+                },
+                ExternalFetchAttempt {
+                    mode: "source_page_static".to_string(),
+                    url: "https://example.com/article".to_string(),
+                    outcome: "success".to_string(),
+                    http_status: Some(200),
+                    content_type: Some("text/html".to_string()),
+                    message: None,
+                },
+            ],
+        };
+        report.access_routes = build_access_routes(&report, false);
+        let kinds: Vec<&str> = report
+            .access_routes
+            .iter()
+            .map(|route| route.kind.as_str())
+            .collect();
+        assert!(
+            !kinds.contains(&"user_supplied_source_artifact"),
+            "readable source should not recommend manual provenance"
+        );
+        assert!(
+            !kinds.contains(&"alternate_accessible_source"),
+            "readable source should not recommend alternate accessible source"
+        );
+        assert!(
+            !kinds.contains(&"site_owner_access"),
+            "ancillary HTTP error should not trigger owner-access route"
+        );
+    }
+
+    #[test]
+    fn access_routes_include_blocked_fallbacks_when_source_known_blocked() {
+        let mut report = ExternalMachineSurfaceReport {
+            source_url: "https://example.com/article".to_string(),
+            origin_url: "https://example.com/".to_string(),
+            content_signals: Vec::new(),
+            surfaces: Vec::new(),
+            access_routes: Vec::new(),
+            attempts: vec![ExternalFetchAttempt {
+                mode: "robots_txt".to_string(),
+                url: "https://example.com/robots.txt".to_string(),
+                outcome: "success".to_string(),
+                http_status: Some(200),
+                content_type: Some("text/plain".to_string()),
+                message: None,
+            }],
+        };
+        report.access_routes = build_access_routes(&report, true);
+        let kinds: Vec<&str> = report
+            .access_routes
+            .iter()
+            .map(|route| route.kind.as_str())
+            .collect();
+        assert!(kinds.contains(&"user_supplied_source_artifact"));
+        assert!(kinds.contains(&"alternate_accessible_source"));
+        assert!(kinds.contains(&"site_owner_access"));
+    }
+
+    #[test]
+    fn normalize_extracted_text_merges_isolated_bullet_markers() {
+        let input = "Status\n-\nNear threatened\n-\nVulnerable\n\u{2022}\nEndangered";
+        let cleaned = normalize_extracted_text(input, 1_000);
+        assert!(cleaned.contains("- Near threatened"));
+        assert!(cleaned.contains("- Vulnerable"));
+        assert!(cleaned.contains("- Endangered"));
+        assert!(!cleaned.contains("\n-\n"));
+        assert!(!cleaned.contains("\n\u{2022}\n"));
     }
 
     #[test]

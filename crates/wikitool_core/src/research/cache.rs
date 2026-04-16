@@ -255,7 +255,8 @@ mod tests {
         ExternalFetchResult {
             title: "Example".to_string(),
             content: content.to_string(),
-            timestamp: "123".to_string(),
+            fetched_at: "2026-04-16T00:00:00Z".to_string(),
+            revision_timestamp: None,
             extract: Some("summary".to_string()),
             url: "https://example.com/article".to_string(),
             source_wiki: "web".to_string(),
@@ -279,7 +280,8 @@ mod tests {
         ExternalFetchResult {
             title: "Main Page".to_string(),
             content: content.to_string(),
-            timestamp: "456".to_string(),
+            fetched_at: "2026-04-16T00:00:00Z".to_string(),
+            revision_timestamp: Some("2026-04-15T12:00:00Z".to_string()),
             extract: Some("main page".to_string()),
             url: "https://wiki.remilia.org/wiki/Main_Page".to_string(),
             source_wiki: "mediawiki".to_string(),

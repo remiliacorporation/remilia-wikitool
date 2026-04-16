@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 use super::entities::decode_html_entities;
 use super::model::{DEFAULT_EXPORTS_DIR, ExportFormat};
+use super::template_render::{
+    ParsedTemplate, TemplateContext, TemplateRendering, render_template,
+};
 
 pub fn wikitext_to_markdown(content: &str, _code_language: Option<&str>) -> String {
     let mut renderer = WikitextMarkdownRenderer::default();
@@ -113,72 +116,131 @@ struct WikitextMarkdownRenderer {
     categories: Vec<String>,
     media: Vec<String>,
     table_buffer: Vec<String>,
-    metadata_template_depth: Option<isize>,
     in_table: bool,
+}
+
+enum Segment<'a> {
+    Prose(&'a str),
+    Template { inner: &'a str },
 }
 
 impl WikitextMarkdownRenderer {
     fn render(&mut self, content: &str) -> String {
-        let mut lines = Vec::new();
-        for line in strip_html_comments(content).lines() {
-            let trimmed = line.trim();
-            if self.skip_metadata_template_line(trimmed) {
-                continue;
-            }
-
-            if self.in_table {
-                self.table_buffer.push(line.to_string());
-                if line.trim_start().starts_with("|}") {
-                    lines.push(self.flush_table());
-                }
-                continue;
-            }
-
-            if trimmed.starts_with("{|") {
-                self.in_table = true;
-                self.table_buffer.clear();
-                self.table_buffer.push(line.to_string());
-                continue;
-            }
-            if let Some(category) = extract_category_link(trimmed) {
-                self.categories.push(category);
-                continue;
-            }
-            if let Some(media) = extract_media_link(trimmed) {
-                self.media.push(media);
-                continue;
-            }
-
-            let converted = convert_heading(line).unwrap_or_else(|| {
-                let line = convert_list_prefix(line);
-                let line = self.convert_refs(&line);
-                convert_inline_wikitext(&line)
-            });
-            lines.push(converted);
-        }
-        if self.in_table {
-            lines.push(self.flush_table());
-        }
+        let cleaned = strip_html_comments(content);
+        let body = self.render_fragment(&cleaned);
+        let mut lines: Vec<String> = body.lines().map(str::to_string).collect();
         append_agent_sections(&mut lines, &self.media, &self.categories, &self.references);
         normalize_markdown(&lines.join("\n"))
     }
 
-    fn skip_metadata_template_line(&mut self, trimmed: &str) -> bool {
-        if let Some(depth) = self.metadata_template_depth {
-            let next_depth = depth + template_brace_pair_balance(trimmed);
-            self.metadata_template_depth = (next_depth > 0).then_some(next_depth);
-            return true;
-        }
+    /// Segment-aware render of an arbitrary wikitext fragment. Used both for the top
+    /// level and recursively for template parameter values. State (references,
+    /// categories, media, table buffer) is shared across recursive calls so that a
+    /// `<ref>` nested inside an infobox parameter is still lifted into the document's
+    /// reference section.
+    ///
+    /// Logical wikitext lines can span multiple segments (an inline template inside a
+    /// paragraph is one example). The renderer accumulates the current in-progress
+    /// line across segments and only finalizes it when a newline is encountered in a
+    /// prose segment or when a block-level template forces a flush.
+    fn render_fragment(&mut self, content: &str) -> String {
+        let segments = segment_by_top_level_templates(content);
+        let mut output_lines: Vec<String> = Vec::new();
+        let mut current_line = String::new();
 
-        if !is_metadata_template_start(trimmed) {
-            return false;
+        for index in 0..segments.len() {
+            match segments[index] {
+                Segment::Prose(text) => {
+                    let mut parts = text.split('\n');
+                    if let Some(first) = parts.next() {
+                        current_line.push_str(first);
+                    }
+                    for part in parts {
+                        let completed = std::mem::take(&mut current_line);
+                        self.finalize_prose_line(&completed, &mut output_lines);
+                        current_line.push_str(part);
+                    }
+                }
+                Segment::Template { inner } => {
+                    let context = classify_template_context(&segments, index);
+                    let rendering = self.render_template_invocation(inner, context);
+                    match rendering {
+                        TemplateRendering::Drop => {}
+                        TemplateRendering::Inline(text) => current_line.push_str(&text),
+                        TemplateRendering::Block(body) => {
+                            self.flush_pending_line(&mut current_line, &mut output_lines);
+                            push_blank_separator(&mut output_lines);
+                            for line in body.lines() {
+                                output_lines.push(line.to_string());
+                            }
+                            output_lines.push(String::new());
+                        }
+                        TemplateRendering::Fenced => {
+                            self.flush_pending_line(&mut current_line, &mut output_lines);
+                            push_blank_separator(&mut output_lines);
+                            output_lines.push("```wikitext".to_string());
+                            output_lines.push(format!("{{{{{inner}}}}}"));
+                            output_lines.push("```".to_string());
+                            output_lines.push(String::new());
+                        }
+                    }
+                }
+            }
         }
+        self.flush_pending_line(&mut current_line, &mut output_lines);
+        output_lines.join("\n")
+    }
 
-        let depth = template_brace_pair_balance(trimmed);
-        if depth > 0 {
-            self.metadata_template_depth = Some(depth);
+    fn flush_pending_line(&mut self, current_line: &mut String, output: &mut Vec<String>) {
+        if current_line.is_empty() {
+            return;
         }
-        true
+        let completed = std::mem::take(current_line);
+        self.finalize_prose_line(&completed, output);
+    }
+
+    fn finalize_prose_line(&mut self, line: &str, output: &mut Vec<String>) {
+        if self.in_table {
+            self.table_buffer.push(line.to_string());
+            if line.trim_start().starts_with("|}") {
+                let table = self.flush_table();
+                output.push(table);
+            }
+            return;
+        }
+        if line.trim_start().starts_with("{|") {
+            self.in_table = true;
+            self.table_buffer.clear();
+            self.table_buffer.push(line.to_string());
+            return;
+        }
+        let trimmed = line.trim();
+        if let Some(category) = extract_category_link(trimmed) {
+            self.categories.push(category);
+            return;
+        }
+        if let Some(media) = extract_media_link(trimmed) {
+            self.media.push(media);
+            return;
+        }
+        let converted = convert_heading(line).unwrap_or_else(|| {
+            let line_with_list = convert_list_prefix(line);
+            let line_with_refs = self.convert_refs(&line_with_list);
+            convert_inline_wikitext(&line_with_refs)
+        });
+        output.push(converted);
+    }
+
+    fn render_template_invocation(
+        &mut self,
+        inner: &str,
+        context: TemplateContext,
+    ) -> TemplateRendering {
+        let Some(template) = ParsedTemplate::parse(inner) else {
+            return TemplateRendering::Fenced;
+        };
+        let mut recurse = |fragment: &str| self.render_fragment(fragment);
+        render_template(&template, context, &mut recurse)
     }
 
     fn convert_refs(&mut self, line: &str) -> String {
@@ -230,6 +292,150 @@ impl WikitextMarkdownRenderer {
         let table = self.table_buffer.join("\n");
         self.table_buffer.clear();
         format!("```wikitext\n{table}\n```")
+    }
+}
+
+/// Walk `content` char-by-char and split it into prose runs and top-level template
+/// invocations. Respects nested `{{ ... }}` pairs and preserves `<ref>...</ref>` and
+/// `<nowiki>...</nowiki>` blocks as opaque spans inside their surrounding prose —
+/// splitting templates out of a ref body would break the single-line ref reducer in
+/// `convert_refs`, and a cite template inside a ref is meant to stay verbatim in the
+/// footnote anyway.
+fn segment_by_top_level_templates(content: &str) -> Vec<Segment<'_>> {
+    let bytes = content.as_bytes();
+    let mut segments = Vec::new();
+    let mut cursor = 0usize;
+    let mut prose_start = 0usize;
+
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] == b'<'
+            && let Some(end) = skip_opaque_html_block(content, cursor)
+        {
+            cursor = end;
+            continue;
+        }
+        if bytes[cursor] == b'{' && bytes[cursor + 1] == b'{' {
+            if cursor > prose_start {
+                segments.push(Segment::Prose(&content[prose_start..cursor]));
+            }
+            let inner_start = cursor + 2;
+            let mut depth = 1usize;
+            let mut scan = inner_start;
+            while scan + 1 < bytes.len() && depth > 0 {
+                if bytes[scan] == b'{' && bytes[scan + 1] == b'{' {
+                    depth += 1;
+                    scan += 2;
+                    continue;
+                }
+                if bytes[scan] == b'}' && bytes[scan + 1] == b'}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                    scan += 2;
+                    continue;
+                }
+                scan += 1;
+            }
+            if depth == 0 && scan + 1 < bytes.len() {
+                segments.push(Segment::Template {
+                    inner: &content[inner_start..scan],
+                });
+                cursor = scan + 2;
+                prose_start = cursor;
+                continue;
+            }
+            // Unterminated template open: treat the rest as prose and exit.
+            segments.push(Segment::Prose(&content[cursor..]));
+            return segments;
+        }
+        cursor += 1;
+    }
+    if prose_start < bytes.len() {
+        segments.push(Segment::Prose(&content[prose_start..]));
+    }
+    segments
+}
+
+/// If `cursor` points at a `<ref...>` or `<nowiki>` opening tag, return the byte
+/// offset immediately after the matching close; otherwise return `None`. Self-closing
+/// tags (`<ref name="x"/>`) return the offset just past the `/>`.
+fn skip_opaque_html_block(content: &str, cursor: usize) -> Option<usize> {
+    const OPAQUE_TAGS: &[&str] = &["ref", "nowiki"];
+    let bytes = content.as_bytes();
+    if bytes.get(cursor).copied() != Some(b'<') {
+        return None;
+    }
+    for tag in OPAQUE_TAGS {
+        let tag_bytes = tag.as_bytes();
+        let name_end = cursor + 1 + tag_bytes.len();
+        if name_end > bytes.len() {
+            continue;
+        }
+        if !bytes[cursor + 1..name_end].eq_ignore_ascii_case(tag_bytes) {
+            continue;
+        }
+        let boundary = bytes.get(name_end).copied();
+        if !matches!(
+            boundary,
+            Some(b'>') | Some(b'/') | Some(b' ') | Some(b'\t') | Some(b'\r') | Some(b'\n')
+        ) {
+            continue;
+        }
+        let open_close = cursor + content[cursor..].find('>')?;
+        let open_tag = &content[cursor..=open_close];
+        if open_tag.trim_end_matches('>').trim_end().ends_with('/') {
+            return Some(open_close + 1);
+        }
+        let close_needle = format!("</{tag}");
+        let search_from = open_close + 1;
+        let close_offset = index_of_ignore_case(content, &close_needle, search_from)?;
+        let close_end = content[close_offset..].find('>')?;
+        return Some(close_offset + close_end + 1);
+    }
+    None
+}
+
+/// A template is rendered in block context when its opening occurs on a line of its
+/// own (preceded only by whitespace on that line) and is followed by a newline.
+fn classify_template_context(segments: &[Segment<'_>], index: usize) -> TemplateContext {
+    let prev_ok = if index == 0 {
+        true
+    } else if let Segment::Prose(text) = segments[index - 1] {
+        line_tail_is_blank(text)
+    } else {
+        false
+    };
+    let next_ok = if index + 1 >= segments.len() {
+        true
+    } else if let Segment::Prose(text) = segments[index + 1] {
+        line_head_is_blank_or_newline(text)
+    } else {
+        false
+    };
+    if prev_ok && next_ok {
+        TemplateContext::Block
+    } else {
+        TemplateContext::Inline
+    }
+}
+
+fn line_tail_is_blank(text: &str) -> bool {
+    if text.is_empty() {
+        return true;
+    }
+    let after_newline = text.rfind('\n').map(|position| position + 1).unwrap_or(0);
+    text[after_newline..].chars().all(char::is_whitespace)
+}
+
+fn line_head_is_blank_or_newline(text: &str) -> bool {
+    let head_end = text.find('\n').unwrap_or(text.len());
+    text[..head_end].chars().all(char::is_whitespace)
+}
+
+fn push_blank_separator(output: &mut Vec<String>) {
+    if !matches!(output.last(), Some(value) if value.is_empty()) {
+        output.push(String::new());
     }
 }
 
@@ -495,36 +701,6 @@ fn extract_media_link(trimmed: &str) -> Option<String> {
 
 fn extract_wrapped_link(trimmed: &str) -> Option<&str> {
     trimmed.strip_prefix("[[")?.strip_suffix("]]")
-}
-
-fn is_metadata_template_start(trimmed: &str) -> bool {
-    let normalized = trimmed.to_ascii_lowercase();
-    normalized.starts_with("{{short description")
-        || normalized.starts_with("{{use dmy dates")
-        || normalized.starts_with("{{use mdy dates")
-        || normalized.starts_with("{{defaultsort:")
-        || normalized.starts_with("{{displaytitle:")
-        || normalized.starts_with("{{#seo:")
-}
-
-fn template_brace_pair_balance(line: &str) -> isize {
-    let chars = line.chars().collect::<Vec<_>>();
-    let mut balance = 0isize;
-    let mut index = 0usize;
-    while index + 1 < chars.len() {
-        if chars[index] == '{' && chars[index + 1] == '{' {
-            balance += 1;
-            index += 2;
-            continue;
-        }
-        if chars[index] == '}' && chars[index + 1] == '}' {
-            balance -= 1;
-            index += 2;
-            continue;
-        }
-        index += 1;
-    }
-    balance
 }
 
 fn parse_ref_name(open_tag: &str) -> Option<String> {
@@ -877,5 +1053,87 @@ mod tests {
         assert!(markdown.contains("Title"));
         assert!(markdown.contains("Readable & useful 'text'."));
         assert!(!markdown.contains("<article>"));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_flattens_infobox_and_inline_templates() {
+        let markdown = wikitext_to_markdown(
+            r#"{{Short description|Fastest land mammal}}
+{{Use British English|date=May 2020}}
+{{Good article}}
+{{Speciesbox
+| name = Cheetah
+| status = VU
+| authority = ([[Johann Christian Daniel von Schreber|Schreber]], 1775)
+}}
+
+The '''cheetah''' reaches {{cvt|93|km/h|mph}} and is native to {{lang|en|Africa}} and central [[Iran]]. In {{small|(older texts)}} the species was called a "hunting leopard".
+"#,
+            None,
+        );
+
+        // Metadata banners dropped
+        assert!(!markdown.contains("Short description"));
+        assert!(!markdown.contains("Use British English"));
+        assert!(!markdown.contains("Good article"));
+
+        // Infobox rendered as a definition list block
+        assert!(markdown.contains("**Speciesbox**"));
+        assert!(markdown.contains("- **name:** Cheetah"));
+        assert!(markdown.contains("- **status:** VU"));
+        assert!(
+            markdown.contains(
+                "- **authority:** ([Schreber](wiki://Johann Christian Daniel von Schreber), 1775)"
+            )
+        );
+
+        // Inline templates flattened without the template syntax leaking through
+        assert!(markdown.contains("reaches 93 km/h"));
+        assert!(markdown.contains("native to Africa"));
+        assert!(markdown.contains("In (older texts) the species"));
+        assert!(!markdown.contains("{{cvt"));
+        assert!(!markdown.contains("{{lang"));
+        assert!(!markdown.contains("{{small"));
+
+        // Prose after the infobox is preserved intact and wikilinks convert normally
+        assert!(markdown.contains("[Iran](wiki://Iran)"));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_preserves_unknown_templates_as_fenced_wikitext() {
+        let markdown = wikitext_to_markdown(
+            "Head.\n\n{{UnknownTemplate\n|kind = test\n|value = 42\n}}\n\nTail.\n",
+            None,
+        );
+        assert!(markdown.contains("Head."));
+        assert!(markdown.contains("```wikitext"));
+        assert!(markdown.contains("{{UnknownTemplate"));
+        assert!(markdown.contains("Tail."));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_keeps_prose_after_inline_template_on_same_logical_line() {
+        let markdown = wikitext_to_markdown(
+            "The cheetah runs at {{cvt|93|km/h|mph|}}; it has powerful hindlimbs.",
+            None,
+        );
+        assert!(
+            markdown.contains("runs at 93 km/h; it has powerful hindlimbs."),
+            "unexpected render: {markdown}"
+        );
+        // Must not treat the post-template `; ` as a definition-list term
+        assert!(!markdown.contains("- **it has"));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_rejects_cite_through_refs_verbatim() {
+        let markdown = wikitext_to_markdown(
+            "Claim A.<ref name=a>{{cite web|url=https://example.com/a|title=A}}</ref> Claim B.<ref name=b>{{cite news|title=B|url=https://example.com/b}}</ref>\n",
+            None,
+        );
+        assert!(markdown.contains("Claim A.[^a]"));
+        assert!(markdown.contains("Claim B.[^b]"));
+        assert!(markdown.contains("[^a]: {{cite web|url=https://example.com/a|title=A}}"));
+        assert!(markdown.contains("[^b]: {{cite news|title=B|url=https://example.com/b}}"));
     }
 }

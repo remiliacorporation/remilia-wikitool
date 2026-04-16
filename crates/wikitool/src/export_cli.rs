@@ -331,7 +331,7 @@ fn render_export_page(
         &page.title,
         &page.url,
         domain,
-        &page.timestamp,
+        &page.fetched_at,
         &export_frontmatter_fields(page, export_format),
     );
     format!("{frontmatter}\n{converted}")
@@ -350,6 +350,9 @@ fn export_frontmatter_fields(
         ("content_format".to_string(), page.content_format.clone()),
         ("content_hash".to_string(), page.content_hash.clone()),
     ];
+    if let Some(value) = page.revision_timestamp.as_deref() {
+        fields.push(("revision_timestamp".to_string(), value.to_string()));
+    }
     if let Some(value) = page.revision_id {
         fields.push(("revision_id".to_string(), value.to_string()));
     }
@@ -508,10 +511,7 @@ fn write_or_print_export(content: &str, output_path: Option<&Path>) -> Result<()
 }
 
 fn now_timestamp_string() -> String {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|value| value.as_secs().to_string())
-        .unwrap_or_else(|_| "0".to_string())
+    wikitool_core::support::now_iso8601_utc()
 }
 
 fn format_rendered_fetch_mode(mode: wikitool_core::external::RenderedFetchMode) -> &'static str {
@@ -545,7 +545,8 @@ mod tests {
         ExternalFetchResult {
             title: title.to_string(),
             content: String::new(),
-            timestamp: String::new(),
+            fetched_at: String::new(),
+            revision_timestamp: None,
             extract: None,
             url: String::new(),
             source_wiki: String::new(),

@@ -165,7 +165,14 @@ pub struct ExternalMachineSurfaceReport {
 pub struct ExternalFetchResult {
     pub title: String,
     pub content: String,
-    pub timestamp: String,
+    /// Wall-clock time at which wikitool fetched this document, in ISO-8601 UTC.
+    /// Populated for every fetch outcome regardless of source.
+    pub fetched_at: String,
+    /// Source-side timestamp: for MediaWiki, the revision timestamp (ISO-8601 from the
+    /// API); for arbitrary web pages, absent. Distinguishing this from `fetched_at`
+    /// lets agents reason about source freshness separately from our retrieval time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision_timestamp: Option<String>,
     pub extract: Option<String>,
     pub url: String,
     pub source_wiki: String,

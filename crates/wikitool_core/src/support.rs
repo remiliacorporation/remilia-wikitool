@@ -84,6 +84,45 @@ pub fn unix_timestamp() -> Result<u64> {
         .map(|duration| duration.as_secs())
 }
 
+/// Format a UNIX epoch seconds value as RFC 3339 / ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`).
+/// Self-contained so the crate does not need a date/time dependency for the one format
+/// we emit publicly. Uses Howard Hinnant's civil-from-days algorithm.
+pub fn format_iso8601_utc(unix_seconds: u64) -> String {
+    const SECONDS_PER_DAY: u64 = 86_400;
+    let days = (unix_seconds / SECONDS_PER_DAY) as i64;
+    let time_of_day = unix_seconds % SECONDS_PER_DAY;
+    let hour = time_of_day / 3_600;
+    let minute = (time_of_day % 3_600) / 60;
+    let second = time_of_day % 60;
+
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year_base = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = year_base + if month <= 2 { 1 } else { 0 };
+
+    format!(
+        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z",
+        year = year,
+        month = month,
+        day = day,
+        hour = hour,
+        minute = minute,
+        second = second,
+    )
+}
+
+/// Current wall clock in ISO-8601 UTC, or a deterministic epoch string if the clock
+/// is unreadable (preserves the previous never-panics contract of `now_timestamp_string`).
+pub fn now_iso8601_utc() -> String {
+    format_iso8601_utc(unix_timestamp().unwrap_or(0))
+}
+
 pub fn env_value(key: &str, default: &str) -> String {
     env::var(key)
         .ok()
@@ -110,11 +149,33 @@ pub fn env_value_usize(key: &str, default: usize) -> usize {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{compute_hash, normalize_path, normalize_pathbuf, parse_redirect};
+    use super::{
+        compute_hash, format_iso8601_utc, normalize_path, normalize_pathbuf, parse_redirect,
+    };
 
     #[test]
     fn short_hash_is_stable() {
         assert_eq!(compute_hash("alpha"), "8ed3f6ad685b959e");
+    }
+
+    #[test]
+    fn formats_epoch_zero_as_iso8601() {
+        assert_eq!(format_iso8601_utc(0), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn formats_known_checkpoint() {
+        assert_eq!(format_iso8601_utc(1_776_211_200), "2026-04-15T00:00:00Z");
+    }
+
+    #[test]
+    fn formats_leap_day_2024() {
+        assert_eq!(format_iso8601_utc(1_709_210_096), "2024-02-29T12:34:56Z");
+    }
+
+    #[test]
+    fn formats_end_of_year_non_leap() {
+        assert_eq!(format_iso8601_utc(1_767_225_599), "2025-12-31T23:59:59Z");
     }
 
     #[test]

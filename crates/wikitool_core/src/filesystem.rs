@@ -443,10 +443,11 @@ pub fn validate_scoped_path(paths: &ResolvedPaths, candidate: &Path) -> Result<(
     }
 
     bail!(
-        "path escapes scoped runtime directories: {}\nallowed roots:\n  - {}\n  - {}\n  - {}",
+        "path escapes scoped runtime directories: {}\nallowed roots:\n  - {}\n  - {}\n  - {}\n\nDrafts authored off-wiki (for example when composing against `wikitool knowledge article-start`) belong under the state directory — `{}/drafts/` is the conventional scratch location.",
         display_path(&normalized),
         display_path(&allowed[0]),
         display_path(&allowed[1]),
+        display_path(&allowed[2]),
         display_path(&allowed[2])
     )
 }

@@ -228,6 +228,7 @@ fn run_research_discover(runtime: &RuntimeOptions, args: ResearchDiscoverArgs) -
             max_bytes: 1_000_000,
             surface_limit: args.limit,
             probe_source_page: true,
+            source_known_blocked: false,
         },
     )?;
 
@@ -327,7 +328,7 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
 
     if args.output.is_json() {
         let output = ResearchFetchOutput {
-            schema_version: "research_document_v1".to_string(),
+            schema_version: "research_document_v2".to_string(),
             status: "ok",
             cache_status: Some(cache_status),
             cache_path,
@@ -406,6 +407,7 @@ fn handle_research_fetch_error(
                     max_bytes: 1_000_000,
                     surface_limit: args.discover_limit,
                     probe_source_page: false,
+                    source_known_blocked: true,
                 },
             ) {
                 Ok(report) => error.discovery = Some(report),
@@ -413,7 +415,7 @@ fn handle_research_fetch_error(
             }
         }
         let output = ResearchFetchOutput {
-            schema_version: "research_document_v1".to_string(),
+            schema_version: "research_document_v2".to_string(),
             status: "error",
             cache_status: None,
             cache_path: None,
@@ -622,7 +624,8 @@ mod tests {
         ExternalFetchResult {
             title: "Source".to_string(),
             content: content.to_string(),
-            timestamp: "2026-04-15T00:00:00Z".to_string(),
+            fetched_at: "2026-04-15T00:00:00Z".to_string(),
+            revision_timestamp: None,
             extract: Some("Extract".to_string()),
             url: "https://example.org/source".to_string(),
             source_wiki: "example".to_string(),

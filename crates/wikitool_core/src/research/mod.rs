@@ -3,6 +3,7 @@ mod entities;
 pub mod export;
 pub mod mediawiki_fetch;
 pub mod model;
+mod template_render;
 pub mod url;
 pub mod web_fetch;
 
