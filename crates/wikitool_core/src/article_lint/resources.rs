@@ -1,10 +1,12 @@
+use std::collections::BTreeSet;
+
 use anyhow::{Result, bail};
 use rusqlite::Connection;
 
 use crate::content_store::parsing::open_indexed_connection;
 use crate::profile::{
     ProfileOverlay, TemplateCatalog, WikiCapabilityManifest, build_template_catalog_with_overlay,
-    load_latest_wiki_capabilities, load_or_build_remilia_profile_overlay,
+    load_latest_wiki_capabilities, load_or_build_remilia_profile_overlay, scan_local_module_titles,
 };
 use crate::runtime::ResolvedPaths;
 
@@ -15,6 +17,7 @@ pub(super) struct LoadedResources {
     pub(super) overlay: ProfileOverlay,
     pub(super) capabilities: Option<WikiCapabilityManifest>,
     pub(super) template_catalog: Option<TemplateCatalog>,
+    pub(super) local_module_titles: BTreeSet<String>,
     pub(super) index_connection: Option<Connection>,
 }
 
@@ -38,12 +41,14 @@ pub(super) fn load_resources(paths: &ResolvedPaths, profile_id: &str) -> Result<
             Some(built)
         }
     };
+    let local_module_titles = scan_local_module_titles(paths)?;
     let index_connection = open_indexed_connection(paths)?;
 
     Ok(LoadedResources {
         overlay,
         capabilities,
         template_catalog,
+        local_module_titles,
         index_connection,
     })
 }

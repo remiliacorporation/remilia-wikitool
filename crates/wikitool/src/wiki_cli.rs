@@ -2,10 +2,11 @@ use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 use wikitool_core::profile::{
-    ProfileOverlay, TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
+    AuthoringSurface, AuthoringSurfaceOptions, ProfileOverlay, TemplateCatalogSummary,
+    WikiCapabilityManifest, WikiProfileSnapshot, build_authoring_surface_with_config,
     load_or_build_remilia_profile_overlay, load_wiki_capabilities_with_config,
-    load_wiki_profile_with_config, sync_wiki_capabilities_with_config,
-    sync_wiki_profile_with_config,
+    load_wiki_profile_with_config, sync_authoring_surface_with_config,
+    sync_wiki_capabilities_with_config, sync_wiki_profile_with_config,
 };
 
 use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_with_config};
@@ -25,6 +26,8 @@ enum WikiSubcommand {
     Profile(WikiProfileArgs),
     #[command(about = "Show the structured local editorial rules overlay")]
     Rules(WikiRulesArgs),
+    #[command(about = "Show the agent-facing template, module, and extension authoring surface")]
+    Surface(WikiSurfaceArgs),
 }
 
 #[derive(Debug, Args)]
@@ -124,11 +127,56 @@ enum WikiRulesSubcommand {
     Show(WikiFormatArgs),
 }
 
+#[derive(Debug, Args)]
+pub(crate) struct WikiSurfaceArgs {
+    #[command(subcommand)]
+    command: WikiSurfaceSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum WikiSurfaceSubcommand {
+    #[command(about = "Refresh and show the agent-facing authoring surface")]
+    Sync(WikiSurfaceFormatArgs),
+    #[command(about = "Show the current agent-facing authoring surface")]
+    Show(WikiSurfaceFormatArgs),
+}
+
+#[derive(Debug, Args)]
+struct WikiSurfaceFormatArgs {
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = WikiJsonView::Summary,
+        value_name = "VIEW",
+        help = "JSON view: summary|full"
+    )]
+    view: WikiJsonView,
+    #[arg(long = "template-limit", default_value_t = 64, value_name = "N")]
+    template_limit: usize,
+    #[arg(long = "template-example-limit", default_value_t = 2, value_name = "N")]
+    template_example_limit: usize,
+    #[arg(long = "module-limit", default_value_t = 128, value_name = "N")]
+    module_limit: usize,
+    #[arg(long = "extension-limit", default_value_t = 128, value_name = "N")]
+    extension_limit: usize,
+    #[arg(long = "extension-tag-limit", default_value_t = 128, value_name = "N")]
+    extension_tag_limit: usize,
+}
+
 pub(crate) fn run_wiki(runtime: &RuntimeOptions, args: WikiArgs) -> Result<()> {
     match args.command {
         WikiSubcommand::Capabilities(args) => run_wiki_capabilities(runtime, args),
         WikiSubcommand::Profile(args) => run_wiki_profile(runtime, args),
         WikiSubcommand::Rules(args) => run_wiki_rules(runtime, args),
+        WikiSubcommand::Surface(args) => run_wiki_surface(runtime, args),
     }
 }
 
@@ -292,6 +340,168 @@ fn run_wiki_rules_show(runtime: &RuntimeOptions, format: OutputFormat) -> Result
     println!("wiki rules show");
     println!("project_root: {}", normalize_path(&paths.project_root));
     print_overlay(&overlay);
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
+fn run_wiki_surface(runtime: &RuntimeOptions, args: WikiSurfaceArgs) -> Result<()> {
+    match args.command {
+        WikiSurfaceSubcommand::Sync(args) => run_wiki_surface_sync(runtime, args),
+        WikiSurfaceSubcommand::Show(args) => run_wiki_surface_show(runtime, args),
+    }
+}
+
+fn run_wiki_surface_sync(runtime: &RuntimeOptions, args: WikiSurfaceFormatArgs) -> Result<()> {
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let options = surface_options(&args)?;
+    let surface = sync_authoring_surface_with_config(&paths, &config, options)?;
+    print_authoring_surface(
+        "wiki surface sync",
+        runtime,
+        &paths,
+        &surface,
+        args.format,
+        args.view,
+    )
+}
+
+fn run_wiki_surface_show(runtime: &RuntimeOptions, args: WikiSurfaceFormatArgs) -> Result<()> {
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let options = surface_options(&args)?;
+    let surface = build_authoring_surface_with_config(&paths, &config, options)?;
+    print_authoring_surface(
+        "wiki surface show",
+        runtime,
+        &paths,
+        &surface,
+        args.format,
+        args.view,
+    )
+}
+
+fn surface_options(args: &WikiSurfaceFormatArgs) -> Result<AuthoringSurfaceOptions> {
+    if args.template_limit == 0 {
+        anyhow::bail!("wiki surface requires --template-limit >= 1");
+    }
+    if args.extension_limit == 0 {
+        anyhow::bail!("wiki surface requires --extension-limit >= 1");
+    }
+    if args.module_limit == 0 {
+        anyhow::bail!("wiki surface requires --module-limit >= 1");
+    }
+    if args.extension_tag_limit == 0 {
+        anyhow::bail!("wiki surface requires --extension-tag-limit >= 1");
+    }
+    Ok(AuthoringSurfaceOptions {
+        template_limit: args.template_limit,
+        template_example_limit: args.template_example_limit,
+        module_limit: args.module_limit,
+        extension_limit: args.extension_limit,
+        extension_tag_limit: args.extension_tag_limit,
+    })
+}
+
+fn print_authoring_surface(
+    heading: &str,
+    runtime: &RuntimeOptions,
+    paths: &wikitool_core::runtime::ResolvedPaths,
+    surface: &AuthoringSurface,
+    format: OutputFormat,
+    view: WikiJsonView,
+) -> Result<()> {
+    if format.is_json() {
+        if view.is_full() {
+            println!("{}", serde_json::to_string_pretty(surface)?);
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&summarize_authoring_surface(surface))?
+            );
+        }
+        return Ok(());
+    }
+
+    println!("{heading}");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("profile_id: {}", surface.profile_id);
+    println!(
+        "wiki_id: {}",
+        surface.wiki_id.as_deref().unwrap_or("<none>")
+    );
+    println!(
+        "wiki_url: {}",
+        surface.wiki_url.as_deref().unwrap_or("<none>")
+    );
+    println!(
+        "capabilities_refreshed_at: {}",
+        surface
+            .capabilities_refreshed_at
+            .as_deref()
+            .unwrap_or("<none>")
+    );
+    println!(
+        "template_catalog_refreshed_at: {}",
+        surface
+            .template_catalog_refreshed_at
+            .as_deref()
+            .unwrap_or("<none>")
+    );
+    println!("template_source: {}", surface.template_source);
+    println!("template_count_total: {}", surface.template_count_total);
+    println!(
+        "template_count_returned: {}",
+        surface.template_count_returned
+    );
+    println!("module_count_total: {}", surface.module_count_total);
+    println!("module_count_returned: {}", surface.module_count_returned);
+    println!("extension_count_total: {}", surface.extension_count_total);
+    println!(
+        "extension_tag_count_total: {}",
+        surface.extension_tag_count_total
+    );
+    println!(
+        "top_templates: {}",
+        join_or_none(
+            &surface
+                .templates
+                .iter()
+                .map(|template| template.template_title.clone())
+                .take(16)
+                .collect::<Vec<_>>()
+        )
+    );
+    println!(
+        "extension_tags: {}",
+        join_or_none(
+            &surface
+                .extension_tags
+                .iter()
+                .map(|tag| tag.tag_name.clone())
+                .take(32)
+                .collect::<Vec<_>>()
+        )
+    );
+    println!(
+        "modules: {}",
+        join_or_none(
+            &surface
+                .modules
+                .iter()
+                .map(|module| module.module_title.clone())
+                .take(32)
+                .collect::<Vec<_>>()
+        )
+    );
+    if surface.warnings.is_empty() {
+        println!("warnings: <none>");
+    } else {
+        for warning in &surface.warnings {
+            println!("warning: {warning}");
+        }
+    }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -536,6 +746,30 @@ struct TemplateCatalogSummaryView<'a> {
     refreshed_at: &'a str,
 }
 
+#[derive(Debug, Serialize)]
+struct AuthoringSurfaceSummary<'a> {
+    schema_version: &'a str,
+    profile_id: &'a str,
+    generated_at: &'a str,
+    wiki_id: Option<&'a str>,
+    wiki_url: Option<&'a str>,
+    capabilities_refreshed_at: Option<&'a str>,
+    template_catalog_refreshed_at: Option<&'a str>,
+    template_source: &'a str,
+    template_count_total: usize,
+    template_count_returned: usize,
+    module_count_total: usize,
+    module_count_returned: usize,
+    extension_count_total: usize,
+    extension_count_returned: usize,
+    extension_tag_count_total: usize,
+    extension_tag_count_returned: usize,
+    top_templates: Vec<&'a str>,
+    modules: Vec<&'a str>,
+    extension_tags: Vec<&'a str>,
+    warnings: &'a [String],
+}
+
 fn summarize_capability_manifest<'a>(
     manifest: &'a WikiCapabilityManifest,
 ) -> WikiCapabilityManifestSummary<'a> {
@@ -651,6 +885,46 @@ fn summarize_template_catalog_summary<'a>(
         usage_index_ready: summary.usage_index_ready,
         profile_template_titles: &summary.profile_template_titles,
         refreshed_at: &summary.refreshed_at,
+    }
+}
+
+fn summarize_authoring_surface<'a>(surface: &'a AuthoringSurface) -> AuthoringSurfaceSummary<'a> {
+    AuthoringSurfaceSummary {
+        schema_version: &surface.schema_version,
+        profile_id: &surface.profile_id,
+        generated_at: &surface.generated_at,
+        wiki_id: surface.wiki_id.as_deref(),
+        wiki_url: surface.wiki_url.as_deref(),
+        capabilities_refreshed_at: surface.capabilities_refreshed_at.as_deref(),
+        template_catalog_refreshed_at: surface.template_catalog_refreshed_at.as_deref(),
+        template_source: &surface.template_source,
+        template_count_total: surface.template_count_total,
+        template_count_returned: surface.template_count_returned,
+        module_count_total: surface.module_count_total,
+        module_count_returned: surface.module_count_returned,
+        extension_count_total: surface.extension_count_total,
+        extension_count_returned: surface.extension_count_returned,
+        extension_tag_count_total: surface.extension_tag_count_total,
+        extension_tag_count_returned: surface.extension_tag_count_returned,
+        top_templates: surface
+            .templates
+            .iter()
+            .map(|template| template.template_title.as_str())
+            .take(24)
+            .collect(),
+        modules: surface
+            .modules
+            .iter()
+            .map(|module| module.module_title.as_str())
+            .take(48)
+            .collect(),
+        extension_tags: surface
+            .extension_tags
+            .iter()
+            .map(|tag| tag.tag_name.as_str())
+            .take(48)
+            .collect(),
+        warnings: &surface.warnings,
     }
 }
 

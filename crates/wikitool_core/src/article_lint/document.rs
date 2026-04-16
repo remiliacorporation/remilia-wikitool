@@ -5,8 +5,8 @@ use anyhow::{Context, Result};
 
 use crate::article_lint::model::TextSpan;
 use crate::content_store::parsing::{
-    canonical_template_title, find_closing_html_tag, normalize_spaces, parse_heading_line,
-    parse_open_tag, starts_with_html_tag,
+    canonical_template_title, find_closing_html_tag, normalize_template_parameter_key,
+    parse_heading_line, parse_module_invocation, parse_open_tag, starts_with_html_tag,
 };
 use crate::filesystem::{namespace_from_title, relative_path_to_title, validate_scoped_path};
 use crate::runtime::ResolvedPaths;
@@ -47,6 +47,16 @@ pub(super) struct TemplateOccurrence {
 }
 
 #[derive(Debug, Clone)]
+pub(super) struct ModuleInvocationOccurrence {
+    pub(super) module_title: String,
+    pub(super) function_name: String,
+    pub(super) parameter_keys: Vec<String>,
+    pub(super) raw_wikitext: String,
+    pub(super) start: usize,
+    pub(super) end: usize,
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct RefOccurrence {
     pub(super) start: usize,
     pub(super) end: usize,
@@ -69,6 +79,7 @@ pub(super) struct ParsedArticleDocument {
     pub(super) lines: Vec<LineRecord>,
     pub(super) sections: Vec<ArticleSection>,
     pub(super) templates: Vec<TemplateOccurrence>,
+    pub(super) module_invocations: Vec<ModuleInvocationOccurrence>,
     pub(super) references: Vec<RefOccurrence>,
     pub(super) parser_tags: Vec<ParserTagOccurrence>,
 }
@@ -155,6 +166,7 @@ pub(super) fn load_article_document(
     let lines = collect_lines(&content);
     let sections = parse_sections(&content, &lines);
     let templates = extract_template_occurrences(&content);
+    let module_invocations = extract_module_invocation_occurrences(&content);
     let references = extract_ref_occurrences(&content);
     let parser_tags = extract_open_tag_occurrences(&content);
 
@@ -168,6 +180,7 @@ pub(super) fn load_article_document(
         lines,
         sections,
         templates,
+        module_invocations,
         references,
         parser_tags,
     })
@@ -285,7 +298,7 @@ fn collect_parameter_keys(segments: &[String]) -> Vec<String> {
             continue;
         }
         if let Some((key, _)) = split_once_top_level_equals(trimmed) {
-            let key = normalize_spaces(&key.replace('_', " ")).to_ascii_lowercase();
+            let key = normalize_template_parameter_key(&key);
             if !key.is_empty() {
                 out.push(key);
                 continue;
@@ -296,6 +309,43 @@ fn collect_parameter_keys(segments: &[String]) -> Vec<String> {
     }
     out.sort();
     out.dedup();
+    out
+}
+
+fn extract_module_invocation_occurrences(content: &str) -> Vec<ModuleInvocationOccurrence> {
+    let bytes = content.as_bytes();
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+    let mut stack = Vec::new();
+
+    while cursor + 1 < bytes.len() {
+        if bytes[cursor] == b'{' && bytes[cursor + 1] == b'{' {
+            stack.push(cursor);
+            cursor += 2;
+            continue;
+        }
+        if bytes[cursor] == b'}' && bytes[cursor + 1] == b'}' {
+            if let Some(start) = stack.pop()
+                && cursor >= start + 2
+            {
+                let inner = &content[start + 2..cursor];
+                if let Some(invocation) = parse_module_invocation(inner) {
+                    out.push(ModuleInvocationOccurrence {
+                        module_title: invocation.module_title,
+                        function_name: invocation.function_name,
+                        parameter_keys: invocation.parameter_keys,
+                        raw_wikitext: content[start..cursor + 2].to_string(),
+                        start,
+                        end: cursor + 2,
+                    });
+                }
+            }
+            cursor += 2;
+            continue;
+        }
+        cursor += 1;
+    }
+
     out
 }
 

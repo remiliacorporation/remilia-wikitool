@@ -305,7 +305,9 @@ fn find_tag_end(content: &str, start: usize) -> Option<usize> {
 }
 
 fn starts_with_at(text: &str, index: usize, sequence: &str) -> bool {
-    index + sequence.len() <= text.len() && &text[index..index + sequence.len()] == sequence
+    text.as_bytes()
+        .get(index..index.saturating_add(sequence.len()))
+        .is_some_and(|bytes| bytes == sequence.as_bytes())
 }
 
 fn index_of_ignore_case(text: &str, search: &str, start: usize) -> Option<usize> {
@@ -360,6 +362,14 @@ mod tests {
     #[test]
     fn lint_wikitext_ignores_nowiki_constructs() {
         let issues = lint_wikitext("<nowiki>{{not a template}} [[not a link]]</nowiki>");
+
+        assert!(issues.is_empty(), "{issues:?}");
+    }
+
+    #[test]
+    fn lint_wikitext_handles_multibyte_text() {
+        let issues =
+            lint_wikitext("{{Cite tweet|user=miladymaker|tweet=👽 $FUMO recap 🚀 warning text}}");
 
         assert!(issues.is_empty(), "{issues:?}");
     }

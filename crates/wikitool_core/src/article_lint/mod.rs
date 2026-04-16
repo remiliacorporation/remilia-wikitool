@@ -291,6 +291,40 @@ mod tests {
             .expect("insert manifest");
     }
 
+    fn wiki_capability_manifest(
+        parser_extension_tags: Vec<String>,
+        parser_function_hooks: Vec<String>,
+        has_scribunto: bool,
+    ) -> WikiCapabilityManifest {
+        WikiCapabilityManifest {
+            schema_version: "wiki_capabilities_v1".to_string(),
+            wiki_id: "wiki.remilia.org".to_string(),
+            wiki_url: "https://wiki.remilia.org".to_string(),
+            api_url: "https://wiki.remilia.org/api.php".to_string(),
+            rest_url: None,
+            article_path: "/$1".to_string(),
+            mediawiki_version: Some("1.44.3".to_string()),
+            namespaces: Vec::new(),
+            extensions: Vec::new(),
+            parser_extension_tags,
+            parser_function_hooks,
+            special_pages: Vec::new(),
+            search_backend_hint: None,
+            has_visual_editor: false,
+            has_templatedata: false,
+            has_citoid: false,
+            has_cargo: false,
+            has_page_forms: false,
+            has_short_description: true,
+            has_scribunto,
+            has_timed_media_handler: false,
+            supports_parse_api_html: true,
+            supports_rest_html: false,
+            rest_html_path_template: None,
+            refreshed_at: "1".to_string(),
+        }
+    }
+
     fn has_rule(report: &ArticleLintReport, rule_id: &str) -> bool {
         report.issues.iter().any(|issue| issue.rule_id == rule_id)
     }
@@ -552,6 +586,116 @@ mod tests {
 
         let report = lint_article(&paths, &article_path, None).expect("lint");
         assert!(has_rule(&report, "template.unavailable"));
+    }
+
+    #[test]
+    fn detects_unknown_parameters_for_templatedata_backed_templates() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        write_file(
+            &paths
+                .templates_dir
+                .join("infobox")
+                .join("Template_Profile_box.wiki"),
+            r#"<includeonly>{{{name|}}} {{{image|}}}</includeonly><noinclude>
+<templatedata>
+{
+  "description": "Profile box",
+  "params": {
+    "name": {"label": "Name"},
+    "image": {"aliases": ["photo"]}
+  }
+}
+</templatedata>
+</noinclude>"#,
+        );
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{Profile box|name=Alpha|photo=Alpha.png|made_up=1}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "template.unknown_parameter"));
+    }
+
+    #[test]
+    fn detects_unavailable_modules_for_direct_invoke() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        write_capability_manifest(
+            &paths,
+            &wiki_capability_manifest(Vec::new(), vec!["invoke".to_string()], true),
+        );
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:Missing|render|name=Alpha}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "module.unavailable"));
+    }
+
+    #[test]
+    fn accepts_direct_invoke_for_local_module() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        write_file(
+            &paths.templates_dir.join("misc").join("Module_Profile.lua"),
+            "return { render = function(frame) return frame.args.name or '' end }\n",
+        );
+        write_capability_manifest(
+            &paths,
+            &wiki_capability_manifest(Vec::new(), vec!["invoke".to_string()], true),
+        );
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:Profile|render|name=Alpha}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(!has_rule(&report, "module.unavailable"));
+        assert!(!has_rule(&report, "capability.scribunto_unsupported"));
+    }
+
+    #[test]
+    fn detects_invoke_when_scribunto_is_not_available() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        write_file(
+            &paths.templates_dir.join("misc").join("Module_Profile.lua"),
+            "return { render = function(frame) return frame.args.name or '' end }\n",
+        );
+        write_capability_manifest(
+            &paths,
+            &wiki_capability_manifest(Vec::new(), Vec::new(), false),
+        );
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:Profile|render|name=Alpha}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "capability.scribunto_unsupported"));
     }
 
     #[test]

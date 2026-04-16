@@ -10,6 +10,7 @@ use super::resources::LoadedResources;
 mod citation;
 mod common;
 mod integration;
+mod module;
 mod structure;
 mod style;
 mod template;
@@ -50,6 +51,7 @@ pub(super) fn collect_issue_matches(
     template::lint_citation_needed(document, &mut matches);
     template::lint_remilia_parent_group(document, resources, &mut matches);
     template::lint_template_availability(document, resources, &mut matches);
+    module::lint_module_invocations(document, resources, &mut matches);
     integration::lint_red_links_in_see_also(document, resources, &mut matches)?;
     integration::lint_capability_rules(document, resources, &mut matches);
     integration::lint_graph_rules(paths, document, resources, &mut matches)?;

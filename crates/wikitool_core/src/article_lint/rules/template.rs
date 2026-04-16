@@ -5,7 +5,10 @@ use crate::article_lint::model::{
     ArticleLintIssue, ArticleLintSeverity, SuggestedFix, SuggestedFixKind,
 };
 use crate::content_store::parsing::make_content_preview;
-use crate::profile::{TemplateCatalogEntryLookup, find_template_catalog_entry};
+use crate::profile::{
+    TemplateCatalogEntry, TemplateCatalogEntryLookup, find_template_catalog_entry,
+    unknown_template_parameter_keys,
+};
 
 use super::IssueMatch;
 use crate::article_lint::resources::LoadedResources;
@@ -99,15 +102,15 @@ pub(super) fn lint_template_availability(
     let Some(catalog) = resources.template_catalog.as_ref() else {
         return;
     };
-    let mut seen = BTreeSet::new();
+    let mut seen_missing = BTreeSet::new();
     for template in &document.templates {
-        if !seen.insert(template.template_title.to_ascii_lowercase()) {
+        if let TemplateCatalogEntryLookup::Found(entry) =
+            find_template_catalog_entry(catalog, &template.template_title)
+        {
+            lint_template_parameters(document, template, &entry, matches);
             continue;
         }
-        if matches!(
-            find_template_catalog_entry(catalog, &template.template_title),
-            TemplateCatalogEntryLookup::Found(_)
-        ) {
+        if !seen_missing.insert(template.template_title.to_ascii_lowercase()) {
             continue;
         }
         matches.push(IssueMatch {
@@ -128,4 +131,37 @@ pub(super) fn lint_template_availability(
             safe_fixes: Vec::new(),
         });
     }
+}
+
+fn lint_template_parameters(
+    document: &ParsedArticleDocument,
+    template: &crate::article_lint::document::TemplateOccurrence,
+    entry: &TemplateCatalogEntry,
+    matches: &mut Vec<IssueMatch>,
+) {
+    let unknown = unknown_template_parameter_keys(entry, &template.parameter_keys);
+    if unknown.is_empty() {
+        return;
+    }
+
+    matches.push(IssueMatch {
+        issue: ArticleLintIssue {
+            rule_id: "template.unknown_parameter".to_string(),
+            severity: ArticleLintSeverity::Warning,
+            message: "Template invocation uses parameters that are not present in the current TemplateData-backed catalog."
+                .to_string(),
+            span: document.span_for_range(template.start, template.end),
+            evidence: Some(format!(
+                "{} unknown_parameters={}",
+                template.template_title,
+                unknown.join(", ")
+            )),
+            suggested_remediation: Some(
+                "Run `wikitool templates show` for the template and either use a documented parameter, update TemplateData/source documentation, or remove the stray parameter."
+                    .to_string(),
+            ),
+            suggested_fixes: Vec::new(),
+        },
+        safe_fixes: Vec::new(),
+    });
 }

@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use anyhow::Result;
 
 use crate::article_lint::document::ParsedArticleDocument;
@@ -7,72 +5,12 @@ use crate::article_lint::model::{ArticleLintIssue, ArticleLintSeverity};
 use crate::content_store::parsing::{extract_wikilinks, load_page_record};
 use crate::filesystem::Namespace;
 use crate::graph::{GraphFilter, GraphKind, build_graph, compute_scc};
+use crate::profile::ExtensionTagPolicy;
 use crate::runtime::ResolvedPaths;
 
 use super::IssueMatch;
 use super::common::line_has_short_description;
 use crate::article_lint::resources::LoadedResources;
-
-const ALLOWED_SOURCE_HTML_TAGS: &[&str] = &[
-    "abbr",
-    "b",
-    "blockquote",
-    "br",
-    "caption",
-    "center",
-    "cite",
-    "code",
-    "dd",
-    "del",
-    "div",
-    "dl",
-    "dt",
-    "em",
-    "font",
-    "gallery",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "hr",
-    "i",
-    "includeonly",
-    "ins",
-    "kbd",
-    "li",
-    "noinclude",
-    "ol",
-    "onlyinclude",
-    "p",
-    "pre",
-    "q",
-    "rb",
-    "rp",
-    "rt",
-    "rtc",
-    "ruby",
-    "s",
-    "samp",
-    "small",
-    "span",
-    "strike",
-    "strong",
-    "sub",
-    "sup",
-    "table",
-    "tbody",
-    "td",
-    "th",
-    "thead",
-    "tr",
-    "tt",
-    "u",
-    "ul",
-    "var",
-    "wbr",
-];
 
 pub(super) fn lint_red_links_in_see_also(
     document: &ParsedArticleDocument,
@@ -146,15 +84,9 @@ pub(super) fn lint_capability_rules(
         }
     }
 
-    let supported_tags = capabilities
-        .parser_extension_tags
-        .iter()
-        .map(|tag| normalize_tag_name(tag))
-        .collect::<BTreeSet<_>>();
+    let tag_policy = ExtensionTagPolicy::from_capabilities(capabilities);
     for tag in &document.parser_tags {
-        if supported_tags.contains(&tag.tag_name)
-            || ALLOWED_SOURCE_HTML_TAGS.contains(&tag.tag_name.as_str())
-        {
+        if tag_policy.supports_source_tag(&tag.tag_name) {
             continue;
         }
         matches.push(IssueMatch {
@@ -174,15 +106,6 @@ pub(super) fn lint_capability_rules(
             safe_fixes: Vec::new(),
         });
     }
-}
-
-fn normalize_tag_name(tag: &str) -> String {
-    tag.trim()
-        .trim_start_matches('<')
-        .trim_end_matches('>')
-        .trim_start_matches('/')
-        .trim()
-        .to_ascii_lowercase()
 }
 
 pub(super) fn lint_graph_rules(

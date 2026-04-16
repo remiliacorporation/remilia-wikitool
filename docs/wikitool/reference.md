@@ -1222,6 +1222,7 @@ Commands:
   capabilities  Sync and inspect live wiki capability manifests
   profile       Show the combined live/profile-aware wiki surface
   rules         Show the structured local editorial rules overlay
+  surface       Show the agent-facing template, module, and extension authoring surface
   help          Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1373,6 +1374,70 @@ Options:
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
+```
+
+## wiki surface
+
+```text
+Show the agent-facing template, module, and extension authoring surface
+
+Usage: wikitool wiki surface [OPTIONS] <COMMAND>
+
+Commands:
+  sync  Refresh and show the agent-facing authoring surface
+  show  Show the current agent-facing authoring surface
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki surface sync
+
+```text
+Refresh and show the agent-facing authoring surface
+
+Usage: wikitool wiki surface sync [OPTIONS]
+
+Options:
+      --format <FORMAT>             Output format: text|json [default: text] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --view <VIEW>                 JSON view: summary|full [default: summary] [possible values: summary, full]
+      --config <PATH>
+      --template-limit <N>          [default: 64]
+      --diagnostics                 Print resolved runtime diagnostics
+      --template-example-limit <N>  [default: 2]
+      --module-limit <N>            [default: 128]
+      --extension-limit <N>         [default: 128]
+      --extension-tag-limit <N>     [default: 128]
+  -h, --help                        Print help
+```
+
+## wiki surface show
+
+```text
+Show the current agent-facing authoring surface
+
+Usage: wikitool wiki surface show [OPTIONS]
+
+Options:
+      --format <FORMAT>             Output format: text|json [default: text] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --view <VIEW>                 JSON view: summary|full [default: summary] [possible values: summary, full]
+      --config <PATH>
+      --template-limit <N>          [default: 64]
+      --diagnostics                 Print resolved runtime diagnostics
+      --template-example-limit <N>  [default: 2]
+      --module-limit <N>            [default: 128]
+      --extension-limit <N>         [default: 128]
+      --extension-tag-limit <N>     [default: 128]
+  -h, --help                        Print help
 ```
 
 ## templates
