@@ -143,6 +143,15 @@ fn extract_wikilinks_parses_titles_and_category_membership() {
 }
 
 #[test]
+fn extract_wikilinks_skips_parser_placeholder_targets() {
+    let content = "<DPL>\nformat = ,* [[%PAGE%|%TITLE%]]\\n,,\n</DPL> [[Alpha]]";
+    let links = extract_wikilinks(content);
+
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target_title, "Alpha");
+}
+
+#[test]
 fn namespace_aware_wikilinks_skip_non_rendered_template_and_module_regions() {
     let template_content = "[[Visible]] <!-- [[Commented]] --> <noinclude>[[Doc only]]</noinclude> <templatedata>{\"params\":{\"[[Pseudo]]\":{}}}</templatedata>";
     let links = extract_wikilinks_for_namespace(template_content, Namespace::Template.as_str());
@@ -810,7 +819,7 @@ fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
     let report = build_authoring_knowledge_pack(
         &paths,
         Some("Alpha"),
-        Some("{{Infobox person|name=Draft}}\nDraft body with [[Alpha]] and [[Missing Page]]."),
+        Some("{{Infobox person|name=Draft}}\nDraft body with [[Alpha]] and [[Missing Page]].\n<DPL>\nformat = ,* [[%PAGE%|%TITLE%]]\\n,,\n</DPL>"),
         &options,
     )
     .expect("authoring pack");
@@ -864,6 +873,8 @@ fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
     );
     assert!(!report.template_baseline.is_empty());
     assert!(report.stub_existing_links.contains(&"Alpha".to_string()));
+    assert!(!report.query_terms.contains(&"%PAGE%".to_string()));
+    assert!(!report.stub_missing_links.contains(&"%PAGE%".to_string()));
     assert!(
         report
             .stub_missing_links

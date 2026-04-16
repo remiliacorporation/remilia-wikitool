@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::content_store::parsing;
 use crate::knowledge::{model::AuthoringSuggestion, prelude::*};
 
 #[derive(Default)]
@@ -80,6 +81,9 @@ fn query_suggestions_for_sources(
     let mut accumulators = BTreeMap::<String, SuggestionAccumulator>::new();
     for row in rows {
         let (target_title, source_title) = row.context("failed to decode suggestion row")?;
+        if parsing::is_parser_placeholder_title(&target_title) {
+            continue;
+        }
         accumulators
             .entry(target_title)
             .or_default()

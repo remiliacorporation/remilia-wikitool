@@ -210,6 +210,9 @@ pub(crate) fn parse_wikilink(inner: &str) -> Option<ParsedLink> {
     if target.is_empty() {
         return None;
     }
+    if is_parser_placeholder_title(&target) {
+        return None;
+    }
 
     let (title, namespace) = normalize_title_and_namespace(&target)?;
     let is_category_membership = namespace == Namespace::Category.as_str() && !leading_colon;
@@ -219,6 +222,23 @@ pub(crate) fn parse_wikilink(inner: &str) -> Option<ParsedLink> {
         target_namespace: namespace.to_string(),
         is_category_membership,
     })
+}
+
+pub(crate) fn is_parser_placeholder_title(value: &str) -> bool {
+    let trimmed = value.trim();
+    let title = trimmed
+        .split_once(':')
+        .map(|(_, body)| body.trim())
+        .unwrap_or(trimmed);
+    if title.len() < 3 || !title.starts_with('%') || !title.ends_with('%') {
+        return false;
+    }
+
+    let inner = &title[1..title.len() - 1];
+    !inner.is_empty()
+        && inner
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
 }
 
 pub(crate) fn normalize_title_and_namespace(value: &str) -> Option<(String, &'static str)> {

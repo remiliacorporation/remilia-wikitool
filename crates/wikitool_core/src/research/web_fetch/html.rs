@@ -1089,10 +1089,12 @@ pub(super) fn index_of_ignore_case(text: &str, search: &str, start: usize) -> Op
 }
 
 fn starts_with_at(text: &str, index: usize, sequence: &str) -> bool {
-    if index + sequence.len() > text.len() {
+    let Some(end) = index.checked_add(sequence.len()) else {
         return false;
-    }
-    &text[index..index + sequence.len()] == sequence
+    };
+    text.as_bytes()
+        .get(index..end)
+        .is_some_and(|bytes| bytes == sequence.as_bytes())
 }
 
 pub(super) fn decode_html(text: &str) -> String {

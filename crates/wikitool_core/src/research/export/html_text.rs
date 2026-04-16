@@ -235,10 +235,12 @@ fn find_tag_end(html: &str, start: usize) -> Option<usize> {
 }
 
 fn starts_with_at(text: &str, index: usize, sequence: &str) -> bool {
-    if index + sequence.len() > text.len() {
+    let Some(end) = index.checked_add(sequence.len()) else {
         return false;
-    }
-    &text[index..index + sequence.len()] == sequence
+    };
+    text.as_bytes()
+        .get(index..end)
+        .is_some_and(|bytes| bytes == sequence.as_bytes())
 }
 
 fn index_of_ignore_case(text: &str, search: &str, start: usize) -> Option<usize> {
@@ -319,6 +321,18 @@ mod tests {
         assert!(markdown.contains("Title"));
         assert!(markdown.contains("Readable & useful 'text'."));
         assert!(!markdown.contains("<article>"));
+    }
+
+    #[test]
+    fn source_content_to_markdown_handles_multibyte_text_before_tags() {
+        let markdown = source_content_to_markdown(
+            "<article><p>Fast cat 🐆.</p><!-- note --><p>Second paragraph.</p></article>",
+            "html",
+            None,
+        );
+
+        assert!(markdown.contains("Fast cat 🐆.\n\nSecond paragraph."));
+        assert!(!markdown.contains("note"));
     }
 
     #[test]

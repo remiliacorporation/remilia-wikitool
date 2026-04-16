@@ -526,6 +526,18 @@ mod tests {
     }
 
     #[test]
+    fn extracts_readable_text_handles_multibyte_text_before_tags() {
+        let text = extract_readable_text(
+            "<html><body><main><p>Fast cat 🐆.</p><!-- note --><p>Second paragraph.</p></main></body></html>",
+            10_000,
+        );
+
+        assert!(text.contains("Fast cat 🐆."));
+        assert!(text.contains("Fast cat 🐆.\n\nSecond paragraph."));
+        assert!(!text.contains("note"));
+    }
+
+    #[test]
     fn access_routes_suppress_blocked_fallbacks_when_only_ancillary_attempts_failed() {
         let mut report = ExternalMachineSurfaceReport {
             source_url: "https://example.com/article".to_string(),

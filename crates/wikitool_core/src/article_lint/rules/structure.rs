@@ -206,6 +206,9 @@ pub(super) fn lint_malformed_headings(
         if trimmed.is_empty() {
             continue;
         }
+        if is_tabber_separator_line(trimmed) {
+            continue;
+        }
         if (trimmed.starts_with('=') || trimmed.ends_with('='))
             && parse_heading_line(trimmed).is_none()
         {
@@ -225,6 +228,10 @@ pub(super) fn lint_malformed_headings(
             });
         }
     }
+}
+
+fn is_tabber_separator_line(trimmed: &str) -> bool {
+    trimmed.starts_with("|-|") && trimmed.contains('=')
 }
 
 pub(super) fn lint_duplicate_headings(

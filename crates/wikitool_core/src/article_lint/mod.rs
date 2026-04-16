@@ -17,7 +17,7 @@ pub use model::{
     ArticleLintResourcesStatus, ArticleLintSeverity, SuggestedFix, SuggestedFixKind, TextSpan,
 };
 
-use document::{ParsedArticleDocument, load_article_document};
+use document::{ParsedArticleDocument, load_article_document_with_title};
 use fix::apply_text_edits;
 use resources::{LoadedResources, load_resources};
 use rules::{IssueMatch, SafeFixEdit, collect_issue_matches};
@@ -38,8 +38,17 @@ pub fn lint_article(
     article_path: &Path,
     profile_id: Option<&str>,
 ) -> Result<ArticleLintReport> {
+    lint_article_with_title(paths, article_path, profile_id, None)
+}
+
+pub fn lint_article_with_title(
+    paths: &ResolvedPaths,
+    article_path: &Path,
+    profile_id: Option<&str>,
+    title_override: Option<&str>,
+) -> Result<ArticleLintReport> {
     let profile_id = normalize_profile_id(profile_id)?;
-    let document = load_article_document(paths, article_path)?;
+    let document = load_article_document_with_title(paths, article_path, title_override)?;
     let resources = load_resources(paths, &profile_id)?;
     let matches = collect_issue_matches(paths, &document, &resources)?;
     Ok(build_report(&document, &profile_id, &resources, matches))
@@ -51,8 +60,18 @@ pub fn fix_article(
     profile_id: Option<&str>,
     apply_mode: ArticleFixApplyMode,
 ) -> Result<ArticleFixResult> {
+    fix_article_with_title(paths, article_path, profile_id, apply_mode, None)
+}
+
+pub fn fix_article_with_title(
+    paths: &ResolvedPaths,
+    article_path: &Path,
+    profile_id: Option<&str>,
+    apply_mode: ArticleFixApplyMode,
+    title_override: Option<&str>,
+) -> Result<ArticleFixResult> {
     let profile_id = normalize_profile_id(profile_id)?;
-    let document = load_article_document(paths, article_path)?;
+    let document = load_article_document_with_title(paths, article_path, title_override)?;
     let resources = load_resources(paths, &profile_id)?;
     let matches = collect_issue_matches(paths, &document, &resources)?;
     let safe_fixes = collect_safe_fixes(&matches);
@@ -70,7 +89,8 @@ pub fn fix_article(
             .with_context(|| format!("failed to write {}", absolute_path.display()))?;
     }
 
-    let remaining_report = lint_article(paths, article_path, Some(&profile_id))?;
+    let remaining_report =
+        lint_article_with_title(paths, article_path, Some(&profile_id), title_override)?;
     Ok(ArticleFixResult {
         schema_version: ARTICLE_FIX_SCHEMA_VERSION.to_string(),
         profile_id,
@@ -385,6 +405,71 @@ mod tests {
 
         let report = lint_article(&paths, &article_path, None).expect("lint");
         assert!(has_rule(&report, "style.sentence_case_heading"));
+    }
+
+    #[test]
+    fn accepts_tabber_separator_lines_as_extension_markup() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n<tabber>\n|-|First tab=\nText.\n|-|Second tab=\nMore text.\n</tabber>\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+        assert!(!has_rule(&report, "structure.malformed_heading"));
+    }
+
+    #[test]
+    fn lints_state_draft_with_explicit_title_override() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.state_dir.join("drafts").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a draft.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article_with_title(&paths, &article_path, None, Some("Category:Alpha"))
+            .expect("lint");
+
+        assert_eq!(report.relative_path, ".wikitool/drafts/Alpha.wiki");
+        assert_eq!(report.title, "Category:Alpha");
+        assert_eq!(report.namespace, "Category");
+    }
+
+    #[test]
+    fn safe_fix_preserves_state_draft_title_override() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.state_dir.join("drafts").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n\n'''Alpha''' is a draft.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let fixed = fix_article_with_title(
+            &paths,
+            &article_path,
+            None,
+            ArticleFixApplyMode::Safe,
+            Some("Draft Alpha"),
+        )
+        .expect("safe fix");
+
+        assert!(fixed.changed);
+        assert_eq!(fixed.title, "Draft Alpha");
+        assert_eq!(fixed.remaining_report.title, "Draft Alpha");
     }
 
     #[test]

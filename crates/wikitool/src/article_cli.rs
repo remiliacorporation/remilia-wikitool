@@ -6,7 +6,8 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 use wikitool_core::article_lint::{
-    ArticleFixApplyMode, ArticleFixResult, ArticleLintReport, fix_article, lint_article,
+    ArticleFixApplyMode, ArticleFixResult, ArticleLintReport, fix_article, fix_article_with_title,
+    lint_article, lint_article_with_title,
 };
 use wikitool_core::filesystem::{
     relative_path_to_title, title_to_relative_path, validate_scoped_path,
@@ -168,6 +169,44 @@ pub(crate) fn run_article(runtime: &RuntimeOptions, args: ArticleArgs) -> Result
 
 fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
+    if let Some(title_override) = single_state_path_title_override(
+        &paths,
+        args.path.as_deref(),
+        &args.titles,
+        &args.paths,
+        args.titles_file.as_ref(),
+        args.changed,
+    )? {
+        let report = lint_article_with_title(
+            &paths,
+            args.path.as_deref().expect("single path"),
+            Some(&args.profile),
+            Some(title_override),
+        )?;
+
+        if args.format.is_json() {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            println!("article lint");
+            println!("project_root: {}", normalize_path(&paths.project_root));
+            print_report(&report);
+            println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+            if runtime.diagnostics {
+                println!("\n[diagnostics]\n{}", paths.diagnostics());
+            }
+        }
+
+        if report.errors > 0 || (args.strict && report.warnings > 0) {
+            bail!(
+                "article lint found {} error(s), {} warning(s), and {} suggestion(s)",
+                report.errors,
+                report.warnings,
+                report.suggestions
+            );
+        }
+        return Ok(());
+    }
+
     if uses_single_path_mode(
         args.path.as_deref(),
         &args.titles,
@@ -271,6 +310,45 @@ fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) -> Result<(
 fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let apply_mode = ArticleFixApplyMode::from(args.apply);
+    if let Some(title_override) = single_state_path_title_override(
+        &paths,
+        args.path.as_deref(),
+        &args.titles,
+        &args.paths,
+        args.titles_file.as_ref(),
+        args.changed,
+    )? {
+        let result = fix_article_with_title(
+            &paths,
+            args.path.as_deref().expect("single path"),
+            Some(&args.profile),
+            apply_mode,
+            Some(title_override),
+        )?;
+
+        if args.format.is_json() {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else {
+            println!("article fix");
+            println!("project_root: {}", normalize_path(&paths.project_root));
+            print_fix_result(&result);
+            println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+            if runtime.diagnostics {
+                println!("\n[diagnostics]\n{}", paths.diagnostics());
+            }
+        }
+
+        if result.remaining_report.errors > 0 {
+            bail!(
+                "article fix left {} error(s), {} warning(s), and {} suggestion(s)",
+                result.remaining_report.errors,
+                result.remaining_report.warnings,
+                result.remaining_report.suggestions
+            );
+        }
+        return Ok(());
+    }
+
     if uses_single_path_mode(
         args.path.as_deref(),
         &args.titles,
@@ -411,6 +489,42 @@ fn uses_single_path_mode(
     path.is_some() && titles.is_empty() && paths.is_empty() && titles_file.is_none() && !changed
 }
 
+fn single_state_path_title_override<'a>(
+    runtime_paths: &wikitool_core::runtime::ResolvedPaths,
+    path: Option<&Path>,
+    titles: &'a [String],
+    paths: &[PathBuf],
+    titles_file: Option<&PathBuf>,
+    changed: bool,
+) -> Result<Option<&'a str>> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    if titles.len() != 1 || !paths.is_empty() || titles_file.is_some() || changed {
+        return Ok(None);
+    }
+
+    let absolute_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        runtime_paths.project_root.join(path)
+    };
+    validate_scoped_path(runtime_paths, &absolute_path)?;
+    if path_is_under_state_dir(runtime_paths, &absolute_path) {
+        return Ok(Some(titles[0].as_str()));
+    }
+    Ok(None)
+}
+
+fn path_is_under_state_dir(
+    runtime_paths: &wikitool_core::runtime::ResolvedPaths,
+    absolute_path: &Path,
+) -> bool {
+    let candidate = normalize_path(absolute_path);
+    let state_dir = normalize_path(&runtime_paths.state_dir);
+    candidate == state_dir || candidate.starts_with(&format!("{state_dir}/"))
+}
+
 fn article_selection_from_args(
     titles: &[String],
     paths: &[PathBuf],
@@ -527,7 +641,7 @@ fn resolve_article_selector_path(
     let relative_path = normalize_path(relative_path);
     if !relative_path.starts_with("wiki_content/") {
         bail!(
-            "article command only supports files under wiki_content/: {}",
+            "article batch selectors only support files under wiki_content/: {}. For one off-wiki draft, pass the draft path with exactly one --title.",
             relative_path
         );
     }

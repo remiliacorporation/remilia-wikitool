@@ -1,13 +1,13 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::article_lint::model::TextSpan;
 use crate::content_store::parsing::{
-    canonical_template_title, find_closing_html_tag, normalize_template_parameter_key,
-    parse_heading_line, parse_html_attributes, parse_module_invocation, parse_open_tag,
-    starts_with_html_tag,
+    canonical_template_title, find_closing_html_tag, normalize_query_title,
+    normalize_template_parameter_key, parse_heading_line, parse_html_attributes,
+    parse_module_invocation, parse_open_tag, starts_with_html_tag,
 };
 use crate::filesystem::{namespace_from_title, relative_path_to_title, validate_scoped_path};
 use crate::runtime::ResolvedPaths;
@@ -154,9 +154,10 @@ impl ParsedArticleDocument {
     }
 }
 
-pub(super) fn load_article_document(
+pub(super) fn load_article_document_with_title(
     paths: &ResolvedPaths,
     article_path: &Path,
+    title_override: Option<&str>,
 ) -> Result<ParsedArticleDocument> {
     let absolute_path = if article_path.is_absolute() {
         article_path.to_path_buf()
@@ -170,7 +171,10 @@ pub(super) fn load_article_document(
         .unwrap_or_else(|_| normalize_path(&absolute_path));
     let content = fs::read_to_string(&absolute_path)
         .with_context(|| format!("failed to read {}", absolute_path.display()))?;
-    let title = relative_path_to_title(paths, &relative_path)?;
+    let title = match normalize_title_override(title_override)? {
+        Some(title) => title,
+        None => relative_path_to_title(paths, &relative_path)?,
+    };
     let namespace = namespace_from_title(&title).as_str().to_string();
     let (is_redirect, redirect_target) = parse_redirect(&content);
     let lines = collect_lines(&content);
@@ -196,6 +200,17 @@ pub(super) fn load_article_document(
         parser_tags,
         template_styles,
     })
+}
+
+fn normalize_title_override(title_override: Option<&str>) -> Result<Option<String>> {
+    let Some(title_override) = title_override else {
+        return Ok(None);
+    };
+    let title = normalize_query_title(title_override);
+    if title.is_empty() {
+        bail!("article title override must not be empty");
+    }
+    Ok(Some(title))
 }
 
 fn collect_lines(content: &str) -> Vec<LineRecord> {
