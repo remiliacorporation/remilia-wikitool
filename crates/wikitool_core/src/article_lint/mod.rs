@@ -22,6 +22,7 @@ use crate::profile::{
     build_template_catalog_with_overlay, find_template_catalog_entry,
     load_latest_wiki_capabilities, load_or_build_remilia_profile_overlay,
 };
+use crate::research::export::{WikitextLintIssue, lint_wikitext};
 use crate::runtime::ResolvedPaths;
 use crate::support::{normalize_path, parse_redirect};
 
@@ -604,6 +605,7 @@ fn collect_issue_matches(
     lint_missing_short_description(document, resources, &mut matches);
     lint_article_quality_banner(document, resources, &mut matches);
     lint_markdown_headings(document, &mut matches);
+    lint_raw_wikitext_balance(document, &mut matches);
     lint_malformed_headings(document, &mut matches);
     lint_duplicate_headings(document, &mut matches);
     lint_sentence_case_headings(document, &mut matches);
@@ -621,6 +623,36 @@ fn collect_issue_matches(
 
     matches.sort_by(compare_issue_matches);
     Ok(matches)
+}
+
+fn lint_raw_wikitext_balance(document: &ParsedArticleDocument, matches: &mut Vec<IssueMatch>) {
+    for issue in lint_wikitext(&document.content) {
+        matches.push(wikitext_balance_issue(document, &issue));
+    }
+}
+
+fn wikitext_balance_issue(
+    document: &ParsedArticleDocument,
+    issue: &WikitextLintIssue,
+) -> IssueMatch {
+    IssueMatch {
+        issue: ArticleLintIssue {
+            rule_id: format!("wikitext.{}", issue.rule_id),
+            severity: ArticleLintSeverity::Error,
+            message: issue.message.clone(),
+            span: document.span_for_range(issue.byte_offset, issue.byte_offset.saturating_add(1)),
+            evidence: Some(make_content_preview(
+                &document.content[issue.byte_offset.min(document.content.len())..],
+                96,
+            )),
+            suggested_remediation: Some(
+                "Repair the raw wikitext balance at the reported location before revising article prose."
+                    .to_string(),
+            ),
+            suggested_fixes: Vec::new(),
+        },
+        safe_fixes: Vec::new(),
+    }
 }
 
 fn lint_missing_short_description(

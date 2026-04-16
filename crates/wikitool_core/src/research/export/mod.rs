@@ -7,6 +7,7 @@ mod html_text;
 mod wikitext;
 
 pub use html_text::source_content_to_markdown;
+pub(crate) use wikitext::lint::{WikitextLintIssue, lint_wikitext};
 pub use wikitext::wikitext_to_markdown;
 
 pub fn generate_frontmatter(
