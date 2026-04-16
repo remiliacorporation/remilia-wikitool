@@ -1327,8 +1327,12 @@ fn extract_readable_text(html: &str, max_bytes: usize) -> String {
             if is_skip_tag(tag_name) && skip_depth > 0 {
                 skip_depth -= 1;
             }
-            if skip_depth == 0 && is_block_tag(tag_name) {
-                append_separator(&mut output, "\n");
+            if skip_depth == 0 {
+                if is_paragraph_block_tag(tag_name) {
+                    append_separator(&mut output, "\n\n");
+                } else if is_block_tag(tag_name) {
+                    append_separator(&mut output, "\n");
+                }
             }
         } else if is_skip_tag(tag_name) && !is_self_closing {
             skip_depth += 1;
@@ -1337,6 +1341,8 @@ fn extract_readable_text(html: &str, max_bytes: usize) -> String {
                 append_separator(&mut output, "\n");
             } else if tag_name == "li" {
                 append_separator(&mut output, "\n- ");
+            } else if is_paragraph_block_tag(tag_name) {
+                append_separator(&mut output, "\n\n");
             } else if is_block_tag(tag_name) {
                 append_separator(&mut output, "\n");
             }
@@ -1359,21 +1365,65 @@ fn append_separator(output: &mut String, separator: &str) {
     if output.is_empty() {
         return;
     }
-    if separator == "\n" && output.ends_with('\n') {
-        return;
+    match separator {
+        "\n\n" => {
+            while output.ends_with(' ') || output.ends_with('\t') {
+                output.pop();
+            }
+            if output.ends_with("\n\n") {
+                return;
+            }
+            if output.ends_with('\n') {
+                output.push('\n');
+            } else {
+                output.push_str("\n\n");
+            }
+        }
+        "\n- " => {
+            while output.ends_with(' ') || output.ends_with('\t') {
+                output.pop();
+            }
+            if output.ends_with('\n') {
+                output.push_str("- ");
+            } else {
+                output.push_str("\n- ");
+            }
+        }
+        "\n" => {
+            while output.ends_with(' ') || output.ends_with('\t') {
+                output.pop();
+            }
+            if !output.ends_with('\n') {
+                output.push('\n');
+            }
+        }
+        other => output.push_str(other),
     }
-    output.push_str(separator);
 }
 
 fn normalize_extracted_text(value: &str, max_bytes: usize) -> String {
     let mut lines = Vec::new();
+    let mut blank_count = 0usize;
     for line in value.lines() {
         let collapsed = collapse_inline_whitespace(line);
-        if !collapsed.is_empty() {
-            lines.push(collapsed);
+        if collapsed.is_empty() {
+            blank_count += 1;
+            if blank_count <= 1 {
+                lines.push(String::new());
+            }
+            continue;
         }
+        blank_count = 0;
+        lines.push(collapsed);
     }
-    let merged = merge_isolated_bullet_markers(&lines);
+    let mut merged = merge_isolated_bullet_markers(&lines);
+    compact_adjacent_list_item_spacing(&mut merged);
+    while matches!(merged.first(), Some(line) if line.is_empty()) {
+        merged.remove(0);
+    }
+    while matches!(merged.last(), Some(line) if line.is_empty()) {
+        merged.pop();
+    }
     truncate_to_byte_limit(&merged.join("\n"), max_bytes)
 }
 
@@ -1388,17 +1438,44 @@ fn merge_isolated_bullet_markers(lines: &[String]) -> Vec<String> {
         let line = &lines[index];
         let trimmed = line.trim();
         if matches!(trimmed, "-" | "*" | "\u{2022}")
-            && let Some(next) = lines.get(index + 1)
+            && let Some((next_index, next)) = next_nonblank_line(lines, index + 1)
             && !next.trim().is_empty()
         {
             out.push(format!("- {}", next.trim()));
-            index += 2;
+            index = next_index + 1;
             continue;
         }
         index += 1;
         out.push(line.clone());
     }
     out
+}
+
+fn next_nonblank_line(lines: &[String], start: usize) -> Option<(usize, &str)> {
+    lines
+        .iter()
+        .enumerate()
+        .skip(start)
+        .find(|(_, line)| !line.trim().is_empty())
+        .map(|(index, line)| (index, line.as_str()))
+}
+
+fn compact_adjacent_list_item_spacing(lines: &mut Vec<String>) {
+    let mut index = 1usize;
+    while index + 1 < lines.len() {
+        if lines[index].is_empty()
+            && is_markdown_unordered_list_item(&lines[index - 1])
+            && is_markdown_unordered_list_item(&lines[index + 1])
+        {
+            lines.remove(index);
+            continue;
+        }
+        index += 1;
+    }
+}
+
+fn is_markdown_unordered_list_item(line: &str) -> bool {
+    line.trim_start().starts_with("- ")
 }
 
 fn collapse_inline_whitespace(value: &str) -> String {
@@ -1710,6 +1787,13 @@ fn is_block_tag(tag_name: &str) -> bool {
             | "h4"
             | "h5"
             | "h6"
+    )
+}
+
+fn is_paragraph_block_tag(tag_name: &str) -> bool {
+    matches!(
+        tag_name.to_ascii_lowercase().as_str(),
+        "p" | "blockquote" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
     )
 }
 
@@ -2029,6 +2113,9 @@ mod tests {
         assert!(text.contains("Second paragraph."));
         assert!(text.contains("- Alpha"));
         assert!(text.contains("- Beta"));
+        assert!(text.contains("Headline\n\nFirst paragraph."));
+        assert!(text.contains("First paragraph.\n\nSecond paragraph."));
+        assert!(text.contains("- Alpha\n- Beta"));
         assert!(!text.contains("Site navigation"));
         assert!(!text.contains("Footer links"));
     }
@@ -2118,13 +2205,26 @@ mod tests {
 
     #[test]
     fn normalize_extracted_text_merges_isolated_bullet_markers() {
-        let input = "Status\n-\nNear threatened\n-\nVulnerable\n\u{2022}\nEndangered";
+        let input = "Status\n\n-\n\nNear threatened\n-\nVulnerable\n\u{2022}\nEndangered";
         let cleaned = normalize_extracted_text(input, 1_000);
         assert!(cleaned.contains("- Near threatened"));
         assert!(cleaned.contains("- Vulnerable"));
         assert!(cleaned.contains("- Endangered"));
         assert!(!cleaned.contains("\n-\n"));
         assert!(!cleaned.contains("\n\u{2022}\n"));
+    }
+
+    #[test]
+    fn normalize_extracted_text_preserves_paragraphs_and_compact_lists() {
+        let cleaned = normalize_extracted_text(
+            "Heading\n\nFirst paragraph.\n\nSecond paragraph.\n\n- Alpha\n\n- Beta",
+            1_000,
+        );
+
+        assert!(cleaned.contains("Heading\n\nFirst paragraph."));
+        assert!(cleaned.contains("First paragraph.\n\nSecond paragraph."));
+        assert!(cleaned.contains("- Alpha\n- Beta"));
+        assert!(!cleaned.contains("- Alpha\n\n- Beta"));
     }
 
     #[test]

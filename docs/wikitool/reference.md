@@ -316,22 +316,25 @@ Options:
 ```text
 Export a remote wiki page tree to local files
 
-Usage: wikitool export [OPTIONS] <URL>
+Usage: wikitool export [OPTIONS] [URL]
 
 Arguments:
-  <URL>
+  [URL]
 
 Options:
-  -o, --output <PATH>         Output file or directory path
       --project-root <PATH>
+      --urls-file <PATH>      Read arbitrary source URLs from a newline-delimited file
       --data-dir <PATH>
+  -o, --output <PATH>         Output file or directory path
+      --config <PATH>
+      --output-dir <DIR>      Output directory for --urls-file markdown exports
+      --diagnostics           Print resolved runtime diagnostics
       --format <FORMAT>       Output format: markdown|wikitext [default: markdown] [possible values: markdown, wikitext]
       --code-language <LANG>  Code language hint (reserved for markdown export)
-      --config <PATH>
-      --diagnostics           Print resolved runtime diagnostics
       --no-frontmatter        Skip YAML frontmatter
       --subpages              Include subpages for MediaWiki page exports
       --combined              With --subpages, combine all pages into one output
+      --limit <N>             Maximum total pages to export with --subpages, including the parent page
   -h, --help                  Print help
 ```
 

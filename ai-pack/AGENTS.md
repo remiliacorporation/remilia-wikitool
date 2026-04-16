@@ -130,7 +130,8 @@ wikitool module lint --format json
 wikitool docs import-profile remilia-mw-1.44
 wikitool docs context "extension name" --profile remilia-mw-1.44 --format json
 wikitool fetch "https://www.mediawiki.org/wiki/Manual:Hooks"
-wikitool export "https://www.mediawiki.org/wiki/Manual:Hooks" --subpages --combined
+wikitool export "https://www.mediawiki.org/wiki/Manual:Hooks" --subpages --combined --limit 25
+wikitool export --urls-file sources.txt --output-dir wikitool_exports/sources --format markdown
 wikitool validate --summary
 wikitool validate --category broken-links --title "Title" --limit 20 --verify-live --format json
 wikitool review --format json --summary "Summary"
@@ -146,7 +147,7 @@ Docs bootstrap paths:
 
 Use `knowledge status` before depending on docs-bridged local retrieval; it surfaces `readiness`, `degradations`, the requested docs profile, and the current `knowledge_generation`.
 Use `knowledge pack` only when `article-start` is too collapsed and you need the deeper raw retrieval payload.
-Use `wikitool export "URL"` for agent-readable markdown snapshots. MediaWiki URLs are fetched as wikitext before markdown rendering; arbitrary web pages use the research extractor and frontmatter metadata. Wikitext export is only for recognizable MediaWiki URLs, and blocked arbitrary sources should remain explicit source-access failures.
+Use `wikitool export "URL"` for agent-readable markdown snapshots. MediaWiki URLs are fetched as wikitext before markdown rendering; arbitrary web pages use the research extractor and frontmatter metadata. Use `--subpages --limit N` for bounded MediaWiki tree stress tests, and `--urls-file PATH --output-dir PATH --format markdown` for off-wiki source packs with a generated `_index.md`. Wikitext export is only for recognizable MediaWiki URLs, and blocked arbitrary sources should remain explicit source-access failures.
 
 ## API Verification Rule
 

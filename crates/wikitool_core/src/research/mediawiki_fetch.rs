@@ -38,10 +38,22 @@ pub fn list_subpages(
     limit: usize,
 ) -> Result<Vec<String>> {
     let mut client = external_client()?;
-    let prefix = format!("{}/", parent_title.trim_end_matches('/'));
+    let target = SubpageQueryTarget::from_parent_title(parent_title);
     let mut candidate_errors = Vec::new();
     for api_url in &parsed.api_candidates {
-        let response = mediawiki_query_allpages(&mut client, api_url, &prefix, limit.max(1));
+        let (namespace, prefix) = match target.namespace_prefix.as_deref() {
+            Some(prefix) => match mediawiki_query_namespace_id(&mut client, api_url, prefix) {
+                Ok(Some(namespace)) => (namespace, target.namespace_local_prefix.as_str()),
+                Ok(None) => (0, target.main_namespace_prefix.as_str()),
+                Err(error) => {
+                    candidate_errors.push(format!("{api_url}: {error:#}"));
+                    continue;
+                }
+            },
+            None => (0, target.main_namespace_prefix.as_str()),
+        };
+        let response =
+            mediawiki_query_allpages(&mut client, api_url, prefix, namespace, limit.max(1));
         match response {
             Ok(value) => return Ok(value),
             Err(error) => candidate_errors.push(format!("{api_url}: {error:#}")),
@@ -55,6 +67,35 @@ pub fn list_subpages(
         );
     }
     Ok(Vec::new())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SubpageQueryTarget {
+    namespace_prefix: Option<String>,
+    namespace_local_prefix: String,
+    main_namespace_prefix: String,
+}
+
+impl SubpageQueryTarget {
+    fn from_parent_title(parent_title: &str) -> Self {
+        let trimmed = parent_title.trim().trim_end_matches('/');
+        if let Some((namespace, local_title)) = trimmed.split_once(':') {
+            let namespace = namespace.trim();
+            let local_title = local_title.trim();
+            if !namespace.is_empty() && !local_title.is_empty() {
+                return Self {
+                    namespace_prefix: Some(namespace.to_string()),
+                    namespace_local_prefix: format!("{}/", local_title.trim_end_matches('/')),
+                    main_namespace_prefix: format!("{trimmed}/"),
+                };
+            }
+        }
+        Self {
+            namespace_prefix: None,
+            namespace_local_prefix: String::new(),
+            main_namespace_prefix: format!("{trimmed}/"),
+        }
+    }
 }
 
 pub fn fetch_pages_by_titles(
@@ -400,6 +441,7 @@ fn mediawiki_query_allpages(
     client: &mut ExternalClient,
     api_url: &str,
     prefix: &str,
+    namespace: i32,
     limit: usize,
 ) -> Result<Vec<String>> {
     let target = limit.max(1);
@@ -411,6 +453,7 @@ fn mediawiki_query_allpages(
             ("action", "query".to_string()),
             ("list", "allpages".to_string()),
             ("apprefix", prefix.to_string()),
+            ("apnamespace", namespace.to_string()),
             (
                 "aplimit",
                 target.saturating_sub(titles.len()).min(500).to_string(),
@@ -431,6 +474,78 @@ fn mediawiki_query_allpages(
 
     titles.truncate(target);
     Ok(titles)
+}
+
+fn mediawiki_query_namespace_id(
+    client: &mut ExternalClient,
+    api_url: &str,
+    namespace_prefix: &str,
+) -> Result<Option<i32>> {
+    let payload = client.request_json(
+        api_url,
+        &[
+            ("action", "query".to_string()),
+            ("meta", "siteinfo".to_string()),
+            ("siprop", "namespaces|namespacealiases".to_string()),
+        ],
+    )?;
+    Ok(parse_namespace_id(&payload, namespace_prefix))
+}
+
+fn parse_namespace_id(payload: &Value, namespace_prefix: &str) -> Option<i32> {
+    let target = normalize_namespace_label(namespace_prefix);
+    if target.is_empty() {
+        return Some(0);
+    }
+
+    if let Some(namespaces) = payload
+        .get("query")
+        .and_then(|value| value.get("namespaces"))
+        .and_then(Value::as_object)
+    {
+        for (key, namespace) in namespaces {
+            let Some(id) = namespace
+                .get("id")
+                .and_then(Value::as_i64)
+                .or_else(|| key.parse::<i64>().ok())
+            else {
+                continue;
+            };
+            let matches_name = namespace
+                .get("*")
+                .and_then(Value::as_str)
+                .is_some_and(|value| normalize_namespace_label(value) == target)
+                || namespace
+                    .get("canonical")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| normalize_namespace_label(value) == target);
+            if matches_name {
+                return i32::try_from(id).ok();
+            }
+        }
+    }
+
+    if let Some(aliases) = payload
+        .get("query")
+        .and_then(|value| value.get("namespacealiases"))
+        .and_then(Value::as_array)
+    {
+        for alias in aliases {
+            let alias_name = alias.get("*").and_then(Value::as_str);
+            if alias_name.is_some_and(|value| normalize_namespace_label(value) == target) {
+                return alias
+                    .get("id")
+                    .and_then(Value::as_i64)
+                    .and_then(|value| i32::try_from(value).ok());
+            }
+        }
+    }
+
+    None
+}
+
+fn normalize_namespace_label(value: &str) -> String {
+    value.replace('_', " ").trim().to_ascii_lowercase()
 }
 
 fn parse_allpages_payload(payload: &Value) -> (Vec<String>, Option<String>) {
@@ -460,7 +575,9 @@ fn parse_allpages_payload(payload: &Value) -> (Vec<String>, Option<String>) {
 mod tests {
     use serde_json::json;
 
-    use super::{apply_rendered_page, parse_mediawiki_content_page};
+    use super::{
+        SubpageQueryTarget, apply_rendered_page, parse_mediawiki_content_page, parse_namespace_id,
+    };
     use crate::mw::render::RenderedPageHtml;
     use crate::research::model::{
         ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
@@ -560,5 +677,39 @@ mod tests {
             merged.rendered_fetch_mode,
             Some(RenderedFetchMode::ParseApi)
         );
+    }
+
+    #[test]
+    fn subpage_query_target_splits_namespace_prefix_for_allpages() {
+        let target = SubpageQueryTarget::from_parent_title("Manual:Hooks");
+
+        assert_eq!(target.namespace_prefix.as_deref(), Some("Manual"));
+        assert_eq!(target.namespace_local_prefix, "Hooks/");
+        assert_eq!(target.main_namespace_prefix, "Manual:Hooks/");
+
+        let main = SubpageQueryTarget::from_parent_title("Main Page");
+        assert_eq!(main.namespace_prefix, None);
+        assert_eq!(main.namespace_local_prefix, "");
+        assert_eq!(main.main_namespace_prefix, "Main Page/");
+    }
+
+    #[test]
+    fn parse_namespace_id_matches_canonical_names_and_aliases() {
+        let payload = json!({
+            "query": {
+                "namespaces": {
+                    "0": { "id": 0, "*": "" },
+                    "100": { "id": 100, "*": "Manual", "canonical": "Manual" }
+                },
+                "namespacealiases": [
+                    { "id": 100, "*": "Man" }
+                ]
+            }
+        });
+
+        assert_eq!(parse_namespace_id(&payload, "Manual"), Some(100));
+        assert_eq!(parse_namespace_id(&payload, "manual"), Some(100));
+        assert_eq!(parse_namespace_id(&payload, "Man"), Some(100));
+        assert_eq!(parse_namespace_id(&payload, "Unknown"), None);
     }
 }

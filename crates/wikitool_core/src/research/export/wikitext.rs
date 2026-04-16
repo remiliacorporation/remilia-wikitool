@@ -1,93 +1,12 @@
-use std::env;
-use std::path::{Path, PathBuf};
-
-use super::entities::decode_html_entities;
-use super::model::{DEFAULT_EXPORTS_DIR, ExportFormat};
-use super::template_render::{ParsedTemplate, TemplateContext, TemplateRendering, render_template};
+use super::super::entities::decode_html_entities;
+use super::super::template_render::{
+    ParsedTemplate, TemplateContext, TemplateRendering, render_template,
+};
+use super::normalize_markdown;
 
 pub fn wikitext_to_markdown(content: &str, _code_language: Option<&str>) -> String {
     let mut renderer = WikitextMarkdownRenderer::default();
     renderer.render(content)
-}
-
-pub fn source_content_to_markdown(
-    content: &str,
-    content_format: &str,
-    code_language: Option<&str>,
-) -> String {
-    if content_format.eq_ignore_ascii_case("wikitext") {
-        return wikitext_to_markdown(content, code_language);
-    }
-    if content_format.eq_ignore_ascii_case("html") {
-        return html_to_markdown(content);
-    }
-    if content_format.eq_ignore_ascii_case("markdown") {
-        return normalize_markdown(content);
-    }
-    if content_format.eq_ignore_ascii_case("text") {
-        return text_to_markdown(content);
-    }
-    fenced_source(content, content_format)
-}
-
-pub fn generate_frontmatter(
-    title: &str,
-    source_url: &str,
-    source_domain: &str,
-    timestamp: &str,
-    extra_fields: &[(String, String)],
-) -> String {
-    let mut lines = vec![
-        "---".to_string(),
-        format!("title: \"{}\"", title.replace('"', "\\\"")),
-        format!("source_url: \"{}\"", source_url.replace('"', "\\\"")),
-        format!("source_domain: \"{}\"", source_domain.replace('"', "\\\"")),
-        format!("fetched_at: \"{}\"", timestamp.replace('"', "\\\"")),
-    ];
-    for (key, value) in extra_fields {
-        lines.push(format!("{key}: \"{}\"", value.replace('"', "\\\"")));
-    }
-    lines.push("---".to_string());
-    lines.join("\n")
-}
-
-pub fn sanitize_filename(value: &str) -> String {
-    let mut output = String::new();
-    let mut last_was_separator = false;
-    for ch in value.chars() {
-        let mapped = match ch {
-            'a'..='z' | 'A'..='Z' | '0'..='9' => Some(ch),
-            '-' | '_' => Some(ch),
-            _ if ch.is_whitespace() => Some('-'),
-            _ => None,
-        };
-        if let Some(ch) = mapped {
-            let is_separator = ch == '-' || ch == '_';
-            if is_separator && last_was_separator {
-                continue;
-            }
-            output.push(ch);
-            last_was_separator = is_separator;
-        }
-    }
-    output.trim_matches(['-', '_']).to_string()
-}
-
-pub fn default_export_path(
-    project_root: &Path,
-    title: &str,
-    is_directory: bool,
-    format: ExportFormat,
-) -> Option<PathBuf> {
-    if env::var("WIKITOOL_NO_DEFAULT_EXPORTS").is_ok() {
-        return None;
-    }
-    let filename = sanitize_filename(title);
-    let exports_dir = project_root.join(DEFAULT_EXPORTS_DIR);
-    if is_directory {
-        return Some(exports_dir.join(filename));
-    }
-    Some(exports_dir.join(format!("{}.{}", filename, format.file_extension())))
 }
 
 fn convert_heading(line: &str) -> Option<String> {
@@ -120,6 +39,7 @@ struct WikitextMarkdownRenderer {
 enum Segment<'a> {
     Prose(&'a str),
     Template { inner: &'a str },
+    ExtensionBlock { raw: &'a str },
 }
 
 impl WikitextMarkdownRenderer {
@@ -140,9 +60,9 @@ impl WikitextMarkdownRenderer {
     /// Logical wikitext lines can span multiple segments (an inline template inside a
     /// paragraph is one example). The renderer accumulates the current in-progress
     /// line across segments and only finalizes it when a newline is encountered in a
-    /// prose segment or when a block-level template forces a flush.
+    /// prose segment or when a block-level template/extension forces a flush.
     fn render_fragment(&mut self, content: &str) -> String {
-        let segments = segment_by_top_level_templates(content);
+        let segments = segment_wikitext(content);
         let mut output_lines: Vec<String> = Vec::new();
         let mut current_line = String::new();
 
@@ -175,14 +95,19 @@ impl WikitextMarkdownRenderer {
                             output_lines.push(String::new());
                         }
                         TemplateRendering::Fenced => {
+                            if line_starts_redirect(&current_line) {
+                                continue;
+                            }
                             self.flush_pending_line(&mut current_line, &mut output_lines);
                             push_blank_separator(&mut output_lines);
-                            output_lines.push("```wikitext".to_string());
-                            output_lines.push(format!("{{{{{inner}}}}}"));
-                            output_lines.push("```".to_string());
-                            output_lines.push(String::new());
+                            push_fenced_wikitext(&mut output_lines, &format!("{{{{{inner}}}}}"));
                         }
                     }
+                }
+                Segment::ExtensionBlock { raw } => {
+                    self.flush_pending_line(&mut current_line, &mut output_lines);
+                    push_blank_separator(&mut output_lines);
+                    push_fenced_wikitext(&mut output_lines, raw);
                 }
             }
         }
@@ -214,6 +139,10 @@ impl WikitextMarkdownRenderer {
             return;
         }
         let trimmed = line.trim();
+        if let Some(redirect) = convert_redirect_line(trimmed) {
+            output.push(redirect);
+            return;
+        }
         if let Some(category) = extract_category_link(trimmed) {
             self.categories.push(category);
             return;
@@ -303,7 +232,7 @@ fn split_prose_lines_preserving_opaque_blocks(text: &str) -> Vec<&str> {
 
     while cursor < bytes.len() {
         if bytes[cursor] == b'<'
-            && let Some(end) = skip_opaque_html_block(text, cursor)
+            && let Some(end) = skip_inline_opaque_html_block(text, cursor)
         {
             cursor = end;
             continue;
@@ -332,13 +261,11 @@ fn format_reference_entry(marker: &str, ref_text: &str) -> String {
     output
 }
 
-/// Walk `content` char-by-char and split it into prose runs and top-level template
-/// invocations. Respects nested `{{ ... }}` pairs and preserves `<ref>...</ref>` and
-/// `<nowiki>...</nowiki>` blocks as opaque spans inside their surrounding prose —
-/// splitting templates out of a ref body would break the single-line ref reducer in
-/// `convert_refs`, and a cite template inside a ref is meant to stay verbatim in the
-/// footnote anyway.
-fn segment_by_top_level_templates(content: &str) -> Vec<Segment<'_>> {
+/// Walk `content` char-by-char and split it into prose runs, top-level template
+/// invocations, and complex extension blocks. The inline opaque tags (`ref`,
+/// `nowiki`) stay inside prose because their bodies should not affect template
+/// segmentation. Complex extension blocks are fenced verbatim rather than flattened.
+fn segment_wikitext(content: &str) -> Vec<Segment<'_>> {
     let bytes = content.as_bytes();
     let mut segments = Vec::new();
     let mut cursor = 0usize;
@@ -346,7 +273,28 @@ fn segment_by_top_level_templates(content: &str) -> Vec<Segment<'_>> {
 
     while cursor + 1 < bytes.len() {
         if bytes[cursor] == b'<'
-            && let Some(end) = skip_opaque_html_block(content, cursor)
+            && let Some(end) = skip_complex_extension_block(content, cursor)
+        {
+            if cursor > prose_start {
+                segments.push(Segment::Prose(&content[prose_start..cursor]));
+            }
+            segments.push(Segment::ExtensionBlock {
+                raw: &content[cursor..end],
+            });
+            cursor = end;
+            prose_start = cursor;
+            continue;
+        }
+        if bytes[cursor] == b'<'
+            && let Some(end) = skip_inline_opaque_html_block(content, cursor)
+        {
+            cursor = end;
+            continue;
+        }
+        if bytes[cursor] == b'['
+            && cursor + 1 < bytes.len()
+            && bytes[cursor + 1] == b'['
+            && let Some(end) = skip_wikilink_span(content, cursor)
         {
             cursor = end;
             continue;
@@ -382,7 +330,6 @@ fn segment_by_top_level_templates(content: &str) -> Vec<Segment<'_>> {
                 prose_start = cursor;
                 continue;
             }
-            // Unterminated template open: treat the rest as prose and exit.
             segments.push(Segment::Prose(&content[cursor..]));
             return segments;
         }
@@ -394,12 +341,45 @@ fn segment_by_top_level_templates(content: &str) -> Vec<Segment<'_>> {
     segments
 }
 
-/// If `cursor` points at a `<ref...>` or `<nowiki>` opening tag, return the byte
-/// offset immediately after the matching close; otherwise return `None`. Self-closing
-/// tags (`<ref name="x"/>`) return the offset just past the `/>`.
-fn skip_opaque_html_block(content: &str, cursor: usize) -> Option<usize> {
+fn skip_wikilink_span(content: &str, cursor: usize) -> Option<usize> {
+    let bytes = content.as_bytes();
+    if bytes.get(cursor).copied() != Some(b'[') || bytes.get(cursor + 1).copied() != Some(b'[') {
+        return None;
+    }
+    let mut scan = cursor + 2;
+    while scan + 1 < bytes.len() {
+        if bytes[scan] == b']' && bytes[scan + 1] == b']' {
+            return Some(scan + 2);
+        }
+        scan += 1;
+    }
+    None
+}
+
+fn skip_inline_opaque_html_block(content: &str, cursor: usize) -> Option<usize> {
     const OPAQUE_TAGS: &[&str] = &["ref", "nowiki"];
     for tag in OPAQUE_TAGS {
+        if let Some(end) = skip_named_opaque_html_block(content, cursor, tag) {
+            return Some(end);
+        }
+    }
+    None
+}
+
+fn skip_complex_extension_block(content: &str, cursor: usize) -> Option<usize> {
+    const EXTENSION_TAGS: &[&str] = &[
+        "gallery",
+        "math",
+        "chem",
+        "syntaxhighlight",
+        "source",
+        "score",
+        "timeline",
+        "graph",
+        "mapframe",
+        "maplink",
+    ];
+    for tag in EXTENSION_TAGS {
         if let Some(end) = skip_named_opaque_html_block(content, cursor, tag) {
             return Some(end);
         }
@@ -439,22 +419,20 @@ fn skip_named_opaque_html_block(content: &str, cursor: usize, tag: &str) -> Opti
     Some(close_offset + close_end + 1)
 }
 
-/// A template is rendered in block context when its opening occurs on a line of its
-/// own (preceded only by whitespace on that line) and is followed by a newline.
 fn classify_template_context(segments: &[Segment<'_>], index: usize) -> TemplateContext {
     let prev_ok = if index == 0 {
         true
     } else if let Segment::Prose(text) = segments[index - 1] {
         line_tail_is_blank(text)
     } else {
-        false
+        true
     };
     let next_ok = if index + 1 >= segments.len() {
         true
     } else if let Segment::Prose(text) = segments[index + 1] {
         line_head_is_blank_or_newline(text)
     } else {
-        false
+        true
     };
     if prev_ok && next_ok {
         TemplateContext::Block
@@ -480,6 +458,13 @@ fn push_blank_separator(output: &mut Vec<String>) {
     if !matches!(output.last(), Some(value) if value.is_empty()) {
         output.push(String::new());
     }
+}
+
+fn push_fenced_wikitext(output: &mut Vec<String>, raw: &str) {
+    output.push("```wikitext".to_string());
+    output.extend(raw.lines().map(str::to_string));
+    output.push("```".to_string());
+    output.push(String::new());
 }
 
 fn append_agent_sections(
@@ -552,6 +537,41 @@ fn convert_inline_wikitext_segment(line: &str) -> String {
     let line = convert_internal_links(&line);
     let line = strip_simple_html_tags(&line);
     convert_emphasis(&line)
+}
+
+fn convert_redirect_line(line: &str) -> Option<String> {
+    let rest = strip_prefix_ignore_case(line.trim_start(), "#redirect")?;
+    let rest = rest
+        .trim_start()
+        .strip_prefix(':')
+        .unwrap_or(rest)
+        .trim_start();
+    let inner = extract_first_wrapped_link(rest)?;
+    let mut parts = inner.splitn(2, '|');
+    let target = parts.next().unwrap_or("").trim();
+    let label = parts.next().map(str::trim).unwrap_or(target);
+    if target.is_empty() || label.is_empty() {
+        return None;
+    }
+    Some(format!("Redirect to [{label}](wiki://{target})"))
+}
+
+fn line_starts_redirect(line: &str) -> bool {
+    strip_prefix_ignore_case(line.trim_start(), "#redirect").is_some()
+}
+
+fn strip_prefix_ignore_case<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    let bytes = value.as_bytes();
+    let prefix_bytes = prefix.as_bytes();
+    if bytes.len() < prefix_bytes.len() {
+        return None;
+    }
+    for (actual, expected) in bytes.iter().zip(prefix_bytes.iter()) {
+        if !actual.eq_ignore_ascii_case(expected) {
+            return None;
+        }
+    }
+    Some(&value[prefix.len()..])
 }
 
 fn convert_list_prefix(line: &str) -> String {
@@ -748,7 +768,10 @@ fn extract_media_link(trimmed: &str) -> Option<String> {
         .or_else(|| inner.strip_prefix("Image:"))
         .or_else(|| inner.strip_prefix("file:"))
         .or_else(|| inner.strip_prefix("image:"))?;
-    let parts = target.split('|').map(str::trim).collect::<Vec<_>>();
+    let parts = split_wikitext_pipe_parts(target)
+        .into_iter()
+        .map(str::trim)
+        .collect::<Vec<_>>();
     let filename = parts.first().copied().unwrap_or("").trim();
     if filename.is_empty() {
         return None;
@@ -777,8 +800,56 @@ fn extract_media_link(trimmed: &str) -> Option<String> {
     Some(format!("{filename} - {}", convert_inline_wikitext(caption)))
 }
 
+fn split_wikitext_pipe_parts(value: &str) -> Vec<&str> {
+    let chars = value.char_indices().collect::<Vec<_>>();
+    let mut parts = Vec::new();
+    let mut part_start = 0usize;
+    let mut index = 0usize;
+    let mut wiki_link_depth = 0usize;
+    let mut template_depth = 0usize;
+
+    while index < chars.len() {
+        let (byte_index, ch) = chars[index];
+        if index + 1 < chars.len() && ch == '[' && chars[index + 1].1 == '[' {
+            wiki_link_depth += 1;
+            index += 2;
+            continue;
+        }
+        if index + 1 < chars.len() && ch == ']' && chars[index + 1].1 == ']' && wiki_link_depth > 0
+        {
+            wiki_link_depth -= 1;
+            index += 2;
+            continue;
+        }
+        if index + 1 < chars.len() && ch == '{' && chars[index + 1].1 == '{' {
+            template_depth += 1;
+            index += 2;
+            continue;
+        }
+        if index + 1 < chars.len() && ch == '}' && chars[index + 1].1 == '}' && template_depth > 0 {
+            template_depth -= 1;
+            index += 2;
+            continue;
+        }
+        if ch == '|' && wiki_link_depth == 0 && template_depth == 0 {
+            parts.push(&value[part_start..byte_index]);
+            part_start = byte_index + 1;
+        }
+        index += 1;
+    }
+
+    parts.push(&value[part_start..]);
+    parts
+}
+
 fn extract_wrapped_link(trimmed: &str) -> Option<&str> {
     trimmed.strip_prefix("[[")?.strip_suffix("]]")
+}
+
+fn extract_first_wrapped_link(trimmed: &str) -> Option<&str> {
+    let rest = trimmed.strip_prefix("[[")?;
+    let end = rest.find("]]")?;
+    Some(&rest[..end])
 }
 
 fn parse_ref_name(open_tag: &str) -> Option<String> {
@@ -884,117 +955,6 @@ fn strip_simple_html_tags(line: &str) -> String {
     decode_basic_entities(&output)
 }
 
-fn html_to_markdown(html: &str) -> String {
-    let mut output = String::new();
-    let mut index = 0usize;
-    while index < html.len() {
-        let Some(start) = html[index..].find('<') else {
-            output.push_str(&html[index..]);
-            break;
-        };
-        let absolute_start = index + start;
-        output.push_str(&html[index..absolute_start]);
-        let Some(end) = html[absolute_start..].find('>') else {
-            break;
-        };
-        let tag = html[absolute_start + 1..absolute_start + end]
-            .trim()
-            .trim_start_matches('/')
-            .to_ascii_lowercase();
-        if is_html_block_tag(&tag) {
-            output.push_str("\n\n");
-        }
-        index = absolute_start + end + 1;
-    }
-    normalize_markdown(&decode_basic_entities(&output))
-}
-
-fn is_html_block_tag(tag: &str) -> bool {
-    let name = tag
-        .split(|ch: char| ch.is_ascii_whitespace() || ch == '/')
-        .next()
-        .unwrap_or("");
-    matches!(
-        name,
-        "p" | "div"
-            | "section"
-            | "article"
-            | "main"
-            | "li"
-            | "tr"
-            | "table"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-    )
-}
-
-fn text_to_markdown(content: &str) -> String {
-    normalize_markdown(content)
-}
-
-fn fenced_source(content: &str, content_format: &str) -> String {
-    let language = match content_format {
-        "json" => "json",
-        "xml" => "xml",
-        _ => "text",
-    };
-    format!("```{language}\n{}\n```", content.trim())
-}
-
-fn normalize_markdown(content: &str) -> String {
-    let mut lines = Vec::new();
-    let mut blank_count = 0usize;
-    let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
-    let normalized = merge_isolated_list_markers(&normalized);
-    for line in normalized.lines() {
-        let trimmed_end = line.trim_end();
-        if trimmed_end.trim().is_empty() {
-            blank_count += 1;
-            if blank_count <= 1 {
-                lines.push(String::new());
-            }
-            continue;
-        }
-        blank_count = 0;
-        lines.push(trimmed_end.to_string());
-    }
-    while matches!(lines.first(), Some(line) if line.is_empty()) {
-        lines.remove(0);
-    }
-    while matches!(lines.last(), Some(line) if line.is_empty()) {
-        lines.pop();
-    }
-    lines.join("\n")
-}
-
-fn merge_isolated_list_markers(content: &str) -> String {
-    let source_lines = content.lines().collect::<Vec<_>>();
-    let mut lines = Vec::with_capacity(source_lines.len());
-    let mut index = 0usize;
-    while index < source_lines.len() {
-        let line = source_lines[index].trim_end();
-        if is_isolated_unordered_list_marker(line)
-            && let Some(next) = source_lines.get(index + 1).map(|value| value.trim())
-            && !next.is_empty()
-        {
-            let indentation = &line[..line.len() - line.trim_start().len()];
-            lines.push(format!("{indentation}- {next}"));
-            index += 2;
-            continue;
-        }
-        lines.push(line.to_string());
-        index += 1;
-    }
-    lines.join("\n")
-}
-
-fn is_isolated_unordered_list_marker(line: &str) -> bool {
-    let trimmed = line.trim();
-    trimmed == "-" || trimmed == "*"
-}
-
 fn decode_basic_entities(text: &str) -> String {
     decode_html_entities(text)
 }
@@ -1026,7 +986,7 @@ fn index_of_ignore_case(text: &str, search: &str, start: usize) -> Option<usize>
 
 #[cfg(test)]
 mod tests {
-    use super::{source_content_to_markdown, wikitext_to_markdown};
+    use super::wikitext_to_markdown;
 
     #[test]
     fn wikitext_to_markdown_extracts_agent_sections() {
@@ -1097,43 +1057,6 @@ mod tests {
     }
 
     #[test]
-    fn source_content_to_markdown_uses_readable_web_text_directly() {
-        let markdown = source_content_to_markdown(
-            "Title\r\n\r\nReadable paragraph.\r\n\r\n\r\nSecond paragraph.",
-            "text",
-            None,
-        );
-
-        assert_eq!(
-            markdown,
-            "Title\n\nReadable paragraph.\n\nSecond paragraph."
-        );
-    }
-
-    #[test]
-    fn source_content_to_markdown_merges_extracted_list_markers() {
-        let markdown =
-            source_content_to_markdown("Status\n-\nNear threatened\n-\nVulnerable", "text", None);
-
-        assert!(markdown.contains("- Near threatened"));
-        assert!(markdown.contains("- Vulnerable"));
-        assert!(!markdown.contains("\n-\n"));
-    }
-
-    #[test]
-    fn source_content_to_markdown_strips_basic_html() {
-        let markdown = source_content_to_markdown(
-            "<article><h1>Title</h1><p>Readable &amp; useful &#x27;text&#x27;.</p></article>",
-            "html",
-            None,
-        );
-
-        assert!(markdown.contains("Title"));
-        assert!(markdown.contains("Readable & useful 'text'."));
-        assert!(!markdown.contains("<article>"));
-    }
-
-    #[test]
     fn wikitext_to_markdown_flattens_infobox_and_inline_templates() {
         let markdown = wikitext_to_markdown(
             r#"{{Short description|Fastest land mammal}}
@@ -1150,28 +1073,21 @@ The '''cheetah''' reaches {{cvt|93|km/h|mph}} and is native to {{lang|en|Africa}
             None,
         );
 
-        // Metadata banners dropped
         assert!(!markdown.contains("Short description"));
         assert!(!markdown.contains("Use British English"));
         assert!(!markdown.contains("Good article"));
-
-        // Infobox rendered as a definition list block
         assert!(markdown.contains("**Speciesbox**"));
         assert!(markdown.contains("- **name:** Cheetah"));
         assert!(markdown.contains("- **status:** VU"));
         assert!(markdown.contains(
             "- **authority:** ([Schreber](wiki://Johann Christian Daniel von Schreber), 1775)"
         ));
-
-        // Inline templates flattened without the template syntax leaking through
         assert!(markdown.contains("reaches 93 km/h"));
         assert!(markdown.contains("native to Africa"));
         assert!(markdown.contains("In (older texts) the species"));
         assert!(!markdown.contains("{{cvt"));
         assert!(!markdown.contains("{{lang"));
         assert!(!markdown.contains("{{small"));
-
-        // Prose after the infobox is preserved intact and wikilinks convert normally
         assert!(markdown.contains("[Iran](wiki://Iran)"));
     }
 
@@ -1210,7 +1126,6 @@ The '''cheetah''' reaches {{cvt|93|km/h|mph}} and is native to {{lang|en|Africa}
             markdown.contains("runs at 93 km/h; it has powerful hindlimbs."),
             "unexpected render: {markdown}"
         );
-        // Must not treat the post-template `; ` as a definition-list term
         assert!(!markdown.contains("- **it has"));
     }
 
@@ -1249,6 +1164,53 @@ The '''cheetah''' reaches {{cvt|93|km/h|mph}} and is native to {{lang|en|Africa}
 
         assert!(markdown.contains("Literal [[Not a link]] and {{not a template}} text."));
         assert!(!markdown.contains("wiki://Not a link"));
+        assert!(!markdown.contains("```wikitext"));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_renders_redirects_explicitly() {
+        let markdown = wikitext_to_markdown("#REDIRECT [[Target Page]] {{R from move}}", None);
+
+        assert_eq!(markdown, "Redirect to [Target Page](wiki://Target Page)");
+        assert!(!markdown.contains("1. REDIRECT"));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_fences_complex_extension_blocks() {
+        let markdown = wikitext_to_markdown(
+            "Lead.\n\n<gallery>\nFile:Example.jpg|Caption\n</gallery>\n\nTail.",
+            None,
+        );
+
+        assert!(markdown.contains("Lead."));
+        assert!(
+            markdown.contains("```wikitext\n<gallery>\nFile:Example.jpg|Caption\n</gallery>\n```")
+        );
+        assert!(markdown.contains("Tail."));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_fences_syntax_and_math_blocks() {
+        let markdown = wikitext_to_markdown(
+            "<syntaxhighlight lang=\"rust\">\nfn main() {}\n</syntaxhighlight>\n\n<math>E=mc^2</math>",
+            None,
+        );
+
+        assert!(markdown.contains(
+            "```wikitext\n<syntaxhighlight lang=\"rust\">\nfn main() {}\n</syntaxhighlight>\n```"
+        ));
+        assert!(markdown.contains("```wikitext\n<math>E=mc^2</math>\n```"));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_does_not_split_templates_inside_wikilinks() {
+        let markdown = wikitext_to_markdown(
+            "[[File:Icon.svg|alt=Icon|{{dir|en|left|right}}|125x125px]]",
+            None,
+        );
+
+        assert!(markdown.contains("## Media"));
+        assert!(markdown.contains("- Icon.svg - {{dir|en|left|right}}"));
         assert!(!markdown.contains("```wikitext"));
     }
 }
