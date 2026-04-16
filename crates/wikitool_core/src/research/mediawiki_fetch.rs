@@ -7,9 +7,9 @@ use super::model::{
 };
 use super::url::encode_title;
 use super::web_fetch::{ExternalClient, external_client, truncate_to_byte_limit};
-use crate::support::now_iso8601_utc;
 use crate::mw::render::{RenderedPageHtml, decode_rendered_page_payload};
 use crate::support::compute_hash;
+use crate::support::now_iso8601_utc;
 
 const DEFAULT_MEDIAWIKI_TITLE_BATCH_SIZE: usize = 50;
 

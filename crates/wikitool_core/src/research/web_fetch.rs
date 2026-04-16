@@ -8,9 +8,7 @@ use reqwest::Url;
 use reqwest::blocking::Client;
 use serde_json::Value;
 
-use crate::support::{
-    compute_hash, env_value, env_value_u64, env_value_usize, now_iso8601_utc,
-};
+use crate::support::{compute_hash, env_value, env_value_u64, env_value_usize, now_iso8601_utc};
 
 use super::entities::decode_html_entities;
 use super::model::{
@@ -1759,7 +1757,6 @@ pub(crate) fn truncate_to_byte_limit(value: &str, max_bytes: usize) -> String {
     }
     value[..end].to_string()
 }
-
 
 fn find_tag_start(html: &str, tag_name: &str, start: usize) -> Option<usize> {
     let mut index = start;

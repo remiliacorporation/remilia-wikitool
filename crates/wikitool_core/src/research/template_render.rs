@@ -84,6 +84,14 @@ impl ParsedTemplate {
     }
 
     pub(super) fn positional(&self, index: usize) -> Option<&str> {
+        if let Some(value) = self.params.iter().find_map(|param| match &param.key {
+            ParamKey::Named(name) if name.trim().parse::<usize>().ok() == Some(index) => {
+                Some(param.value.as_str())
+            }
+            _ => None,
+        }) {
+            return Some(value);
+        }
         self.params.iter().find_map(|param| match &param.key {
             ParamKey::Positional(i) if *i == index => Some(param.value.as_str()),
             _ => None,
@@ -168,11 +176,6 @@ const METADATA_TEMPLATE_PREFIXES: &[&str] = &[
     "coord missing",
     "coord",
     "geobox coor",
-    "#if:",
-    "#ifeq:",
-    "#switch:",
-    "#expr:",
-    "#ifexpr:",
     "template:documentation",
     "documentation",
     "template shortcut",
@@ -368,9 +371,9 @@ fn render_bullet_list(
             }
             TemplateRendering::Block(lines.join("\n"))
         }
-        TemplateContext::Inline => TemplateRendering::Inline(render_inline_list_values(
-            &items, ", ", recurse,
-        )),
+        TemplateContext::Inline => {
+            TemplateRendering::Inline(render_inline_list_values(&items, ", ", recurse))
+        }
     }
 }
 
@@ -485,7 +488,10 @@ mod tests {
             "italic title",
         ] {
             assert!(
-                matches!(render(case, TemplateContext::Block), TemplateRendering::Drop),
+                matches!(
+                    render(case, TemplateContext::Block),
+                    TemplateRendering::Drop
+                ),
                 "metadata template `{case}` should drop"
             );
         }
@@ -566,10 +572,7 @@ mod tests {
 
     #[test]
     fn collapsible_list_block_renders_bullets_and_inline_joins() {
-        let block = render(
-            "collapsible list|Alpha|Beta|Gamma",
-            TemplateContext::Block,
-        );
+        let block = render("collapsible list|Alpha|Beta|Gamma", TemplateContext::Block);
         match block {
             TemplateRendering::Block(body) => {
                 assert_eq!(body, "- Alpha\n- Beta\n- Gamma");
@@ -606,6 +609,21 @@ mod tests {
     }
 
     #[test]
+    fn parser_functions_are_preserved_instead_of_dropped() {
+        assert!(matches!(
+            render("#if: condition | visible | hidden", TemplateContext::Block),
+            TemplateRendering::Fenced
+        ));
+        assert!(matches!(
+            render(
+                "#switch: value | a = A | #default = fallback",
+                TemplateContext::Block
+            ),
+            TemplateRendering::Fenced
+        ));
+    }
+
+    #[test]
     fn parses_empty_positional_slots() {
         let template =
             ParsedTemplate::parse("About|the animal||Cheetah (disambiguation)").expect("parses");
@@ -613,5 +631,13 @@ mod tests {
         assert_eq!(template.positional(1), Some("the animal"));
         assert_eq!(template.positional(2), Some(""));
         assert_eq!(template.positional(3), Some("Cheetah (disambiguation)"));
+    }
+
+    #[test]
+    fn positional_lookup_accepts_numeric_named_parameters() {
+        let template = ParsedTemplate::parse("cvt|1=93|2=km/h|3=mph").expect("parses");
+        assert_eq!(template.positional(1), Some("93"));
+        assert_eq!(template.positional(2), Some("km/h"));
+        assert_eq!(template.positional(3), Some("mph"));
     }
 }

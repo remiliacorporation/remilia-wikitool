@@ -3,9 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::entities::decode_html_entities;
 use super::model::{DEFAULT_EXPORTS_DIR, ExportFormat};
-use super::template_render::{
-    ParsedTemplate, TemplateContext, TemplateRendering, render_template,
-};
+use super::template_render::{ParsedTemplate, TemplateContext, TemplateRendering, render_template};
 
 pub fn wikitext_to_markdown(content: &str, _code_language: Option<&str>) -> String {
     let mut renderer = WikitextMarkdownRenderer::default();
@@ -151,7 +149,8 @@ impl WikitextMarkdownRenderer {
         for index in 0..segments.len() {
             match segments[index] {
                 Segment::Prose(text) => {
-                    let mut parts = text.split('\n');
+                    let parts = split_prose_lines_preserving_opaque_blocks(text);
+                    let mut parts = parts.into_iter();
                     if let Some(first) = parts.next() {
                         current_line.push_str(first);
                     }
@@ -279,7 +278,8 @@ impl WikitextMarkdownRenderer {
                     .any(|entry| entry.starts_with(&format!("[^{marker}]:")))
             {
                 let ref_text = convert_inline_wikitext(raw_ref);
-                self.references.push(format!("[^{marker}]: {ref_text}"));
+                self.references
+                    .push(format_reference_entry(&marker, &ref_text));
             }
             output.push_str(&format!("[^{marker}]"));
             index = close_start + "</ref>".len();
@@ -293,6 +293,43 @@ impl WikitextMarkdownRenderer {
         self.table_buffer.clear();
         format!("```wikitext\n{table}\n```")
     }
+}
+
+fn split_prose_lines_preserving_opaque_blocks(text: &str) -> Vec<&str> {
+    let bytes = text.as_bytes();
+    let mut lines = Vec::new();
+    let mut cursor = 0usize;
+    let mut line_start = 0usize;
+
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'<'
+            && let Some(end) = skip_opaque_html_block(text, cursor)
+        {
+            cursor = end;
+            continue;
+        }
+        if bytes[cursor] == b'\n' {
+            lines.push(&text[line_start..cursor]);
+            cursor += 1;
+            line_start = cursor;
+            continue;
+        }
+        cursor += 1;
+    }
+    lines.push(&text[line_start..]);
+    lines
+}
+
+fn format_reference_entry(marker: &str, ref_text: &str) -> String {
+    let mut lines = ref_text.lines();
+    let first = lines.next().unwrap_or("").trim_end();
+    let mut output = format!("[^{marker}]: {first}");
+    for line in lines {
+        output.push('\n');
+        output.push_str("    ");
+        output.push_str(line.trim_end());
+    }
+    output
 }
 
 /// Walk `content` char-by-char and split it into prose runs and top-level template
@@ -362,38 +399,44 @@ fn segment_by_top_level_templates(content: &str) -> Vec<Segment<'_>> {
 /// tags (`<ref name="x"/>`) return the offset just past the `/>`.
 fn skip_opaque_html_block(content: &str, cursor: usize) -> Option<usize> {
     const OPAQUE_TAGS: &[&str] = &["ref", "nowiki"];
+    for tag in OPAQUE_TAGS {
+        if let Some(end) = skip_named_opaque_html_block(content, cursor, tag) {
+            return Some(end);
+        }
+    }
+    None
+}
+
+fn skip_named_opaque_html_block(content: &str, cursor: usize, tag: &str) -> Option<usize> {
     let bytes = content.as_bytes();
     if bytes.get(cursor).copied() != Some(b'<') {
         return None;
     }
-    for tag in OPAQUE_TAGS {
-        let tag_bytes = tag.as_bytes();
-        let name_end = cursor + 1 + tag_bytes.len();
-        if name_end > bytes.len() {
-            continue;
-        }
-        if !bytes[cursor + 1..name_end].eq_ignore_ascii_case(tag_bytes) {
-            continue;
-        }
-        let boundary = bytes.get(name_end).copied();
-        if !matches!(
-            boundary,
-            Some(b'>') | Some(b'/') | Some(b' ') | Some(b'\t') | Some(b'\r') | Some(b'\n')
-        ) {
-            continue;
-        }
-        let open_close = cursor + content[cursor..].find('>')?;
-        let open_tag = &content[cursor..=open_close];
-        if open_tag.trim_end_matches('>').trim_end().ends_with('/') {
-            return Some(open_close + 1);
-        }
-        let close_needle = format!("</{tag}");
-        let search_from = open_close + 1;
-        let close_offset = index_of_ignore_case(content, &close_needle, search_from)?;
-        let close_end = content[close_offset..].find('>')?;
-        return Some(close_offset + close_end + 1);
+    let tag_bytes = tag.as_bytes();
+    let name_end = cursor + 1 + tag_bytes.len();
+    if name_end > bytes.len() {
+        return None;
     }
-    None
+    if !bytes[cursor + 1..name_end].eq_ignore_ascii_case(tag_bytes) {
+        return None;
+    }
+    let boundary = bytes.get(name_end).copied();
+    if !matches!(
+        boundary,
+        Some(b'>') | Some(b'/') | Some(b' ') | Some(b'\t') | Some(b'\r') | Some(b'\n')
+    ) {
+        return None;
+    }
+    let open_close = cursor + content[cursor..].find('>')?;
+    let open_tag = &content[cursor..=open_close];
+    if open_tag.trim_end_matches('>').trim_end().ends_with('/') {
+        return Some(open_close + 1);
+    }
+    let close_needle = format!("</{tag}");
+    let search_from = open_close + 1;
+    let close_offset = index_of_ignore_case(content, &close_needle, search_from)?;
+    let close_end = content[close_offset..].find('>')?;
+    Some(close_offset + close_end + 1)
 }
 
 /// A template is rendered in block context when its opening occurs on a line of its
@@ -470,6 +513,41 @@ fn append_agent_sections(
 }
 
 fn convert_inline_wikitext(line: &str) -> String {
+    let mut output = String::new();
+    let mut cursor = 0usize;
+    while cursor < line.len() {
+        let Some(nowiki_start) = index_of_ignore_case(line, "<nowiki", cursor) else {
+            output.push_str(&convert_inline_wikitext_segment(&line[cursor..]));
+            break;
+        };
+        output.push_str(&convert_inline_wikitext_segment(
+            &line[cursor..nowiki_start],
+        ));
+        let Some(open_end_offset) = line[nowiki_start..].find('>') else {
+            output.push_str(&convert_inline_wikitext_segment(&line[nowiki_start..]));
+            break;
+        };
+        let open_end = nowiki_start + open_end_offset;
+        let open_tag = &line[nowiki_start..=open_end];
+        if open_tag.trim_end_matches('>').trim_end().ends_with('/') {
+            cursor = open_end + 1;
+            continue;
+        }
+        let Some(close_start) = index_of_ignore_case(line, "</nowiki", open_end + 1) else {
+            output.push_str(&decode_basic_entities(&line[open_end + 1..]));
+            break;
+        };
+        output.push_str(&decode_basic_entities(&line[open_end + 1..close_start]));
+        let close_end = line[close_start..]
+            .find('>')
+            .map(|offset| close_start + offset + 1)
+            .unwrap_or(line.len());
+        cursor = close_end;
+    }
+    output
+}
+
+fn convert_inline_wikitext_segment(line: &str) -> String {
     let line = convert_external_links(line);
     let line = convert_internal_links(&line);
     let line = strip_simple_html_tags(&line);
@@ -1081,11 +1159,9 @@ The '''cheetah''' reaches {{cvt|93|km/h|mph}} and is native to {{lang|en|Africa}
         assert!(markdown.contains("**Speciesbox**"));
         assert!(markdown.contains("- **name:** Cheetah"));
         assert!(markdown.contains("- **status:** VU"));
-        assert!(
-            markdown.contains(
-                "- **authority:** ([Schreber](wiki://Johann Christian Daniel von Schreber), 1775)"
-            )
-        );
+        assert!(markdown.contains(
+            "- **authority:** ([Schreber](wiki://Johann Christian Daniel von Schreber), 1775)"
+        ));
 
         // Inline templates flattened without the template syntax leaking through
         assert!(markdown.contains("reaches 93 km/h"));
@@ -1108,6 +1184,19 @@ The '''cheetah''' reaches {{cvt|93|km/h|mph}} and is native to {{lang|en|Africa}
         assert!(markdown.contains("Head."));
         assert!(markdown.contains("```wikitext"));
         assert!(markdown.contains("{{UnknownTemplate"));
+        assert!(markdown.contains("Tail."));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_preserves_parser_functions_as_fenced_wikitext() {
+        let markdown = wikitext_to_markdown(
+            "Lead.\n\n{{#if: condition | visible | hidden}}\n\nTail.",
+            None,
+        );
+
+        assert!(markdown.contains("Lead."));
+        assert!(markdown.contains("```wikitext"));
+        assert!(markdown.contains("{{#if: condition | visible | hidden}}"));
         assert!(markdown.contains("Tail."));
     }
 
@@ -1135,5 +1224,31 @@ The '''cheetah''' reaches {{cvt|93|km/h|mph}} and is native to {{lang|en|Africa}
         assert!(markdown.contains("Claim B.[^b]"));
         assert!(markdown.contains("[^a]: {{cite web|url=https://example.com/a|title=A}}"));
         assert!(markdown.contains("[^b]: {{cite news|title=B|url=https://example.com/b}}"));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_extracts_multiline_refs_as_single_footnotes() {
+        let markdown = wikitext_to_markdown(
+            "The cheetah evolved.<ref>{{cite web\n|url=https://example.com\n|title=Example\n}}</ref> It runs fast.",
+            None,
+        );
+
+        assert!(markdown.contains("The cheetah evolved.[^ref-1] It runs fast."));
+        assert!(markdown.contains("[^ref-1]: {{cite web"));
+        assert!(markdown.contains("    |url=https://example.com"));
+        assert!(markdown.contains("    |title=Example"));
+        assert!(!markdown.contains("<ref>"));
+    }
+
+    #[test]
+    fn wikitext_to_markdown_preserves_nowiki_literal_markup() {
+        let markdown = wikitext_to_markdown(
+            "Literal <nowiki>[[Not a link]] and {{not a template}}</nowiki> text.",
+            None,
+        );
+
+        assert!(markdown.contains("Literal [[Not a link]] and {{not a template}} text."));
+        assert!(!markdown.contains("wiki://Not a link"));
+        assert!(!markdown.contains("```wikitext"));
     }
 }
