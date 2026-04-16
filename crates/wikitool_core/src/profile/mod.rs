@@ -6,11 +6,12 @@ pub mod template_data;
 pub mod wiki_capabilities;
 
 pub use authoring_surface::{
-    AuthoringExtensionSurface, AuthoringExtensionTagSurface, AuthoringModuleSurface,
-    AuthoringSurface, AuthoringSurfaceOptions, AuthoringTemplateParameterSurface,
-    AuthoringTemplateSurface, ExtensionTagPolicy, build_authoring_surface,
-    build_authoring_surface_with_config, known_template_parameter_keys, normalize_module_title,
-    normalize_parser_tag_name, scan_local_module_titles, supports_invoke_function,
+    AuthoringAssetSurface, AuthoringExtensionSurface, AuthoringExtensionTagSurface,
+    AuthoringModuleSurface, AuthoringSurface, AuthoringSurfaceOptions,
+    AuthoringTemplateParameterSurface, AuthoringTemplateSurface, ExtensionTagPolicy,
+    build_authoring_surface, build_authoring_surface_with_config, known_template_parameter_keys,
+    normalize_asset_title, normalize_module_title, normalize_parser_tag_name,
+    scan_local_asset_titles, scan_local_module_titles, supports_invoke_function,
     sync_authoring_surface_with_config, template_has_parameter_contract,
     unknown_template_parameter_keys,
 };

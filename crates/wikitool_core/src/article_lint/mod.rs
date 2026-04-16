@@ -699,6 +699,71 @@ mod tests {
     }
 
     #[test]
+    fn accepts_templatestyles_for_local_asset() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        write_file(
+            &paths
+                .templates_dir
+                .join("misc")
+                .join("Template_Profile")
+                .join("style.css.wiki"),
+            ".profile { display: block; }\n",
+        );
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n<templatestyles src=\"profile/style.css\" />\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(!has_rule(
+            &report,
+            "asset.templatestyles_unavailable_source"
+        ));
+    }
+
+    #[test]
+    fn detects_unavailable_templatestyles_source() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n<templatestyles src=\"Missing/style.css\" />\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "asset.templatestyles_unavailable_source"));
+    }
+
+    #[test]
+    fn detects_templatestyles_missing_src() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n<templatestyles />\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "asset.templatestyles_missing_src"));
+    }
+
+    #[test]
     fn detects_unsupported_extension_tags_from_capabilities() {
         let temp = tempdir().expect("tempdir");
         let project_root = temp.path().join("project");

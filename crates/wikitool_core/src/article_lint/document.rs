@@ -6,7 +6,8 @@ use anyhow::{Context, Result};
 use crate::article_lint::model::TextSpan;
 use crate::content_store::parsing::{
     canonical_template_title, find_closing_html_tag, normalize_template_parameter_key,
-    parse_heading_line, parse_module_invocation, parse_open_tag, starts_with_html_tag,
+    parse_heading_line, parse_html_attributes, parse_module_invocation, parse_open_tag,
+    starts_with_html_tag,
 };
 use crate::filesystem::{namespace_from_title, relative_path_to_title, validate_scoped_path};
 use crate::runtime::ResolvedPaths;
@@ -69,6 +70,14 @@ pub(super) struct ParserTagOccurrence {
 }
 
 #[derive(Debug, Clone)]
+pub(super) struct TemplateStylesOccurrence {
+    pub(super) source_title: Option<String>,
+    pub(super) raw_tag: String,
+    pub(super) start: usize,
+    pub(super) end: usize,
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct ParsedArticleDocument {
     pub(super) relative_path: String,
     pub(super) title: String,
@@ -82,6 +91,7 @@ pub(super) struct ParsedArticleDocument {
     pub(super) module_invocations: Vec<ModuleInvocationOccurrence>,
     pub(super) references: Vec<RefOccurrence>,
     pub(super) parser_tags: Vec<ParserTagOccurrence>,
+    pub(super) template_styles: Vec<TemplateStylesOccurrence>,
 }
 
 impl ParsedArticleDocument {
@@ -169,6 +179,7 @@ pub(super) fn load_article_document(
     let module_invocations = extract_module_invocation_occurrences(&content);
     let references = extract_ref_occurrences(&content);
     let parser_tags = extract_open_tag_occurrences(&content);
+    let template_styles = extract_templatestyles_occurrences(&content);
 
     Ok(ParsedArticleDocument {
         relative_path,
@@ -183,6 +194,7 @@ pub(super) fn load_article_document(
         module_invocations,
         references,
         parser_tags,
+        template_styles,
     })
 }
 
@@ -415,6 +427,33 @@ fn extract_open_tag_occurrences(content: &str) -> Vec<ParserTagOccurrence> {
         }
         let tag_name = content[name_start..cursor].to_ascii_lowercase();
         out.push(ParserTagOccurrence { tag_name, start });
+    }
+
+    out
+}
+
+fn extract_templatestyles_occurrences(content: &str) -> Vec<TemplateStylesOccurrence> {
+    let bytes = content.as_bytes();
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+
+    while cursor < bytes.len() {
+        if !starts_with_html_tag(bytes, cursor, "templatestyles") {
+            cursor += 1;
+            continue;
+        }
+        let Some((tag_end, tag_body, _)) = parse_open_tag(content, cursor, "templatestyles") else {
+            cursor += 1;
+            continue;
+        };
+        let attributes = parse_html_attributes(&tag_body);
+        out.push(TemplateStylesOccurrence {
+            source_title: attributes.get("src").cloned(),
+            raw_tag: content[cursor..tag_end].to_string(),
+            start: cursor,
+            end: tag_end,
+        });
+        cursor = tag_end;
     }
 
     out

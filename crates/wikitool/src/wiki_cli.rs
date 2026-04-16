@@ -26,7 +26,9 @@ enum WikiSubcommand {
     Profile(WikiProfileArgs),
     #[command(about = "Show the structured local editorial rules overlay")]
     Rules(WikiRulesArgs),
-    #[command(about = "Show the agent-facing template, module, and extension authoring surface")]
+    #[command(
+        about = "Show the agent-facing template, module, asset, and extension authoring surface"
+    )]
     Surface(WikiSurfaceArgs),
 }
 
@@ -165,6 +167,8 @@ struct WikiSurfaceFormatArgs {
     template_example_limit: usize,
     #[arg(long = "module-limit", default_value_t = 128, value_name = "N")]
     module_limit: usize,
+    #[arg(long = "asset-limit", default_value_t = 128, value_name = "N")]
+    asset_limit: usize,
     #[arg(long = "extension-limit", default_value_t = 128, value_name = "N")]
     extension_limit: usize,
     #[arg(long = "extension-tag-limit", default_value_t = 128, value_name = "N")]
@@ -392,6 +396,9 @@ fn surface_options(args: &WikiSurfaceFormatArgs) -> Result<AuthoringSurfaceOptio
     if args.module_limit == 0 {
         anyhow::bail!("wiki surface requires --module-limit >= 1");
     }
+    if args.asset_limit == 0 {
+        anyhow::bail!("wiki surface requires --asset-limit >= 1");
+    }
     if args.extension_tag_limit == 0 {
         anyhow::bail!("wiki surface requires --extension-tag-limit >= 1");
     }
@@ -399,6 +406,7 @@ fn surface_options(args: &WikiSurfaceFormatArgs) -> Result<AuthoringSurfaceOptio
         template_limit: args.template_limit,
         template_example_limit: args.template_example_limit,
         module_limit: args.module_limit,
+        asset_limit: args.asset_limit,
         extension_limit: args.extension_limit,
         extension_tag_limit: args.extension_tag_limit,
     })
@@ -457,6 +465,8 @@ fn print_authoring_surface(
     );
     println!("module_count_total: {}", surface.module_count_total);
     println!("module_count_returned: {}", surface.module_count_returned);
+    println!("asset_count_total: {}", surface.asset_count_total);
+    println!("asset_count_returned: {}", surface.asset_count_returned);
     println!("extension_count_total: {}", surface.extension_count_total);
     println!(
         "extension_tag_count_total: {}",
@@ -491,6 +501,17 @@ fn print_authoring_surface(
                 .modules
                 .iter()
                 .map(|module| module.module_title.clone())
+                .take(32)
+                .collect::<Vec<_>>()
+        )
+    );
+    println!(
+        "assets: {}",
+        join_or_none(
+            &surface
+                .assets
+                .iter()
+                .map(|asset| asset.title.clone())
                 .take(32)
                 .collect::<Vec<_>>()
         )
@@ -760,12 +781,15 @@ struct AuthoringSurfaceSummary<'a> {
     template_count_returned: usize,
     module_count_total: usize,
     module_count_returned: usize,
+    asset_count_total: usize,
+    asset_count_returned: usize,
     extension_count_total: usize,
     extension_count_returned: usize,
     extension_tag_count_total: usize,
     extension_tag_count_returned: usize,
     top_templates: Vec<&'a str>,
     modules: Vec<&'a str>,
+    assets: Vec<&'a str>,
     extension_tags: Vec<&'a str>,
     warnings: &'a [String],
 }
@@ -902,6 +926,8 @@ fn summarize_authoring_surface<'a>(surface: &'a AuthoringSurface) -> AuthoringSu
         template_count_returned: surface.template_count_returned,
         module_count_total: surface.module_count_total,
         module_count_returned: surface.module_count_returned,
+        asset_count_total: surface.asset_count_total,
+        asset_count_returned: surface.asset_count_returned,
         extension_count_total: surface.extension_count_total,
         extension_count_returned: surface.extension_count_returned,
         extension_tag_count_total: surface.extension_tag_count_total,
@@ -916,6 +942,12 @@ fn summarize_authoring_surface<'a>(surface: &'a AuthoringSurface) -> AuthoringSu
             .modules
             .iter()
             .map(|module| module.module_title.as_str())
+            .take(48)
+            .collect(),
+        assets: surface
+            .assets
+            .iter()
+            .map(|asset| asset.title.as_str())
             .take(48)
             .collect(),
         extension_tags: surface

@@ -6,7 +6,8 @@ use rusqlite::Connection;
 use crate::content_store::parsing::open_indexed_connection;
 use crate::profile::{
     ProfileOverlay, TemplateCatalog, WikiCapabilityManifest, build_template_catalog_with_overlay,
-    load_latest_wiki_capabilities, load_or_build_remilia_profile_overlay, scan_local_module_titles,
+    load_latest_wiki_capabilities, load_or_build_remilia_profile_overlay, scan_local_asset_titles,
+    scan_local_module_titles,
 };
 use crate::runtime::ResolvedPaths;
 
@@ -18,6 +19,7 @@ pub(super) struct LoadedResources {
     pub(super) capabilities: Option<WikiCapabilityManifest>,
     pub(super) template_catalog: Option<TemplateCatalog>,
     pub(super) local_module_titles: BTreeSet<String>,
+    pub(super) local_asset_titles: BTreeSet<String>,
     pub(super) index_connection: Option<Connection>,
 }
 
@@ -42,6 +44,7 @@ pub(super) fn load_resources(paths: &ResolvedPaths, profile_id: &str) -> Result<
         }
     };
     let local_module_titles = scan_local_module_titles(paths)?;
+    let local_asset_titles = scan_local_asset_titles(paths)?;
     let index_connection = open_indexed_connection(paths)?;
 
     Ok(LoadedResources {
@@ -49,6 +52,7 @@ pub(super) fn load_resources(paths: &ResolvedPaths, profile_id: &str) -> Result<
         capabilities,
         template_catalog,
         local_module_titles,
+        local_asset_titles,
         index_connection,
     })
 }

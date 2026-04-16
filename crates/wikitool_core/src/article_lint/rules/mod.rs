@@ -7,6 +7,7 @@ use crate::runtime::ResolvedPaths;
 use super::document::ParsedArticleDocument;
 use super::resources::LoadedResources;
 
+mod asset;
 mod citation;
 mod common;
 mod integration;
@@ -52,6 +53,7 @@ pub(super) fn collect_issue_matches(
     template::lint_remilia_parent_group(document, resources, &mut matches);
     template::lint_template_availability(document, resources, &mut matches);
     module::lint_module_invocations(document, resources, &mut matches);
+    asset::lint_asset_references(document, resources, &mut matches);
     integration::lint_red_links_in_see_also(document, resources, &mut matches)?;
     integration::lint_capability_rules(document, resources, &mut matches);
     integration::lint_graph_rules(paths, document, resources, &mut matches)?;

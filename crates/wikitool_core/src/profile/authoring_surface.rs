@@ -4,9 +4,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::config::WikiConfig;
-use crate::content_store::parsing::{normalize_spaces, normalize_template_parameter_key};
-use crate::filesystem::{ScanOptions, scan_files};
-use crate::knowledge::templates::normalize_module_lookup_title;
+use crate::content_store::parsing::normalize_template_parameter_key;
 use crate::runtime::ResolvedPaths;
 use crate::support::now_iso8601_utc;
 
@@ -19,7 +17,20 @@ use super::wiki_capabilities::{
     WikiCapabilityManifest, load_wiki_capabilities_with_config, sync_wiki_capabilities_with_config,
 };
 
-const AUTHORING_SURFACE_SCHEMA_VERSION: &str = "authoring_surface_v1";
+mod assets;
+mod modules;
+
+pub use assets::{AuthoringAssetSurface, normalize_asset_title, scan_local_asset_titles};
+use assets::{LocalAssetRecord, build_asset_surfaces, scan_local_assets};
+pub use modules::{
+    AuthoringModuleSurface, normalize_module_title, scan_local_module_titles,
+    supports_invoke_function,
+};
+use modules::{
+    LocalModuleRecord, build_module_surfaces, count_distinct_modules, scan_local_modules,
+};
+
+const AUTHORING_SURFACE_SCHEMA_VERSION: &str = "authoring_surface_v2";
 
 pub const SOURCE_HTML_TAGS: &[&str] = &[
     "abbr",
@@ -87,6 +98,7 @@ pub struct AuthoringSurfaceOptions {
     pub template_limit: usize,
     pub template_example_limit: usize,
     pub module_limit: usize,
+    pub asset_limit: usize,
     pub extension_limit: usize,
     pub extension_tag_limit: usize,
 }
@@ -97,6 +109,7 @@ impl Default for AuthoringSurfaceOptions {
             template_limit: 64,
             template_example_limit: 2,
             module_limit: 128,
+            asset_limit: 128,
             extension_limit: 128,
             extension_tag_limit: 128,
         }
@@ -117,12 +130,15 @@ pub struct AuthoringSurface {
     pub template_count_returned: usize,
     pub module_count_total: usize,
     pub module_count_returned: usize,
+    pub asset_count_total: usize,
+    pub asset_count_returned: usize,
     pub extension_count_total: usize,
     pub extension_count_returned: usize,
     pub extension_tag_count_total: usize,
     pub extension_tag_count_returned: usize,
     pub templates: Vec<AuthoringTemplateSurface>,
     pub modules: Vec<AuthoringModuleSurface>,
+    pub assets: Vec<AuthoringAssetSurface>,
     pub extensions: Vec<AuthoringExtensionSurface>,
     pub extension_tags: Vec<AuthoringExtensionTagSurface>,
     pub source_html_tags: Vec<String>,
@@ -166,16 +182,6 @@ pub struct AuthoringTemplateParameterSurface {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AuthoringModuleSurface {
-    pub module_title: String,
-    pub relative_path: Option<String>,
-    pub is_redirect: bool,
-    pub redirect_target: Option<String>,
-    pub sources: Vec<String>,
-    pub used_by_templates: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthoringExtensionSurface {
     pub name: String,
     pub version: Option<String>,
@@ -195,24 +201,6 @@ pub struct AuthoringExtensionTagSurface {
 pub struct ExtensionTagPolicy {
     supported_extension_tags: BTreeSet<String>,
     source_html_tags: BTreeSet<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct LocalModuleRecord {
-    module_title: String,
-    relative_path: String,
-    is_redirect: bool,
-    redirect_target: Option<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct ModuleSurfaceAccumulator {
-    module_title: String,
-    relative_path: Option<String>,
-    is_redirect: bool,
-    redirect_target: Option<String>,
-    sources: BTreeSet<String>,
-    used_by_templates: BTreeSet<String>,
 }
 
 impl ExtensionTagPolicy {
@@ -252,11 +240,13 @@ pub fn build_authoring_surface_with_config(
         None => Some(build_template_catalog_with_overlay(paths, &overlay)?),
     };
     let local_modules = scan_local_modules(paths)?;
+    let local_assets = scan_local_assets(paths)?;
     Ok(build_authoring_surface_from_parts(
         &overlay.profile_id,
         capabilities.as_ref(),
         catalog.as_ref(),
         Some(&local_modules),
+        Some(&local_assets),
         options,
     ))
 }
@@ -270,11 +260,13 @@ pub fn sync_authoring_surface_with_config(
     let capabilities = sync_wiki_capabilities_with_config(paths, config)?;
     let catalog = sync_template_catalog_with_overlay(paths, &overlay)?;
     let local_modules = scan_local_modules(paths)?;
+    let local_assets = scan_local_assets(paths)?;
     Ok(build_authoring_surface_from_parts(
         &overlay.profile_id,
         Some(&capabilities),
         Some(&catalog),
         Some(&local_modules),
+        Some(&local_assets),
         options,
     ))
 }
@@ -285,7 +277,7 @@ pub fn build_authoring_surface(
     catalog: Option<&TemplateCatalog>,
     options: AuthoringSurfaceOptions,
 ) -> AuthoringSurface {
-    build_authoring_surface_from_parts(profile_id, capabilities, catalog, None, options)
+    build_authoring_surface_from_parts(profile_id, capabilities, catalog, None, None, options)
 }
 
 fn build_authoring_surface_from_parts(
@@ -293,6 +285,7 @@ fn build_authoring_surface_from_parts(
     capabilities: Option<&WikiCapabilityManifest>,
     catalog: Option<&TemplateCatalog>,
     local_modules: Option<&BTreeMap<String, LocalModuleRecord>>,
+    local_assets: Option<&BTreeMap<String, LocalAssetRecord>>,
     options: AuthoringSurfaceOptions,
 ) -> AuthoringSurface {
     let mut warnings = Vec::new();
@@ -320,6 +313,7 @@ fn build_authoring_surface_from_parts(
         .map(|catalog| build_template_surfaces(catalog, options))
         .unwrap_or_default();
     let modules = build_module_surfaces(catalog, local_modules, options.module_limit);
+    let assets = build_asset_surfaces(local_assets, options.asset_limit);
     let extensions = capabilities
         .map(|capabilities| build_extension_surfaces(capabilities, options.extension_limit))
         .unwrap_or_default();
@@ -342,6 +336,8 @@ fn build_authoring_surface_from_parts(
         template_count_returned: templates.len(),
         module_count_total: count_distinct_modules(catalog, local_modules),
         module_count_returned: modules.len(),
+        asset_count_total: local_assets.map(|assets| assets.len()).unwrap_or(0),
+        asset_count_returned: assets.len(),
         extension_count_total: capabilities
             .map(|manifest| manifest.extensions.len())
             .unwrap_or(0),
@@ -352,6 +348,7 @@ fn build_authoring_surface_from_parts(
         extension_tag_count_returned: extension_tags.len(),
         templates,
         modules,
+        assets,
         extensions,
         extension_tags,
         source_html_tags: SOURCE_HTML_TAGS
@@ -370,29 +367,6 @@ pub fn normalize_parser_tag_name(tag: &str) -> String {
         .trim_end_matches('/')
         .trim()
         .to_ascii_lowercase()
-}
-
-pub fn normalize_module_title(value: &str) -> String {
-    let normalized = normalize_spaces(&value.replace('_', " "));
-    if normalized.is_empty() {
-        return String::new();
-    }
-    normalize_module_lookup_title(&normalized)
-}
-
-pub fn scan_local_module_titles(paths: &ResolvedPaths) -> Result<BTreeSet<String>> {
-    Ok(scan_local_modules(paths)?
-        .into_values()
-        .map(|module| module.module_title)
-        .collect())
-}
-
-pub fn supports_invoke_function(capabilities: &WikiCapabilityManifest) -> bool {
-    capabilities.has_scribunto
-        || capabilities
-            .parser_function_hooks
-            .iter()
-            .any(|hook| hook.eq_ignore_ascii_case("invoke"))
 }
 
 pub fn known_template_parameter_keys(entry: &TemplateCatalogEntry) -> BTreeSet<String> {
@@ -512,128 +486,6 @@ fn build_parameter_surface(
         usage_count: parameter.usage_count,
         example_values: parameter.example_values.clone(),
     }
-}
-
-fn build_module_surfaces(
-    catalog: Option<&TemplateCatalog>,
-    local_modules: Option<&BTreeMap<String, LocalModuleRecord>>,
-    limit: usize,
-) -> Vec<AuthoringModuleSurface> {
-    let mut modules = BTreeMap::<String, ModuleSurfaceAccumulator>::new();
-    if let Some(local_modules) = local_modules {
-        for module in local_modules.values() {
-            let key = normalize_module_title(&module.module_title);
-            if key.is_empty() {
-                continue;
-            }
-            let entry = modules
-                .entry(key.clone())
-                .or_insert_with(|| ModuleSurfaceAccumulator {
-                    module_title: key,
-                    ..ModuleSurfaceAccumulator::default()
-                });
-            entry.module_title = module.module_title.clone();
-            entry.relative_path = Some(module.relative_path.clone());
-            entry.is_redirect = module.is_redirect;
-            entry.redirect_target = module.redirect_target.clone();
-            entry.sources.insert("local_module_file".to_string());
-        }
-    }
-    if let Some(catalog) = catalog {
-        for entry in &catalog.entries {
-            for module_title in &entry.module_titles {
-                let key = normalize_module_title(module_title);
-                if key.is_empty() {
-                    continue;
-                }
-                let module =
-                    modules
-                        .entry(key.clone())
-                        .or_insert_with(|| ModuleSurfaceAccumulator {
-                            module_title: key,
-                            ..ModuleSurfaceAccumulator::default()
-                        });
-                module
-                    .sources
-                    .insert("template_catalog_reference".to_string());
-                module
-                    .used_by_templates
-                    .insert(entry.template_title.clone());
-            }
-        }
-    }
-    let mut out = modules
-        .into_values()
-        .map(|module| AuthoringModuleSurface {
-            module_title: module.module_title,
-            relative_path: module.relative_path,
-            is_redirect: module.is_redirect,
-            redirect_target: module.redirect_target,
-            sources: module.sources.into_iter().collect(),
-            used_by_templates: module.used_by_templates.into_iter().collect(),
-        })
-        .collect::<Vec<_>>();
-    out.sort_by(|left, right| {
-        right
-            .used_by_templates
-            .len()
-            .cmp(&left.used_by_templates.len())
-            .then_with(|| left.module_title.cmp(&right.module_title))
-    });
-    out.truncate(limit);
-    out
-}
-
-fn count_distinct_modules(
-    catalog: Option<&TemplateCatalog>,
-    local_modules: Option<&BTreeMap<String, LocalModuleRecord>>,
-) -> usize {
-    let mut modules = BTreeSet::new();
-    if let Some(local_modules) = local_modules {
-        modules.extend(local_modules.keys().cloned());
-    }
-    if let Some(catalog) = catalog {
-        for entry in &catalog.entries {
-            for module_title in &entry.module_titles {
-                let normalized = normalize_module_title(module_title);
-                if !normalized.is_empty() {
-                    modules.insert(normalized);
-                }
-            }
-        }
-    }
-    modules.len()
-}
-
-fn scan_local_modules(paths: &ResolvedPaths) -> Result<BTreeMap<String, LocalModuleRecord>> {
-    let files = scan_files(
-        paths,
-        &ScanOptions {
-            include_content: false,
-            include_templates: true,
-            custom_content_folders: Vec::new(),
-        },
-    )?;
-    let mut modules = BTreeMap::new();
-    for file in files {
-        if file.namespace != "Module" {
-            continue;
-        }
-        let normalized = normalize_module_title(&file.title);
-        if normalized.is_empty() {
-            continue;
-        }
-        modules.insert(
-            normalized,
-            LocalModuleRecord {
-                module_title: file.title,
-                relative_path: file.relative_path,
-                is_redirect: file.is_redirect,
-                redirect_target: file.redirect_target,
-            },
-        );
-    }
-    Ok(modules)
 }
 
 fn build_extension_surfaces(
@@ -807,6 +659,7 @@ mod tests {
             None,
             Some(&catalog),
             Some(&local_modules),
+            None,
             AuthoringSurfaceOptions::default(),
         );
 
@@ -824,6 +677,125 @@ mod tests {
                 .iter()
                 .any(|module| module.module_title == "Module:Infobox person"
                     && module.used_by_templates == vec!["Template:Infobox person".to_string()])
+        );
+    }
+
+    #[test]
+    fn authoring_surface_keeps_module_assets_out_of_module_surface() {
+        let catalog = TemplateCatalog {
+            schema_version: "template_catalog_v2".to_string(),
+            profile_id: "remilia".to_string(),
+            refreshed_at: "1".to_string(),
+            template_count: 1,
+            templatedata_count: 1,
+            redirect_alias_count: 0,
+            usage_index_ready: true,
+            entries: vec![TemplateCatalogEntry {
+                module_titles: vec![
+                    "Module:Infobox".to_string(),
+                    "Module:Infobox/styles.css".to_string(),
+                ],
+                ..sample_entry()
+            }],
+        };
+        let mut local_modules = BTreeMap::new();
+        local_modules.insert(
+            "Module:Infobox".to_string(),
+            LocalModuleRecord {
+                module_title: "Module:Infobox".to_string(),
+                relative_path: "templates/infobox/Module_Infobox.lua".to_string(),
+                is_redirect: false,
+                redirect_target: None,
+            },
+        );
+        local_modules.insert(
+            "Module:Infobox/styles.css".to_string(),
+            LocalModuleRecord {
+                module_title: "Module:Infobox/styles.css".to_string(),
+                relative_path: "templates/infobox/Module_Infobox/styles.css.wiki".to_string(),
+                is_redirect: false,
+                redirect_target: None,
+            },
+        );
+
+        let surface = build_authoring_surface_from_parts(
+            "remilia",
+            None,
+            Some(&catalog),
+            Some(&local_modules),
+            None,
+            AuthoringSurfaceOptions::default(),
+        );
+
+        assert_eq!(surface.module_count_total, 1);
+        assert_eq!(surface.modules.len(), 1);
+        assert_eq!(surface.modules[0].module_title, "Module:Infobox");
+    }
+
+    #[test]
+    fn authoring_surface_exposes_interface_and_stylesheet_assets() {
+        let mut local_assets = BTreeMap::new();
+        local_assets.insert(
+            "MediaWiki:Common.css".to_string(),
+            LocalAssetRecord {
+                title: "MediaWiki:Common.css".to_string(),
+                relative_path: "templates/mediawiki/Common.css".to_string(),
+                namespace: "MediaWiki".to_string(),
+                kind: "mediawiki_stylesheet".to_string(),
+                content_model_hint: "css".to_string(),
+                is_redirect: false,
+                redirect_target: None,
+            },
+        );
+        local_assets.insert(
+            "Template:Hlist/styles.css".to_string(),
+            LocalAssetRecord {
+                title: "Template:Hlist/styles.css".to_string(),
+                relative_path: "templates/navbox/Template_Hlist/styles.css.wiki".to_string(),
+                namespace: "Template".to_string(),
+                kind: "template_stylesheet".to_string(),
+                content_model_hint: "css".to_string(),
+                is_redirect: false,
+                redirect_target: None,
+            },
+        );
+
+        let surface = build_authoring_surface_from_parts(
+            "remilia",
+            None,
+            None,
+            None,
+            Some(&local_assets),
+            AuthoringSurfaceOptions::default(),
+        );
+
+        assert_eq!(surface.schema_version, "authoring_surface_v2");
+        assert_eq!(surface.asset_count_total, 2);
+        assert!(
+            surface
+                .assets
+                .iter()
+                .any(|asset| asset.title == "MediaWiki:Common.css"
+                    && asset.kind == "mediawiki_stylesheet")
+        );
+        assert!(
+            surface
+                .assets
+                .iter()
+                .any(|asset| asset.title == "Template:Hlist/styles.css"
+                    && asset.content_model_hint == "css")
+        );
+    }
+
+    #[test]
+    fn normalize_asset_title_defaults_bare_sources_to_template_namespace() {
+        assert_eq!(
+            normalize_asset_title("Hlist/styles.css"),
+            "Template:Hlist/styles.css"
+        );
+        assert_eq!(
+            normalize_asset_title("mediawiki:common.css"),
+            "MediaWiki:common.css"
         );
     }
 }

@@ -1222,7 +1222,7 @@ Commands:
   capabilities  Sync and inspect live wiki capability manifests
   profile       Show the combined live/profile-aware wiki surface
   rules         Show the structured local editorial rules overlay
-  surface       Show the agent-facing template, module, and extension authoring surface
+  surface       Show the agent-facing template, module, asset, and extension authoring surface
   help          Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1379,7 +1379,7 @@ Options:
 ## wiki surface
 
 ```text
-Show the agent-facing template, module, and extension authoring surface
+Show the agent-facing template, module, asset, and extension authoring surface
 
 Usage: wikitool wiki surface [OPTIONS] <COMMAND>
 
@@ -1413,6 +1413,7 @@ Options:
       --diagnostics                 Print resolved runtime diagnostics
       --template-example-limit <N>  [default: 2]
       --module-limit <N>            [default: 128]
+      --asset-limit <N>             [default: 128]
       --extension-limit <N>         [default: 128]
       --extension-tag-limit <N>     [default: 128]
   -h, --help                        Print help
@@ -1435,6 +1436,7 @@ Options:
       --diagnostics                 Print resolved runtime diagnostics
       --template-example-limit <N>  [default: 2]
       --module-limit <N>            [default: 128]
+      --asset-limit <N>             [default: 128]
       --extension-limit <N>         [default: 128]
       --extension-tag-limit <N>     [default: 128]
   -h, --help                        Print help
