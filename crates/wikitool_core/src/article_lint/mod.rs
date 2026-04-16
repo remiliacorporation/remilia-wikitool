@@ -22,9 +22,9 @@ use crate::profile::{
     build_template_catalog_with_overlay, find_template_catalog_entry,
     load_latest_wiki_capabilities, load_or_build_remilia_profile_overlay,
 };
-use crate::research::export::{WikitextLintIssue, lint_wikitext};
 use crate::runtime::ResolvedPaths;
 use crate::support::{normalize_path, parse_redirect};
+use crate::wikitext::lint::{WikitextLintIssue, lint_wikitext};
 
 #[cfg(test)]
 use crate::knowledge::status::KNOWLEDGE_GENERATION;
@@ -2032,6 +2032,24 @@ mod tests {
         assert!(fixed.changed);
         let content = fs::read_to_string(&article_path).expect("read article");
         assert!(content.contains("== History =="));
+    }
+
+    #[test]
+    fn detects_raw_wikitext_balance_errors_inside_references() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\nAlpha cites a malformed source.<ref>{{Cite web|url=https://example.com|title=Example}</ref>\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "wikitext.unclosed_template"));
     }
 
     #[test]

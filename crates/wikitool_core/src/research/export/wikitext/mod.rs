@@ -10,7 +10,6 @@ pub fn wikitext_to_markdown(content: &str, _code_language: Option<&str>) -> Stri
 
 mod helpers;
 mod inline;
-pub(crate) mod lint;
 mod segments;
 
 use helpers::{

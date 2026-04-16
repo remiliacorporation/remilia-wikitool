@@ -1,3 +1,5 @@
+//! Raw wikitext balance linting shared by article authoring gates.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WikitextLintIssue {
     pub rule_id: &'static str,
@@ -31,6 +33,10 @@ const BALANCED_EXTENSION_TAGS: &[&str] = &[
 ];
 
 pub(crate) fn lint_wikitext(content: &str) -> Vec<WikitextLintIssue> {
+    lint_wikitext_fragment(content, 0)
+}
+
+fn lint_wikitext_fragment(content: &str, base_offset: usize) -> Vec<WikitextLintIssue> {
     let bytes = content.as_bytes();
     let mut issues = Vec::new();
     let mut stack = Vec::<OpenConstruct>::new();
@@ -45,7 +51,7 @@ pub(crate) fn lint_wikitext(content: &str) -> Vec<WikitextLintIssue> {
             issues.push(issue(
                 "unclosed_html_comment",
                 "HTML comment is missing a closing --> marker.",
-                cursor,
+                base_offset + cursor,
             ));
             break;
         }
@@ -60,7 +66,7 @@ pub(crate) fn lint_wikitext(content: &str) -> Vec<WikitextLintIssue> {
                     issues.push(issue(
                         "unclosed_nowiki",
                         "Nowiki block is missing a closing </nowiki> tag.",
-                        cursor,
+                        base_offset + cursor,
                     ));
                     break;
                 }
@@ -72,7 +78,7 @@ pub(crate) fn lint_wikitext(content: &str) -> Vec<WikitextLintIssue> {
                 issues.push(issue(
                     "malformed_ref_tag",
                     "Reference tag is missing a closing > marker.",
-                    cursor,
+                    base_offset + cursor,
                 ));
                 break;
             };
@@ -84,11 +90,15 @@ pub(crate) fn lint_wikitext(content: &str) -> Vec<WikitextLintIssue> {
                 issues.push(issue(
                     "unclosed_ref",
                     "Reference tag is missing a closing </ref> tag.",
-                    cursor,
+                    base_offset + cursor,
                 ));
                 cursor = tag_end + 1;
                 continue;
             };
+            issues.extend(lint_wikitext_fragment(
+                &content[tag_end + 1..end],
+                base_offset + tag_end + 1,
+            ));
             cursor = end + "</ref>".len();
             continue;
         }
@@ -107,7 +117,7 @@ pub(crate) fn lint_wikitext(content: &str) -> Vec<WikitextLintIssue> {
                                 format!(
                                     "Extension block <{tag}> is missing a closing </{tag}> tag."
                                 ),
-                                cursor,
+                                base_offset + cursor,
                             ));
                             cursor += 1;
                         }
@@ -126,26 +136,36 @@ pub(crate) fn lint_wikitext(content: &str) -> Vec<WikitextLintIssue> {
                 (b'{', b'{') => {
                     stack.push(OpenConstruct {
                         kind: Construct::Template,
-                        offset: cursor,
+                        offset: base_offset + cursor,
                     });
                     cursor += 2;
                     continue;
                 }
                 (b'}', b'}') => {
-                    close_construct(&mut stack, &mut issues, Construct::Template, cursor);
+                    close_construct(
+                        &mut stack,
+                        &mut issues,
+                        Construct::Template,
+                        base_offset + cursor,
+                    );
                     cursor += 2;
                     continue;
                 }
                 (b'[', b'[') => {
                     stack.push(OpenConstruct {
                         kind: Construct::Link,
-                        offset: cursor,
+                        offset: base_offset + cursor,
                     });
                     cursor += 2;
                     continue;
                 }
                 (b']', b']') => {
-                    close_construct(&mut stack, &mut issues, Construct::Link, cursor);
+                    close_construct(
+                        &mut stack,
+                        &mut issues,
+                        Construct::Link,
+                        base_offset + cursor,
+                    );
                     cursor += 2;
                     continue;
                 }
@@ -349,7 +369,19 @@ mod tests {
         let issues = lint_wikitext("<ref>{{cite web|title=A}</ref>\n<gallery>\nFile:A.jpg");
         let rule_ids = issues.iter().map(|issue| issue.rule_id).collect::<Vec<_>>();
 
+        assert!(rule_ids.contains(&"unclosed_template"));
         assert!(rule_ids.contains(&"unclosed_extension_block"));
         assert!(!rule_ids.contains(&"unclosed_ref"));
+    }
+
+    #[test]
+    fn lint_wikitext_reports_malformed_templates_inside_closed_refs() {
+        let issues = lint_wikitext("Text.<ref>{{Cite web|url=https://example.com|title=A}</ref>");
+        let issue = issues
+            .iter()
+            .find(|issue| issue.rule_id == "unclosed_template")
+            .expect("unclosed template inside ref");
+
+        assert_eq!(issue.byte_offset, "Text.<ref>".len());
     }
 }
