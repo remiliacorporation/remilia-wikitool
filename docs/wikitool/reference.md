@@ -1204,10 +1204,11 @@ Search and fetch subject evidence without mutating the wiki
 Usage: wikitool research [OPTIONS] <COMMAND>
 
 Commands:
-  search    Search the remote wiki API for subject evidence
-  fetch     Fetch readable reference material from a URL
-  discover  Discover public machine-readable source surfaces for a URL
-  help      Print this message or the help of the given subcommand(s)
+  search               Search the remote wiki API for subject evidence
+  fetch                Fetch readable reference material from a URL
+  discover             Discover public machine-readable source surfaces for a URL
+  mediawiki-templates  Inspect live template contracts used by a source MediaWiki page
+  help                 Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -1282,6 +1283,29 @@ Options:
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
+```
+
+## research mediawiki-templates
+
+```text
+Inspect live template contracts used by a source MediaWiki page
+
+Usage: wikitool research mediawiki-templates [OPTIONS] <URL>
+
+Arguments:
+  <URL>
+
+Options:
+      --limit <N>              Maximum selected template pages and invocation samples to return [default: 16]
+      --project-root <PATH>
+      --content-limit <BYTES>  Maximum source bytes per selected template page preview [default: 2400]
+      --data-dir <PATH>
+      --config <PATH>
+      --parameter-limit <N>    Maximum TemplateData parameters returned per selected template [default: 64]
+      --diagnostics            Print resolved runtime diagnostics
+      --template <TITLE>       Fetch an exact template page from the source wiki; may be repeated
+      --format <FORMAT>        Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                   Print help
 ```
 
 ## wiki

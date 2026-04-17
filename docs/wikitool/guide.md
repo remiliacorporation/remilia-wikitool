@@ -33,6 +33,7 @@ wikitool knowledge article-start "Cheetah" --contract-query "species infobox tax
 wikitool knowledge contracts search "species infobox taxonomy" --format json
 wikitool research search "Topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
+wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --template "Template:Infobox" --format json
 wikitool templates show "Template:Infobox person"
 wikitool templates examples "Template:Infobox person" --limit 2
 wikitool wiki profile show --format json
@@ -90,6 +91,7 @@ wikitool knowledge inspect empty-categories
 ```bash
 wikitool research search "topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
+wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --template "Template:Infobox" --format json
 wikitool research discover "URL" --format json
 wikitool fetch "URL" --format wikitext --save
 wikitool export "URL" --subpages --combined --limit 25
@@ -97,6 +99,8 @@ wikitool export --urls-file sources.txt --output-dir wikitool_exports/sources --
 ```
 
 `research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind`, `error.attempts`, and `error.discovery`; access challenges and HTTP failures are explicit source-access failures, not citable source content. `research discover` is the same machine-surface discovery pass as a standalone command.
+
+`research mediawiki-templates URL` inspects the live API surface of a source MediaWiki page. Use it when an arbitrary source wiki, such as Wikipedia, has templates/modules that are relevant to understanding the source article but are not part of the current target wiki catalog. The report preserves total transclusion counts, returns a capped inventory, shows selected invocations, fetches selected template pages, and includes TemplateData when the source wiki exposes it. Treat these as source-wiki contracts only; run local `knowledge contracts`, `templates show`, and `article lint` before using any template on the target wiki.
 
 `fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs. `export` defaults to markdown: MediaWiki URLs are fetched as wikitext and rendered into agent-readable markdown, while arbitrary web pages use the research extractor and include source/extraction metadata in frontmatter. Use `--subpages --limit N` to bound large MediaWiki tree exports. Use `--urls-file PATH --output-dir PATH --format markdown` to create off-wiki source packs; blank lines and `#` comments in the URL file are ignored, and `_index.md` records successes and failures. Wikitext export requires a recognizable MediaWiki URL; blocked arbitrary sources fail explicitly instead of producing challenge-page content.
 

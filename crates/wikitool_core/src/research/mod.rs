@@ -16,12 +16,17 @@ pub use export::{
     default_export_path, generate_frontmatter, sanitize_filename, source_content_to_markdown,
     wikitext_to_markdown,
 };
-pub use mediawiki_fetch::{fetch_mediawiki_page, fetch_pages_by_titles, list_subpages};
+pub use mediawiki_fetch::{
+    fetch_mediawiki_page, fetch_mediawiki_template_report, fetch_pages_by_titles, list_subpages,
+};
 pub use model::{
     DEFAULT_EXPORTS_DIR, ExportFormat, ExternalAccessRoute, ExternalContentSignal,
     ExternalFetchAttempt, ExternalFetchFailure, ExternalFetchFailureError, ExternalFetchFormat,
     ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExternalMachineSurface,
-    ExternalMachineSurfaceReport, ExtractionQuality, FetchMode, ParsedWikiUrl, RenderedFetchMode,
+    ExternalMachineSurfaceReport, ExtractionQuality, FetchMode, MediaWikiPageTemplate,
+    MediaWikiTemplateDataParameter, MediaWikiTemplateDataSummary, MediaWikiTemplateInvocation,
+    MediaWikiTemplatePage, MediaWikiTemplateQueryOptions, MediaWikiTemplateReport, ParsedWikiUrl,
+    RenderedFetchMode,
 };
 pub use url::parse_wiki_url;
 pub use web_fetch::MachineSurfaceDiscoveryOptions;

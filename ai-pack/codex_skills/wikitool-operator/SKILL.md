@@ -12,6 +12,7 @@ Do not invent flags or workflow details; verify against `wikitool --help`, `wiki
 
 Use `knowledge article-start --intent new|expand|audit|refresh` as the authoring front door.
 Use `knowledge pack` only when the raw authoring substrate is needed behind article-start.
+Use `research mediawiki-templates URL` when a source MediaWiki page's own template/module contract matters, especially for arbitrary wikis such as Wikipedia. Treat that output as source-wiki context only; target-wiki template use still has to pass local `knowledge contracts`, `templates show`, and `article lint`.
 Use `knowledge inspect references` for indexed citation audits and duplicate cleanup prep.
 Use scoped `validate --category ... --title ... --limit ...` when investigating a specific validation class. Use `--verify-live` for broken-link or redirect findings that need production API corroboration.
 Use scoped `status`, `diff`, and `push --dry-run` selectors when working on a subset of pages.

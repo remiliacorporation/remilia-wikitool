@@ -69,7 +69,7 @@ pub fn parse_wiki_url(url: &str) -> Option<ParsedWikiUrl> {
 }
 
 pub(crate) fn decode_title(raw: &str) -> String {
-    raw.replace('_', " ").trim().to_string()
+    percent_decode(raw).replace('_', " ").trim().to_string()
 }
 
 pub(crate) fn encode_title(title: &str) -> String {
@@ -126,6 +126,35 @@ fn host_likely_uses_root_article_paths(domain: &str) -> bool {
         || lowered.ends_with("fandom.com")
         || lowered.ends_with("wikimedia.org")
         || lowered.ends_with("miraheze.org")
+}
+
+fn percent_decode(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'%'
+            && cursor + 2 < bytes.len()
+            && let (Some(high), Some(low)) =
+                (hex_value(bytes[cursor + 1]), hex_value(bytes[cursor + 2]))
+        {
+            output.push((high << 4) | low);
+            cursor += 3;
+            continue;
+        }
+        output.push(bytes[cursor]);
+        cursor += 1;
+    }
+    String::from_utf8_lossy(&output).into_owned()
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -214,6 +243,13 @@ mod tests {
                 "https://wiki.remilia.org/w/api.php",
             ]
         );
+    }
+
+    #[test]
+    fn percent_decodes_article_path_titles() {
+        let parsed = parse_wiki_url("https://en.wikipedia.org/wiki/Pallas%27s_cat")
+            .expect("encoded Wikipedia title");
+        assert_eq!(parsed.title, "Pallas's cat");
     }
 
     #[test]

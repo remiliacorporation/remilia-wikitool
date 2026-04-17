@@ -217,3 +217,106 @@ impl Default for ExternalFetchOptions {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaWikiTemplateQueryOptions {
+    pub limit: usize,
+    pub content_limit: usize,
+    pub parameter_limit: usize,
+    pub template_titles: Vec<String>,
+}
+
+impl Default for MediaWikiTemplateQueryOptions {
+    fn default() -> Self {
+        Self {
+            limit: 16,
+            content_limit: 2_400,
+            parameter_limit: 64,
+            template_titles: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaWikiTemplateReport {
+    pub contract_scope: String,
+    pub target_compatibility: String,
+    pub target_compatibility_note: String,
+    pub source_url: String,
+    pub source_domain: String,
+    pub api_endpoint: String,
+    pub page_title: String,
+    pub canonical_url: String,
+    pub fetched_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_revision_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_revision_timestamp: Option<String>,
+    pub api_template_count: usize,
+    pub page_template_count_returned: usize,
+    pub invocation_count: usize,
+    pub selected_template_count: usize,
+    pub page_templates: Vec<MediaWikiPageTemplate>,
+    pub template_invocations: Vec<MediaWikiTemplateInvocation>,
+    pub template_pages: Vec<MediaWikiTemplatePage>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MediaWikiPageTemplate {
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MediaWikiTemplateInvocation {
+    pub template_title: String,
+    pub parameter_keys: Vec<String>,
+    pub raw_wikitext: String,
+    pub token_estimate: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MediaWikiTemplatePage {
+    pub title: String,
+    pub exists: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision_timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_preview: Option<String>,
+    pub content_truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub templatedata: Option<MediaWikiTemplateDataSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MediaWikiTemplateDataSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    pub parameter_count: usize,
+    pub parameters: Vec<MediaWikiTemplateDataParameter>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MediaWikiTemplateDataParameter {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub param_type: Option<String>,
+    pub required: bool,
+    pub suggested: bool,
+    pub deprecated: bool,
+}

@@ -114,6 +114,7 @@ wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 wikitool knowledge article-start "Topic" --intent new --format json
 wikitool research search "Topic" --format json
 wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
+wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Cheetah" --template "Template:Speciesbox" --format json
 wikitool templates show "Template:Infobox person"
 wikitool templates examples "Template:Infobox person" --limit 2
 wikitool wiki profile show --format json
@@ -147,6 +148,7 @@ Docs bootstrap paths:
 
 Use `knowledge status` before depending on docs-bridged local retrieval; it surfaces `readiness`, `degradations`, the requested docs profile, and the current `knowledge_generation`.
 Use `knowledge pack` only when `article-start` is too collapsed and you need the deeper retrieval substrate. Its default `--payload compact` output separates subject context from wiki contract context and omits heavy implementation chunks; add `--payload full` only when you need full template/module implementation bodies or docs section text. Use `--contract-query` when the article topic and the template/module lookup differ, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json`. Use `wikitool knowledge contracts search "contract terms" --format json` for a direct token-budgeted search of the template/module graph.
+Use `wikitool research mediawiki-templates "URL"` when a source MediaWiki page's live template/module contract matters, especially on arbitrary source wikis such as Wikipedia. Treat it as source-wiki context, not target-wiki permission; target-wiki template use must still pass local `knowledge contracts`, `templates show`, and `article lint`.
 Use `wikitool export "URL"` for agent-readable markdown snapshots. MediaWiki URLs are fetched as wikitext before markdown rendering; arbitrary web pages use the research extractor and frontmatter metadata. Use `--subpages --limit N` for bounded MediaWiki tree stress tests, and `--urls-file PATH --output-dir PATH --format markdown` for off-wiki source packs with a generated `_index.md`. Wikitext export is only for recognizable MediaWiki URLs, and blocked arbitrary sources should remain explicit source-access failures.
 
 ## API Verification Rule

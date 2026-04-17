@@ -209,6 +209,9 @@ pub(super) fn lint_malformed_headings(
         if is_tabber_separator_line(trimmed) {
             continue;
         }
+        if trimmed.starts_with('|') {
+            continue;
+        }
         if (trimmed.starts_with('=') || trimmed.ends_with('='))
             && parse_heading_line(trimmed).is_none()
         {
