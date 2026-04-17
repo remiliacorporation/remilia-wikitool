@@ -102,3 +102,30 @@ format = ,* [[%PAGE%]]\n,,
 {{lang|fr|deja vu}}
 {{lang|ja|kawaii}}
 ```
+
+## D3Charts (Remilia local contract)
+
+Remilia Wiki currently renders D3 charts through `Module:D3Chart` plus the `ext.d3charts.loader`
+ResourceLoader module. Use this only when the target wiki's local profile/template surfaces expose
+`Module:D3Chart`; it is not generic MediaWiki syntax and may be replaced by a bespoke extension.
+
+```wikitext
+{{#invoke:D3Chart|bar
+|data=Milady:100,Remilio:50,Bonkler:10
+|title=Example distribution
+|xLabel=Collection
+|yLabel=Count
+|showFrame=true
+|gridStyle=dotted
+}}
+```
+
+Supported current module chart types are `bar`, `hbar`, `line`, `pie`, `donut`, `scatter`, and
+`area`. Manual non-scatter data uses `label:value` pairs; scatter data uses `x:y` or `label:x:y`
+pairs. Cargo-backed charts use `table=`/`tables=` plus fields such as `label=`, `value=`, `x=`,
+and `y=`.
+
+Do not add raw `<script>` tags, inline D3 JavaScript, or hand-written `.d3-chart` containers to
+article wikitext. Use the local module/extension contract and run `wikitool article lint`; if the
+wiki later ships a dedicated D3 extension, follow the live target profile and extension docs instead
+of this module form.

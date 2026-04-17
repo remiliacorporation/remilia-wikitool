@@ -5,7 +5,7 @@ These rules are always enforced for wiki editing tasks.
 ## Local vs live wiki
 
 1. Treat local files as the editing workspace.
-2. Read-only API calls to `https://wiki.remilia.org/w/api.php` are safe.
+2. Read-only API calls to `https://wiki.remilia.org/api.php` are safe.
 3. Never perform direct live-wiki writes outside `wikitool` workflows.
 
 ## Push safety
@@ -13,7 +13,7 @@ These rules are always enforced for wiki editing tasks.
 Before any write push:
 
 1. `wikitool diff`
-2. `wikitool validate`
+2. `wikitool review --format json --summary "Summary"`
 3. `wikitool push --dry-run --summary "Summary"`
 
 Only after dry-run is verified:

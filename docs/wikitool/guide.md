@@ -47,6 +47,11 @@ wikitool validate --summary
 wikitool review --format json --summary "Summary"
 ```
 
+For local custom content features, use the deployed target contract rather than raw HTML/JavaScript.
+Remilia's current D3Charts surface is `Module:D3Chart` plus ResourceLoader, so agents should inspect
+it through `knowledge contracts`, `templates show`, and `article lint`; a future D3 extension may
+supersede that module form.
+
 ## Sync
 
 ```bash

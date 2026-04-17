@@ -143,7 +143,7 @@ Use these when the article calls for special content:
 |-|Tab 1=Content
 |-|Tab 2=Content
 </tabber>                                                 <!-- Tabbed content -->
+{{#invoke:D3Chart|bar|data=A:1,B:2}}                      <!-- Remilia-local charts; lint before use -->
 ```
 
 See `extensions.md` for full details on each.
-

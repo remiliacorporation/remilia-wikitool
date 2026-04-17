@@ -84,7 +84,7 @@ Claude and Codex share the same 2-skill structure:
 | `/wikitool` | `wikitool-operator` | When/how to use the CLI — retrieval, authoring, sync, diagnostics |
 | `/review` | `wikitool-content-gate` | Pre-push validation contract — lint, validate, diff, gate report |
 
-Skill bodies are structurally identical across platforms. They are thin overlays that defer to runbooks and CLI help.
+Skill bodies are platform-shaped but semantically aligned. They are thin overlays that defer to runbooks and CLI help.
 
 Use normal reasoning, ordinary shell/file tools, and direct editing by default.
 Reach for `wikitool` when it adds wiki-aware value: local knowledge retrieval, MediaWiki-aware fetch/export, template/profile lookup, article lint/fix/validate, and guarded sync/push.

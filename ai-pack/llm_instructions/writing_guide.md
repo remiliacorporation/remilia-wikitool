@@ -248,6 +248,12 @@ wikitool docs update                            # Refresh all imported docs
 
 See `extensions.md` for a quick reference of the most-used content tags.
 
+For local/custom features such as Remilia's current D3Charts bridge, prefer target-wiki evidence:
+`wikitool wiki profile show --format json`, `wikitool knowledge contracts search "d3 chart" --format json`,
+`wikitool templates show "Module:D3Chart"` where available, and `wikitool article lint`. Do not add
+inline JavaScript or raw generated HTML to article wikitext; use the deployed module or extension
+contract, and expect that a future bespoke extension may supersede the current `Module:D3Chart` form.
+
 ### Categories
 
 ```bash

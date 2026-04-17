@@ -103,6 +103,42 @@ fn thin_wrappers_reference_help_and_keep_raw_pack_secondary() {
             "thin wrappers must still mention raw knowledge pack access"
         );
     }
+    for body in [&claude_skill, &codex_skill] {
+        assert!(
+            body.contains("--intent new|expand|audit|refresh")
+                && body.contains("knowledge contracts")
+                && body.contains("--verify-live"),
+            "packaged operator wrappers must stay aligned on current authoring and validation surfaces"
+        );
+    }
+}
+
+#[test]
+fn packaged_review_wrappers_stay_aligned_on_gate_sequence() {
+    for path in [
+        "ai-pack/.claude/skills/review.md",
+        "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
+    ] {
+        let body = read_repo_file(path);
+        assert!(
+            body.contains("Preferred full gate: `wikitool review --format json --summary \"...\"`")
+                && body.contains("wikitool validate --summary")
+                && body.contains("--verify-live"),
+            "{path} must stay aligned with the current content gate sequence"
+        );
+    }
+}
+
+#[test]
+fn packaged_extension_guidance_scopes_d3charts_to_local_contract() {
+    let extensions = read_repo_file("ai-pack/llm_instructions/extensions.md");
+    assert!(
+        extensions.contains("D3Charts (Remilia local contract)")
+            && extensions.contains("Module:D3Chart")
+            && extensions.contains("Do not add raw `<script>` tags")
+            && extensions.contains("bespoke extension"),
+        "extension guidance must scope D3Charts as the current local contract, not universal MediaWiki syntax"
+    );
 }
 
 #[test]

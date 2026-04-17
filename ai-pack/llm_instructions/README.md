@@ -15,7 +15,7 @@ For another MediaWiki target, provide host `llm_instructions/` when building the
 | `writing_guide.md` | Start here. Core writing workflow, sourcing, citations, content rules. |
 | `style_rules.md` | Natural writing rules and anti-patterns. Read before every article. |
 | `article_structure.md` | Required structural template and section patterns. |
-| `extensions.md` | Quick reference for content extension tags. |
+| `extensions.md` | Quick reference for content extension tags and local chart contracts. |
 
 ## Usage
 
@@ -36,6 +36,7 @@ Helpful lookups:
 wikitool context "Template:Infobox person"
 wikitool search "Category:"
 wikitool docs context "embed video" --profile remilia-mw-1.44 --format json
+wikitool knowledge contracts search "d3 chart" --format json
 ```
 
 ### With Claude Projects (claude.ai)
