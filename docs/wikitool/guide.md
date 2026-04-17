@@ -18,8 +18,8 @@ wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 
 - Pull/push use the MediaWiki API. Local state lives in SQLite under `.wikitool/data/wikitool.db`.
 - The DB is disposable — delete it and repull/rebuild any time.
-- Authoring retrieval uses semantic page profiles, template implementation bundles, normalized source authorities, and bridged MediaWiki docs to narrow context for agents.
-- `knowledge article-start` is the interpreted authoring brief. `knowledge pack` is the raw substrate behind it.
+- Authoring retrieval uses semantic page profiles, a DB-backed template/module contract graph, normalized source authorities, and bridged MediaWiki docs to narrow context for agents.
+- `knowledge article-start` is the interpreted authoring brief. `knowledge pack` is the retrieval substrate behind it; compact payloads expose subject context and wiki contract context without heavy implementation bodies. Use `--contract-query` when the subject and the wiki-contract lookup are different, for example a cheetah article whose contract search should ask for `species infobox taxonomy`.
 - `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check; use `--summary` for the global signal and scoped `--category`/`--title` slices for targeted investigation. `module lint` is the Lua/module lane.
 - `article lint` / `article fix` accept repeated `--title`, repeated `--path`, `--titles-file`, and `--changed` for batch work.
 - `review` is the structured pre-push gate: status plan, changed article lint, validation summary, and push dry-run in one JSON report.
@@ -29,6 +29,8 @@ wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 
 ```bash
 wikitool knowledge article-start "Topic" --intent new --format json
+wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json
+wikitool knowledge contracts search "species infobox taxonomy" --format json
 wikitool research search "Topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
 wikitool templates show "Template:Infobox person"
@@ -69,6 +71,9 @@ wikitool knowledge warm --docs-profile remilia-mw-1.44  # index + docs
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 wikitool knowledge article-start "Topic" --intent new --format json
 wikitool knowledge pack "Topic" --format json
+wikitool knowledge pack "Topic" --contract-query "subject type infobox" --format json
+wikitool knowledge pack "Topic" --payload full --format json
+wikitool knowledge contracts plan "Topic" --contract-query "subject type infobox" --format json
 wikitool knowledge inspect stats
 wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480
 wikitool knowledge inspect chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify

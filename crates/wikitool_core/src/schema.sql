@@ -511,6 +511,63 @@ CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_template
 CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_role
     ON indexed_template_implementation_pages(role);
 
+CREATE TABLE IF NOT EXISTS indexed_authoring_contracts (
+    profile TEXT NOT NULL,
+    contract_key TEXT PRIMARY KEY,
+    contract_kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    usage_count INTEGER NOT NULL,
+    distinct_page_count INTEGER NOT NULL,
+    parameter_keys TEXT NOT NULL,
+    function_names TEXT NOT NULL,
+    module_titles TEXT NOT NULL,
+    example_titles TEXT NOT NULL,
+    semantic_text TEXT NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    source TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contracts_profile
+    ON indexed_authoring_contracts(profile);
+CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contracts_kind
+    ON indexed_authoring_contracts(contract_kind);
+CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contracts_title
+    ON indexed_authoring_contracts(title);
+CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contracts_category
+    ON indexed_authoring_contracts(category);
+CREATE VIRTUAL TABLE IF NOT EXISTS indexed_authoring_contracts_fts USING fts5(
+    title,
+    category,
+    summary_text,
+    parameter_keys,
+    function_names,
+    module_titles,
+    example_titles,
+    semantic_text,
+    content=indexed_authoring_contracts,
+    content_rowid=rowid
+);
+
+CREATE TABLE IF NOT EXISTS indexed_authoring_contract_edges (
+    profile TEXT NOT NULL,
+    from_contract_key TEXT NOT NULL,
+    from_kind TEXT NOT NULL,
+    from_title TEXT NOT NULL,
+    to_contract_key TEXT NOT NULL,
+    to_kind TEXT NOT NULL,
+    to_title TEXT NOT NULL,
+    relation TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    PRIMARY KEY (profile, from_contract_key, to_contract_key, relation)
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contract_edges_from
+    ON indexed_authoring_contract_edges(from_contract_key);
+CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contract_edges_to
+    ON indexed_authoring_contract_edges(to_contract_key);
+CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contract_edges_relation
+    ON indexed_authoring_contract_edges(relation);
+
 CREATE TABLE IF NOT EXISTS docs_corpora (
     corpus_id TEXT PRIMARY KEY,
     corpus_kind TEXT NOT NULL,

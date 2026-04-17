@@ -20,10 +20,16 @@ use crate::knowledge::templates::{
     load_authoring_template_references, summarize_template_usage_for_sources,
 };
 use crate::knowledge::{model::*, prelude::*};
+use crate::profile::{
+    build_template_catalog_with_overlay, load_latest_template_catalog,
+    load_or_build_remilia_profile_overlay,
+};
 use crate::title_variants::is_translation_variant;
 
 pub mod article_start;
 pub mod comparables;
+pub mod contract_traversal;
+pub mod contracts;
 pub mod docs_bridge;
 pub mod model;
 pub mod suggestions;
@@ -260,22 +266,6 @@ pub fn build_authoring_knowledge_pack(
         retrieval_mode.push_str("+docs-bridge");
     }
 
-    let inventory = load_authoring_inventory(&connection)?;
-    let pack_token_estimate_total = estimate_authoring_pack_total(AuthoringPackEstimateInputs {
-        related_pages: &related_pages,
-        suggested_links: &suggested_links,
-        suggested_categories: &suggested_categories,
-        suggested_templates: &suggested_templates,
-        suggested_references: &suggested_references,
-        suggested_media: &suggested_media,
-        template_baseline: &template_baseline,
-        template_references: &template_references,
-        module_patterns: &module_patterns,
-        docs_context: docs_context.as_ref(),
-        stub_detected_templates: &stub_detected_templates,
-        chunks: &chunks,
-    });
-
     let comparable_page_headings = load_comparable_page_headings(
         &connection,
         &related_pages
@@ -283,35 +273,96 @@ pub fn build_authoring_knowledge_pack(
             .map(|p| p.title.clone())
             .collect::<Vec<_>>(),
     )?;
-
-    Ok(AuthoringKnowledgePack::Found(Box::new(
-        AuthoringKnowledgePackResult {
-            topic,
-            query,
-            query_terms,
-            topic_assessment,
-            inventory,
-            pack_token_budget: token_budget,
-            pack_token_estimate_total,
-            related_pages,
-            suggested_links,
-            suggested_categories,
-            suggested_templates,
-            suggested_references,
-            suggested_media,
-            template_baseline,
-            template_references,
-            module_patterns,
-            docs_context,
-            stub_existing_links,
-            stub_missing_links,
-            stub_detected_templates,
-            retrieval_mode,
-            chunks,
-            token_estimate_total,
-            comparable_page_headings,
+    let inventory = load_authoring_inventory(&connection)?;
+    let profile_overlay = load_or_build_remilia_profile_overlay(paths)?;
+    let fallback_catalog = match load_latest_template_catalog(paths)? {
+        Some(catalog) => Some(catalog),
+        None => Some(build_template_catalog_with_overlay(
+            paths,
+            &profile_overlay,
+        )?),
+    };
+    let contract_query = options
+        .contract_query
+        .as_deref()
+        .map(|value| parsing::normalize_spaces(&value.replace('_', " ")))
+        .filter(|value| !value.is_empty());
+    let contract_query_terms = contract_query
+        .as_deref()
+        .map(|value| expand_authoring_query_terms(value, &[]))
+        .unwrap_or_else(|| query_terms.clone());
+    let contract_plan = contract_traversal::build_authoring_contract_plan_for_connection(
+        &connection,
+        &profile_overlay.profile_id,
+        &contract_traversal::AuthoringContractPlanOptions {
+            query: contract_query.unwrap_or_else(|| query.clone()),
+            query_terms: contract_query_terms,
+            stub_detected_templates: stub_detected_templates.clone(),
+            related_pages: related_pages.clone(),
+            suggested_templates: suggested_templates.clone(),
+            template_baseline: template_baseline.clone(),
+            template_references: template_references.clone(),
+            module_patterns: module_patterns.clone(),
+            limit: template_limit
+                .saturating_add(AUTHORING_MODULE_PATTERN_LIMIT)
+                .max(8),
+            token_budget: options.token_budget.max(1),
+            profile: options.contract_profile,
         },
-    )))
+        fallback_catalog.as_ref(),
+    )?;
+    let context_summary =
+        contracts::build_context_summary(contracts::AuthoringContextSummaryInputs {
+            topic_assessment: &topic_assessment,
+            related_pages: &related_pages,
+            chunks: &chunks,
+            stub_missing_links: &stub_missing_links,
+            suggested_templates: &suggested_templates,
+            template_baseline: &template_baseline,
+            template_references: &template_references,
+            module_patterns: &module_patterns,
+            docs_context: docs_context.as_ref(),
+            contract_plan,
+        });
+
+    let mut report = AuthoringKnowledgePackResult {
+        topic,
+        query,
+        query_terms,
+        topic_assessment,
+        inventory,
+        pack_token_budget: token_budget,
+        pack_token_estimate_total: 0,
+        payload_mode: options.payload_mode,
+        context_summary,
+        related_pages,
+        suggested_links,
+        suggested_categories,
+        suggested_templates,
+        suggested_references,
+        suggested_media,
+        template_baseline,
+        template_references,
+        module_patterns,
+        docs_context,
+        stub_existing_links,
+        stub_missing_links,
+        stub_detected_templates,
+        retrieval_mode,
+        chunks,
+        token_estimate_total,
+        comparable_page_headings,
+    };
+    contracts::apply_payload_mode(&mut report);
+    report.pack_token_estimate_total = estimate_authoring_pack_total(&report);
+
+    Ok(AuthoringKnowledgePack::Found(Box::new(report)))
+}
+
+pub fn extract_authoring_stub_hints(
+    stub_content: Option<&str>,
+) -> (Vec<String>, Vec<StubTemplateHint>) {
+    analyze_stub_hints(stub_content)
 }
 
 fn analyze_stub_hints(stub_content: Option<&str>) -> (Vec<String>, Vec<StubTemplateHint>) {
@@ -403,7 +454,30 @@ struct AuthoringPackEstimateInputs<'a> {
     chunks: &'a [RetrievedChunk],
 }
 
-fn estimate_authoring_pack_total(inputs: AuthoringPackEstimateInputs<'_>) -> usize {
+fn estimate_authoring_pack_total(report: &AuthoringKnowledgePackResult) -> usize {
+    estimate_authoring_pack_total_from_inputs(AuthoringPackEstimateInputs {
+        related_pages: &report.related_pages,
+        suggested_links: &report.suggested_links,
+        suggested_categories: &report.suggested_categories,
+        suggested_templates: &report.suggested_templates,
+        suggested_references: &report.suggested_references,
+        suggested_media: &report.suggested_media,
+        template_baseline: &report.template_baseline,
+        template_references: &report.template_references,
+        module_patterns: &report.module_patterns,
+        docs_context: report.docs_context.as_ref(),
+        stub_detected_templates: &report.stub_detected_templates,
+        chunks: &report.chunks,
+    })
+    .saturating_add(
+        report
+            .context_summary
+            .wiki_contract_context
+            .token_estimate_total,
+    )
+}
+
+fn estimate_authoring_pack_total_from_inputs(inputs: AuthoringPackEstimateInputs<'_>) -> usize {
     let page_summary_tokens = inputs
         .related_pages
         .iter()

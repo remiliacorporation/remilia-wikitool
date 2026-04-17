@@ -10,6 +10,7 @@ use super::resources::LoadedResources;
 mod asset;
 mod citation;
 mod common;
+mod extension;
 mod integration;
 mod module;
 mod structure;
@@ -41,6 +42,7 @@ pub(super) fn collect_issue_matches(
     structure::lint_article_quality_banner(document, resources, &mut matches);
     structure::lint_markdown_headings(document, &mut matches);
     wikitext::lint_raw_wikitext_balance(document, &mut matches);
+    extension::lint_extension_contracts(document, &mut matches);
     structure::lint_malformed_headings(document, &mut matches);
     structure::lint_duplicate_headings(document, &mut matches);
     structure::lint_sentence_case_headings(document, &mut matches);

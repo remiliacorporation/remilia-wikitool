@@ -76,6 +76,7 @@ pub fn build_article_start(
     let categories_seen = build_category_surface(pack);
     let links_seen = build_link_surface(pack);
     let section_skeleton = build_section_skeleton(pack);
+    let contract_plan = &pack.context_summary.wiki_contract_context.traversal_plan;
 
     let local_integration = LocalIntegrationLane {
         comparable_pages,
@@ -92,6 +93,10 @@ pub fn build_article_start(
             .as_ref()
             .map(|docs| docs.queries.clone())
             .unwrap_or_default(),
+        contract_query: contract_plan.query.clone(),
+        contract_matched_query_terms: contract_plan.matched_query_terms.clone(),
+        contract_missing_query_terms: contract_plan.missing_query_terms.clone(),
+        contract_warnings: contract_plan.warnings.clone(),
     };
 
     let constraints = build_constraints(overlay);
@@ -502,7 +507,7 @@ fn build_available_infoboxes(
     overlay: &ProfileOverlay,
 ) -> Vec<TemplateSurfaceEntry> {
     let profile_mappings = overlay_infobox_subject_type_map(overlay);
-    collect_template_entries(
+    let mut out = collect_template_entries(
         pack.suggested_templates
             .iter()
             .filter(|template| template_is_infobox(&template.template_title))
@@ -516,7 +521,35 @@ fn build_available_infoboxes(
                         .cloned(),
                 )
             }),
-    )
+    );
+    for contract in &pack
+        .context_summary
+        .wiki_contract_context
+        .traversal_plan
+        .selected_contracts
+    {
+        if contract.contract_kind != "template"
+            || !(contract.category == "infobox" || template_is_infobox(&contract.title))
+        {
+            continue;
+        }
+        let normalized = normalize_template_title(&contract.title);
+        if out
+            .iter()
+            .any(|entry| entry.template_title.eq_ignore_ascii_case(&normalized))
+        {
+            continue;
+        }
+        out.push(TemplateSurfaceEntry {
+            template_title: normalized.clone(),
+            source: ContextSurfaceSource::ContractTraversal,
+            mapped_subject_type: profile_mappings
+                .get(&normalized.to_ascii_lowercase())
+                .cloned(),
+            supporting_pages: dedup_sorted(contract.example_titles.clone()),
+        });
+    }
+    out
 }
 
 fn build_citation_templates(
@@ -590,6 +623,26 @@ fn build_template_surface(
             supporting_pages: dedup_sorted(template.example_pages.clone()),
         })
         .collect::<Vec<_>>();
+    for contract in &pack
+        .context_summary
+        .wiki_contract_context
+        .traversal_plan
+        .selected_contracts
+    {
+        if contract.contract_kind != "template" || template_is_infobox(&contract.title) {
+            continue;
+        }
+        out.push(TemplateSurfaceEntry {
+            template_title: normalize_template_title(&contract.title),
+            source: if profile_templates.contains(&contract.title.to_ascii_lowercase()) {
+                ContextSurfaceSource::Both
+            } else {
+                ContextSurfaceSource::ContractTraversal
+            },
+            mapped_subject_type: None,
+            supporting_pages: dedup_sorted(contract.example_titles.clone()),
+        });
+    }
     out.sort_by(|left, right| left.template_title.cmp(&right.template_title));
     out.dedup_by(|left, right| {
         left.template_title

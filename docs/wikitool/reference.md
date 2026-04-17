@@ -729,6 +729,7 @@ Commands:
   status         Report knowledge readiness and degradations
   pack           Assemble the authoring knowledge pack
   article-start  Assemble an interpreted authoring brief for a topic
+  contracts      Plan and search token-budgeted authoring contracts
   inspect        Inspect indexed knowledge structures directly
   help           Print this message or the help of the given subcommand(s)
 
@@ -802,22 +803,25 @@ Arguments:
 
 Options:
       --project-root <PATH>
-      --stub-path <PATH>        Optional stub wikitext file used for link/template hint extraction
+      --stub-path <PATH>            Optional stub wikitext file used for link/template hint extraction
       --data-dir <PATH>
-      --related-limit <N>       Maximum related pages in the pack [default: 18]
-      --chunk-limit <N>         Maximum retrieved context chunks [default: 10]
+      --related-limit <N>           Maximum related pages in the pack [default: 18]
+      --chunk-limit <N>             Maximum retrieved context chunks [default: 10]
       --config <PATH>
-      --diagnostics             Print resolved runtime diagnostics
-      --token-budget <TOKENS>   Token budget across retrieved chunks [default: 1200]
-      --max-pages <N>           Maximum distinct source pages in chunk retrieval [default: 8]
-      --link-limit <N>          Maximum internal link suggestions [default: 18]
-      --category-limit <N>      Maximum category suggestions [default: 8]
-      --template-limit <N>      Maximum template summaries [default: 16]
-      --docs-profile <PROFILE>  Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
-      --format <FORMAT>         Output format: text|json [default: json] [possible values: text, json]
-      --diversify               Enable lexical chunk de-duplication and diversification
-      --no-diversify            Disable lexical chunk de-duplication and diversification
-  -h, --help                    Print help
+      --diagnostics                 Print resolved runtime diagnostics
+      --token-budget <TOKENS>       Token budget across retrieved chunks [default: 1200]
+      --max-pages <N>               Maximum distinct source pages in chunk retrieval [default: 8]
+      --link-limit <N>              Maximum internal link suggestions [default: 18]
+      --category-limit <N>          Maximum category suggestions [default: 8]
+      --template-limit <N>          Maximum template summaries [default: 16]
+      --docs-profile <PROFILE>      Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
+      --payload <MODE>              Authoring payload mode: compact|full [default: compact] [possible values: compact, full]
+      --contract-profile <PROFILE>  Contract traversal profile: index|author|implementation [default: author] [possible values: index, author, implementation]
+      --contract-query <QUERY>      Optional contract traversal query separate from TOPIC, such as "species infobox taxonomy"
+      --format <FORMAT>             Output format: text|json [default: json] [possible values: text, json]
+      --diversify                   Enable lexical chunk de-duplication and diversification
+      --no-diversify                Disable lexical chunk de-duplication and diversification
+  -h, --help                        Print help
 ```
 
 ## knowledge article-start
@@ -832,23 +836,92 @@ Arguments:
 
 Options:
       --project-root <PATH>
-      --stub-path <PATH>        Optional stub wikitext file used for link/template hint extraction
+      --stub-path <PATH>            Optional stub wikitext file used for link/template hint extraction
       --data-dir <PATH>
-      --related-limit <N>       Maximum related pages in the brief [default: 18]
-      --chunk-limit <N>         Maximum retrieved context chunks [default: 10]
+      --related-limit <N>           Maximum related pages in the brief [default: 18]
+      --chunk-limit <N>             Maximum retrieved context chunks [default: 10]
       --config <PATH>
+      --diagnostics                 Print resolved runtime diagnostics
+      --token-budget <TOKENS>       Token budget across retrieved chunks [default: 1200]
+      --max-pages <N>               Maximum distinct source pages in chunk retrieval [default: 8]
+      --link-limit <N>              Maximum internal link suggestions [default: 18]
+      --category-limit <N>          Maximum category suggestions [default: 8]
+      --template-limit <N>          Maximum template summaries [default: 16]
+      --docs-profile <PROFILE>      Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
+      --payload <MODE>              Raw pack payload mode when --include-pack is used: compact|full [default: compact] [possible values: compact, full]
+      --contract-profile <PROFILE>  Contract traversal profile for --include-pack: index|author|implementation [default: author] [possible values: index, author, implementation]
+      --contract-query <QUERY>      Optional contract traversal query separate from TOPIC, such as "species infobox taxonomy"
+      --format <FORMAT>             Output format: text|json [default: json] [possible values: text, json]
+      --include-pack                Include the raw knowledge pack in JSON output
+      --intent <INTENT>             Authoring intent: new|expand|audit|refresh [default: new] [possible values: new, expand, audit, refresh]
+      --diversify                   Enable lexical chunk de-duplication and diversification
+      --no-diversify                Disable lexical chunk de-duplication and diversification
+  -h, --help                        Print help
+```
+
+## knowledge contracts
+
+```text
+Plan and search token-budgeted authoring contracts
+
+Usage: wikitool knowledge contracts [OPTIONS] <COMMAND>
+
+Commands:
+  search  Search the indexed authoring contract graph
+  plan    Plan contract traversal for a topic or draft
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge contracts search
+
+```text
+Search the indexed authoring contract graph
+
+Usage: wikitool knowledge contracts search [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>  Template/module/authoring surface query
+
+Options:
+      --limit <N>              [default: 16]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --token-budget <TOKENS>  [default: 900]
+      --config <PATH>
+      --profile <PROFILE>      Contract traversal profile: index|author|implementation [default: author] [possible values: index, author, implementation]
+      --diagnostics            Print resolved runtime diagnostics
+      --format <FORMAT>        Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                   Print help
+```
+
+## knowledge contracts plan
+
+```text
+Plan contract traversal for a topic or draft
+
+Usage: wikitool knowledge contracts plan [OPTIONS] [TOPIC]
+
+Arguments:
+  [TOPIC]  Primary article topic/title for traversal
+
+Options:
+      --project-root <PATH>
+      --stub-path <PATH>        Optional stub wikitext file used for template seeds
+      --data-dir <PATH>
+      --limit <N>               [default: 16]
+      --config <PATH>
+      --token-budget <TOKENS>   [default: 900]
       --diagnostics             Print resolved runtime diagnostics
-      --token-budget <TOKENS>   Token budget across retrieved chunks [default: 1200]
-      --max-pages <N>           Maximum distinct source pages in chunk retrieval [default: 8]
-      --link-limit <N>          Maximum internal link suggestions [default: 18]
-      --category-limit <N>      Maximum category suggestions [default: 8]
-      --template-limit <N>      Maximum template summaries [default: 16]
-      --docs-profile <PROFILE>  Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
+      --profile <PROFILE>       Contract traversal profile: index|author|implementation [default: author] [possible values: index, author, implementation]
+      --contract-query <QUERY>  Optional contract traversal query separate from TOPIC
       --format <FORMAT>         Output format: text|json [default: json] [possible values: text, json]
-      --include-pack            Include the raw knowledge pack in JSON output
-      --intent <INTENT>         Authoring intent: new|expand|audit|refresh [default: new] [possible values: new, expand, audit, refresh]
-      --diversify               Enable lexical chunk de-duplication and diversification
-      --no-diversify            Disable lexical chunk de-duplication and diversification
   -h, --help                    Print help
 ```
 

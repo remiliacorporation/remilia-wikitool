@@ -496,6 +496,165 @@ pub struct ComparablePageHeading {
     pub section_level: u8,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthoringPayloadMode {
+    #[default]
+    Compact,
+    Full,
+}
+
+impl AuthoringPayloadMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Compact => "compact",
+            Self::Full => "full",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringSourceCount {
+    pub source: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringSubjectContext {
+    pub exact_page_available: bool,
+    pub local_title_hit_count: usize,
+    pub backlink_count: usize,
+    pub related_page_count: usize,
+    pub related_page_source_counts: Vec<AuthoringSourceCount>,
+    pub retrieved_chunk_count: usize,
+    pub retrieved_chunk_token_estimate: usize,
+    pub missing_stub_link_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TemplateContractSummary {
+    pub template_title: String,
+    pub summary_text: Option<String>,
+    pub usage_count: usize,
+    pub distinct_page_count: usize,
+    pub parameter_keys: Vec<String>,
+    pub implementation_titles: Vec<String>,
+    pub module_titles: Vec<String>,
+    pub example_pages: Vec<String>,
+    pub example_invocations: Vec<TemplateInvocationExample>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ModuleContractSummary {
+    pub module_title: String,
+    pub usage_count: usize,
+    pub distinct_page_count: usize,
+    pub functions: Vec<ModuleFunctionUsage>,
+    pub example_pages: Vec<String>,
+    pub referenced_by_templates: Vec<String>,
+    pub example_invocations: Vec<ModuleInvocationExample>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringContractEdge {
+    pub from_title: String,
+    pub from_kind: String,
+    pub to_title: String,
+    pub to_kind: String,
+    pub relation: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthoringContractProfile {
+    Index,
+    #[default]
+    Author,
+    Implementation,
+}
+
+impl AuthoringContractProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Index => "index",
+            Self::Author => "author",
+            Self::Implementation => "implementation",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringContractSelectionReason {
+    pub signal: String,
+    pub weight: usize,
+    pub detail: String,
+    pub evidence_titles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringContractExpansionHint {
+    pub command: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringContractNode {
+    pub contract_kind: String,
+    pub title: String,
+    pub category: String,
+    pub score: usize,
+    pub token_estimate: usize,
+    pub summary_text: Option<String>,
+    pub usage_count: usize,
+    pub distinct_page_count: usize,
+    pub parameter_keys: Vec<String>,
+    pub function_names: Vec<String>,
+    pub module_titles: Vec<String>,
+    pub example_titles: Vec<String>,
+    pub selection_reasons: Vec<AuthoringContractSelectionReason>,
+    pub expansion_hints: Vec<AuthoringContractExpansionHint>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringContractOmission {
+    pub contract_kind: String,
+    pub title: String,
+    pub score: usize,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringContractTraversalPlan {
+    pub schema_version: String,
+    pub query: String,
+    pub profile: AuthoringContractProfile,
+    pub matched_query_terms: Vec<String>,
+    pub missing_query_terms: Vec<String>,
+    pub token_budget: usize,
+    pub token_estimate_total: usize,
+    pub selected_contracts: Vec<AuthoringContractNode>,
+    pub omitted_contracts: Vec<AuthoringContractOmission>,
+    pub contract_edges: Vec<AuthoringContractEdge>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringWikiContractContext {
+    pub template_contracts: Vec<TemplateContractSummary>,
+    pub module_contracts: Vec<ModuleContractSummary>,
+    pub docs_queries: Vec<String>,
+    pub contract_edges: Vec<AuthoringContractEdge>,
+    pub traversal_plan: AuthoringContractTraversalPlan,
+    pub omitted_detail: Vec<String>,
+    pub token_estimate_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoringContextSummary {
+    pub subject_context: AuthoringSubjectContext,
+    pub wiki_contract_context: AuthoringWikiContractContext,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AuthoringKnowledgePackResult {
     pub topic: String,
@@ -505,6 +664,8 @@ pub struct AuthoringKnowledgePackResult {
     pub inventory: AuthoringInventory,
     pub pack_token_budget: usize,
     pub pack_token_estimate_total: usize,
+    pub payload_mode: AuthoringPayloadMode,
+    pub context_summary: AuthoringContextSummary,
     pub related_pages: Vec<AuthoringPageCandidate>,
     pub suggested_links: Vec<AuthoringSuggestion>,
     pub suggested_categories: Vec<AuthoringSuggestion>,
@@ -542,6 +703,9 @@ pub struct AuthoringKnowledgePackOptions {
     pub template_limit: usize,
     pub docs_profile: String,
     pub diversify: bool,
+    pub payload_mode: AuthoringPayloadMode,
+    pub contract_profile: AuthoringContractProfile,
+    pub contract_query: Option<String>,
 }
 
 impl Default for AuthoringKnowledgePackOptions {
@@ -556,6 +720,9 @@ impl Default for AuthoringKnowledgePackOptions {
             template_limit: 16,
             docs_profile: DEFAULT_DOCS_PROFILE.to_string(),
             diversify: true,
+            payload_mode: AuthoringPayloadMode::Compact,
+            contract_profile: AuthoringContractProfile::Author,
+            contract_query: None,
         }
     }
 }

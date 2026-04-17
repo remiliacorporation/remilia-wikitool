@@ -4,7 +4,13 @@ use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;
 
-use crate::authoring::{article_start::build_article_start, model::ArticleStartIntent};
+use crate::authoring::{
+    article_start::build_article_start,
+    contract_traversal::{
+        AuthoringContractPlanOptions, build_authoring_contract_plan_for_connection,
+    },
+    model::ArticleStartIntent,
+};
 use crate::content_store::parsing::{
     extract_first_url, extract_media_records, extract_module_invocations,
     extract_reference_records, extract_template_invocations, extract_wikilinks,
@@ -12,7 +18,8 @@ use crate::content_store::parsing::{
 };
 use crate::filesystem::{Namespace, ScanOptions};
 use crate::knowledge::authoring::{
-    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, build_authoring_knowledge_pack,
+    AuthoringContractProfile, AuthoringKnowledgePack, AuthoringKnowledgePackOptions,
+    AuthoringPayloadMode, build_authoring_knowledge_pack,
 };
 use crate::knowledge::content_index::{load_stored_index_stats, rebuild_index};
 use crate::knowledge::inspect::{
@@ -32,7 +39,7 @@ use crate::knowledge::templates::{
 };
 use crate::profile::{
     AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, GoldenSetRules,
-    InfoboxPreference, LintRules, ProfileOverlay, RemiliaRules,
+    InfoboxPreference, LintRules, ProfileOverlay, RemiliaRules, sync_template_catalog_with_overlay,
 };
 use crate::runtime::{ResolvedPaths, ValueSource};
 
@@ -815,6 +822,9 @@ fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
         template_limit: 6,
         docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
         diversify: true,
+        payload_mode: AuthoringPayloadMode::Compact,
+        contract_profile: AuthoringContractProfile::Author,
+        contract_query: None,
     };
     let report = build_authoring_knowledge_pack(
         &paths,
@@ -835,6 +845,32 @@ fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
     assert!(!report.topic_assessment.should_create_new_article);
     assert_eq!(report.pack_token_budget, 420);
     assert!(report.pack_token_estimate_total >= report.token_estimate_total);
+    assert_eq!(report.payload_mode, AuthoringPayloadMode::Compact);
+    assert_eq!(
+        report.context_summary.subject_context.related_page_count,
+        report.related_pages.len()
+    );
+    assert!(
+        report
+            .context_summary
+            .wiki_contract_context
+            .template_contracts
+            .iter()
+            .any(|entry| entry.template_title == "Template:Infobox person")
+    );
+    assert!(
+        !report
+            .context_summary
+            .wiki_contract_context
+            .omitted_detail
+            .is_empty()
+    );
+    assert!(
+        report
+            .template_references
+            .iter()
+            .all(|reference| reference.implementation_chunks.is_empty())
+    );
     assert!(report.inventory.indexed_pages_total >= 3);
     assert!(report.inventory.reference_rows_total >= 3);
     assert!(report.inventory.media_rows_total >= 2);
@@ -965,6 +1001,9 @@ fn build_authoring_knowledge_pack_uses_template_matches_for_related_pages() {
         template_limit: 4,
         docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
         diversify: true,
+        payload_mode: AuthoringPayloadMode::Compact,
+        contract_profile: AuthoringContractProfile::Author,
+        contract_query: None,
     };
     let report = build_authoring_knowledge_pack(
         &paths,
@@ -1049,6 +1088,9 @@ fn build_authoring_knowledge_pack_filters_redirect_category_and_fragment_noise()
             template_limit: 4,
             docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
             diversify: true,
+            payload_mode: AuthoringPayloadMode::Compact,
+            contract_profile: AuthoringContractProfile::Author,
+            contract_query: None,
         },
     )
     .expect("authoring pack");
@@ -1193,6 +1235,207 @@ fn template_catalog_and_reference_include_examples_and_implementation_context() 
 }
 
 #[test]
+fn authoring_contract_plan_uses_indexed_template_module_graph() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "{{Infobox person|name=Alpha|occupation=Archivist}}\n'''Alpha''' page.",
+    );
+    write_file(
+        &paths
+            .templates_dir
+            .join("infobox")
+            .join("Template_Infobox_person.wiki"),
+        "Template lead text.\n{{#invoke:Infobox person|render}}\n== Parameters ==\nUse |name= and |occupation=.",
+    );
+    write_file(
+        &paths
+            .templates_dir
+            .join("infobox")
+            .join("Module_Infobox_person.wiki"),
+        "return { render = function(frame) return frame.args.name end }",
+    );
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+    sync_template_catalog_with_overlay(&paths, &test_profile_overlay()).expect("sync catalog");
+
+    let connection =
+        crate::schema::open_initialized_database_connection(&paths.db_path).expect("open db");
+    let plan = build_authoring_contract_plan_for_connection(
+        &connection,
+        "test-profile",
+        &AuthoringContractPlanOptions {
+            query: "person infobox".to_string(),
+            query_terms: vec!["person".to_string(), "infobox".to_string()],
+            limit: 8,
+            token_budget: 500,
+            profile: AuthoringContractProfile::Author,
+            ..AuthoringContractPlanOptions::default()
+        },
+        None,
+    )
+    .expect("contract plan");
+
+    assert!(
+        plan.selected_contracts
+            .iter()
+            .any(|contract| contract.title == "Template:Infobox person"
+                && contract.contract_kind == "template"
+                && contract.parameter_keys.iter().any(|key| key == "name"))
+    );
+    assert!(
+        plan.contract_edges
+            .iter()
+            .any(|edge| edge.from_title == "Template:Infobox person"
+                && edge.to_title == "Module:Infobox person"
+                && edge.relation == "implemented_by")
+    );
+
+    let partial_plan = build_authoring_contract_plan_for_connection(
+        &connection,
+        "test-profile",
+        &AuthoringContractPlanOptions {
+            query: "animal infobox".to_string(),
+            query_terms: vec!["animal".to_string(), "infobox".to_string()],
+            limit: 4,
+            token_budget: 300,
+            profile: AuthoringContractProfile::Author,
+            ..AuthoringContractPlanOptions::default()
+        },
+        None,
+    )
+    .expect("partial contract plan");
+    assert!(
+        partial_plan
+            .matched_query_terms
+            .contains(&"infobox".to_string())
+    );
+    assert_eq!(partial_plan.missing_query_terms, vec!["animal".to_string()]);
+    assert!(partial_plan.warnings.iter().any(|warning| {
+        warning.contains("No selected contract matched these query terms: animal")
+    }));
+}
+
+#[test]
+fn authoring_contract_index_preserves_case_distinct_template_titles() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths
+            .templates_dir
+            .join("misc")
+            .join("Template_Block_Indent.wiki"),
+        "Uppercase internal title.",
+    );
+    write_file(
+        &paths
+            .templates_dir
+            .join("list")
+            .join("Template_Block_indent.wiki"),
+        "Lowercase internal title.",
+    );
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+    sync_template_catalog_with_overlay(&paths, &test_profile_overlay()).expect("sync catalog");
+
+    let connection =
+        crate::schema::open_initialized_database_connection(&paths.db_path).expect("open db");
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*)
+             FROM indexed_authoring_contracts
+             WHERE profile = ?1
+               AND contract_kind = 'template'
+               AND title IN ('Template:Block Indent', 'Template:Block indent')",
+            ["test-profile"],
+            |row| row.get(0),
+        )
+        .expect("count case-distinct contract titles");
+
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn build_authoring_knowledge_pack_uses_explicit_contract_query_for_graph_traversal() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "{{Infobox species|name=Alpha|conservation_status=Least concern}}\n'''Alpha''' page.",
+    );
+    write_file(
+        &paths
+            .templates_dir
+            .join("infobox")
+            .join("Template_Infobox_species.wiki"),
+        "Species infobox template.\n{{#invoke:Infobox species|render}}\n== Parameters ==\nUse |name=, |taxon=, and |conservation_status=.",
+    );
+    write_file(
+        &paths
+            .templates_dir
+            .join("infobox")
+            .join("Module_Infobox_species.wiki"),
+        "return { render = function(frame) return frame.args.conservation_status end }",
+    );
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let report = build_authoring_knowledge_pack(
+        &paths,
+        Some("Cheetah"),
+        None,
+        &AuthoringKnowledgePackOptions {
+            related_page_limit: 4,
+            chunk_limit: 4,
+            token_budget: 280,
+            max_pages: 2,
+            link_limit: 4,
+            category_limit: 4,
+            template_limit: 4,
+            docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
+            diversify: true,
+            payload_mode: AuthoringPayloadMode::Compact,
+            contract_profile: AuthoringContractProfile::Author,
+            contract_query: Some("species infobox conservation".to_string()),
+        },
+    )
+    .expect("authoring pack");
+    let report = match report {
+        AuthoringKnowledgePack::Found(report) => *report,
+        other => panic!("expected found authoring pack, got {other:?}"),
+    };
+    let traversal = &report.context_summary.wiki_contract_context.traversal_plan;
+
+    assert_eq!(report.query, "Cheetah");
+    assert_eq!(traversal.query, "species infobox conservation");
+    let species = traversal
+        .selected_contracts
+        .iter()
+        .find(|contract| contract.title == "Template:Infobox species")
+        .expect("species infobox contract selected");
+    assert!(species.parameter_keys.iter().any(|key| key == "name"));
+    assert!(
+        species
+            .parameter_keys
+            .iter()
+            .any(|key| key == "conservation status")
+    );
+    assert!(
+        species
+            .selection_reasons
+            .iter()
+            .any(|reason| reason.signal == "title_match" || reason.signal == "parameter_match")
+    );
+}
+
+#[test]
 fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
@@ -1276,6 +1519,9 @@ fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
             template_limit: 6,
             docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
             diversify: true,
+            payload_mode: AuthoringPayloadMode::Full,
+            contract_profile: AuthoringContractProfile::Implementation,
+            contract_query: None,
         },
     )
     .expect("authoring pack");

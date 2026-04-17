@@ -475,5 +475,12 @@ pub(crate) fn rebuild_fts_index(connection: &Connection) -> Result<()> {
             )
             .context("failed to rebuild indexed_page_semantics_fts")?;
     }
+    if fts_table_exists(connection, "indexed_authoring_contracts_fts") {
+        connection
+            .execute_batch(
+                "INSERT INTO indexed_authoring_contracts_fts(indexed_authoring_contracts_fts) VALUES('rebuild')",
+            )
+            .context("failed to rebuild indexed_authoring_contracts_fts")?;
+    }
     Ok(())
 }

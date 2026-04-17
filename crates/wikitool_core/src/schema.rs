@@ -165,6 +165,36 @@ const REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS: &[&str] = &[
     "role",
 ];
 
+const REQUIRED_AUTHORING_CONTRACT_COLUMNS: &[&str] = &[
+    "profile",
+    "contract_key",
+    "contract_kind",
+    "title",
+    "category",
+    "summary_text",
+    "usage_count",
+    "distinct_page_count",
+    "parameter_keys",
+    "function_names",
+    "module_titles",
+    "example_titles",
+    "semantic_text",
+    "token_estimate",
+    "source",
+];
+
+const REQUIRED_AUTHORING_CONTRACT_EDGE_COLUMNS: &[&str] = &[
+    "profile",
+    "from_contract_key",
+    "from_kind",
+    "from_title",
+    "to_contract_key",
+    "to_kind",
+    "to_title",
+    "relation",
+    "evidence",
+];
+
 const REQUIRED_DOCS_CORPORA_COLUMNS: &[&str] = &[
     "corpus_kind",
     "label",
@@ -356,6 +386,16 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
         connection,
         "indexed_template_implementation_pages",
         REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS,
+    )?;
+    require_columns(
+        connection,
+        "indexed_authoring_contracts",
+        REQUIRED_AUTHORING_CONTRACT_COLUMNS,
+    )?;
+    require_columns(
+        connection,
+        "indexed_authoring_contract_edges",
+        REQUIRED_AUTHORING_CONTRACT_EDGE_COLUMNS,
     )?;
     require_columns(connection, "docs_corpora", REQUIRED_DOCS_CORPORA_COLUMNS)?;
     require_columns(connection, "docs_pages", REQUIRED_DOCS_PAGE_COLUMNS)?;

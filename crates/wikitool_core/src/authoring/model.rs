@@ -26,6 +26,7 @@ pub enum ContextSurfaceSource {
     Profile,
     Comparables,
     Both,
+    ContractTraversal,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -164,6 +165,10 @@ pub struct LocalIntegrationLane {
     pub links_seen: Vec<LinkSurfaceEntry>,
     pub section_skeleton: Vec<SectionSkeleton>,
     pub docs_queries: Vec<String>,
+    pub contract_query: String,
+    pub contract_matched_query_terms: Vec<String>,
+    pub contract_missing_query_terms: Vec<String>,
+    pub contract_warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

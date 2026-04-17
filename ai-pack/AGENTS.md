@@ -146,7 +146,7 @@ Docs bootstrap paths:
 4. Packaged offline bundle: `wikitool docs import --bundle ./ai/docs-bundle-v1.json`
 
 Use `knowledge status` before depending on docs-bridged local retrieval; it surfaces `readiness`, `degradations`, the requested docs profile, and the current `knowledge_generation`.
-Use `knowledge pack` only when `article-start` is too collapsed and you need the deeper raw retrieval payload.
+Use `knowledge pack` only when `article-start` is too collapsed and you need the deeper retrieval substrate. Its default `--payload compact` output separates subject context from wiki contract context and omits heavy implementation chunks; add `--payload full` only when you need full template/module implementation bodies or docs section text. Use `--contract-query` when the article topic and the template/module lookup differ, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json`. Use `wikitool knowledge contracts search "contract terms" --format json` for a direct token-budgeted search of the template/module graph.
 Use `wikitool export "URL"` for agent-readable markdown snapshots. MediaWiki URLs are fetched as wikitext before markdown rendering; arbitrary web pages use the research extractor and frontmatter metadata. Use `--subpages --limit N` for bounded MediaWiki tree stress tests, and `--urls-file PATH --output-dir PATH --format markdown` for off-wiki source packs with a generated `_index.md`. Wikitext export is only for recognizable MediaWiki URLs, and blocked arbitrary sources should remain explicit source-access failures.
 
 ## API Verification Rule

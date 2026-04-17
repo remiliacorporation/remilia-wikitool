@@ -21,7 +21,7 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 
 1. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
 2. **Refresh local authoring state** â€” run `wikitool knowledge warm --docs-profile remilia-mw-1.44` and `wikitool wiki profile sync` so docs/profile/capability signals are current.
-3. **Build the interpreted authoring brief** â€” run `wikitool knowledge article-start “<Topic>” --intent new --format json`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks` to fetch targeted content before writing.
+3. **Build the interpreted authoring brief** â€” run `wikitool knowledge article-start “<Topic>” --intent new --format json`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks` to fetch targeted content before writing. When your own subject knowledge suggests a different wiki-contract lookup than the title itself, make that visible with `--contract-query`, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json`.
 4. **Fetch external evidence selectively** â€” use `wikitool research search “<Topic>” --format json`, then `wikitool research fetch “<URL>” --output json` only for sources you expect to cite. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.discovery` or run `wikitool research discover “<URL>” --format json` for public robots, sitemap, feed, and structured-data leads. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
 5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name"`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
 6. **Write the article** following the structure in `article_structure.md`.
@@ -29,7 +29,7 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 8. **Run article-aware lint** â€” `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`. For large reference cleanups, use `wikitool knowledge inspect references summary --title "{Article_Title}" --format json` and `wikitool knowledge inspect references duplicates --title "{Article_Title}" --format json`.
 9. **Review** â€” run `wikitool review --format json --summary "Summary"` before push. Use `wikitool validate --summary` for the lower-level global integrity signal and scoped validation flags when investigating a specific issue.
 
-Use `wikitool knowledge pack ... --format json` when you need the deeper raw retrieval bundle behind `article-start`.
+Use `wikitool knowledge pack ... --format json` when you need the deeper retrieval bundle behind `article-start`. The default compact payload keeps `context_summary.subject_context` separate from `context_summary.wiki_contract_context` and omits heavy template/module implementation chunks; use `--payload full` only when you need those implementation bodies or expanded docs text. Use `wikitool knowledge contracts search "contract terms" --format json` for a direct token-budgeted search of the template/module graph before deciding which template or module to expand.
 
 ### Editing an existing article
 
@@ -219,7 +219,10 @@ Use wikitool to inspect template context from your local pull:
 
 ```bash
 wikitool knowledge article-start "Topic Title" --format json
+wikitool knowledge article-start "Topic Title" --contract-query "subject type infobox" --format json
 wikitool knowledge pack "Topic Title" --format json
+wikitool knowledge contracts search "subject type infobox" --format json
+wikitool knowledge pack "Topic Title" --payload full --format json
 wikitool knowledge pack --stub-path wiki_content/Main/Topic_Draft.wiki --format json
 wikitool templates show "Template:Template Name"
 wikitool templates examples "Template:Template Name" --limit 2

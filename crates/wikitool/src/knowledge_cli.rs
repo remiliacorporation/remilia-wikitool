@@ -12,8 +12,10 @@ use wikitool_core::docs::{
 };
 use wikitool_core::filesystem::{ScanOptions, validate_scoped_path};
 use wikitool_core::knowledge::authoring::{
+    AuthoringContractPlanOptions, AuthoringContractProfile, AuthoringContractTraversalPlan,
     AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringKnowledgePackResult,
-    build_authoring_knowledge_pack,
+    AuthoringPayloadMode, build_authoring_knowledge_pack, extract_authoring_stub_hints,
+    query_authoring_contract_plan,
 };
 use wikitool_core::knowledge::content_index::{RebuildReport, rebuild_index};
 use wikitool_core::knowledge::status::{
@@ -48,6 +50,8 @@ enum KnowledgeSubcommand {
     Pack(KnowledgePackArgs),
     #[command(about = "Assemble an interpreted authoring brief for a topic")]
     ArticleStart(KnowledgeArticleStartArgs),
+    #[command(about = "Plan and search token-budgeted authoring contracts")]
+    Contracts(KnowledgeContractsArgs),
     #[command(about = "Inspect indexed knowledge structures directly")]
     Inspect(knowledge_inspect_cli::KnowledgeInspectArgs),
 }
@@ -174,6 +178,28 @@ pub(crate) struct KnowledgePackArgs {
     #[arg(
         long,
         value_enum,
+        default_value_t = AuthoringPayloadArg::Compact,
+        value_name = "MODE",
+        help = "Authoring payload mode: compact|full"
+    )]
+    payload: AuthoringPayloadArg,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = AuthoringContractProfileArg::Author,
+        value_name = "PROFILE",
+        help = "Contract traversal profile: index|author|implementation"
+    )]
+    contract_profile: AuthoringContractProfileArg,
+    #[arg(
+        long,
+        value_name = "QUERY",
+        help = "Optional contract traversal query separate from TOPIC, such as \"species infobox taxonomy\""
+    )]
+    contract_query: Option<String>,
+    #[arg(
+        long,
+        value_enum,
         default_value_t = OutputFormat::Json,
         value_name = "FORMAT",
         help = "Output format: text|json"
@@ -260,6 +286,28 @@ pub(crate) struct KnowledgeArticleStartArgs {
     #[arg(
         long,
         value_enum,
+        default_value_t = AuthoringPayloadArg::Compact,
+        value_name = "MODE",
+        help = "Raw pack payload mode when --include-pack is used: compact|full"
+    )]
+    payload: AuthoringPayloadArg,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = AuthoringContractProfileArg::Author,
+        value_name = "PROFILE",
+        help = "Contract traversal profile for --include-pack: index|author|implementation"
+    )]
+    contract_profile: AuthoringContractProfileArg,
+    #[arg(
+        long,
+        value_name = "QUERY",
+        help = "Optional contract traversal query separate from TOPIC, such as \"species infobox taxonomy\""
+    )]
+    contract_query: Option<String>,
+    #[arg(
+        long,
+        value_enum,
         default_value_t = OutputFormat::Json,
         value_name = "FORMAT",
         help = "Output format: text|json"
@@ -284,6 +332,87 @@ pub(crate) struct KnowledgeArticleStartArgs {
     no_diversify: bool,
 }
 
+#[derive(Debug, Args, Clone)]
+pub(crate) struct KnowledgeContractsArgs {
+    #[command(subcommand)]
+    command: KnowledgeContractsSubcommand,
+}
+
+#[derive(Debug, Subcommand, Clone)]
+enum KnowledgeContractsSubcommand {
+    #[command(about = "Search the indexed authoring contract graph")]
+    Search(KnowledgeContractsSearchArgs),
+    #[command(about = "Plan contract traversal for a topic or draft")]
+    Plan(KnowledgeContractsPlanArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+struct KnowledgeContractsSearchArgs {
+    #[arg(value_name = "QUERY", help = "Template/module/authoring surface query")]
+    query: String,
+    #[arg(long, default_value_t = 16, value_name = "N")]
+    limit: usize,
+    #[arg(long, default_value_t = 900, value_name = "TOKENS")]
+    token_budget: usize,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = AuthoringContractProfileArg::Author,
+        value_name = "PROFILE",
+        help = "Contract traversal profile: index|author|implementation"
+    )]
+    profile: AuthoringContractProfileArg,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Json,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
+#[derive(Debug, Args, Clone)]
+struct KnowledgeContractsPlanArgs {
+    #[arg(
+        value_name = "TOPIC",
+        help = "Primary article topic/title for traversal"
+    )]
+    topic: Option<String>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Optional stub wikitext file used for template seeds"
+    )]
+    stub_path: Option<PathBuf>,
+    #[arg(long, default_value_t = 16, value_name = "N")]
+    limit: usize,
+    #[arg(long, default_value_t = 900, value_name = "TOKENS")]
+    token_budget: usize,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = AuthoringContractProfileArg::Author,
+        value_name = "PROFILE",
+        help = "Contract traversal profile: index|author|implementation"
+    )]
+    profile: AuthoringContractProfileArg,
+    #[arg(
+        long,
+        value_name = "QUERY",
+        help = "Optional contract traversal query separate from TOPIC"
+    )]
+    contract_query: Option<String>,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Json,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum ArticleStartIntentArg {
     New,
@@ -299,6 +428,38 @@ impl From<ArticleStartIntentArg> for ArticleStartIntent {
             ArticleStartIntentArg::Expand => Self::Expand,
             ArticleStartIntentArg::Audit => Self::Audit,
             ArticleStartIntentArg::Refresh => Self::Refresh,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum AuthoringPayloadArg {
+    Compact,
+    Full,
+}
+
+impl From<AuthoringPayloadArg> for AuthoringPayloadMode {
+    fn from(value: AuthoringPayloadArg) -> Self {
+        match value {
+            AuthoringPayloadArg::Compact => Self::Compact,
+            AuthoringPayloadArg::Full => Self::Full,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum AuthoringContractProfileArg {
+    Index,
+    Author,
+    Implementation,
+}
+
+impl From<AuthoringContractProfileArg> for AuthoringContractProfile {
+    fn from(value: AuthoringContractProfileArg) -> Self {
+        match value {
+            AuthoringContractProfileArg::Index => Self::Index,
+            AuthoringContractProfileArg::Author => Self::Author,
+            AuthoringContractProfileArg::Implementation => Self::Implementation,
         }
     }
 }
@@ -360,6 +521,7 @@ pub(crate) fn run_knowledge(runtime: &RuntimeOptions, args: KnowledgeArgs) -> Re
         KnowledgeSubcommand::Status(args) => run_knowledge_status(runtime, args),
         KnowledgeSubcommand::Pack(args) => run_knowledge_pack(runtime, args),
         KnowledgeSubcommand::ArticleStart(args) => run_knowledge_article_start(runtime, args),
+        KnowledgeSubcommand::Contracts(args) => run_knowledge_contracts(runtime, args),
         KnowledgeSubcommand::Inspect(args) => {
             knowledge_inspect_cli::run_knowledge_inspect(runtime, args)
         }
@@ -490,6 +652,94 @@ fn run_knowledge_status(runtime: &RuntimeOptions, args: KnowledgeStatusArgs) -> 
     Ok(())
 }
 
+fn run_knowledge_contracts(runtime: &RuntimeOptions, args: KnowledgeContractsArgs) -> Result<()> {
+    match args.command {
+        KnowledgeContractsSubcommand::Search(args) => run_knowledge_contracts_search(runtime, args),
+        KnowledgeContractsSubcommand::Plan(args) => run_knowledge_contracts_plan(runtime, args),
+    }
+}
+
+fn run_knowledge_contracts_search(
+    runtime: &RuntimeOptions,
+    args: KnowledgeContractsSearchArgs,
+) -> Result<()> {
+    if args.limit == 0 {
+        bail!("knowledge contracts search requires --limit >= 1");
+    }
+    if args.token_budget == 0 {
+        bail!("knowledge contracts search requires --token-budget >= 1");
+    }
+    let query = collapse_whitespace(&args.query);
+    if query.is_empty() {
+        bail!("knowledge contracts search requires a non-empty QUERY");
+    }
+    let paths = resolve_runtime_paths(runtime)?;
+    let plan = query_authoring_contract_plan(
+        &paths,
+        AuthoringContractPlanOptions {
+            query: query.clone(),
+            query_terms: query_terms_for_contract_query(&query),
+            limit: args.limit,
+            token_budget: args.token_budget,
+            profile: args.profile.into(),
+            ..AuthoringContractPlanOptions::default()
+        },
+    )?;
+
+    if args.format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&plan)?);
+        return Ok(());
+    }
+
+    print_contract_plan("knowledge contracts search", &paths, &plan);
+    Ok(())
+}
+
+fn run_knowledge_contracts_plan(
+    runtime: &RuntimeOptions,
+    args: KnowledgeContractsPlanArgs,
+) -> Result<()> {
+    if args.limit == 0 {
+        bail!("knowledge contracts plan requires --limit >= 1");
+    }
+    if args.token_budget == 0 {
+        bail!("knowledge contracts plan requires --token-budget >= 1");
+    }
+    let paths = resolve_runtime_paths(runtime)?;
+    let topic = normalize_option(args.topic.as_deref())
+        .or_else(|| derive_topic_from_stub_path(args.stub_path.as_deref()));
+    let stub_content = load_knowledge_stub_content(&paths, args.stub_path.as_deref())?;
+    let (stub_links, stub_templates) = extract_authoring_stub_hints(stub_content.as_deref());
+    let query = normalize_option(args.contract_query.as_deref())
+        .or(topic)
+        .or_else(|| stub_links.first().cloned())
+        .unwrap_or_default();
+    let query = collapse_whitespace(&query);
+    if query.is_empty() && stub_templates.is_empty() {
+        bail!("knowledge contracts plan requires TOPIC or --stub-path with template/link hints");
+    }
+    let plan = query_authoring_contract_plan(
+        &paths,
+        AuthoringContractPlanOptions {
+            query: query.clone(),
+            query_terms: query_terms_for_contract_query(&query),
+            stub_detected_templates: stub_templates,
+            limit: args.limit,
+            token_budget: args.token_budget,
+            profile: args.profile.into(),
+            ..AuthoringContractPlanOptions::default()
+        },
+    )?;
+
+    if args.format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&plan)?);
+        return Ok(());
+    }
+
+    print_contract_plan("knowledge contracts plan", &paths, &plan);
+    Ok(())
+}
+
 fn run_knowledge_pack(runtime: &RuntimeOptions, args: KnowledgePackArgs) -> Result<()> {
     if args.related_limit == 0 {
         bail!("knowledge pack requires --related-limit >= 1");
@@ -535,6 +785,9 @@ fn run_knowledge_pack(runtime: &RuntimeOptions, args: KnowledgePackArgs) -> Resu
             template_limit: args.template_limit,
             docs_profile: args.docs_profile.clone(),
             diversify: use_diversify,
+            payload_mode: args.payload.into(),
+            contract_profile: args.contract_profile.into(),
+            contract_query: normalize_option(args.contract_query.as_deref()),
         },
     )?;
     let status = knowledge_status(&paths, &args.docs_profile)?;
@@ -579,6 +832,7 @@ fn run_knowledge_pack(runtime: &RuntimeOptions, args: KnowledgePackArgs) -> Resu
         KnowledgePackPayload::Found(report) => {
             println!("pack.query: {}", report.query);
             println!("pack.query_terms: {}", format_list(&report.query_terms));
+            println!("pack.payload_mode: {}", report.payload_mode.as_str());
             println!(
                 "pack.topic_state.title_exists_locally: {}",
                 format_flag(report.topic_assessment.title_exists_locally)
@@ -664,6 +918,79 @@ fn run_knowledge_pack(runtime: &RuntimeOptions, args: KnowledgePackArgs) -> Resu
                     })
                     .unwrap_or(0)
             );
+            println!(
+                "pack.context.subject.related_pages: {}",
+                report.context_summary.subject_context.related_page_count
+            );
+            println!(
+                "pack.context.subject.chunks: {}",
+                report.context_summary.subject_context.retrieved_chunk_count
+            );
+            println!(
+                "pack.context.contracts.templates: {}",
+                report
+                    .context_summary
+                    .wiki_contract_context
+                    .template_contracts
+                    .len()
+            );
+            println!(
+                "pack.context.contracts.modules: {}",
+                report
+                    .context_summary
+                    .wiki_contract_context
+                    .module_contracts
+                    .len()
+            );
+            println!(
+                "pack.context.contracts.edges: {}",
+                report
+                    .context_summary
+                    .wiki_contract_context
+                    .contract_edges
+                    .len()
+            );
+            println!(
+                "pack.context.contracts.traversal.profile: {}",
+                report
+                    .context_summary
+                    .wiki_contract_context
+                    .traversal_plan
+                    .profile
+                    .as_str()
+            );
+            println!(
+                "pack.context.contracts.traversal.selected: {}",
+                report
+                    .context_summary
+                    .wiki_contract_context
+                    .traversal_plan
+                    .selected_contracts
+                    .len()
+            );
+            println!(
+                "pack.context.contracts.traversal.missing_query_terms: {}",
+                format_list(
+                    &report
+                        .context_summary
+                        .wiki_contract_context
+                        .traversal_plan
+                        .missing_query_terms
+                )
+            );
+            println!(
+                "pack.context.contracts.traversal.omitted: {}",
+                report
+                    .context_summary
+                    .wiki_contract_context
+                    .traversal_plan
+                    .omitted_contracts
+                    .len()
+            );
+            println!(
+                "pack.context.contracts.omitted_detail: {}",
+                format_list(&report.context_summary.wiki_contract_context.omitted_detail)
+            );
             println!("pack.retrieval_mode: {}", report.retrieval_mode);
             println!("pack.chunks.count: {}", report.chunks.len());
             println!(
@@ -736,6 +1063,9 @@ fn run_knowledge_article_start(
             template_limit: args.template_limit,
             docs_profile: args.docs_profile.clone(),
             diversify: use_diversify,
+            payload_mode: args.payload.into(),
+            contract_profile: args.contract_profile.into(),
+            contract_query: normalize_option(args.contract_query.as_deref()),
         },
     )?;
     let status = knowledge_status(&paths, &args.docs_profile)?;
@@ -923,6 +1253,22 @@ fn run_knowledge_article_start(
                 format_list(&article_start.local_integration.docs_queries)
             );
             println!(
+                "article_start.contract_query: {}",
+                article_start.local_integration.contract_query
+            );
+            println!(
+                "article_start.contract_missing_query_terms: {}",
+                format_list(&article_start.local_integration.contract_missing_query_terms)
+            );
+            for warning in article_start
+                .local_integration
+                .contract_warnings
+                .iter()
+                .take(4)
+            {
+                println!("article_start.contract_warning: {warning}");
+            }
+            println!(
                 "article_start.open_questions.count: {}",
                 article_start.open_questions.len()
             );
@@ -1007,6 +1353,81 @@ fn format_list(values: &[String]) -> String {
     } else {
         values.join(", ")
     }
+}
+
+fn query_terms_for_contract_query(query: &str) -> Vec<String> {
+    collapse_whitespace(query)
+        .split_whitespace()
+        .map(|term| {
+            term.chars()
+                .filter(|ch| ch.is_alphanumeric() || *ch == '_')
+                .collect::<String>()
+                .to_ascii_lowercase()
+        })
+        .filter(|term| term.chars().count() >= 2)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn print_contract_plan(label: &str, paths: &ResolvedPaths, plan: &AuthoringContractTraversalPlan) {
+    println!("{label}");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("query: {}", plan.query);
+    println!("profile: {}", plan.profile.as_str());
+    println!(
+        "matched_query_terms: {}",
+        format_list(&plan.matched_query_terms)
+    );
+    println!(
+        "missing_query_terms: {}",
+        format_list(&plan.missing_query_terms)
+    );
+    println!("token_budget: {}", plan.token_budget);
+    println!("tokens_estimate_total: {}", plan.token_estimate_total);
+    println!("selected.count: {}", plan.selected_contracts.len());
+    for contract in &plan.selected_contracts {
+        println!(
+            "contract: kind={} title={} category={} score={} tokens={} usage={} params={} functions={} modules={}",
+            contract.contract_kind,
+            contract.title,
+            contract.category,
+            contract.score,
+            contract.token_estimate,
+            contract.usage_count,
+            format_list(&contract.parameter_keys),
+            format_list(&contract.function_names),
+            format_list(&contract.module_titles)
+        );
+        for reason in &contract.selection_reasons {
+            println!(
+                "  reason: signal={} weight={} detail={} evidence={}",
+                reason.signal,
+                reason.weight,
+                reason.detail,
+                format_list(&reason.evidence_titles)
+            );
+        }
+        for hint in &contract.expansion_hints {
+            println!("  expand: {} ({})", hint.command, hint.reason);
+        }
+    }
+    println!("edges.count: {}", plan.contract_edges.len());
+    for edge in &plan.contract_edges {
+        println!(
+            "edge: {}:{} --{}--> {}:{}",
+            edge.from_kind, edge.from_title, edge.relation, edge.to_kind, edge.to_title
+        );
+    }
+    println!("omitted.count: {}", plan.omitted_contracts.len());
+    for omission in &plan.omitted_contracts {
+        println!(
+            "omitted: kind={} title={} score={} reason={}",
+            omission.contract_kind, omission.title, omission.score, omission.reason
+        );
+    }
+    println!("warnings: {}", format_list(&plan.warnings));
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
 }
 
 fn load_knowledge_stub_content(

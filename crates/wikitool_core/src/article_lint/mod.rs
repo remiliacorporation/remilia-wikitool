@@ -425,6 +425,52 @@ mod tests {
     }
 
     #[test]
+    fn detects_invalid_extension_block_shapes() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n<tabber>\n|-|=\nText.\n</tabber>\n\n<gallery>\nNot a file line\n</gallery>\n\n<DPL>\n</DPL>\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "extension.tabber_empty_label"));
+        assert!(has_rule(&report, "extension.gallery_empty"));
+        assert!(has_rule(&report, "extension.dpl_empty"));
+    }
+
+    #[test]
+    fn detects_unavailable_module_functions_from_local_lua_exports() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        write_file(
+            &paths.templates_dir.join("misc").join("Module_Chart.lua"),
+            "local p = {}\nfunction p.bar(frame) return '' end\np.line = function(frame) return '' end\nreturn p\n",
+        );
+        write_capability_manifest(
+            &paths,
+            &wiki_capability_manifest(Vec::new(), vec!["invoke".to_string()], true),
+        );
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:Chart|scatter|data=1:2}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "module.unavailable_function"));
+    }
+
+    #[test]
     fn lints_state_draft_with_explicit_title_override() {
         let temp = tempdir().expect("tempdir");
         let project_root = temp.path().join("project");
