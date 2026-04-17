@@ -58,8 +58,6 @@ Out of scope by default:
 6. `codex_skills/*`
 7. `docs/wikitool/*.md`
 8. optional `ai/docs-bundle-v1.json`
-9. optional `WIKITOOL_CLAUDE.md` when host overlay is injected
-10. optional `WIKITOOL_LLM_INSTRUCTIONS/*.md` when host writing instructions are injected
 
 If path references conflict, prefer packaged-root paths first.
 
@@ -172,10 +170,8 @@ When host overlay is used:
 
 1. Host `CLAUDE.md` becomes the effective guidance source.
 2. Release packaging writes that same guidance body to both packaged `CLAUDE.md` and packaged `AGENTS.md`.
-3. Wikitool-local guidance is preserved as `WIKITOOL_CLAUDE.md`.
-4. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
-5. If the host has `llm_instructions/`, those files become the packaged writing context.
-6. Wikitool-local writing instructions are preserved as `WIKITOOL_LLM_INSTRUCTIONS/` when host `llm_instructions/` are injected.
+3. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
+4. If the host has `llm_instructions/`, those files become the packaged writing context.
 
 Without host overlay, release bundles stay generic and ship only wikitool-maintained guidance.
 

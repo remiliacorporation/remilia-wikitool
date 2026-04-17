@@ -62,8 +62,8 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             "packaged guidance must explain that both shipped filenames carry the same instructions"
         );
         assert!(
-            body.contains("WIKITOOL_LLM_INSTRUCTIONS"),
-            "packaged guidance must document host LLM instruction overlay preservation"
+            body.contains("those files become the packaged writing context"),
+            "packaged guidance must document host LLM instruction overlay behavior"
         );
     }
 }
@@ -74,7 +74,7 @@ fn ai_pack_readme_keeps_shipping_and_scratch_boundaries_explicit() {
     assert!(
         readme.contains("must be release-ready")
             && readme.contains("Do not place local experiments")
-            && readme.contains("WIKITOOL_LLM_INSTRUCTIONS"),
+            && readme.contains("Host overlay may replace `llm_instructions/`"),
         "ai-pack README must keep production packaging and scratch-space boundaries explicit"
     );
 }

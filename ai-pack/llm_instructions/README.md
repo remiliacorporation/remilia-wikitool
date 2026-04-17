@@ -6,8 +6,7 @@ These instructions are designed for Claude but work with any capable LLM. They t
 
 This directory is the bundled default writing context. It contains Remilia-specific editorial rules.
 For another MediaWiki target, provide host `llm_instructions/` when building the AI pack with
-`--host-project-root`; wikitool will package the host writing context and preserve these defaults
-as `WIKITOOL_LLM_INSTRUCTIONS/`.
+`--host-project-root`; wikitool will package the host writing context at the same release-root path.
 
 ## Files
 

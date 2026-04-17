@@ -165,8 +165,8 @@ wikitool release build-matrix --targets x86_64-unknown-linux-gnu --host-project-
 ```
 
 Host overlays replace packaged `CLAUDE.md`, `AGENTS.md`, and `.claude/`. If the host project also
-has `llm_instructions/`, those files become the packaged writing context and the wikitool defaults
-are preserved as `WIKITOOL_LLM_INSTRUCTIONS/`.
+has `llm_instructions/`, those files become the packaged writing context at the same release-root
+path.
 
 ## Troubleshooting
 

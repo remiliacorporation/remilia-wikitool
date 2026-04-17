@@ -185,7 +185,6 @@ fn prepare_ai_pack_guidance_context(
     if let Some(host_root) = detect_host_context_root(repo_root, host_project_root)?
         && !paths_equivalent(&host_root, repo_root)?
     {
-        copy_file(&ai_pack_claude, &output_dir.join("WIKITOOL_CLAUDE.md"))?;
         effective_claude_source = host_root.join("CLAUDE.md");
         host_context_root = Some(host_root.clone());
         copy_dir_recursive(
@@ -228,7 +227,6 @@ fn copy_llm_instructions(
         return Ok(());
     }
 
-    copy_dir_recursive(&llm_output, &output_dir.join("WIKITOOL_LLM_INSTRUCTIONS"))?;
     reset_directory(&llm_output)?;
     let host_llm_count = copy_markdown_files(&host_llm_source, &llm_output)?;
     if host_llm_count == 0 {
@@ -407,11 +405,7 @@ mod tests {
             fs::read_to_string(output_dir.join("AGENTS.md")).expect("read packaged AGENTS"),
             "# Host CLAUDE\n"
         );
-        assert_eq!(
-            fs::read_to_string(output_dir.join("WIKITOOL_CLAUDE.md"))
-                .expect("read preserved wikitool guidance"),
-            "# Packaged CLAUDE\n"
-        );
+        assert!(!output_dir.join("WIKITOOL_CLAUDE.md").exists());
     }
 
     #[test]
@@ -464,11 +458,7 @@ mod tests {
                 .expect("read host contract"),
             "# Host Contract\n"
         );
-        assert_eq!(
-            fs::read_to_string(output_dir.join("WIKITOOL_LLM_INSTRUCTIONS/writing_guide.md"))
-                .expect("read preserved default guide"),
-            "# Guide\n"
-        );
+        assert!(!output_dir.join("WIKITOOL_LLM_INSTRUCTIONS").exists());
         let manifest = fs::read_to_string(output_dir.join("manifest.json")).expect("read manifest");
         assert!(
             manifest.contains("\"host_llm_instructions_included\": true"),

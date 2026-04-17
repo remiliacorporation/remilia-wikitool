@@ -64,7 +64,7 @@ Every release includes agent guidance outside the binary:
 - `docs/wikitool/` — operator guide and auto-generated command reference
 
 When building a host-specific bundle with `--host-project-root`, host `llm_instructions/` replace
-the default writing context and the wikitool defaults are preserved as `WIKITOOL_LLM_INSTRUCTIONS/`.
+the default writing context at the same release-root path.
 
 ## Runtime layout
 

@@ -19,7 +19,7 @@ Instruction contract:
 3. Baseline `.claude/` content in this folder is packaged by default.
 4. Baseline `llm_instructions/` content is the wikitool-maintained default writing context. It must be release-ready, not an experimental scratchpad.
 5. Host overlay may replace/extend `.claude/` when `--host-project-root` is used.
-6. Host overlay may replace `llm_instructions/` when the host project provides that directory; the wikitool default is preserved in `WIKITOOL_LLM_INSTRUCTIONS/`.
+6. Host overlay may replace `llm_instructions/` at the same packaged path when the host project provides that directory.
 
 Development contract:
 
@@ -35,5 +35,3 @@ Packaging contract:
 3. `wikitool release build-matrix` builds target binaries and emits versioned zip artifacts (`wikitool-vX.Y.Z-<target>.zip`) that unpack into ready-to-run agent bundles.
 4. Generic bundles include ai-pack `.claude/rules` and `.claude/skills` by default.
 5. Host project context is overlaid only when `--host-project-root <PATH>` is provided.
-6. Wikitool-local AI guidance is preserved as `WIKITOOL_CLAUDE.md` when host context is injected.
-7. Wikitool-local LLM instructions are preserved as `WIKITOOL_LLM_INSTRUCTIONS/` when host `llm_instructions/` are injected.
