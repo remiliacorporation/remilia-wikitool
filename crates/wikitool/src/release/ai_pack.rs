@@ -17,8 +17,8 @@ pub(super) struct AiPackBuildResult {
     host_context_included: bool,
     claude_rules_included: bool,
     claude_skills_included: bool,
-    llm_instructions_included: bool,
-    host_llm_instructions_included: bool,
+    writing_context_included: bool,
+    host_writing_context_included: bool,
     codex_skills_included: bool,
     docs_bundle_included: bool,
 }
@@ -59,12 +59,12 @@ pub(super) fn print_ai_pack_build_flags(result: &AiPackBuildResult) {
         format_flag(result.claude_skills_included)
     );
     println!(
-        "llm_instructions_included: {}",
-        format_flag(result.llm_instructions_included)
+        "writing_context_included: {}",
+        format_flag(result.writing_context_included)
     );
     println!(
-        "host_llm_instructions_included: {}",
-        format_flag(result.host_llm_instructions_included)
+        "host_writing_context_included: {}",
+        format_flag(result.host_writing_context_included)
     );
     println!(
         "codex_skills_included: {}",
@@ -90,8 +90,8 @@ pub(super) fn build_ai_pack(
         host_context_included: false,
         claude_rules_included: false,
         claude_skills_included: false,
-        llm_instructions_included: false,
-        host_llm_instructions_included: false,
+        writing_context_included: false,
+        host_writing_context_included: false,
         codex_skills_included: false,
         docs_bundle_included: false,
     };
@@ -112,7 +112,7 @@ pub(super) fn build_ai_pack(
         &output_dir.join("AGENTS.md"),
     )?;
 
-    copy_llm_instructions(
+    copy_writing_context(
         &ai_pack_root,
         output_dir,
         guidance_context.host_root.as_deref(),
@@ -138,13 +138,7 @@ pub(super) fn build_ai_pack(
 }
 
 fn copy_required_ai_pack_top_level_files(repo_root: &Path, output_dir: &Path) -> Result<()> {
-    for file in [
-        "SETUP.md",
-        "README.md",
-        "LICENSE",
-        "LICENSE-SSL",
-        "LICENSE-VPL",
-    ] {
+    for file in ["README.md", "LICENSE", "LICENSE-SSL", "LICENSE-VPL"] {
         let source = repo_root.join(file);
         require_file(&source, "missing required AI pack file")?;
         copy_file(&source, &output_dir.join(file))?;
@@ -204,38 +198,38 @@ fn prepare_ai_pack_guidance_context(
     })
 }
 
-fn copy_llm_instructions(
+fn copy_writing_context(
     ai_pack_root: &Path,
     output_dir: &Path,
     host_root: Option<&Path>,
     result: &mut AiPackBuildResult,
 ) -> Result<()> {
-    let llm_source = ai_pack_root.join("llm_instructions");
-    require_dir(&llm_source, "missing llm_instructions directory")?;
-    let llm_output = output_dir.join("llm_instructions");
-    let llm_count = copy_markdown_files(&llm_source, &llm_output)?;
-    if llm_count == 0 {
-        bail!("no ai-pack/llm_instructions/*.md files found");
+    let context_source = ai_pack_root.join("writing_context");
+    require_dir(&context_source, "missing writing_context directory")?;
+    let context_output = output_dir.join("writing_context");
+    let context_count = copy_markdown_files(&context_source, &context_output)?;
+    if context_count == 0 {
+        bail!("no ai-pack/writing_context/*.md files found");
     }
-    result.llm_instructions_included = true;
+    result.writing_context_included = true;
 
     let Some(host_root) = host_root else {
         return Ok(());
     };
-    let host_llm_source = host_root.join("llm_instructions");
-    if !host_llm_source.is_dir() {
+    let host_context_source = host_root.join("writing_context");
+    if !host_context_source.is_dir() {
         return Ok(());
     }
 
-    reset_directory(&llm_output)?;
-    let host_llm_count = copy_markdown_files(&host_llm_source, &llm_output)?;
-    if host_llm_count == 0 {
+    reset_directory(&context_output)?;
+    let host_context_count = copy_markdown_files(&host_context_source, &context_output)?;
+    if host_context_count == 0 {
         bail!(
-            "host llm_instructions directory has no markdown files: {}",
-            normalize_path(&host_llm_source)
+            "host writing_context directory has no markdown files: {}",
+            normalize_path(&host_context_source)
         );
     }
-    result.host_llm_instructions_included = true;
+    result.host_writing_context_included = true;
     Ok(())
 }
 
@@ -284,8 +278,8 @@ fn write_ai_pack_manifest(result: &AiPackBuildResult) -> Result<()> {
         "host_context_included": result.host_context_included,
         "claude_rules_included": result.claude_rules_included,
         "claude_skills_included": result.claude_skills_included,
-        "llm_instructions_included": result.llm_instructions_included,
-        "host_llm_instructions_included": result.host_llm_instructions_included,
+        "writing_context_included": result.writing_context_included,
+        "host_writing_context_included": result.host_writing_context_included,
         "codex_skills_included": result.codex_skills_included,
         "docs_bundle_included": result.docs_bundle_included,
         "notes": "AI companion pack for wikitool; content is intentionally shipped outside the binary."
@@ -352,19 +346,13 @@ mod tests {
     }
 
     fn create_repo(root: &Path) {
-        for file in [
-            "SETUP.md",
-            "README.md",
-            "LICENSE",
-            "LICENSE-SSL",
-            "LICENSE-VPL",
-        ] {
+        for file in ["README.md", "LICENSE", "LICENSE-SSL", "LICENSE-VPL"] {
             write_file(&root.join(file), file);
         }
         write_file(&root.join("ai-pack/CLAUDE.md"), "# Packaged CLAUDE\n");
         write_file(&root.join("ai-pack/AGENTS.md"), "# Packaged AGENTS\n");
         write_file(
-            &root.join("ai-pack/llm_instructions/writing_guide.md"),
+            &root.join("ai-pack/writing_context/writing_guide.md"),
             "# Guide\n",
         );
         write_file(
@@ -405,6 +393,8 @@ mod tests {
             fs::read_to_string(output_dir.join("AGENTS.md")).expect("read packaged AGENTS"),
             "# Host CLAUDE\n"
         );
+        assert!(!output_dir.join("SETUP.md").exists());
+        assert!(output_dir.join("writing_context").is_dir());
         assert!(!output_dir.join("WIKITOOL_CLAUDE.md").exists());
     }
 
@@ -430,39 +420,39 @@ mod tests {
     }
 
     #[test]
-    fn build_ai_pack_host_overlay_can_replace_llm_instructions() {
-        let temp = TestDir::new("host-llm");
+    fn build_ai_pack_host_overlay_can_replace_writing_context() {
+        let temp = TestDir::new("host-writing-context");
         let repo_root = temp.path.join("repo");
         let host_root = temp.path.join("host");
         let output_dir = temp.path.join("out");
         create_repo(&repo_root);
         create_host(&host_root, "# Host CLAUDE\n", None);
         write_file(
-            &host_root.join("llm_instructions/writing_guide.md"),
+            &host_root.join("writing_context/writing_guide.md"),
             "# Host Guide\n",
         );
         write_file(
-            &host_root.join("llm_instructions/site_contract.md"),
+            &host_root.join("writing_context/site_contract.md"),
             "# Host Contract\n",
         );
 
         build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
 
         assert_eq!(
-            fs::read_to_string(output_dir.join("llm_instructions/writing_guide.md"))
+            fs::read_to_string(output_dir.join("writing_context/writing_guide.md"))
                 .expect("read host guide"),
             "# Host Guide\n"
         );
         assert_eq!(
-            fs::read_to_string(output_dir.join("llm_instructions/site_contract.md"))
+            fs::read_to_string(output_dir.join("writing_context/site_contract.md"))
                 .expect("read host contract"),
             "# Host Contract\n"
         );
-        assert!(!output_dir.join("WIKITOOL_LLM_INSTRUCTIONS").exists());
+        assert!(!output_dir.join("llm_instructions").exists());
         let manifest = fs::read_to_string(output_dir.join("manifest.json")).expect("read manifest");
         assert!(
-            manifest.contains("\"host_llm_instructions_included\": true"),
-            "manifest must record host LLM instruction overlay"
+            manifest.contains("\"host_writing_context_included\": true"),
+            "manifest must record host writing context overlay"
         );
     }
 }

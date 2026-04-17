@@ -42,7 +42,10 @@ Reach for `wikitool` when you need wiki-aware retrieval, MediaWiki-aware fetch/e
 ## Binary-native workflow helpers
 
 ```bash
-wikitool workflow bootstrap
+wikitool status --modified --format json
+wikitool diff --format json
+wikitool pull --all --format json
+wikitool workflow session-refresh
 wikitool workflow full-refresh --yes
 wikitool knowledge warm --docs-profile remilia-mw-1.44
 wikitool knowledge status --docs-profile remilia-mw-1.44

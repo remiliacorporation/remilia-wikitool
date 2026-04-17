@@ -17,7 +17,7 @@ Write a complete wiki article for the fictional topic below.
 
 1. Write raw MediaWiki wikitext (NOT markdown)
 2. The topic is entirely fictional — invent plausible details
-3. Follow all wiki style rules from `tools/wikitool/ai-pack/llm_instructions/style_rules.md`
+3. Follow all wiki style rules from `tools/wikitool/ai-pack/writing_context/style_rules.md`
 4. Obey the constraint above exactly
 5. The style trap describes what the evaluator will check — write to pass it
 

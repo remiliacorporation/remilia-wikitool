@@ -216,7 +216,7 @@ mod tests {
         fs::create_dir_all(project_root.join("wiki_content/Main")).expect("wiki content");
         fs::create_dir_all(project_root.join("templates")).expect("templates");
         fs::create_dir_all(&data_dir).expect("data");
-        fs::create_dir_all(project_root.join("tools/wikitool/ai-pack/llm_instructions"))
+        fs::create_dir_all(project_root.join("tools/wikitool/ai-pack/writing_context"))
             .expect("instructions");
         ResolvedPaths {
             project_root: project_root.to_path_buf(),
@@ -244,19 +244,19 @@ mod tests {
         write_file(
             &paths
                 .project_root
-                .join("tools/wikitool/ai-pack/llm_instructions/article_structure.md"),
+                .join("tools/wikitool/ai-pack/writing_context/article_structure.md"),
             "{{SHORTDESC:Example}}\n{{Article quality|unverified}}\n== References ==\n{{Reflist}}\nparent_group = Remilia",
         );
         write_file(
             &paths
                 .project_root
-                .join("tools/wikitool/ai-pack/llm_instructions/style_rules.md"),
+                .join("tools/wikitool/ai-pack/writing_context/style_rules.md"),
             "**Never use:**\n- \"stands as\"\n### No placeholder content\n- Never output: `INSERT_SOURCE_URL`\n### No system artifacts\n- Never output: `contentReference[oaicite:0]`\nStraight quotes only",
         );
         write_file(
             &paths
                 .project_root
-                .join("tools/wikitool/ai-pack/llm_instructions/writing_guide.md"),
+                .join("tools/wikitool/ai-pack/writing_context/writing_guide.md"),
             "raw MediaWiki wikitext\nNever output Markdown\nUse 2-4 categories per article\n[[Category:Remilia]]\n{{Article quality|unverified}}\nparent_group = Remilia\n### Citation templates\n```wikitext\n{{Cite web|url=}}\n```\n## 6. Infobox selection\n| Subject type | Infobox |\n|---|---|\n| NFT Collection | `{{Infobox NFT collection}}` |\n",
         );
     }

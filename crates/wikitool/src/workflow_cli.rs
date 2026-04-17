@@ -2,8 +2,8 @@ use std::fs;
 
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
+use wikitool_core::profile::sync_wiki_profile_with_config;
 
-use crate::dev_cli::{self, InstallGitHooksArgs};
 use crate::docs_cli::{self, DocsGenerateReferenceArgs};
 use crate::knowledge_cli::{self, KnowledgeWarmArgs};
 use crate::quality_cli;
@@ -11,7 +11,7 @@ use crate::sync_cli::{self, InitArgs, PullArgs, StatusArgs};
 use crate::{
     RuntimeOptions, cli_support::OutputFormat, cli_support::normalize_path,
     cli_support::prompt_yes_no, cli_support::resolve_default_true_flag,
-    cli_support::resolve_runtime_paths,
+    cli_support::resolve_runtime_paths, cli_support::resolve_runtime_with_config,
 };
 
 #[derive(Debug, Args)]
@@ -22,8 +22,11 @@ pub(crate) struct WorkflowArgs {
 
 #[derive(Debug, Subcommand)]
 enum WorkflowSubcommand {
-    #[command(about = "Initialize runtime, optionally pull content, and warm knowledge")]
-    Bootstrap(WorkflowBootstrapArgs),
+    #[command(
+        name = "session-refresh",
+        about = "Refresh runtime content and agent authoring context"
+    )]
+    SessionRefresh(WorkflowSessionRefreshArgs),
     #[command(
         name = "full-refresh",
         about = "Rebuild local runtime from scratch and re-warm knowledge"
@@ -32,19 +35,20 @@ enum WorkflowSubcommand {
 }
 
 #[derive(Debug, Args)]
-struct WorkflowBootstrapArgs {
+struct WorkflowSessionRefreshArgs {
     #[arg(long, help = "Create templates/ during initialization (default: true)")]
     templates: bool,
     #[arg(long, help = "Do not create templates/ during initialization")]
     no_templates: bool,
+    #[arg(
+        long,
+        help = "Perform a full pull instead of an incremental session pull"
+    )]
+    full: bool,
     #[arg(long, help = "Pull content after initialization (default: true)")]
     pull: bool,
-    #[arg(long, help = "Skip content pull after initialization")]
+    #[arg(long, help = "Skip content pull during session refresh")]
     no_pull: bool,
-    #[arg(long, help = "Skip docs reference generation")]
-    skip_reference: bool,
-    #[arg(long, help = "Skip commit-msg hook installation")]
-    skip_git_hooks: bool,
     #[arg(
         long,
         default_value = wikitool_core::knowledge::status::DEFAULT_DOCS_PROFILE,
@@ -75,19 +79,24 @@ struct WorkflowFullRefreshArgs {
 
 pub(crate) fn run_workflow(runtime: &RuntimeOptions, args: WorkflowArgs) -> Result<()> {
     match args.command {
-        WorkflowSubcommand::Bootstrap(options) => run_workflow_bootstrap(runtime, options),
+        WorkflowSubcommand::SessionRefresh(options) => {
+            run_workflow_session_refresh(runtime, options)
+        }
         WorkflowSubcommand::FullRefresh(options) => run_workflow_full_refresh(runtime, options),
     }
 }
 
-fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs) -> Result<()> {
+fn run_workflow_session_refresh(
+    runtime: &RuntimeOptions,
+    args: WorkflowSessionRefreshArgs,
+) -> Result<()> {
     let include_templates = resolve_default_true_flag(
         args.templates,
         args.no_templates,
-        "workflow bootstrap templates",
+        "workflow session-refresh templates",
     )?;
     let should_pull =
-        resolve_default_true_flag(args.pull, args.no_pull, "workflow bootstrap pull")?;
+        resolve_default_true_flag(args.pull, args.no_pull, "workflow session-refresh pull")?;
 
     sync_cli::run_init(
         runtime,
@@ -99,27 +108,11 @@ fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs)
         },
     )?;
 
-    let paths = resolve_runtime_paths(runtime)?;
-
-    if !args.skip_reference {
-        docs_cli::run_docs_generate_reference(DocsGenerateReferenceArgs {
-            output: Some(paths.project_root.join("docs/wikitool/reference.md")),
-        })?;
-    }
-
-    if !args.skip_git_hooks {
-        dev_cli::run_dev_install_git_hooks(InstallGitHooksArgs {
-            repo_root: Some(paths.project_root.clone()),
-            source: None,
-            allow_missing_git: true,
-        })?;
-    }
-
     if should_pull {
         sync_cli::run_pull(
             runtime,
             PullArgs {
-                full: true,
+                full: args.full,
                 overwrite_local: false,
                 category: None,
                 templates: false,
@@ -129,7 +122,7 @@ fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs)
             },
         )?;
     } else {
-        println!("workflow bootstrap: pull skipped (--no-pull)");
+        println!("workflow session-refresh: pull skipped (--no-pull)");
     }
 
     knowledge_cli::run_knowledge_warm(
@@ -139,7 +132,19 @@ fn run_workflow_bootstrap(runtime: &RuntimeOptions, args: WorkflowBootstrapArgs)
             format: OutputFormat::Text,
         },
     )?;
+    sync_profile_for_workflow(runtime)?;
 
+    Ok(())
+}
+
+fn sync_profile_for_workflow(runtime: &RuntimeOptions) -> Result<()> {
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let snapshot = sync_wiki_profile_with_config(&paths, &config)?;
+    println!("workflow session-refresh: wiki profile synced");
+    println!(
+        "workflow session-refresh.profile.refreshed_at: {}",
+        snapshot.overlay.refreshed_at
+    );
     Ok(())
 }
 

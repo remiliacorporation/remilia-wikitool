@@ -10,6 +10,12 @@ Thin wrapper for the `wikitool` CLI.
 Use normal reasoning, ordinary shell/file tools, and direct editing by default.
 Do not invent flags or workflow details; verify against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
+At the start of an editing session, refresh local wiki state before relying on indexed content:
+`wikitool status --modified --format json`, `wikitool diff --format json`,
+`wikitool pull --all --format json`, `wikitool knowledge warm --docs-profile remilia-mw-1.44 --format json`, and
+`wikitool wiki profile sync --format json`. Use `pull --full --all` only for deliberate rebuilds
+or missing sync state; do not use `--overwrite-local` without explicit approval.
+
 Use `knowledge article-start --intent new|expand|audit|refresh` as the authoring front door.
 Use `knowledge pack` only when the raw authoring substrate is needed behind article-start.
 Use `research mediawiki-templates URL` when a source MediaWiki page's own template/module contract matters, especially for arbitrary wikis such as Wikipedia. The report is cached; add `--refresh` when live freshness matters. Treat that output as source-wiki context only; target-wiki template use still has to pass local `knowledge contracts`, `templates show`, and `article lint`.

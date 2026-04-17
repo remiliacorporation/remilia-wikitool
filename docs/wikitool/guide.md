@@ -4,7 +4,7 @@ Rust CLI that synchronizes MediaWiki content with local files and provides wiki-
 
 For command flags: `wikitool <command> --help` or `reference.md`.
 
-## Setup
+## First Run
 
 ```bash
 wikitool init --templates
@@ -13,6 +13,23 @@ wikitool knowledge warm --docs-profile remilia-mw-1.44
 wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
+
+## Session Refresh
+
+Run this at the start of an agentic editing session so local content, template/module state, docs,
+and live capability signals are current before authoring:
+
+```bash
+wikitool status --modified --format json
+wikitool diff --format json
+wikitool pull --all --format json
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --format json
+wikitool wiki profile sync --format json
+wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+```
+
+Use `wikitool pull --full --all` for deliberate rebuilds or missing sync state. Do not use
+`--overwrite-local` unless local edits should be discarded.
 
 ## How it works
 
@@ -56,6 +73,7 @@ supersede that module form.
 
 ```bash
 wikitool pull                          # latest content
+wikitool pull --all                    # session refresh across articles/templates/categories
 wikitool pull --full --all             # full refresh
 wikitool pull --templates              # templates only
 wikitool status                        # sync-aware status summary
@@ -170,7 +188,7 @@ wikitool release build-matrix --targets x86_64-unknown-linux-gnu --host-project-
 ```
 
 Host overlays replace packaged `CLAUDE.md`, `AGENTS.md`, and `.claude/`. If the host project also
-has `llm_instructions/`, those files become the packaged writing context at the same release-root
+has `writing_context/`, those files become the packaged writing context at the same release-root
 path.
 
 ## Troubleshooting

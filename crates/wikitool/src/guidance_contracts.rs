@@ -62,8 +62,21 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             "packaged guidance must explain that both shipped filenames carry the same instructions"
         );
         assert!(
+            body.contains("## Session Start")
+                && body.contains("wikitool diff --format json")
+                && body.contains("wikitool pull --all --format json")
+                && body.contains("Do not use `--overwrite-local`"),
+            "packaged guidance must define the normal session refresh sequence"
+        );
+        assert!(
+            !body.contains("Docs bootstrap")
+                && !body.contains("WIKITOOL_CLAUDE.md")
+                && !body.contains("llm_instructions"),
+            "packaged guidance must not refer to removed setup/backcompat artifacts"
+        );
+        assert!(
             body.contains("those files become the packaged writing context"),
-            "packaged guidance must document host LLM instruction overlay behavior"
+            "packaged guidance must document host writing context overlay behavior"
         );
     }
 }
@@ -72,10 +85,11 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
 fn ai_pack_readme_keeps_shipping_and_scratch_boundaries_explicit() {
     let readme = read_repo_file("ai-pack/README.md");
     assert!(
-        readme.contains("must be release-ready")
-            && readme.contains("Do not place local experiments")
-            && readme.contains("Host overlay may replace `llm_instructions/`"),
-        "ai-pack README must keep production packaging and scratch-space boundaries explicit"
+        readme.contains("writing_context/")
+            && readme.contains("Do not put local experiments")
+            && readme.contains("Host `writing_context/` replaces")
+            && !readme.contains("llm_instructions"),
+        "ai-pack README must keep packaging, writing context, and scratch-space boundaries explicit"
     );
 }
 
@@ -97,6 +111,10 @@ fn thin_wrappers_reference_help_and_keep_raw_pack_secondary() {
         assert!(
             body.contains("knowledge article-start"),
             "thin wrappers must point to article-start"
+        );
+        assert!(
+            body.contains("diff --format json") && body.contains("pull --all --format json"),
+            "thin wrappers must tell agents to inspect local changes and refresh wiki state at session start"
         );
         assert!(
             body.contains("knowledge pack"),
@@ -131,7 +149,7 @@ fn packaged_review_wrappers_stay_aligned_on_gate_sequence() {
 
 #[test]
 fn packaged_extension_guidance_scopes_d3charts_to_local_contract() {
-    let extensions = read_repo_file("ai-pack/llm_instructions/extensions.md");
+    let extensions = read_repo_file("ai-pack/writing_context/extensions.md");
     assert!(
         extensions.contains("D3Charts (Remilia local contract)")
             && extensions.contains("Module:D3Chart")

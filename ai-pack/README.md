@@ -1,37 +1,51 @@
 # AI Pack Source
 
-This directory is the canonical source for AI companion content shipped with release artifacts.
+Canonical source for the agent companion files shipped in release artifacts.
 
-Contents:
+The packaged release root is intentionally flat and ready to use: `AGENTS.md`, `CLAUDE.md`,
+`.claude/`, `codex_skills/`, `writing_context/`, and `docs/wikitool/` sit next to the binary.
 
-1. `AGENTS.md`
-2. `CLAUDE.md`
-3. `.claude/rules/*`
-4. `.claude/skills/*`
-5. `llm_instructions/*.md`
-6. `codex_skills/*`
-7. optional `docs-bundle-v1.json` (schema version `1` for `wikitool docs import --bundle`)
+## Ownership
 
-Instruction contract:
+| Source | Packaged path | Role |
+|---|---|---|
+| `AGENTS.md` | `AGENTS.md` | Agent routing card |
+| `CLAUDE.md` | `CLAUDE.md` | Same body as `AGENTS.md` |
+| `.claude/rules/*` | `.claude/rules/*` | Claude always-on editing rules |
+| `.claude/skills/*` | `.claude/skills/*` | Claude operator/review wrappers |
+| `codex_skills/*` | `codex_skills/*` | Codex equivalents |
+| `writing_context/*.md` | `writing_context/*.md` | Article-writing profile |
+| `docs-bundle-v1.json` | `ai/docs-bundle-v1.json` | Optional offline docs preload |
 
-1. `AGENTS.md` and `CLAUDE.md` are intentionally mirrored in shipped bundles so both agent front doors see the same guidance body.
-2. Paths in these files must work in packaged artifacts (bundle-root relative), not only in source-repo layout.
-3. Baseline `.claude/` content in this folder is packaged by default.
-4. Baseline `llm_instructions/` content is the wikitool-maintained default writing context. It must be release-ready, not an experimental scratchpad.
-5. Host overlay may replace/extend `.claude/` when `--host-project-root` is used.
-6. Host overlay may replace `llm_instructions/` at the same packaged path when the host project provides that directory.
+`writing_context/` is deliberately not named after a model family. It is the target-wiki writing
+profile: style, article structure, sourcing rules, and content-extension notes. Global agent
+behavior belongs in `AGENTS.md` / `CLAUDE.md` and the skill wrappers.
 
-Development contract:
+## Host Overlay
 
-1. Do not place local experiments, mock drafts, probe outputs, or one-off research notes under `ai-pack/` unless they are intended to ship in the next release.
-2. Use repo-local scratch space such as `.wikitool/drafts/`, `plans/`, or test fixtures for experimental work.
-3. Keep target-specific writing rules explicit. If a rule only applies to one wiki, label it as target-specific or ship it through a host overlay instead of presenting it as universal MediaWiki behavior.
-4. After CLI or workflow changes, update the relevant ai-pack guidance, regenerate `docs/wikitool/reference.md`, and run the guidance contract tests.
+`wikitool release package --host-project-root <PATH>` and `release build-matrix --host-project-root
+<PATH>` may overlay host context:
 
-Packaging contract:
+1. Host `CLAUDE.md` becomes the active guidance body and is written to both packaged `CLAUDE.md`
+   and packaged `AGENTS.md`.
+2. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
+3. Host `writing_context/` replaces the packaged writing profile at the same release-root path.
 
-1. `wikitool release build-ai-pack` stages AI content from `ai-pack/`.
-2. `wikitool release package` produces one host-target release folder where `wikitool` and AI companion files sit side by side.
-3. `wikitool release build-matrix` builds target binaries and emits versioned zip artifacts (`wikitool-vX.Y.Z-<target>.zip`) that unpack into ready-to-run agent bundles.
-4. Generic bundles include ai-pack `.claude/rules` and `.claude/skills` by default.
-5. Host project context is overlaid only when `--host-project-root <PATH>` is provided.
+Without a host overlay, release bundles ship the generic wikitool-maintained context.
+
+## Development Contract
+
+1. Do not put local experiments, mock drafts, probe outputs, or one-off research notes under
+   `ai-pack/` unless they are intended to ship in the next release.
+2. Use `.wikitool/drafts/`, `plans/`, or test fixtures for scratch work.
+3. Keep target-specific writing rules explicit. If a rule only applies to one wiki, label it as
+   target-specific or ship it through a host overlay.
+4. After CLI or workflow changes, update the owning agent/docs surface, regenerate
+   `docs/wikitool/reference.md` when help changes, and run the guidance contract tests.
+
+## Packaging Contract
+
+1. `wikitool release build-ai-pack` stages these files.
+2. `wikitool release package` stages one local binary with the AI companion files.
+3. `wikitool release build-matrix` builds target binaries and emits zip artifacts that unpack into
+   ready-to-run agent bundles.

@@ -68,7 +68,9 @@ jobs:
           test -d dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/.claude/rules
           test -d dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/.claude/skills
           cmp -s dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/AGENTS.md dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/CLAUDE.md
-          test -d dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/llm_instructions
+          test -d dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/writing_context
+          test ! -e dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/llm_instructions
+          test ! -e dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/SETUP.md
           test -f dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/manifest.json
           test -f dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}.zip
 
@@ -83,7 +85,9 @@ jobs:
           $agentsHash = (Get-FileHash -Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/AGENTS.md -Algorithm SHA256).Hash
           $claudeHash = (Get-FileHash -Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/CLAUDE.md -Algorithm SHA256).Hash
           if ($agentsHash -ne $claudeHash) { throw "AGENTS.md and CLAUDE.md mismatch" }
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/llm_instructions)) { throw "llm_instructions missing" }
+          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/writing_context)) { throw "writing_context missing" }
+          if (Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/llm_instructions) { throw "legacy llm_instructions directory must not ship" }
+          if (Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/SETUP.md) { throw "SETUP.md must not ship" }
           if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/manifest.json)) { throw "manifest.json missing" }
           if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}.zip)) { throw "zip artifact missing" }
 

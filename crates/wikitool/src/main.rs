@@ -123,7 +123,7 @@ enum Commands {
     #[command(about = "Generate parser config and editor integration settings")]
     Lsp(lsp_cli::LspArgs),
     #[cfg(feature = "maintainer-surface")]
-    #[command(about = "Run end-to-end setup and refresh workflows", hide = true)]
+    #[command(about = "Run maintainer runtime refresh workflows", hide = true)]
     Workflow(workflow_cli::WorkflowArgs),
     #[cfg(feature = "maintainer-surface")]
     #[command(about = "Build AI companion packs and release bundles", hide = true)]

@@ -7,9 +7,9 @@ These conventions are always active for Remilia Wiki editing work.
 Use this lookup order:
 
 1. `CLAUDE.md` (same content as `AGENTS.md`)
-2. `llm_instructions/style_rules.md`
-3. `llm_instructions/article_structure.md`
-4. `llm_instructions/writing_guide.md`
+2. `writing_context/style_rules.md`
+3. `writing_context/article_structure.md`
+4. `writing_context/writing_guide.md`
 5. `docs/wikitool/guide.md`
 6. `docs/wikitool/reference.md`
 7. `wikitool --help` and `wikitool <command> --help`
@@ -18,14 +18,14 @@ Use this lookup order:
 
 Packaged release artifacts use bundle-root paths:
 
-1. `llm_instructions/*`
+1. `writing_context/*`
 2. `docs/wikitool/*`
 3. `.claude/rules/*`
 4. `.claude/skills/*`
 
 Source repository layout uses:
 
-1. `ai-pack/llm_instructions/*`
+1. `ai-pack/writing_context/*`
 2. `docs/wikitool/*`
 3. `ai-pack/.claude/rules/*`
 4. `ai-pack/.claude/skills/*`

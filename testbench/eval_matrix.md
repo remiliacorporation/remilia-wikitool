@@ -122,5 +122,5 @@ Phase 6 is considered healthy when:
 
 1. `cli_tests.sh` is green
 2. `acceptance_workflows.sh` is green on the intended tier
-3. README / setup / how-to / explanation / AI-pack all point to the same default workflow
+3. README / guide / how-to / explanation / AI-pack all point to the same default workflow
 4. low-level commands remain documented as advanced or raw primitives

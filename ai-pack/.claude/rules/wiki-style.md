@@ -4,9 +4,9 @@ Use this compact rule set in every wiki-content task.
 
 ## Non-negotiable references
 
-1. `llm_instructions/style_rules.md`
-2. `llm_instructions/article_structure.md`
-3. `llm_instructions/writing_guide.md`
+1. `writing_context/style_rules.md`
+2. `writing_context/article_structure.md`
+3. `writing_context/writing_guide.md`
 
 ## Output requirements
 

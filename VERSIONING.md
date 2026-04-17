@@ -101,9 +101,9 @@ Packaged / distributable:
    - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=vX.Y.Z` for per-platform artifacts
 7. Verify each zip contains:
    - `wikitool` or `wikitool.exe`
-   - `AGENTS.md`, `CLAUDE.md`, `SETUP.md`, `README.md`
+   - `AGENTS.md`, `CLAUDE.md`, `README.md`
    - `.claude/rules/`, `.claude/skills/`
-   - `llm_instructions/`
+   - `writing_context/`
    - `codex_skills/`
    - `manifest.json`
 8. Create tag `vX.Y.Z`.

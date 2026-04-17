@@ -131,20 +131,20 @@ wt() {
 
 write_authoring_guidance() {
     local root="$1"
-    mkdir -p "$root/tools/wikitool/ai-pack/llm_instructions"
-    cat > "$root/tools/wikitool/ai-pack/llm_instructions/article_structure.md" << 'MDEOF'
+    mkdir -p "$root/tools/wikitool/ai-pack/writing_context"
+    cat > "$root/tools/wikitool/ai-pack/writing_context/article_structure.md" << 'MDEOF'
 {{SHORTDESC:Example}}
 {{Article quality|unverified}}
 == References ==
 {{Reflist}}
 parent_group = Remilia
 MDEOF
-    cat > "$root/tools/wikitool/ai-pack/llm_instructions/style_rules.md" << 'MDEOF'
+    cat > "$root/tools/wikitool/ai-pack/writing_context/style_rules.md" << 'MDEOF'
 ### No placeholder content
 - Never output: `INSERT_SOURCE_URL`
 Straight quotes only
 MDEOF
-    cat > "$root/tools/wikitool/ai-pack/llm_instructions/writing_guide.md" << 'MDEOF'
+    cat > "$root/tools/wikitool/ai-pack/writing_context/writing_guide.md" << 'MDEOF'
 raw MediaWiki wikitext
 Never output Markdown
 Use 2-4 categories per article

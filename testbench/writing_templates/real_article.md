@@ -17,7 +17,7 @@ Research and write a complete wiki article for a real topic.
 
 1. Research the topic using web search and wiki API
 2. Write raw MediaWiki wikitext (NOT markdown)
-3. Follow all wiki style rules from `tools/wikitool/ai-pack/llm_instructions/style_rules.md`
+3. Follow all wiki style rules from `tools/wikitool/ai-pack/writing_context/style_rules.md`
 4. Obey the constraint above exactly
 5. Use only verifiable claims with real citations
 6. The style trap describes what the evaluator will check — write to pass it

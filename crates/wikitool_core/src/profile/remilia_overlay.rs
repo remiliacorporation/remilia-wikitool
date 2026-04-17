@@ -27,9 +27,9 @@ const PROFILE_OVERLAY_SCHEMA_VERSION: &str = "profile_overlay_v1";
 const REMILIA_PROFILE_ID: &str = "remilia";
 const MEDIAWIKI_GENERIC_PROFILE_ID: &str = "mediawiki-generic";
 
-const ARTICLE_STRUCTURE_PATH: &str = "tools/wikitool/ai-pack/llm_instructions/article_structure.md";
-const STYLE_RULES_PATH: &str = "tools/wikitool/ai-pack/llm_instructions/style_rules.md";
-const WRITING_GUIDE_PATH: &str = "tools/wikitool/ai-pack/llm_instructions/writing_guide.md";
+const ARTICLE_STRUCTURE_PATH: &str = "tools/wikitool/ai-pack/writing_context/article_structure.md";
+const STYLE_RULES_PATH: &str = "tools/wikitool/ai-pack/writing_context/style_rules.md";
+const WRITING_GUIDE_PATH: &str = "tools/wikitool/ai-pack/writing_context/writing_guide.md";
 
 pub fn build_remilia_profile_overlay(paths: &ResolvedPaths) -> Result<ProfileOverlay> {
     let (article_structure, article_structure_source) =
@@ -340,13 +340,13 @@ fn resolve_source_document_path(
         .context("profile source document path is missing a file name")?;
     let mut candidates = Vec::new();
     candidates.push(paths.project_root.join(relative));
-    candidates.push(paths.project_root.join("llm_instructions").join(file_name));
+    candidates.push(paths.project_root.join("writing_context").join(file_name));
 
     if let Ok(executable) = env::current_exe() {
         for ancestor in executable.ancestors().take(8) {
             candidates.push(ancestor.join(relative));
-            candidates.push(ancestor.join("ai-pack/llm_instructions").join(file_name));
-            candidates.push(ancestor.join("llm_instructions").join(file_name));
+            candidates.push(ancestor.join("ai-pack/writing_context").join(file_name));
+            candidates.push(ancestor.join("writing_context").join(file_name));
         }
     }
 
@@ -699,7 +699,7 @@ mod tests {
         fs::create_dir_all(project_root.join("wiki_content/Main")).expect("wiki content");
         fs::create_dir_all(project_root.join("templates")).expect("templates");
         fs::create_dir_all(project_root.join(".wikitool/data")).expect("data");
-        fs::create_dir_all(project_root.join("tools/wikitool/ai-pack/llm_instructions"))
+        fs::create_dir_all(project_root.join("tools/wikitool/ai-pack/writing_context"))
             .expect("instructions");
 
         fs::write(

@@ -295,20 +295,20 @@ ARTICLE_PROJ=$(setup_project article-lint)
 wt "$ARTICLE_PROJ" init --templates > /dev/null 2>&1
 mkdir -p "$ARTICLE_PROJ/wiki_content/Main"
 mkdir -p "$ARTICLE_PROJ/templates/misc"
-mkdir -p "$ARTICLE_PROJ/tools/wikitool/ai-pack/llm_instructions"
-cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/llm_instructions/article_structure.md" << 'MDEOF'
+mkdir -p "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context"
+cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/article_structure.md" << 'MDEOF'
 {{SHORTDESC:Example}}
 {{Article quality|unverified}}
 == References ==
 {{Reflist}}
 parent_group = Remilia
 MDEOF
-cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/llm_instructions/style_rules.md" << 'MDEOF'
+cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/style_rules.md" << 'MDEOF'
 ### No placeholder content
 - Never output: `INSERT_SOURCE_URL`
 Straight quotes only
 MDEOF
-cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/llm_instructions/writing_guide.md" << 'MDEOF'
+cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/writing_guide.md" << 'MDEOF'
 raw MediaWiki wikitext
 Never output Markdown
 Use 2-4 categories per article
@@ -784,7 +784,9 @@ fi
 section "release build-ai-pack"
 AI_PACK_OUT="$TMPDIR_ROOT/release-ai-pack"
 OUTPUT=$(wt "$PROJ" release build-ai-pack --repo-root "$REPO_ROOT" --output-dir "$AI_PACK_OUT" 2>&1 || true)
-if [ -f "$AI_PACK_OUT/manifest.json" ] && [ -f "$AI_PACK_OUT/CLAUDE.md" ] && [ -d "$AI_PACK_OUT/.claude/skills" ]; then
+if [ -f "$AI_PACK_OUT/manifest.json" ] && [ -f "$AI_PACK_OUT/CLAUDE.md" ] \
+    && [ -d "$AI_PACK_OUT/.claude/skills" ] && [ -d "$AI_PACK_OUT/writing_context" ] \
+    && [ ! -e "$AI_PACK_OUT/SETUP.md" ]; then
     pass "release build-ai-pack stages the packaged AI companion"
 else
     fail "release build-ai-pack stages the packaged AI companion (got: ${OUTPUT:0:300})"
@@ -797,6 +799,7 @@ if [ -n "$LOCAL_BINARY" ]; then
     RELEASE_OUT="$TMPDIR_ROOT/release-package"
     OUTPUT=$(wt "$PROJ" release package --repo-root "$REPO_ROOT" --binary-path "$LOCAL_BINARY" --output-dir "$RELEASE_OUT" 2>&1 || true)
     if [ -f "$RELEASE_OUT/CLAUDE.md" ] && [ -f "$RELEASE_OUT/README.md" ] \
+        && [ -d "$RELEASE_OUT/writing_context" ] && [ ! -e "$RELEASE_OUT/SETUP.md" ] \
         && { [ -f "$RELEASE_OUT/wikitool" ] || [ -f "$RELEASE_OUT/wikitool.exe" ]; }; then
         pass "release package stages a distributable bundle"
     else
@@ -902,18 +905,18 @@ if [ "$TIER" = "live" ]; then
         fail "export saves page locally (got: ${OUTPUT:0:300})"
     fi
 
-    # --- workflow bootstrap (live) ---
-    section "workflow bootstrap (live)"
-    PROJ_BOOTSTRAP_LIVE=$(setup_project workflow-bootstrap-live)
-    write_live_env "$PROJ_BOOTSTRAP_LIVE"
-    OUTPUT=$(wt "$PROJ_BOOTSTRAP_LIVE" workflow bootstrap --skip-reference --skip-git-hooks --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+    # --- workflow session-refresh (live) ---
+    section "workflow session-refresh (live)"
+    PROJ_SESSION_REFRESH_LIVE=$(setup_project workflow-session-refresh-live)
+    write_live_env "$PROJ_SESSION_REFRESH_LIVE"
+    OUTPUT=$(wt "$PROJ_SESSION_REFRESH_LIVE" workflow session-refresh --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
     if echo "$OUTPUT" | grep -q "^knowledge warm$" \
         && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
         && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
             || echo "$OUTPUT" | grep -q "docs.failures.count: "; }; then
-        pass "workflow bootstrap invokes knowledge warm"
+        pass "workflow session-refresh invokes knowledge warm"
     else
-        fail "workflow bootstrap invokes knowledge warm (got: ${OUTPUT:0:300})"
+        fail "workflow session-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
     fi
 
     # --- workflow full-refresh (live) ---
