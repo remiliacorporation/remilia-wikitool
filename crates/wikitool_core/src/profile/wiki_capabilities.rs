@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::{DEFAULT_ARTICLE_PATH, WikiConfig, derive_wiki_url};
 use crate::knowledge::status::KNOWLEDGE_GENERATION;
-use crate::mw::client::MediaWikiClient;
+use crate::mw::client::{MediaWikiClient, MediaWikiClientConfig};
 use crate::mw::namespace::namespace_display_name;
 use crate::mw::siteinfo::SiteInfoNamespace;
 use crate::runtime::ResolvedPaths;
@@ -162,26 +162,41 @@ pub fn sync_wiki_capabilities_with_config(
 
     let api_url = client.config.api_url.clone();
     let wiki_url = resolve_wiki_url(config, &api_url)?;
-    let siteinfo = fetch_siteinfo_base(&mut client)?;
-    let parser_extension_tags = fetch_optional_siteinfo_list(&mut client, "extensiontags")?;
-    let parser_function_hooks = fetch_optional_siteinfo_list(&mut client, "functionhooks")?;
-    let refreshed_at = unix_timestamp()?.to_string();
-    let mut manifest = build_manifest_from_siteinfo(
+    let manifest = fetch_wiki_capability_manifest(
+        &mut client,
         &api_url,
         &wiki_url,
         &config.article_path_owned(),
-        &siteinfo,
-        parser_extension_tags,
-        parser_function_hooks,
-        &refreshed_at,
-    );
-    if let Some(special_version) =
-        fetch_special_version_info(&mut client, &manifest.wiki_url, &manifest.article_path)?
-    {
-        apply_special_version_info(&mut manifest, special_version);
-    }
+    )?;
     store_wiki_capabilities(paths, &manifest)?;
     Ok(manifest)
+}
+
+pub fn fetch_remote_wiki_capabilities(
+    source_url: &str,
+    config: &WikiConfig,
+) -> Result<WikiCapabilityManifest> {
+    let candidates = remote_mediawiki_api_candidates(source_url)?;
+    let mut errors = Vec::new();
+    for candidate in candidates {
+        let mut client_config = MediaWikiClientConfig::from_config(config);
+        client_config.api_url = candidate.api_url.clone();
+        let mut client = MediaWikiClient::new(client_config)?;
+        match fetch_wiki_capability_manifest(
+            &mut client,
+            &candidate.api_url,
+            &candidate.wiki_url,
+            DEFAULT_ARTICLE_PATH,
+        ) {
+            Ok(manifest) => return Ok(manifest),
+            Err(error) => errors.push(format!("{}: {error:#}", candidate.api_url)),
+        }
+    }
+
+    bail!(
+        "all remote MediaWiki API candidates failed for `{source_url}`:\n  - {}",
+        errors.join("\n  - ")
+    )
 }
 
 pub fn load_wiki_capabilities_with_config(
@@ -198,6 +213,33 @@ pub fn load_wiki_capabilities_with_config(
     }
 
     load_latest_wiki_capabilities(paths)
+}
+
+fn fetch_wiki_capability_manifest(
+    client: &mut MediaWikiClient,
+    api_url: &str,
+    wiki_url: &str,
+    default_article_path: &str,
+) -> Result<WikiCapabilityManifest> {
+    let siteinfo = fetch_siteinfo_base(client)?;
+    let parser_extension_tags = fetch_optional_siteinfo_list(client, "extensiontags")?;
+    let parser_function_hooks = fetch_optional_siteinfo_list(client, "functionhooks")?;
+    let refreshed_at = unix_timestamp()?.to_string();
+    let mut manifest = build_manifest_from_siteinfo(
+        api_url,
+        wiki_url,
+        default_article_path,
+        &siteinfo,
+        parser_extension_tags,
+        parser_function_hooks,
+        &refreshed_at,
+    );
+    if let Some(special_version) =
+        fetch_special_version_info(client, &manifest.wiki_url, &manifest.article_path)?
+    {
+        apply_special_version_info(&mut manifest, special_version);
+    }
+    Ok(manifest)
 }
 
 pub fn load_latest_wiki_capabilities(
@@ -691,6 +733,102 @@ fn resolve_wiki_url(config: &WikiConfig, api_url: &str) -> Result<String> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow::anyhow!("failed to derive wiki URL from configured API URL"))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RemoteApiCandidate {
+    api_url: String,
+    wiki_url: String,
+}
+
+fn remote_mediawiki_api_candidates(source_url: &str) -> Result<Vec<RemoteApiCandidate>> {
+    let parsed =
+        Url::parse(source_url).with_context(|| format!("invalid remote wiki URL: {source_url}"))?;
+    let origin = parsed_origin(&parsed)?;
+    let mut out = Vec::new();
+    let path = parsed.path().trim_end_matches('/');
+
+    if path.ends_with("/api.php") || path == "/api.php" {
+        push_remote_api_candidate(
+            &mut out,
+            parsed.as_str().to_string(),
+            remote_wiki_url(&parsed)?,
+        );
+        return Ok(out);
+    }
+
+    if let Some(prefix) = path.strip_suffix("/index.php") {
+        let base_path = prefix.trim_end_matches('/');
+        let api_url = format!("{origin}{base_path}/api.php");
+        let wiki_url = remote_wiki_url(&Url::parse(&api_url)?)?;
+        push_remote_api_candidate(&mut out, api_url, wiki_url);
+    }
+
+    if let Some((base_path, _)) = path.split_once("/wiki/") {
+        let base_path = base_path.trim_end_matches('/');
+        push_remote_api_candidate(
+            &mut out,
+            format!("{origin}{base_path}/w/api.php"),
+            format!("{origin}{base_path}"),
+        );
+        push_remote_api_candidate(
+            &mut out,
+            format!("{origin}{base_path}/api.php"),
+            format!("{origin}{base_path}"),
+        );
+    }
+
+    if let Some((base_path, _)) = path.split_once("/w/") {
+        let base_path = base_path.trim_end_matches('/');
+        push_remote_api_candidate(
+            &mut out,
+            format!("{origin}{base_path}/w/api.php"),
+            format!("{origin}{base_path}"),
+        );
+    }
+
+    push_remote_api_candidate(&mut out, format!("{origin}/w/api.php"), origin.clone());
+    push_remote_api_candidate(&mut out, format!("{origin}/api.php"), origin);
+
+    if out.is_empty() {
+        bail!("failed to derive MediaWiki API candidates from `{source_url}`");
+    }
+    Ok(out)
+}
+
+fn parsed_origin(url: &Url) -> Result<String> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("remote wiki URL has no host"))?;
+    let port = url
+        .port()
+        .map(|value| format!(":{value}"))
+        .unwrap_or_default();
+    Ok(format!("{}://{}{}", url.scheme(), host, port))
+}
+
+fn remote_wiki_url(api_url: &Url) -> Result<String> {
+    let origin = parsed_origin(api_url)?;
+    let path = api_url.path();
+    let wiki_path = path
+        .strip_suffix("/api.php")
+        .map(|value| value.trim_end_matches('/'))
+        .unwrap_or("");
+    if wiki_path == "/w" {
+        return Ok(origin);
+    }
+    if wiki_path.is_empty() {
+        Ok(origin)
+    } else {
+        Ok(format!("{origin}{wiki_path}"))
+    }
+}
+
+fn push_remote_api_candidate(out: &mut Vec<RemoteApiCandidate>, api_url: String, wiki_url: String) {
+    if out.iter().any(|candidate| candidate.api_url == api_url) {
+        return;
+    }
+    out.push(RemoteApiCandidate { api_url, wiki_url });
 }
 
 fn build_namespaces(namespaces: &BTreeMap<String, SiteInfoNamespace>) -> Vec<NamespaceInfo> {
@@ -1452,7 +1590,11 @@ fn index_of_ignore_case(text: &str, search: &str, start: usize) -> Option<usize>
 }
 
 fn starts_with_at(text: &str, index: usize, sequence: &str) -> bool {
-    index + sequence.len() <= text.len() && &text[index..index + sequence.len()] == sequence
+    let bytes = text.as_bytes();
+    let sequence = sequence.as_bytes();
+    bytes
+        .get(index..index.saturating_add(sequence.len()))
+        .is_some_and(|window| window == sequence)
 }
 
 fn decode_html(text: &str) -> String {
@@ -1505,8 +1647,9 @@ mod tests {
 
     use super::{
         SiteInfoResponse, apply_special_version_info, build_article_url,
-        build_manifest_from_siteinfo, derive_wiki_id, load_latest_wiki_capabilities,
-        load_wiki_capabilities, parse_special_version_html, store_wiki_capabilities,
+        build_manifest_from_siteinfo, derive_wiki_id, html_text, load_latest_wiki_capabilities,
+        load_wiki_capabilities, parse_special_version_html, remote_mediawiki_api_candidates,
+        store_wiki_capabilities,
     };
     use crate::runtime::{ResolvedPaths, ValueSource};
 
@@ -1526,6 +1669,13 @@ mod tests {
             data_source: ValueSource::Default,
             config_source: ValueSource::Default,
         }
+    }
+
+    #[test]
+    fn html_text_handles_multibyte_non_tag_text() {
+        let text = "Wikimedia\u{00ad}Campaign\u{00ad}Events";
+
+        assert_eq!(html_text(text), text);
     }
 
     #[test]
@@ -1801,5 +1951,30 @@ mod tests {
         let url = build_article_url("https://wiki.remilia.org", "/$1", "Special:Version")
             .expect("article url should build");
         assert_eq!(url, "https://wiki.remilia.org/Special:Version");
+    }
+
+    #[test]
+    fn remote_api_candidates_keep_wiki_url_at_source_origin() {
+        let candidates =
+            remote_mediawiki_api_candidates("https://en.wikipedia.org/wiki/Pallas%27s_cat")
+                .expect("candidates");
+
+        assert_eq!(candidates[0].api_url, "https://en.wikipedia.org/w/api.php");
+        assert_eq!(candidates[0].wiki_url, "https://en.wikipedia.org");
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.api_url == "https://en.wikipedia.org/api.php")
+        );
+    }
+
+    #[test]
+    fn remote_api_candidates_treat_standard_w_index_php_as_origin_wiki() {
+        let candidates =
+            remote_mediawiki_api_candidates("https://example.org/w/index.php?title=Main_Page")
+                .expect("candidates");
+
+        assert_eq!(candidates[0].api_url, "https://example.org/w/api.php");
+        assert_eq!(candidates[0].wiki_url, "https://example.org");
     }
 }

@@ -61,7 +61,22 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             body.contains("same guidance body"),
             "packaged guidance must explain that both shipped filenames carry the same instructions"
         );
+        assert!(
+            body.contains("WIKITOOL_LLM_INSTRUCTIONS"),
+            "packaged guidance must document host LLM instruction overlay preservation"
+        );
     }
+}
+
+#[test]
+fn ai_pack_readme_keeps_shipping_and_scratch_boundaries_explicit() {
+    let readme = read_repo_file("ai-pack/README.md");
+    assert!(
+        readme.contains("must be release-ready")
+            && readme.contains("Do not place local experiments")
+            && readme.contains("WIKITOOL_LLM_INSTRUCTIONS"),
+        "ai-pack README must keep production packaging and scratch-space boundaries explicit"
+    );
 }
 
 #[test]

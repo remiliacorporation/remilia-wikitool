@@ -59,6 +59,7 @@ Out of scope by default:
 7. `docs/wikitool/*.md`
 8. optional `ai/docs-bundle-v1.json`
 9. optional `WIKITOOL_CLAUDE.md` when host overlay is injected
+10. optional `WIKITOOL_LLM_INSTRUCTIONS/*.md` when host writing instructions are injected
 
 If path references conflict, prefer packaged-root paths first.
 
@@ -118,6 +119,7 @@ wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Cheetah" --
 wikitool templates show "Template:Infobox person"
 wikitool templates examples "Template:Infobox person" --limit 2
 wikitool wiki profile show --format json
+wikitool wiki profile remote "https://www.mediawiki.org/wiki/Manual:Contents" --format json
 wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool article lint --changed --format json
 wikitool knowledge inspect references duplicates --title "Title" --format json
@@ -148,7 +150,8 @@ Docs bootstrap paths:
 
 Use `knowledge status` before depending on docs-bridged local retrieval; it surfaces `readiness`, `degradations`, the requested docs profile, and the current `knowledge_generation`.
 Use `knowledge pack` only when `article-start` is too collapsed and you need the deeper retrieval substrate. Its default `--payload compact` output separates subject context from wiki contract context and omits heavy implementation chunks; add `--payload full` only when you need full template/module implementation bodies or docs section text. Use `--contract-query` when the article topic and the template/module lookup differ, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json`. Use `wikitool knowledge contracts search "contract terms" --format json` for a direct token-budgeted search of the template/module graph.
-Use `wikitool research mediawiki-templates "URL"` when a source MediaWiki page's live template/module contract matters, especially on arbitrary source wikis such as Wikipedia. Treat it as source-wiki context, not target-wiki permission; target-wiki template use must still pass local `knowledge contracts`, `templates show`, and `article lint`.
+Use `wikitool research mediawiki-templates "URL"` when a source MediaWiki page's live template/module contract matters, especially on arbitrary source wikis such as Wikipedia. The report is cached; add `--refresh` when live freshness matters. Treat it as source-wiki context, not target-wiki permission; target-wiki template use must still pass local `knowledge contracts`, `templates show`, and `article lint`.
+Use `wikitool wiki profile remote "URL"` only for an explicitly scoped remote target capability probe when a full local import/profile is unavailable. It reports extensions, parser tags, namespaces, and API capabilities; it does not supply or authorize templates/modules.
 Use `wikitool export "URL"` for agent-readable markdown snapshots. MediaWiki URLs are fetched as wikitext before markdown rendering; arbitrary web pages use the research extractor and frontmatter metadata. Use `--subpages --limit N` for bounded MediaWiki tree stress tests, and `--urls-file PATH --output-dir PATH --format markdown` for off-wiki source packs with a generated `_index.md`. Wikitext export is only for recognizable MediaWiki URLs, and blocked arbitrary sources should remain explicit source-access failures.
 
 ## API Verification Rule
@@ -171,8 +174,12 @@ When host overlay is used:
 2. Release packaging writes that same guidance body to both packaged `CLAUDE.md` and packaged `AGENTS.md`.
 3. Wikitool-local guidance is preserved as `WIKITOOL_CLAUDE.md`.
 4. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
+5. If the host has `llm_instructions/`, those files become the packaged writing context.
+6. Wikitool-local writing instructions are preserved as `WIKITOOL_LLM_INSTRUCTIONS/` when host `llm_instructions/` are injected.
 
 Without host overlay, release bundles stay generic and ship only wikitool-maintained guidance.
+
+Do not put local experiments, mock drafts, probe outputs, or one-off research notes under `ai-pack/` unless they are intended to ship in the next release. Use repo-local scratch space such as `.wikitool/drafts/`, `plans/`, or tests for experimental work.
 
 ## Documentation Sync Contract
 

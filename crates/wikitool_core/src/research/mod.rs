@@ -10,7 +10,8 @@ pub mod web_fetch;
 use anyhow::Result;
 
 pub use cache::{
-    CachedFetchResult, ResearchCacheOptions, ResearchCacheStatus, fetch_page_by_url_cached,
+    CachedFetchResult, CachedMediaWikiTemplateReport, ResearchCacheOptions, ResearchCacheStatus,
+    fetch_mediawiki_template_report_cached, fetch_page_by_url_cached,
 };
 pub use export::{
     default_export_path, generate_frontmatter, sanitize_filename, source_content_to_markdown,

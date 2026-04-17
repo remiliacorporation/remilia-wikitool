@@ -239,6 +239,10 @@ impl Default for MediaWikiTemplateQueryOptions {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaWikiTemplateReport {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_path: Option<String>,
     pub contract_scope: String,
     pub target_compatibility: String,
     pub target_compatibility_note: String,

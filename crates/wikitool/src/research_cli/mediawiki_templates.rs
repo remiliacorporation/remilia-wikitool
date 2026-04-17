@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::{ArgAction, Args};
 use wikitool_core::research::{
     MediaWikiTemplatePage, MediaWikiTemplateQueryOptions, MediaWikiTemplateReport,
-    fetch_mediawiki_template_report,
+    ResearchCacheOptions, fetch_mediawiki_template_report_cached,
 };
 
 use crate::RuntimeOptions;
@@ -41,6 +41,13 @@ pub(crate) struct ResearchMediaWikiTemplatesArgs {
     template: Vec<String>,
     #[arg(
         long,
+        help = "Refresh the cached source MediaWiki template report before returning output"
+    )]
+    refresh: bool,
+    #[arg(long, help = "Bypass the source MediaWiki template report cache")]
+    no_cache: bool,
+    #[arg(
+        long,
         value_enum,
         default_value_t = OutputFormat::Json,
         value_name = "FORMAT",
@@ -50,6 +57,9 @@ pub(crate) struct ResearchMediaWikiTemplatesArgs {
 }
 
 pub(crate) fn run(runtime: &RuntimeOptions, args: ResearchMediaWikiTemplatesArgs) -> Result<()> {
+    if args.refresh && args.no_cache {
+        bail!("research mediawiki-templates does not allow --refresh together with --no-cache");
+    }
     if args.limit == 0 {
         bail!("research mediawiki-templates requires --limit >= 1");
     }
@@ -60,7 +70,8 @@ pub(crate) fn run(runtime: &RuntimeOptions, args: ResearchMediaWikiTemplatesArgs
         bail!("research mediawiki-templates requires --parameter-limit >= 1");
     }
     let (paths, _) = resolve_runtime_with_config(runtime)?;
-    let report = fetch_mediawiki_template_report(
+    let cached = fetch_mediawiki_template_report_cached(
+        &paths,
         &args.url,
         &MediaWikiTemplateQueryOptions {
             limit: args.limit,
@@ -68,7 +79,12 @@ pub(crate) fn run(runtime: &RuntimeOptions, args: ResearchMediaWikiTemplatesArgs
             parameter_limit: args.parameter_limit,
             template_titles: args.template,
         },
+        &ResearchCacheOptions {
+            use_cache: !args.no_cache,
+            refresh: args.refresh,
+        },
     )?;
+    let report = cached.report;
 
     if args.format.is_json() {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -88,6 +104,12 @@ fn print_mediawiki_template_report_text(
 ) {
     println!("research mediawiki-templates");
     println!("project_root: {}", normalize_path(&paths.project_root));
+    if let Some(value) = report.cache_status.as_deref() {
+        println!("cache_status: {value}");
+    }
+    if let Some(value) = report.cache_path.as_deref() {
+        println!("cache_path: {value}");
+    }
     println!("contract_scope: {}", report.contract_scope);
     println!("target_compatibility: {}", report.target_compatibility);
     println!(

@@ -9,6 +9,7 @@ use crate::support::{compute_hash, normalize_path};
 
 use super::model::{
     ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
+    MediaWikiTemplateQueryOptions, MediaWikiTemplateReport,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -42,10 +43,23 @@ pub struct CachedFetchResult {
     pub cache_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CachedMediaWikiTemplateReport {
+    pub report: MediaWikiTemplateReport,
+    pub status: ResearchCacheStatus,
+    pub cache_path: Option<PathBuf>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct CachedFetchDocument {
     schema_version: String,
     result: ExternalFetchResult,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CachedMediaWikiTemplateReportDocument {
+    schema_version: String,
+    report: MediaWikiTemplateReport,
 }
 
 pub fn fetch_page_by_url_cached(
@@ -56,6 +70,70 @@ pub fn fetch_page_by_url_cached(
 ) -> Result<Option<CachedFetchResult>> {
     fetch_page_by_url_cached_with(paths, url, options, cache_options, || {
         super::fetch_page_by_url(url, options)
+    })
+}
+
+pub fn fetch_mediawiki_template_report_cached(
+    paths: &ResolvedPaths,
+    url: &str,
+    options: &MediaWikiTemplateQueryOptions,
+    cache_options: &ResearchCacheOptions,
+) -> Result<CachedMediaWikiTemplateReport> {
+    fetch_mediawiki_template_report_cached_with(paths, url, options, cache_options, || {
+        super::fetch_mediawiki_template_report(url, options)
+    })
+}
+
+fn fetch_mediawiki_template_report_cached_with<F>(
+    paths: &ResolvedPaths,
+    url: &str,
+    options: &MediaWikiTemplateQueryOptions,
+    cache_options: &ResearchCacheOptions,
+    fetcher: F,
+) -> Result<CachedMediaWikiTemplateReport>
+where
+    F: FnOnce() -> Result<MediaWikiTemplateReport>,
+{
+    if !cache_options.use_cache {
+        let mut report = fetcher()?;
+        annotate_template_report_cache(&mut report, ResearchCacheStatus::Bypass, None);
+        return Ok(CachedMediaWikiTemplateReport {
+            report,
+            status: ResearchCacheStatus::Bypass,
+            cache_path: None,
+        });
+    }
+
+    ensure_research_cache_layout(paths)?;
+    let key = cache_key_for_mediawiki_template_report(url, options);
+    let cache_path = mediawiki_template_report_cache_path(paths, &key);
+    if !cache_options.refresh
+        && let Some(mut report) = read_cached_mediawiki_template_report(&cache_path)?
+    {
+        annotate_template_report_cache(
+            &mut report,
+            ResearchCacheStatus::Hit,
+            Some(cache_path.as_path()),
+        );
+        return Ok(CachedMediaWikiTemplateReport {
+            report,
+            status: ResearchCacheStatus::Hit,
+            cache_path: Some(cache_path),
+        });
+    }
+
+    let mut report = fetcher()?;
+    let cache_path = write_cached_mediawiki_template_report(paths, &key, &report)?;
+    let status = if cache_options.refresh {
+        ResearchCacheStatus::Refresh
+    } else {
+        ResearchCacheStatus::Miss
+    };
+    annotate_template_report_cache(&mut report, status, Some(cache_path.as_path()));
+    Ok(CachedMediaWikiTemplateReport {
+        report,
+        status,
+        cache_path: Some(cache_path),
     })
 }
 
@@ -112,6 +190,7 @@ fn ensure_research_cache_layout(paths: &ResolvedPaths) -> Result<()> {
     for directory in [
         paths.research_cache_dir().join("documents"),
         paths.research_cache_dir().join("rendered"),
+        paths.research_cache_dir().join("mediawiki_templates"),
     ] {
         fs::create_dir_all(&directory)
             .with_context(|| format!("failed to create {}", normalize_path(&directory)))?;
@@ -129,6 +208,25 @@ fn cache_key_for_fetch(url: &str, options: &ExternalFetchOptions) -> String {
     ))
 }
 
+fn cache_key_for_mediawiki_template_report(
+    url: &str,
+    options: &MediaWikiTemplateQueryOptions,
+) -> String {
+    compute_hash(&format!(
+        "mediawiki_template_report|url={}|limit={}|content_limit={}|parameter_limit={}|templates={}",
+        url.trim(),
+        options.limit,
+        options.content_limit,
+        options.parameter_limit,
+        options
+            .template_titles
+            .iter()
+            .map(|title| title.trim())
+            .collect::<Vec<_>>()
+            .join("|")
+    ))
+}
+
 fn cache_candidate_paths(paths: &ResolvedPaths, key: &str) -> [PathBuf; 2] {
     [
         paths
@@ -140,6 +238,13 @@ fn cache_candidate_paths(paths: &ResolvedPaths, key: &str) -> [PathBuf; 2] {
             .join("rendered")
             .join(format!("{key}.json")),
     ]
+}
+
+fn mediawiki_template_report_cache_path(paths: &ResolvedPaths, key: &str) -> PathBuf {
+    paths
+        .research_cache_dir()
+        .join("mediawiki_templates")
+        .join(format!("{key}.json"))
 }
 
 fn cache_path_for_result(
@@ -211,6 +316,59 @@ fn write_cached_fetch(
     Ok(path)
 }
 
+fn read_cached_mediawiki_template_report(path: &Path) -> Result<Option<MediaWikiTemplateReport>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let payload = fs::read_to_string(path)
+        .with_context(|| format!("failed to read {}", normalize_path(path)))?;
+    match serde_json::from_str::<CachedMediaWikiTemplateReportDocument>(&payload) {
+        Ok(document) => Ok(Some(document.report)),
+        Err(_) => Ok(None),
+    }
+}
+
+fn write_cached_mediawiki_template_report(
+    paths: &ResolvedPaths,
+    key: &str,
+    report: &MediaWikiTemplateReport,
+) -> Result<PathBuf> {
+    let path = mediawiki_template_report_cache_path(paths, key);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
+    }
+    let mut report = report.clone();
+    report.cache_status = None;
+    report.cache_path = None;
+    let payload = serde_json::to_string_pretty(&CachedMediaWikiTemplateReportDocument {
+        schema_version: "research_mediawiki_template_report_cache_v1".to_string(),
+        report,
+    })?;
+    fs::write(&path, payload.as_bytes())
+        .with_context(|| format!("failed to write {}", normalize_path(&path)))?;
+    Ok(path)
+}
+
+fn annotate_template_report_cache(
+    report: &mut MediaWikiTemplateReport,
+    status: ResearchCacheStatus,
+    cache_path: Option<&Path>,
+) {
+    report.cache_status = Some(format_cache_status(status).to_string());
+    report.cache_path = cache_path.map(normalize_path);
+}
+
+fn format_cache_status(status: ResearchCacheStatus) -> &'static str {
+    match status {
+        ResearchCacheStatus::Hit => "hit",
+        ResearchCacheStatus::Miss => "miss",
+        ResearchCacheStatus::Refresh => "refresh",
+        ResearchCacheStatus::Bypass => "bypass",
+    }
+}
+
 fn uses_rendered_bucket(result: &ExternalFetchResult) -> bool {
     result.source_wiki.eq_ignore_ascii_case("mediawiki")
         && result.content_format.eq_ignore_ascii_case("html")
@@ -226,10 +384,12 @@ mod tests {
 
     use super::{
         ResearchCacheOptions, ResearchCacheStatus, cache_key_for_fetch, cache_path_for_result,
-        ensure_research_cache_layout, fetch_page_by_url_cached_with,
+        ensure_research_cache_layout, fetch_mediawiki_template_report_cached_with,
+        fetch_page_by_url_cached_with,
     };
     use crate::research::model::{
         ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
+        MediaWikiTemplateQueryOptions, MediaWikiTemplateReport,
     };
     use crate::runtime::{ResolvedPaths, ValueSource};
 
@@ -301,6 +461,32 @@ mod tests {
         }
     }
 
+    fn sample_template_report(title: &str) -> MediaWikiTemplateReport {
+        MediaWikiTemplateReport {
+            cache_status: None,
+            cache_path: None,
+            contract_scope: "source_mediawiki_api".to_string(),
+            target_compatibility: "not_evaluated".to_string(),
+            target_compatibility_note: "source wiki only".to_string(),
+            source_url: "https://example.org/wiki/Article".to_string(),
+            source_domain: "example.org".to_string(),
+            api_endpoint: "https://example.org/api.php".to_string(),
+            page_title: title.to_string(),
+            canonical_url: "https://example.org/wiki/Article".to_string(),
+            fetched_at: "2026-04-17T00:00:00Z".to_string(),
+            page_revision_id: Some(1),
+            page_revision_timestamp: Some("2026-04-16T00:00:00Z".to_string()),
+            api_template_count: 1,
+            page_template_count_returned: 1,
+            invocation_count: 1,
+            selected_template_count: 1,
+            page_templates: Vec::new(),
+            template_invocations: Vec::new(),
+            template_pages: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
     #[test]
     fn ensures_cache_layout() {
         let temp = tempdir().expect("tempdir");
@@ -310,6 +496,12 @@ mod tests {
 
         assert!(paths.research_cache_dir().join("documents").exists());
         assert!(paths.research_cache_dir().join("rendered").exists());
+        assert!(
+            paths
+                .research_cache_dir()
+                .join("mediawiki_templates")
+                .exists()
+        );
     }
 
     #[test]
@@ -427,5 +619,50 @@ mod tests {
             document.parent().and_then(|path| path.file_name()),
             Some(std::ffi::OsStr::new("documents"))
         );
+    }
+
+    #[test]
+    fn cached_mediawiki_template_report_hits_after_first_write() {
+        let temp = tempdir().expect("tempdir");
+        let paths = paths(temp.path());
+        let count = Cell::new(0usize);
+        let options = MediaWikiTemplateQueryOptions {
+            limit: 1,
+            content_limit: 100,
+            parameter_limit: 4,
+            template_titles: vec!["Template:Infobox".to_string()],
+        };
+
+        let first = fetch_mediawiki_template_report_cached_with(
+            &paths,
+            "https://example.org/wiki/Article",
+            &options,
+            &ResearchCacheOptions::default(),
+            || {
+                count.set(count.get() + 1);
+                Ok(sample_template_report("First"))
+            },
+        )
+        .expect("first report should cache");
+        assert_eq!(first.status, ResearchCacheStatus::Miss);
+        assert_eq!(first.report.cache_status.as_deref(), Some("miss"));
+        assert!(first.report.cache_path.is_some());
+        assert_eq!(count.get(), 1);
+
+        let second = fetch_mediawiki_template_report_cached_with(
+            &paths,
+            "https://example.org/wiki/Article",
+            &options,
+            &ResearchCacheOptions::default(),
+            || {
+                count.set(count.get() + 1);
+                Ok(sample_template_report("Second"))
+            },
+        )
+        .expect("second report should hit");
+        assert_eq!(second.status, ResearchCacheStatus::Hit);
+        assert_eq!(second.report.cache_status.as_deref(), Some("hit"));
+        assert_eq!(second.report.page_title, "First");
+        assert_eq!(count.get(), 1);
     }
 }

@@ -5,7 +5,10 @@ You create encyclopedic articles for a MediaWiki wiki about Remilia Corporation,
 **Wiki:** https://wiki.remilia.org
 **Stack:** MediaWiki 1.44 with Lua templates, Cargo structured data, CirrusSearch
 
-This guide is the primary reference. Read `style_rules.md` before every article.
+This guide is the bundled default writing profile for Remilia Wiki. For another MediaWiki target,
+prefer the host project's `llm_instructions/` and the target wiki's live wikitool profile/template
+surfaces; do not apply Remilia-specific sourcing, category, or template rules as universal
+MediaWiki behavior. Read `style_rules.md` before every article.
 
 ---
 
@@ -22,7 +25,7 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 1. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
 2. **Refresh local authoring state** â€” run `wikitool knowledge warm --docs-profile remilia-mw-1.44` and `wikitool wiki profile sync` so docs/profile/capability signals are current.
 3. **Build the interpreted authoring brief** â€” run `wikitool knowledge article-start “<Topic>” --intent new --format json`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks` to fetch targeted content before writing. When your own subject knowledge suggests a different wiki-contract lookup than the title itself, make that visible with `--contract-query`, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json`.
-4. **Fetch external evidence selectively** â€” use `wikitool research search “<Topic>” --format json`, then `wikitool research fetch “<URL>” --output json` only for sources you expect to cite. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.discovery` or run `wikitool research discover “<URL>” --format json` for public robots, sitemap, feed, and structured-data leads. For source MediaWiki pages whose template contract matters, use `wikitool research mediawiki-templates “<URL>” --format json`; this describes the source wiki, not which templates are valid on the target wiki. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
+4. **Fetch external evidence selectively** â€” use `wikitool research search “<Topic>” --format json`, then `wikitool research fetch “<URL>” --output json` only for sources you expect to cite. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.discovery` or run `wikitool research discover “<URL>” --format json` for public robots, sitemap, feed, and structured-data leads. For source MediaWiki pages whose template contract matters, use `wikitool research mediawiki-templates “<URL>” --format json`; this describes the source wiki, not which templates are valid on the target wiki. Add `--refresh` when live freshness matters. Use `wikitool wiki profile remote “<URL>” --format json` only when you need a remote target wiki capability probe and local target profile/import data is unavailable. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
 5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name"`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
 6. **Write the article** following the structure in `article_structure.md`.
 7. **Save** to `wiki_content/Main/{Article_Title}.wiki`.

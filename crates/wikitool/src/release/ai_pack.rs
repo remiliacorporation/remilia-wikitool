@@ -17,8 +17,16 @@ pub(super) struct AiPackBuildResult {
     host_context_included: bool,
     claude_rules_included: bool,
     claude_skills_included: bool,
+    llm_instructions_included: bool,
+    host_llm_instructions_included: bool,
     codex_skills_included: bool,
     docs_bundle_included: bool,
+}
+
+#[derive(Debug)]
+struct AiPackGuidanceContext {
+    effective_claude_source: PathBuf,
+    host_root: Option<PathBuf>,
 }
 
 pub(super) fn run_release_build_ai_pack(args: ReleaseBuildAiPackArgs) -> Result<()> {
@@ -51,6 +59,14 @@ pub(super) fn print_ai_pack_build_flags(result: &AiPackBuildResult) {
         format_flag(result.claude_skills_included)
     );
     println!(
+        "llm_instructions_included: {}",
+        format_flag(result.llm_instructions_included)
+    );
+    println!(
+        "host_llm_instructions_included: {}",
+        format_flag(result.host_llm_instructions_included)
+    );
+    println!(
         "codex_skills_included: {}",
         format_flag(result.codex_skills_included)
     );
@@ -74,26 +90,34 @@ pub(super) fn build_ai_pack(
         host_context_included: false,
         claude_rules_included: false,
         claude_skills_included: false,
+        llm_instructions_included: false,
+        host_llm_instructions_included: false,
         codex_skills_included: false,
         docs_bundle_included: false,
     };
 
-    let effective_claude_source = prepare_ai_pack_guidance_context(
+    let guidance_context = prepare_ai_pack_guidance_context(
         repo_root,
         &ai_pack_root,
         output_dir,
         host_project_root,
         &mut result,
     )?;
-    copy_file(&effective_claude_source, &output_dir.join("CLAUDE.md"))?;
-    copy_file(&effective_claude_source, &output_dir.join("AGENTS.md"))?;
+    copy_file(
+        &guidance_context.effective_claude_source,
+        &output_dir.join("CLAUDE.md"),
+    )?;
+    copy_file(
+        &guidance_context.effective_claude_source,
+        &output_dir.join("AGENTS.md"),
+    )?;
 
-    let llm_source = ai_pack_root.join("llm_instructions");
-    require_dir(&llm_source, "missing llm_instructions directory")?;
-    let llm_count = copy_markdown_files(&llm_source, &output_dir.join("llm_instructions"))?;
-    if llm_count == 0 {
-        bail!("no ai-pack/llm_instructions/*.md files found");
-    }
+    copy_llm_instructions(
+        &ai_pack_root,
+        output_dir,
+        guidance_context.host_root.as_deref(),
+        &mut result,
+    )?;
 
     let docs_source = repo_root.join("docs/wikitool");
     if docs_source.is_dir() {
@@ -134,7 +158,7 @@ fn prepare_ai_pack_guidance_context(
     output_dir: &Path,
     host_project_root: Option<&Path>,
     result: &mut AiPackBuildResult,
-) -> Result<PathBuf> {
+) -> Result<AiPackGuidanceContext> {
     let ai_pack_agents = ai_pack_root.join("AGENTS.md");
     let ai_pack_claude = ai_pack_root.join("CLAUDE.md");
     require_file(&ai_pack_agents, "missing required AI pack source file")?;
@@ -157,11 +181,13 @@ fn prepare_ai_pack_guidance_context(
     result.claude_skills_included = true;
 
     let mut effective_claude_source = ai_pack_claude.clone();
+    let mut host_context_root = None;
     if let Some(host_root) = detect_host_context_root(repo_root, host_project_root)?
         && !paths_equivalent(&host_root, repo_root)?
     {
         copy_file(&ai_pack_claude, &output_dir.join("WIKITOOL_CLAUDE.md"))?;
         effective_claude_source = host_root.join("CLAUDE.md");
+        host_context_root = Some(host_root.clone());
         copy_dir_recursive(
             &host_root.join(".claude/rules"),
             &output_dir.join(".claude/rules"),
@@ -173,7 +199,46 @@ fn prepare_ai_pack_guidance_context(
         result.host_context_included = true;
     }
 
-    Ok(effective_claude_source)
+    Ok(AiPackGuidanceContext {
+        effective_claude_source,
+        host_root: host_context_root,
+    })
+}
+
+fn copy_llm_instructions(
+    ai_pack_root: &Path,
+    output_dir: &Path,
+    host_root: Option<&Path>,
+    result: &mut AiPackBuildResult,
+) -> Result<()> {
+    let llm_source = ai_pack_root.join("llm_instructions");
+    require_dir(&llm_source, "missing llm_instructions directory")?;
+    let llm_output = output_dir.join("llm_instructions");
+    let llm_count = copy_markdown_files(&llm_source, &llm_output)?;
+    if llm_count == 0 {
+        bail!("no ai-pack/llm_instructions/*.md files found");
+    }
+    result.llm_instructions_included = true;
+
+    let Some(host_root) = host_root else {
+        return Ok(());
+    };
+    let host_llm_source = host_root.join("llm_instructions");
+    if !host_llm_source.is_dir() {
+        return Ok(());
+    }
+
+    copy_dir_recursive(&llm_output, &output_dir.join("WIKITOOL_LLM_INSTRUCTIONS"))?;
+    reset_directory(&llm_output)?;
+    let host_llm_count = copy_markdown_files(&host_llm_source, &llm_output)?;
+    if host_llm_count == 0 {
+        bail!(
+            "host llm_instructions directory has no markdown files: {}",
+            normalize_path(&host_llm_source)
+        );
+    }
+    result.host_llm_instructions_included = true;
+    Ok(())
 }
 
 fn copy_markdown_files(source: &Path, destination: &Path) -> Result<usize> {
@@ -221,6 +286,8 @@ fn write_ai_pack_manifest(result: &AiPackBuildResult) -> Result<()> {
         "host_context_included": result.host_context_included,
         "claude_rules_included": result.claude_rules_included,
         "claude_skills_included": result.claude_skills_included,
+        "llm_instructions_included": result.llm_instructions_included,
+        "host_llm_instructions_included": result.host_llm_instructions_included,
         "codex_skills_included": result.codex_skills_included,
         "docs_bundle_included": result.docs_bundle_included,
         "notes": "AI companion pack for wikitool; content is intentionally shipped outside the binary."
@@ -365,6 +432,47 @@ mod tests {
         assert_eq!(
             fs::read_to_string(output_dir.join("AGENTS.md")).expect("read packaged AGENTS"),
             "# Host CLAUDE\n"
+        );
+    }
+
+    #[test]
+    fn build_ai_pack_host_overlay_can_replace_llm_instructions() {
+        let temp = TestDir::new("host-llm");
+        let repo_root = temp.path.join("repo");
+        let host_root = temp.path.join("host");
+        let output_dir = temp.path.join("out");
+        create_repo(&repo_root);
+        create_host(&host_root, "# Host CLAUDE\n", None);
+        write_file(
+            &host_root.join("llm_instructions/writing_guide.md"),
+            "# Host Guide\n",
+        );
+        write_file(
+            &host_root.join("llm_instructions/site_contract.md"),
+            "# Host Contract\n",
+        );
+
+        build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
+
+        assert_eq!(
+            fs::read_to_string(output_dir.join("llm_instructions/writing_guide.md"))
+                .expect("read host guide"),
+            "# Host Guide\n"
+        );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("llm_instructions/site_contract.md"))
+                .expect("read host contract"),
+            "# Host Contract\n"
+        );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("WIKITOOL_LLM_INSTRUCTIONS/writing_guide.md"))
+                .expect("read preserved default guide"),
+            "# Guide\n"
+        );
+        let manifest = fs::read_to_string(output_dir.join("manifest.json")).expect("read manifest");
+        assert!(
+            manifest.contains("\"host_llm_instructions_included\": true"),
+            "manifest must record host LLM instruction overlay"
         );
     }
 }

@@ -1304,6 +1304,8 @@ Options:
       --parameter-limit <N>    Maximum TemplateData parameters returned per selected template [default: 64]
       --diagnostics            Print resolved runtime diagnostics
       --template <TITLE>       Fetch an exact template page from the source wiki; may be repeated
+      --refresh                Refresh the cached source MediaWiki template report before returning output
+      --no-cache               Bypass the source MediaWiki template report cache
       --format <FORMAT>        Output format: text|json [default: json] [possible values: text, json]
   -h, --help                   Print help
 ```
@@ -1392,9 +1394,10 @@ Show the combined live/profile-aware wiki surface
 Usage: wikitool wiki profile [OPTIONS] <COMMAND>
 
 Commands:
-  sync  Refresh the local rules overlay and live capability snapshot
-  show  Show the current combined profile snapshot
-  help  Print this message or the help of the given subcommand(s)
+  sync    Refresh the local rules overlay and live capability snapshot
+  show    Show the current combined profile snapshot
+  remote  Inspect a remote target wiki capability profile without storing it locally
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -1430,6 +1433,26 @@ Usage: wikitool wiki profile show [OPTIONS]
 
 Options:
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --view <VIEW>          JSON view: summary|full [default: summary] [possible values: summary, full]
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki profile remote
+
+```text
+Inspect a remote target wiki capability profile without storing it locally
+
+Usage: wikitool wiki profile remote [OPTIONS] <URL>
+
+Arguments:
+  <URL>
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
       --view <VIEW>          JSON view: summary|full [default: summary] [possible values: summary, full]

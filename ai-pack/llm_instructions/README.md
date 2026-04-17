@@ -1,8 +1,13 @@
 ﻿# LLM Instructions for Remilia Wiki
 
-Writing guidelines for AI-assisted article creation on [wiki.remilia.org](https://wiki.remilia.org).
+Default writing guidelines for AI-assisted article creation on [wiki.remilia.org](https://wiki.remilia.org).
 
 These instructions are designed for Claude but work with any capable LLM. They target encyclopedic MediaWiki wikitext.
+
+This directory is the bundled default writing context. It contains Remilia-specific editorial rules.
+For another MediaWiki target, provide host `llm_instructions/` when building the AI pack with
+`--host-project-root`; wikitool will package the host writing context and preserve these defaults
+as `WIKITOOL_LLM_INSTRUCTIONS/`.
 
 ## Files
 

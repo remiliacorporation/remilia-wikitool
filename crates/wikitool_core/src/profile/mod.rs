@@ -32,6 +32,7 @@ pub use template_catalog::{
 };
 pub use template_data::{TemplateDataParameter, TemplateDataRecord};
 pub use wiki_capabilities::{
-    ExtensionInfo, NamespaceInfo, WikiCapabilityManifest, load_latest_wiki_capabilities,
-    load_wiki_capabilities_with_config, sync_wiki_capabilities_with_config,
+    ExtensionInfo, NamespaceInfo, WikiCapabilityManifest, fetch_remote_wiki_capabilities,
+    load_latest_wiki_capabilities, load_wiki_capabilities_with_config,
+    sync_wiki_capabilities_with_config,
 };

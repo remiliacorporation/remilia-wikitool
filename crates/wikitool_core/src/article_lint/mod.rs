@@ -488,6 +488,34 @@ mod tests {
     }
 
     #[test]
+    fn detects_d3chart_semantic_contract_errors() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        write_file(
+            &paths.templates_dir.join("misc").join("Module_D3Chart.lua"),
+            "local p = {}\nfunction p.bar(frame) return '' end\nfunction p.scatter(frame) return '' end\nfunction p.chart(frame) return '' end\nreturn p\n",
+        );
+        write_capability_manifest(
+            &paths,
+            &wiki_capability_manifest(Vec::new(), vec!["invoke".to_string()], true),
+        );
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:D3Chart|bar|title=No data}}\n{{#invoke:D3Chart|scatter|data=badpair}}\n{{#invoke:D3Chart|chart|type=heatmap|data=A:1}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
+        );
+
+        let report = lint_article(&paths, &article_path, None).expect("lint");
+
+        assert!(has_rule(&report, "module.d3chart_missing_data_source"));
+        assert!(has_rule(&report, "module.d3chart_invalid_data"));
+        assert!(has_rule(&report, "module.d3chart_unknown_type"));
+    }
+
+    #[test]
     fn lints_state_draft_with_explicit_title_override() {
         let temp = tempdir().expect("tempdir");
         let project_root = temp.path().join("project");

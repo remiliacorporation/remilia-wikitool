@@ -82,6 +82,8 @@ pub fn fetch_mediawiki_template_report(
                 let returned_page_templates =
                     sample_page_templates(&page_templates, &selected_titles, options.limit);
                 return Ok(MediaWikiTemplateReport {
+                    cache_status: None,
+                    cache_path: None,
                     contract_scope: "source_mediawiki_api".to_string(),
                     target_compatibility: "not_evaluated".to_string(),
                     target_compatibility_note:

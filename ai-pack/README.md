@@ -17,7 +17,16 @@ Instruction contract:
 1. `AGENTS.md` and `CLAUDE.md` are intentionally mirrored in shipped bundles so both agent front doors see the same guidance body.
 2. Paths in these files must work in packaged artifacts (bundle-root relative), not only in source-repo layout.
 3. Baseline `.claude/` content in this folder is packaged by default.
-4. Host overlay may replace/extend `.claude/` when `--host-project-root` is used.
+4. Baseline `llm_instructions/` content is the wikitool-maintained default writing context. It must be release-ready, not an experimental scratchpad.
+5. Host overlay may replace/extend `.claude/` when `--host-project-root` is used.
+6. Host overlay may replace `llm_instructions/` when the host project provides that directory; the wikitool default is preserved in `WIKITOOL_LLM_INSTRUCTIONS/`.
+
+Development contract:
+
+1. Do not place local experiments, mock drafts, probe outputs, or one-off research notes under `ai-pack/` unless they are intended to ship in the next release.
+2. Use repo-local scratch space such as `.wikitool/drafts/`, `plans/`, or test fixtures for experimental work.
+3. Keep target-specific writing rules explicit. If a rule only applies to one wiki, label it as target-specific or ship it through a host overlay instead of presenting it as universal MediaWiki behavior.
+4. After CLI or workflow changes, update the relevant ai-pack guidance, regenerate `docs/wikitool/reference.md`, and run the guidance contract tests.
 
 Packaging contract:
 
@@ -27,3 +36,4 @@ Packaging contract:
 4. Generic bundles include ai-pack `.claude/rules` and `.claude/skills` by default.
 5. Host project context is overlaid only when `--host-project-root <PATH>` is provided.
 6. Wikitool-local AI guidance is preserved as `WIKITOOL_CLAUDE.md` when host context is injected.
+7. Wikitool-local LLM instructions are preserved as `WIKITOOL_LLM_INSTRUCTIONS/` when host `llm_instructions/` are injected.

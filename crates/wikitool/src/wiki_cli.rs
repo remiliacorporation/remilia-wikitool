@@ -4,9 +4,10 @@ use serde::Serialize;
 use wikitool_core::profile::{
     AuthoringSurface, AuthoringSurfaceOptions, ProfileOverlay, TemplateCatalogSummary,
     WikiCapabilityManifest, WikiProfileSnapshot, build_authoring_surface_with_config,
-    load_or_build_remilia_profile_overlay, load_wiki_capabilities_with_config,
-    load_wiki_profile_with_config, sync_authoring_surface_with_config,
-    sync_wiki_capabilities_with_config, sync_wiki_profile_with_config,
+    fetch_remote_wiki_capabilities, load_or_build_remilia_profile_overlay,
+    load_wiki_capabilities_with_config, load_wiki_profile_with_config,
+    sync_authoring_surface_with_config, sync_wiki_capabilities_with_config,
+    sync_wiki_profile_with_config,
 };
 
 use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_with_config};
@@ -115,6 +116,29 @@ enum WikiProfileSubcommand {
     Sync(WikiCapabilitiesFormatArgs),
     #[command(about = "Show the current combined profile snapshot")]
     Show(WikiCapabilitiesFormatArgs),
+    #[command(about = "Inspect a remote target wiki capability profile without storing it locally")]
+    Remote(WikiRemoteProfileArgs),
+}
+
+#[derive(Debug, Args)]
+struct WikiRemoteProfileArgs {
+    url: String,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Json,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = WikiJsonView::Summary,
+        value_name = "VIEW",
+        help = "JSON view: summary|full"
+    )]
+    view: WikiJsonView,
 }
 
 #[derive(Debug, Args)]
@@ -263,6 +287,7 @@ fn run_wiki_profile(runtime: &RuntimeOptions, args: WikiProfileArgs) -> Result<(
     match args.command {
         WikiProfileSubcommand::Sync(args) => run_wiki_profile_sync(runtime, args.format, args.view),
         WikiProfileSubcommand::Show(args) => run_wiki_profile_show(runtime, args.format, args.view),
+        WikiProfileSubcommand::Remote(args) => run_wiki_profile_remote(runtime, args),
     }
 }
 
@@ -319,6 +344,47 @@ fn run_wiki_profile_show(
     println!("wiki profile show");
     println!("project_root: {}", normalize_path(&paths.project_root));
     print_profile_snapshot(&snapshot);
+    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
+fn run_wiki_profile_remote(runtime: &RuntimeOptions, args: WikiRemoteProfileArgs) -> Result<()> {
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let manifest = fetch_remote_wiki_capabilities(&args.url, &config)?;
+    let report = RemoteWikiProfileReport {
+        schema_version: "remote_wiki_profile_v1",
+        profile_scope: "remote_live_capability_probe",
+        source_url: &args.url,
+        storage: "not_stored",
+        target_compatibility_note: "This report describes the remote wiki capability surface only; templates, modules, local files, and article lint authority still require that target wiki's own catalog or a local import.",
+        capabilities: &manifest,
+    };
+
+    if args.format.is_json() {
+        if args.view.is_full() {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&summarize_remote_profile_report(&report))?
+            );
+        }
+        return Ok(());
+    }
+
+    println!("wiki profile remote");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("profile_scope: {}", report.profile_scope);
+    println!("source_url: {}", report.source_url);
+    println!("storage: {}", report.storage);
+    println!(
+        "target_compatibility_note: {}",
+        report.target_compatibility_note
+    );
+    print_manifest(&manifest);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -688,6 +754,26 @@ struct WikiProfileSnapshotSummary<'a> {
 }
 
 #[derive(Debug, Serialize)]
+struct RemoteWikiProfileReport<'a> {
+    schema_version: &'a str,
+    profile_scope: &'a str,
+    source_url: &'a str,
+    storage: &'a str,
+    target_compatibility_note: &'a str,
+    capabilities: &'a WikiCapabilityManifest,
+}
+
+#[derive(Debug, Serialize)]
+struct RemoteWikiProfileSummary<'a> {
+    schema_version: &'a str,
+    profile_scope: &'a str,
+    source_url: &'a str,
+    storage: &'a str,
+    target_compatibility_note: &'a str,
+    capabilities: WikiCapabilityManifestSummary<'a>,
+}
+
+#[derive(Debug, Serialize)]
 struct ProfileOverlaySummary<'a> {
     schema_version: &'a str,
     profile_id: &'a str,
@@ -840,6 +926,19 @@ fn summarize_profile_snapshot<'a>(
             .template_catalog
             .as_ref()
             .map(summarize_template_catalog_summary),
+    }
+}
+
+fn summarize_remote_profile_report<'a>(
+    report: &'a RemoteWikiProfileReport<'a>,
+) -> RemoteWikiProfileSummary<'a> {
+    RemoteWikiProfileSummary {
+        schema_version: report.schema_version,
+        profile_scope: report.profile_scope,
+        source_url: report.source_url,
+        storage: report.storage,
+        target_compatibility_note: report.target_compatibility_note,
+        capabilities: summarize_capability_manifest(report.capabilities),
     }
 }
 

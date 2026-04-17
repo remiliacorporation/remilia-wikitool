@@ -2,6 +2,9 @@ use std::collections::BTreeSet;
 
 use crate::article_lint::document::ParsedArticleDocument;
 use crate::article_lint::model::{ArticleLintIssue, ArticleLintSeverity};
+use crate::content_store::parsing::{
+    normalize_template_parameter_key, split_once_top_level_equals, split_template_segments,
+};
 use crate::profile::{normalize_module_title, supports_invoke_function};
 
 use super::IssueMatch;
@@ -18,6 +21,7 @@ pub(super) fn lint_module_invocations(
     lint_invoke_capability(document, resources, matches);
     lint_module_availability(document, resources, matches);
     lint_module_function_availability(document, resources, matches);
+    lint_d3chart_invocation_contracts(document, matches);
 }
 
 fn lint_invoke_capability(
@@ -164,4 +168,164 @@ fn known_module_titles(resources: &LoadedResources) -> BTreeSet<String> {
         }
     }
     titles
+}
+
+fn lint_d3chart_invocation_contracts(
+    document: &ParsedArticleDocument,
+    matches: &mut Vec<IssueMatch>,
+) {
+    for invocation in &document.module_invocations {
+        if normalize_module_title(&invocation.module_title) != "Module:D3Chart" {
+            continue;
+        }
+        let args = parse_module_args(&invocation.raw_wikitext);
+        let chart_type = resolve_d3chart_type(&invocation.function_name, &args);
+        if !is_known_d3chart_type(&chart_type) {
+            matches.push(module_error(
+                document,
+                "module.d3chart_unknown_type",
+                "D3Chart invocation uses an unknown chart type.",
+                invocation.start,
+                invocation.end.saturating_sub(invocation.start),
+                &invocation.raw_wikitext,
+                "Use one of `bar`, `hbar`, `line`, `pie`, `donut`, `scatter`, or `area`.",
+            ));
+            continue;
+        }
+
+        let has_manual_data = args
+            .value("data")
+            .is_some_and(|value| !value.trim().is_empty());
+        let has_cargo_source = args
+            .value("table")
+            .or_else(|| args.value("tables"))
+            .is_some_and(|value| !value.trim().is_empty());
+        if !has_manual_data && !has_cargo_source {
+            matches.push(module_error(
+                document,
+                "module.d3chart_missing_data_source",
+                "D3Chart invocation has no data source.",
+                invocation.start,
+                invocation.end.saturating_sub(invocation.start),
+                &invocation.raw_wikitext,
+                "Add `data=` for manual chart data or `table=`/`tables=` for a Cargo query.",
+            ));
+            continue;
+        }
+
+        if let Some(data) = args.value("data")
+            && let Some(invalid_pair) = invalid_d3chart_data_pair(data, &chart_type)
+        {
+            matches.push(module_error(
+                document,
+                "module.d3chart_invalid_data",
+                "D3Chart manual data does not match the chart parser's expected colon-separated shape.",
+                invocation.start,
+                invocation.end.saturating_sub(invocation.start),
+                invalid_pair,
+                "Use `label:value` pairs for non-scatter charts, and `x:y` or `label:x:y` pairs for scatter charts.",
+            ));
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct ModuleArgs {
+    positional: Vec<String>,
+    named: Vec<(String, String)>,
+}
+
+impl ModuleArgs {
+    fn value(&self, key: &str) -> Option<&str> {
+        self.named
+            .iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| value.as_str())
+    }
+}
+
+fn parse_module_args(raw_wikitext: &str) -> ModuleArgs {
+    let inner = raw_wikitext
+        .trim()
+        .strip_prefix("{{")
+        .and_then(|value| value.strip_suffix("}}"))
+        .unwrap_or(raw_wikitext);
+    let segments = split_template_segments(inner);
+    let mut args = ModuleArgs::default();
+    for segment in segments.into_iter().skip(2) {
+        let value = segment.trim();
+        if value.is_empty() {
+            continue;
+        }
+        if let Some((key, value)) = split_once_top_level_equals(value) {
+            let key = normalize_template_parameter_key(&key);
+            if !key.is_empty() {
+                args.named.push((key, value.trim().to_string()));
+                continue;
+            }
+        }
+        args.positional.push(value.to_string());
+    }
+    args
+}
+
+fn resolve_d3chart_type(function_name: &str, args: &ModuleArgs) -> String {
+    let function_name = function_name.trim().to_ascii_lowercase();
+    if function_name != "chart" {
+        return function_name;
+    }
+    args.value("type")
+        .or_else(|| args.positional.first().map(String::as_str))
+        .unwrap_or("bar")
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn is_known_d3chart_type(value: &str) -> bool {
+    matches!(
+        value,
+        "bar" | "hbar" | "line" | "pie" | "donut" | "scatter" | "area"
+    )
+}
+
+fn invalid_d3chart_data_pair<'a>(data: &'a str, chart_type: &str) -> Option<&'a str> {
+    for pair in data
+        .split(',')
+        .map(str::trim)
+        .filter(|pair| !pair.is_empty())
+    {
+        let colon_count = pair.chars().filter(|value| *value == ':').count();
+        if chart_type == "scatter" {
+            if colon_count == 1 || colon_count == 2 {
+                continue;
+            }
+        } else if colon_count == 1 {
+            continue;
+        }
+        return Some(pair);
+    }
+    None
+}
+
+fn module_error(
+    document: &ParsedArticleDocument,
+    rule_id: &str,
+    message: &str,
+    start: usize,
+    len: usize,
+    evidence: &str,
+    remediation: &str,
+) -> IssueMatch {
+    IssueMatch {
+        issue: ArticleLintIssue {
+            rule_id: rule_id.to_string(),
+            severity: ArticleLintSeverity::Error,
+            message: message.to_string(),
+            span: document.span_for_range(start, start.saturating_add(len)),
+            evidence: Some(evidence.to_string()),
+            suggested_remediation: Some(remediation.to_string()),
+            suggested_fixes: Vec::new(),
+        },
+        safe_fixes: Vec::new(),
+    }
 }
