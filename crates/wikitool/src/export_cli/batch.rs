@@ -13,6 +13,7 @@ use crate::cli_support::normalize_path;
 
 use super::render::{
     export_filename_stem, fetch_single_export_page, now_timestamp_string, render_export_page,
+    write_export_file,
 };
 pub(super) fn run_urls_file_export(
     project_root: &Path,
@@ -56,15 +57,13 @@ pub(super) fn run_urls_file_export(
             &success.page.source_domain,
         );
         let output_file = output_dir.join(&filename);
-        fs::write(&output_file, rendered.as_bytes())
-            .with_context(|| format!("failed to write {}", normalize_path(&output_file)))?;
+        write_export_file(&output_file, &rendered)?;
         success.output_file = filename;
     }
 
     let index_content = build_url_batch_index(&successes, &failures, urls_file);
     let index_path = output_dir.join("_index.md");
-    fs::write(&index_path, index_content.as_bytes())
-        .with_context(|| format!("failed to write {}", normalize_path(&index_path)))?;
+    write_export_file(&index_path, &index_content)?;
 
     println!("export");
     println!("mode: urls_file");

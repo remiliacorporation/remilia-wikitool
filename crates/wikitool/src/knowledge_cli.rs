@@ -80,11 +80,26 @@ pub(crate) struct KnowledgeWarmArgs {
     #[arg(
         long,
         value_enum,
+        default_value_t = KnowledgeWarmDocsMode::Missing,
+        value_name = "MODE",
+        help = "Docs hydration mode: missing|refresh|skip"
+    )]
+    pub(crate) docs_mode: KnowledgeWarmDocsMode,
+    #[arg(
+        long,
+        value_enum,
         default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
         help = "Output format: text|json"
     )]
     pub(crate) format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum KnowledgeWarmDocsMode {
+    Missing,
+    Refresh,
+    Skip,
 }
 
 #[derive(Debug, Args)]
@@ -473,6 +488,7 @@ struct KnowledgeBuildReport {
 #[derive(Debug, Serialize)]
 struct KnowledgeWarmReport {
     rebuild: RebuildReport,
+    docs_action: &'static str,
     docs: DocsImportProfileReport,
     status: KnowledgeStatusReport,
 }
@@ -531,23 +547,11 @@ pub(crate) fn run_knowledge(runtime: &RuntimeOptions, args: KnowledgeArgs) -> Re
 pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let rebuild = rebuild_knowledge_index(&paths)?;
-    let docs = match import_docs_profile_with_config(
-        &paths,
-        &DocsImportProfileOptions {
-            profile: args.docs_profile.clone(),
-            ..DocsImportProfileOptions::default()
-        },
-        &config,
-    ) {
-        Ok(report) => report,
-        Err(error) if is_transient_docs_error(&error) => {
-            transient_docs_profile_report(&args.docs_profile, &error)
-        }
-        Err(error) => return Err(error),
-    };
+    let (docs_action, docs) = warm_docs_profile(&paths, &config, &args)?;
     let status = knowledge_status(&paths, &args.docs_profile)?;
     let report = KnowledgeWarmReport {
         rebuild,
+        docs_action,
         docs,
         status,
     };
@@ -569,6 +573,7 @@ pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmAr
     );
     println!("rebuild.inserted_rows: {}", report.rebuild.inserted_rows);
     println!("rebuild.inserted_links: {}", report.rebuild.inserted_links);
+    println!("docs.action: {}", report.docs_action);
     println!("docs.imported_corpora: {}", report.docs.imported_corpora);
     println!("docs.imported_pages: {}", report.docs.imported_pages);
     println!("docs.failures.count: {}", report.docs.failures.len());
@@ -583,6 +588,59 @@ pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmAr
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+fn warm_docs_profile(
+    paths: &ResolvedPaths,
+    config: &wikitool_core::config::WikiConfig,
+    args: &KnowledgeWarmArgs,
+) -> Result<(&'static str, DocsImportProfileReport)> {
+    if matches!(args.docs_mode, KnowledgeWarmDocsMode::Skip) {
+        return Ok((
+            "skipped_requested",
+            skipped_docs_profile_report(&args.docs_profile),
+        ));
+    }
+    if matches!(args.docs_mode, KnowledgeWarmDocsMode::Missing)
+        && knowledge_status(paths, &args.docs_profile)
+            .map(|status| status.docs_profile_ready)
+            .unwrap_or(false)
+    {
+        return Ok((
+            "skipped_existing",
+            skipped_docs_profile_report(&args.docs_profile),
+        ));
+    }
+
+    match import_docs_profile_with_config(
+        paths,
+        &DocsImportProfileOptions {
+            profile: args.docs_profile.clone(),
+            ..DocsImportProfileOptions::default()
+        },
+        config,
+    ) {
+        Ok(report) => Ok(("refreshed", report)),
+        Err(error) if is_transient_docs_error(&error) => Ok((
+            "transient_failure",
+            transient_docs_profile_report(&args.docs_profile, &error),
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn skipped_docs_profile_report(profile: &str) -> DocsImportProfileReport {
+    DocsImportProfileReport {
+        profile: profile.to_string(),
+        imported_corpora: 0,
+        imported_extensions: 0,
+        imported_pages: 0,
+        imported_sections: 0,
+        imported_symbols: 0,
+        imported_examples: 0,
+        failures: Vec::new(),
+        request_count: 0,
+    }
 }
 
 fn transient_docs_profile_report(profile: &str, error: &anyhow::Error) -> DocsImportProfileReport {

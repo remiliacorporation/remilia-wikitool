@@ -37,7 +37,7 @@ Commands:
   net        Inspect link network and page relationships
   import     Import content from external sources
   knowledge  Build and query the local knowledge layer
-  research   Search and fetch subject evidence without mutating the wiki
+  research   Inspect target-wiki evidence and fetch source URLs without mutating the wiki
   wiki       Sync and inspect live wiki capability metadata
   templates  Build and inspect the local template catalog
   article    Lint and mechanically remediate article drafts
@@ -245,6 +245,7 @@ Options:
       --categories           Limit sync checks to Category namespace pages
       --title <TITLE>
       --path <PATH>
+      --draft-path <PATH>    Review one off-wiki draft path; requires exactly one --title and skips push dry-run
       --titles-file <PATH>   Read one canonical page title per line
       --summary <TEXT>       Edit summary used for the push dry-run report [default: "wikitool review dry-run"]
   -h, --help                 Print help
@@ -327,7 +328,7 @@ Options:
       --data-dir <PATH>
   -o, --output <PATH>         Output file or directory path
       --config <PATH>
-      --output-dir <DIR>      Output directory for --urls-file markdown exports
+      --output-dir <DIR>      Output directory for URL batch, single-page, or separate subpage exports
       --diagnostics           Print resolved runtime diagnostics
       --format <FORMAT>       Output format: markdown|wikitext [default: markdown] [possible values: markdown, wikitext]
       --code-language <LANG>  Code language hint (reserved for markdown export)
@@ -768,8 +769,9 @@ Options:
       --docs-profile <PROFILE>  Docs profile to hydrate during warmup [default: remilia-mw-1.44]
       --project-root <PATH>
       --data-dir <PATH>
-      --format <FORMAT>         Output format: text|json [default: text] [possible values: text, json]
+      --docs-mode <MODE>        Docs hydration mode: missing|refresh|skip [default: missing] [possible values: missing, refresh, skip]
       --config <PATH>
+      --format <FORMAT>         Output format: text|json [default: text] [possible values: text, json]
       --diagnostics             Print resolved runtime diagnostics
   -h, --help                    Print help
 ```
@@ -1199,12 +1201,12 @@ Options:
 ## research
 
 ```text
-Search and fetch subject evidence without mutating the wiki
+Inspect target-wiki evidence and fetch source URLs without mutating the wiki
 
 Usage: wikitool research [OPTIONS] <COMMAND>
 
 Commands:
-  search               Search the remote wiki API for subject evidence
+  wiki-search          Search the configured wiki API for subject evidence
   fetch                Fetch readable reference material from a URL
   discover             Discover public machine-readable source surfaces for a URL
   mediawiki-templates  Inspect live template contracts used by a source MediaWiki page
@@ -1218,12 +1220,12 @@ Options:
   -h, --help                 Print help
 ```
 
-## research search
+## research wiki-search
 
 ```text
-Search the remote wiki API for subject evidence
+Search the configured wiki API for subject evidence
 
-Usage: wikitool research search [OPTIONS] <QUERY>
+Usage: wikitool research wiki-search [OPTIONS] <QUERY>
 
 Arguments:
   <QUERY>

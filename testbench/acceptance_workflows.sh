@@ -271,11 +271,11 @@ section "research-search"
 LIVE_PROJ=$(setup_project live)
 wt "$LIVE_PROJ" init --templates > /dev/null 2>&1
 write_live_env "$LIVE_PROJ"
-OUTPUT=$(wt "$LIVE_PROJ" research search "Remilia" --format json 2>&1 || true)
+OUTPUT=$(wt "$LIVE_PROJ" research wiki-search "Remilia" --format json 2>&1 || true)
 if echo "$OUTPUT" | grep -q '"schema_version": "research_search_v1"' && echo "$OUTPUT" | grep -q '"query": "Remilia"' && echo "$OUTPUT" | grep -q '"count":'; then
-    pass "research search returns structured live search output"
+    pass "research wiki-search returns structured live search output"
 else
-    fail "research search returns structured live search output (got: $OUTPUT)"
+    fail "research wiki-search returns structured live search output (got: $OUTPUT)"
 fi
 
 section "research-fetch"

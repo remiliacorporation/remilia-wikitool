@@ -274,7 +274,7 @@ fn build_evidence_profile(
             .any(|item| item.source_kind != "exact_local_title")
     {
         missing_evidence_warnings.push(
-            "Live research is not run by article-start; use `wikitool research search` when local evidence is incomplete.".to_string(),
+            "Live research is not run by article-start; use independent web search plus `wikitool research fetch`; use `wikitool research wiki-search` only for the configured target wiki API.".to_string(),
         );
     }
 

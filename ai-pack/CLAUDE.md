@@ -67,7 +67,7 @@ before relying on indexed content:
 wikitool status --modified --format json
 wikitool diff --format json
 wikitool pull --all --format json
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
 wikitool wiki profile sync --format json
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
@@ -95,8 +95,10 @@ substrate. Its default compact payload separates subject context from wiki contr
 
 ## Research And Source Boundaries
 
-Use `wikitool research search`, `research fetch`, and `research discover` for external evidence.
-If fetch returns `status: "error"`, treat it as a source-access failure, not article evidence.
+Use normal agent web search to choose arbitrary source URLs, then use `wikitool research fetch`
+and `research discover` for extraction and access diagnostics. Use `wikitool research wiki-search`
+only when searching the configured target wiki API. If fetch returns `status: "error"`, treat it as
+a source-access failure, not article evidence.
 
 Use `wikitool research mediawiki-templates "URL"` when a source MediaWiki page's own
 template/module contract matters, especially on arbitrary source wikis such as Wikipedia. Treat the
@@ -117,6 +119,7 @@ Before any live write push:
 
 ```bash
 wikitool article lint --changed --format json
+wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"
 wikitool validate --summary
 wikitool validate --category broken-links --title "Title" --limit 20 --verify-live --format json
 wikitool review --format json --summary "Summary"

@@ -33,7 +33,7 @@ From the extracted release folder, or from any wiki project root with `wikitool`
 ```bash
 wikitool init --templates
 wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing
 wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
@@ -58,7 +58,7 @@ At the start of an agentic editing session, inspect local changes and refresh wi
 wikitool status --modified --format json
 wikitool diff --format json
 wikitool pull --all --format json
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
 wikitool wiki profile sync --format json
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
@@ -70,7 +70,7 @@ Use `pull --full --all` for first syncs, missing sync state, or deliberate rebui
 
 ```bash
 wikitool knowledge article-start "Topic" --intent new --format json
-wikitool research search "Topic" --format json
+wikitool research wiki-search "Topic" --format json
 wikitool research fetch "https://example.org/source" --format rendered-html --output json
 wikitool templates show "Template:Infobox person"
 # edit wiki_content/Main/Topic.wiki
@@ -84,7 +84,7 @@ wikitool push --dry-run --title "Topic" --summary "Add article on Topic"
 
 - `knowledge article-start` builds an interpreted authoring brief.
 - `knowledge contracts` and `templates` expose target-wiki template/module contracts.
-- `research search/fetch/discover/mediawiki-templates` gathers external and source-wiki evidence.
+- `research wiki-search` queries the configured wiki API; `research fetch/discover/mediawiki-templates` gathers source URLs and source-wiki evidence.
 - `export` writes agent-readable markdown source packs.
 - `article lint/fix`, `validate`, `module lint`, and `review` gate content before push.
 - `pull`, `status`, `diff`, and `push --dry-run` keep local files synchronized with the live wiki.
@@ -140,7 +140,7 @@ refresh from the live wiki:
 ```bash
 wikitool db reset --yes
 wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing
 ```
 
 ## License

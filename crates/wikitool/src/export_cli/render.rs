@@ -137,16 +137,45 @@ pub(super) fn export_filename_stem(title: &str) -> String {
 
 pub(super) fn write_or_print_export(content: &str, output_path: Option<&Path>) -> Result<()> {
     if let Some(path) = output_path {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
-        }
-        fs::write(path, content.as_bytes())
-            .with_context(|| format!("failed to write {}", normalize_path(path)))?;
+        write_export_file(path, content)?;
     } else {
         println!("{content}");
     }
     Ok(())
+}
+
+pub(super) fn write_export_file(path: &Path, content: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
+    }
+    fs::write(path, export_file_bytes(path, content))
+        .with_context(|| format!("failed to write {}", normalize_path(path)))?;
+    Ok(())
+}
+
+fn export_file_bytes(path: &Path, content: &str) -> Vec<u8> {
+    if should_write_utf8_bom(path, content) {
+        let mut bytes = Vec::with_capacity(content.len() + 3);
+        bytes.extend_from_slice(b"\xEF\xBB\xBF");
+        bytes.extend_from_slice(content.as_bytes());
+        return bytes;
+    }
+    content.as_bytes().to_vec()
+}
+
+#[cfg(windows)]
+fn should_write_utf8_bom(path: &Path, content: &str) -> bool {
+    let is_markdown = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("md"));
+    is_markdown && !content.as_bytes().starts_with(b"\xEF\xBB\xBF")
+}
+
+#[cfg(not(windows))]
+fn should_write_utf8_bom(_path: &Path, _content: &str) -> bool {
+    false
 }
 
 pub(super) fn now_timestamp_string() -> String {
@@ -172,5 +201,29 @@ fn format_extraction_quality(quality: wikitool_core::external::ExtractionQuality
         wikitool_core::external::ExtractionQuality::Low => "low",
         wikitool_core::external::ExtractionQuality::Medium => "medium",
         wikitool_core::external::ExtractionQuality::High => "high",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::export_file_bytes;
+    use std::path::Path;
+
+    #[test]
+    fn export_file_bytes_uses_platform_markdown_encoding_policy() {
+        let bytes = export_file_bytes(Path::new("source.md"), "alpha");
+
+        if cfg!(windows) {
+            assert!(bytes.starts_with(b"\xEF\xBB\xBF"));
+        } else {
+            assert_eq!(bytes, b"alpha");
+        }
+    }
+
+    #[test]
+    fn export_file_bytes_does_not_add_bom_to_wikitext() {
+        let bytes = export_file_bytes(Path::new("source.wiki"), "alpha");
+
+        assert_eq!(bytes, b"alpha");
     }
 }

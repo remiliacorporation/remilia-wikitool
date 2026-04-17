@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn parse_remote_wiki_search_request_normalizes_query_and_scope() {
         let parsed = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research search",
+            command_name: "research wiki-search",
             query: " Alpha_Beta ",
             limit: 3,
             what: RemoteSearchScope::Nearmatch,
@@ -399,20 +399,23 @@ mod tests {
     #[test]
     fn parse_remote_wiki_search_request_rejects_zero_limit() {
         let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research search",
+            command_name: "research wiki-search",
             query: "Alpha",
             limit: 0,
             what: RemoteSearchScope::Text,
         })
         .expect_err("zero limit should fail");
 
-        assert_eq!(error.to_string(), "research search requires --limit >= 1");
+        assert_eq!(
+            error.to_string(),
+            "research wiki-search requires --limit >= 1"
+        );
     }
 
     #[test]
     fn parse_remote_wiki_search_request_rejects_blank_query() {
         let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research search",
+            command_name: "research wiki-search",
             query: "   ",
             limit: 1,
             what: RemoteSearchScope::Text,
@@ -421,7 +424,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "research search requires a non-empty query"
+            "research wiki-search requires a non-empty query"
         );
     }
 }

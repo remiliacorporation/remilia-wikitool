@@ -28,8 +28,11 @@ pub(crate) struct ResearchArgs {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum ResearchSubcommand {
-    #[command(about = "Search the remote wiki API for subject evidence")]
-    Search(ResearchSearchArgs),
+    #[command(
+        name = "wiki-search",
+        about = "Search the configured wiki API for subject evidence"
+    )]
+    WikiSearch(ResearchSearchArgs),
     #[command(about = "Fetch readable reference material from a URL")]
     Fetch(ResearchFetchArgs),
     #[command(about = "Discover public machine-readable source surfaces for a URL")]
@@ -185,19 +188,25 @@ struct ResearchFetchContent {
 
 pub(crate) fn run_research(runtime: &RuntimeOptions, args: ResearchArgs) -> Result<()> {
     match args.command {
-        ResearchSubcommand::Search(args) => run_research_search(runtime, args),
+        ResearchSubcommand::WikiSearch(args) => {
+            run_research_wiki_search(runtime, args, "research wiki-search")
+        }
         ResearchSubcommand::Fetch(args) => run_research_fetch(runtime, args),
         ResearchSubcommand::Discover(args) => run_research_discover(runtime, args),
         ResearchSubcommand::MediawikiTemplates(args) => mediawiki_templates::run(runtime, args),
     }
 }
 
-fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Result<()> {
+fn run_research_wiki_search(
+    runtime: &RuntimeOptions,
+    args: ResearchSearchArgs,
+    command_name: &'static str,
+) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let report = remote_wiki_search_report(
         &config,
         RemoteWikiSearchRequest {
-            command_name: "research search",
+            command_name,
             query: &args.query,
             limit: args.limit,
             what: args.what,
@@ -210,9 +219,10 @@ fn run_research_search(runtime: &RuntimeOptions, args: ResearchSearchArgs) -> Re
         return Ok(());
     }
 
-    println!("research search");
+    println!("{command_name}");
     println!("project_root: {}", normalize_path(&paths.project_root));
     println!("source_scope: configured_wiki_api");
+    println!("note: this searches the configured target wiki, not the open web");
     println!("query: {}", report.query);
     print_external_search_report("research_search", &report);
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");

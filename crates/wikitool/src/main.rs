@@ -112,7 +112,7 @@ enum Commands {
     Import(import_cli::ImportArgs),
     #[command(about = "Build and query the local knowledge layer")]
     Knowledge(knowledge_cli::KnowledgeArgs),
-    #[command(about = "Search and fetch subject evidence without mutating the wiki")]
+    #[command(about = "Inspect target-wiki evidence and fetch source URLs without mutating the wiki")]
     Research(research_cli::ResearchArgs),
     #[command(about = "Sync and inspect live wiki capability metadata")]
     Wiki(wiki_cli::WikiArgs),
@@ -186,5 +186,29 @@ fn main() -> Result<()> {
             println!();
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn research_wiki_search_is_the_canonical_configured_wiki_search() {
+        let cli = Cli::try_parse_from(["wikitool", "research", "wiki-search", "Remilia"])
+            .expect("parse canonical research wiki-search");
+
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Research(research_cli::ResearchArgs { .. }))
+        ));
+    }
+
+    #[test]
+    fn research_search_is_not_a_wiki_search_alias() {
+        let error = Cli::try_parse_from(["wikitool", "research", "search", "Remilia"])
+            .expect_err("research search should not parse as wiki-search");
+
+        assert!(error.to_string().contains("unrecognized subcommand"));
     }
 }

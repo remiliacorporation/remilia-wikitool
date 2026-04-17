@@ -15,7 +15,7 @@ Use it with:
 - Input: topic from `writing_pools.json` that does not exist locally
 - Commands:
   - `wikitool knowledge article-start "<Topic>" --format json`
-  - optional `wikitool research search "<Topic>" --format json`
+  - optional `wikitool research wiki-search "<Topic>" --format json`
   - optional `wikitool research fetch "<URL>" --output json`
 - Review:
   - Does `article-start` propose a plausible article type?
@@ -57,7 +57,7 @@ Use it with:
 
 - Fixture shape: concept page requiring multiple citations and appendix sections
 - Commands:
-  - `wikitool research search "<Topic>" --format json`
+  - `wikitool research wiki-search "<Topic>" --format json`
   - `wikitool research fetch "<URL>" --output json`
   - `wikitool article lint wiki_content/Main/<Topic>.wiki --format json`
 - Review:

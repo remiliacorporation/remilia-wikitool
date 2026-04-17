@@ -9,7 +9,7 @@ For command flags: `wikitool <command> --help` or `reference.md`.
 ```bash
 wikitool init --templates
 wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing
 wikitool wiki profile sync
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
@@ -23,7 +23,7 @@ and live capability signals are current before authoring:
 wikitool status --modified --format json
 wikitool diff --format json
 wikitool pull --all --format json
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
 wikitool wiki profile sync --format json
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
@@ -48,7 +48,7 @@ Use `wikitool pull --full --all` for deliberate rebuilds or missing sync state. 
 wikitool knowledge article-start "Topic" --intent new --format json
 wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json
 wikitool knowledge contracts search "species infobox taxonomy" --format json
-wikitool research search "Topic" --format json
+wikitool research wiki-search "Topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
 wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --template "Template:Infobox" --format json
 wikitool templates show "Template:Infobox person"
@@ -57,6 +57,7 @@ wikitool wiki profile show --format json
 wikitool wiki profile remote "https://www.mediawiki.org/wiki/Manual:Contents" --format json
 # write the article
 wikitool article lint wiki_content/Main/Title.wiki --format json
+wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"
 wikitool article fix wiki_content/Main/Title.wiki --apply safe
 wikitool knowledge inspect references summary --title "Title" --format json
 wikitool knowledge inspect references duplicates --title "Title" --format json
@@ -82,6 +83,7 @@ wikitool status --conflicts --title "Title"
 wikitool diff                          # review change set
 wikitool diff --content --title "Title"
 wikitool review --format json --summary "x"
+wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "x"
 wikitool push --dry-run --summary "x"  # remote-safe preflight
 wikitool push --dry-run --title "Title" --summary "x"
 wikitool push --summary "x"            # actual push
@@ -92,7 +94,7 @@ wikitool delete "Title" --reason "x" --dry-run
 
 ```bash
 wikitool knowledge build                # content index only
-wikitool knowledge warm --docs-profile remilia-mw-1.44  # index + docs
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing  # index + docs readiness
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 wikitool knowledge article-start "Topic" --intent new --format json
 wikitool knowledge pack "Topic" --format json
@@ -113,7 +115,7 @@ wikitool knowledge inspect empty-categories
 ## Research
 
 ```bash
-wikitool research search "topic" --format json
+wikitool research wiki-search "topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
 wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --template "Template:Infobox" --format json
 wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --refresh --format json
@@ -123,13 +125,15 @@ wikitool export "URL" --subpages --combined --limit 25
 wikitool export --urls-file sources.txt --output-dir wikitool_exports/sources --format markdown
 ```
 
-`research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind`, `error.attempts`, and `error.discovery`; access challenges and HTTP failures are explicit source-access failures, not citable source content. `research discover` is the same machine-surface discovery pass as a standalone command.
+`research wiki-search` searches the configured target wiki API, not the open web. For arbitrary subjects, use the agent's normal web-search capability to choose source URLs, then use `research fetch`, `research discover`, `research mediawiki-templates`, and `export` for source extraction and provenance. `research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind`, `error.attempts`, and `error.discovery`; access challenges and HTTP failures are explicit source-access failures, not citable source content. `research discover` is the same machine-surface discovery pass as a standalone command.
 
 `research mediawiki-templates URL` inspects the live API surface of a source MediaWiki page. Use it when an arbitrary source wiki, such as Wikipedia, has templates/modules that are relevant to understanding the source article but are not part of the current target wiki catalog. The report preserves total transclusion counts, returns a capped inventory, shows selected invocations, fetches selected template pages, and includes TemplateData when the source wiki exposes it. Results are cached under the research cache; use `--refresh` when live freshness matters and `--no-cache` for a one-off bypass. Treat these as source-wiki contracts only; run local `knowledge contracts`, `templates show`, and `article lint` before using any template on the target wiki.
 
 `wiki profile remote URL` probes a target MediaWiki URL without storing it as the local project profile. It reports the remote wiki's live capability surface only: extensions, parser tags, parser functions, namespaces, and related API features. It does not provide a template/module catalog and does not make source-wiki templates portable.
 
-`fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs. `export` defaults to markdown: MediaWiki URLs are fetched as wikitext and rendered into agent-readable markdown, while arbitrary web pages use the research extractor and include source/extraction metadata in frontmatter. Use `--subpages --limit N` to bound large MediaWiki tree exports. Use `--urls-file PATH --output-dir PATH --format markdown` to create off-wiki source packs; blank lines and `#` comments in the URL file are ignored, and `_index.md` records successes and failures. Wikitext export requires a recognizable MediaWiki URL; blocked arbitrary sources fail explicitly instead of producing challenge-page content.
+`fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs. `export` defaults to markdown: MediaWiki URLs are fetched as wikitext and rendered into agent-readable markdown, while arbitrary web pages use the research extractor and include source/extraction metadata in frontmatter. Use `--output-dir DIR` with a single URL to write a title-based markdown or wikitext file under that directory. Use `--subpages --limit N` to bound large MediaWiki tree exports. Use `--urls-file PATH --output-dir PATH --format markdown` to create off-wiki source packs; blank lines and `#` comments in the URL file are ignored, and `_index.md` records successes and failures. Wikitext export requires a recognizable MediaWiki URL; blocked arbitrary sources fail explicitly instead of producing challenge-page content.
+
+`review --draft-path PATH --title TITLE` runs the article lint and global readiness parts of the review gate on an off-wiki draft under `.wikitool/drafts/`. It intentionally skips the push dry-run because the draft is not syncable yet; move the accepted article under `wiki_content/` and run `review --path` or `review --title` before any push.
 
 ## Editor integration
 
@@ -198,7 +202,7 @@ If local state drifts or schema changes:
 ```bash
 rm .wikitool/data/wikitool.db        # or: wikitool db reset --yes
 wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing
 ```
 
 If push/delete writes fail, verify `WIKI_BOT_USER` and `WIKI_BOT_PASS` in project root `.env`.

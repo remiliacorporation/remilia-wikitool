@@ -12,12 +12,13 @@ Do not invent flags or workflow details; verify against `wikitool --help`, `wiki
 
 At the start of an editing session, refresh local wiki state before relying on indexed content:
 `wikitool status --modified --format json`, `wikitool diff --format json`,
-`wikitool pull --all --format json`, `wikitool knowledge warm --docs-profile remilia-mw-1.44 --format json`, and
+`wikitool pull --all --format json`, `wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json`, and
 `wikitool wiki profile sync --format json`. Use `pull --full --all` only for deliberate rebuilds
 or missing sync state; do not use `--overwrite-local` without explicit approval.
 
 Use `knowledge article-start --intent new|expand|audit|refresh` as the authoring front door.
 Use `knowledge pack` only when the raw authoring substrate is needed behind article-start.
+Use normal agent web search to choose arbitrary external sources, then use `research fetch`, `research discover`, and `export` for extraction and provenance. Use `research wiki-search` only for the configured target wiki API.
 Use `research mediawiki-templates URL` when a source MediaWiki page's own template/module contract matters, especially for arbitrary wikis such as Wikipedia. The report is cached; add `--refresh` when live freshness matters. Treat that output as source-wiki context only; target-wiki template use still has to pass local `knowledge contracts`, `templates show`, and `article lint`.
 Use `wiki profile remote URL` only for an explicitly scoped remote target capability probe when local import/profile data is unavailable. It reports extensions, parser tags, namespaces, and API capabilities, not portable template permission.
 Use `knowledge inspect references` for indexed citation audits and duplicate cleanup prep.

@@ -5,7 +5,7 @@ use clap::{Args, Subcommand};
 use wikitool_core::profile::sync_wiki_profile_with_config;
 
 use crate::docs_cli::{self, DocsGenerateReferenceArgs};
-use crate::knowledge_cli::{self, KnowledgeWarmArgs};
+use crate::knowledge_cli::{self, KnowledgeWarmArgs, KnowledgeWarmDocsMode};
 use crate::quality_cli;
 use crate::sync_cli::{self, InitArgs, PullArgs, StatusArgs};
 use crate::{
@@ -56,6 +56,14 @@ struct WorkflowSessionRefreshArgs {
         help = "Docs profile to hydrate during knowledge warmup"
     )]
     docs_profile: String,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = KnowledgeWarmDocsMode::Missing,
+        value_name = "MODE",
+        help = "Docs hydration mode for knowledge warmup: missing|refresh|skip"
+    )]
+    docs_mode: KnowledgeWarmDocsMode,
 }
 
 #[derive(Debug, Args)]
@@ -129,6 +137,7 @@ fn run_workflow_session_refresh(
         runtime,
         KnowledgeWarmArgs {
             docs_profile: args.docs_profile,
+            docs_mode: args.docs_mode,
             format: OutputFormat::Text,
         },
     )?;
@@ -206,6 +215,7 @@ fn run_workflow_full_refresh(
         runtime,
         KnowledgeWarmArgs {
             docs_profile: args.docs_profile,
+            docs_mode: KnowledgeWarmDocsMode::Refresh,
             format: OutputFormat::Text,
         },
     )?;

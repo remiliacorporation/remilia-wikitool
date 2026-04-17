@@ -849,13 +849,13 @@ if [ "$TIER" = "live" ]; then
         fail "pull fetches from live wiki (got: ${OUTPUT:0:300})"
     fi
 
-    # --- research search ---
-    section "research search (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" research search "Remilia" 2>&1 || true)
+    # --- research wiki-search ---
+    section "research wiki-search (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" research wiki-search "Remilia" 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "Remilia\|result\|title"; then
-        pass "research search finds known page"
+        pass "research wiki-search finds known page"
     else
-        fail "research search finds known page (got: ${OUTPUT:0:300})"
+        fail "research wiki-search finds known page (got: ${OUTPUT:0:300})"
     fi
 
     # --- seo ---
@@ -937,7 +937,7 @@ if [ "$TIER" = "live" ]; then
 
     # --- knowledge warm (live) ---
     section "knowledge warm (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" knowledge warm --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+    OUTPUT=$(wt "$PROJ_LIVE" knowledge warm --docs-profile "$KNOWLEDGE_DOCS_PROFILE" --docs-mode missing 2>&1 || true)
     if echo "$OUTPUT" | grep -q "^knowledge warm$" \
         && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
         && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \

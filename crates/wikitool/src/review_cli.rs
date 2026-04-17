@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use serde::Serialize;
-use wikitool_core::article_lint::{ArticleLintReport, lint_article};
+use wikitool_core::article_lint::{ArticleLintReport, lint_article, lint_article_with_title};
 use wikitool_core::knowledge::inspect::{ValidationReport, run_validation_checks};
 use wikitool_core::runtime::{ensure_runtime_ready_for_sync, inspect_runtime};
 use wikitool_core::sync::{
@@ -41,6 +41,12 @@ pub(crate) struct ReviewArgs {
     #[arg(long = "path", value_name = "PATH")]
     paths: Vec<PathBuf>,
     #[arg(
+        long = "draft-path",
+        value_name = "PATH",
+        help = "Review one off-wiki draft path; requires exactly one --title and skips push dry-run"
+    )]
+    draft_paths: Vec<PathBuf>,
+    #[arg(
         long,
         value_name = "PATH",
         help = "Read one canonical page title per line"
@@ -69,11 +75,13 @@ struct ReviewReport {
 
 #[derive(Debug, Clone, Serialize)]
 struct ReviewFilters {
+    mode: &'static str,
     profile: String,
     strict: bool,
     templates: bool,
     categories: bool,
     selection: SyncSelection,
+    draft_paths: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -116,6 +124,7 @@ struct ReviewDryRunPush {
     success: bool,
     report: Option<PushReport>,
     error: Option<String>,
+    skipped_reason: Option<String>,
 }
 
 pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<()> {
@@ -126,34 +135,53 @@ pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let runtime_status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &runtime_status)?;
-    let selection =
-        review_selection_from_args(&args.titles, &args.paths, args.titles_file.as_ref())?;
+    let draft_selection = review_draft_selection_from_args(&args)?;
+    let selection = if draft_selection.is_some() {
+        SyncSelection {
+            titles: args.titles.clone(),
+            paths: Vec::new(),
+        }
+    } else {
+        review_selection_from_args(&args.titles, &args.paths, args.titles_file.as_ref())?
+    };
     let filters = ReviewFilters {
+        mode: if draft_selection.is_some() {
+            "draft"
+        } else {
+            "sync"
+        },
         profile: args.profile.clone(),
         strict: args.strict,
         templates: args.templates,
         categories: args.categories,
         selection: selection.clone(),
+        draft_paths: args.draft_paths.iter().map(normalize_path).collect(),
     };
 
-    let plan = plan_sync_changes_with_config(
-        &paths,
-        &SyncPlanOptions {
-            include_templates: args.templates,
-            categories_only: args.categories,
-            include_deletes: true,
-            include_remote_conflicts: false,
-            selection: selection.clone(),
-        },
-        &config,
-    )?;
+    let plan = if draft_selection.is_some() {
+        None
+    } else {
+        plan_sync_changes_with_config(
+            &paths,
+            &SyncPlanOptions {
+                include_templates: args.templates,
+                categories_only: args.categories,
+                include_deletes: true,
+                include_remote_conflicts: false,
+                selection: selection.clone(),
+            },
+            &config,
+        )?
+    };
     let selected_change_count = plan
         .as_ref()
         .map(|plan| plan.changes.len())
         .unwrap_or_default();
     let status_plan = ReviewStatusPlan {
-        sync_ledger_ready: plan.is_some(),
-        selection_state: if plan.is_some() && selected_change_count == 0 {
+        sync_ledger_ready: draft_selection.is_some() || plan.is_some(),
+        selection_state: if draft_selection.is_some() {
+            "draft_path"
+        } else if plan.is_some() && selected_change_count == 0 {
             "no_selected_changes"
         } else if plan.is_some() {
             "selected_changes"
@@ -164,17 +192,33 @@ pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
         plan,
     };
 
-    let changed_article_lint =
-        run_changed_article_lint(&paths, &selection, &args.profile, args.strict)?;
+    let changed_article_lint = if let Some(draft_selection) = &draft_selection {
+        run_draft_article_lint(&paths, draft_selection, &args.profile, args.strict)?
+    } else {
+        run_changed_article_lint(&paths, &selection, &args.profile, args.strict)?
+    };
     let validation = run_review_validation(&paths)?;
-    let dry_run_push = run_review_push_dry_run(
-        &paths,
-        &config,
-        &selection,
-        args.summary.trim(),
-        args.templates,
-        args.categories,
-    );
+    let dry_run_push = if draft_selection.is_some() {
+        ReviewDryRunPush {
+            attempted: false,
+            success: true,
+            report: None,
+            error: None,
+            skipped_reason: Some(
+                "draft review skips push dry-run; promote the draft under wiki_content/ before push"
+                    .to_string(),
+            ),
+        }
+    } else {
+        run_review_push_dry_run(
+            &paths,
+            &config,
+            &selection,
+            args.summary.trim(),
+            args.templates,
+            args.categories,
+        )
+    };
 
     let mut hard_failures = Vec::new();
     if !status_plan.sync_ledger_ready {
@@ -240,6 +284,70 @@ pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
             "review failed with {} hard failure(s)",
             report.hard_failures.len()
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli_support::OutputFormat;
+
+    fn review_args() -> ReviewArgs {
+        ReviewArgs {
+            format: OutputFormat::Json,
+            profile: "remilia".to_string(),
+            strict: false,
+            templates: false,
+            categories: false,
+            titles: Vec::new(),
+            paths: Vec::new(),
+            draft_paths: Vec::new(),
+            titles_file: None,
+            summary: "test".to_string(),
+        }
+    }
+
+    #[test]
+    fn review_draft_selection_requires_exactly_one_title() {
+        let mut args = review_args();
+        args.draft_paths
+            .push(PathBuf::from(".wikitool/drafts/Cheetah.wiki"));
+
+        let error = review_draft_selection_from_args(&args).unwrap_err();
+
+        assert!(error.to_string().contains("requires exactly one --title"));
+    }
+
+    #[test]
+    fn review_draft_selection_rejects_sync_path_mix() {
+        let mut args = review_args();
+        args.titles.push("Cheetah".to_string());
+        args.draft_paths
+            .push(PathBuf::from(".wikitool/drafts/Cheetah.wiki"));
+        args.paths
+            .push(PathBuf::from("wiki_content/Main/Cheetah.wiki"));
+
+        let error = review_draft_selection_from_args(&args).unwrap_err();
+
+        assert!(error.to_string().contains("cannot be combined"));
+    }
+
+    #[test]
+    fn review_draft_selection_accepts_one_draft_and_title() {
+        let mut args = review_args();
+        args.titles.push("Cheetah".to_string());
+        args.draft_paths
+            .push(PathBuf::from(".wikitool/drafts/Cheetah.wiki"));
+
+        let selection = review_draft_selection_from_args(&args)
+            .expect("draft selection")
+            .expect("present");
+
+        assert_eq!(selection.title, "Cheetah");
+        assert_eq!(
+            selection.path,
+            PathBuf::from(".wikitool/drafts/Cheetah.wiki")
+        );
     }
 }
 
@@ -332,14 +440,79 @@ fn run_review_push_dry_run(
             success: report.success,
             report: Some(report),
             error: None,
+            skipped_reason: None,
         },
         Err(error) => ReviewDryRunPush {
             attempted: true,
             success: false,
             report: None,
             error: Some(error.to_string()),
+            skipped_reason: None,
         },
     }
+}
+
+#[derive(Debug, Clone)]
+struct DraftReviewSelection {
+    title: String,
+    path: PathBuf,
+}
+
+fn review_draft_selection_from_args(args: &ReviewArgs) -> Result<Option<DraftReviewSelection>> {
+    if args.draft_paths.is_empty() {
+        return Ok(None);
+    }
+    if args.draft_paths.len() != 1 {
+        bail!("review --draft-path accepts exactly one draft path");
+    }
+    if args.titles.len() != 1 {
+        bail!("review --draft-path requires exactly one --title");
+    }
+    if !args.paths.is_empty() || args.titles_file.is_some() {
+        bail!("review --draft-path cannot be combined with --path or --titles-file");
+    }
+    if args.templates || args.categories {
+        bail!("review --draft-path cannot be combined with --templates or --categories");
+    }
+    Ok(Some(DraftReviewSelection {
+        title: args.titles[0].clone(),
+        path: args.draft_paths[0].clone(),
+    }))
+}
+
+fn run_draft_article_lint(
+    paths: &wikitool_core::runtime::ResolvedPaths,
+    selection: &DraftReviewSelection,
+    profile: &str,
+    strict: bool,
+) -> Result<ReviewArticleLint> {
+    let report = lint_article_with_title(
+        paths,
+        &selection.path,
+        Some(profile),
+        Some(&selection.title),
+    )?;
+    let total_errors = report.errors;
+    let total_warnings = report.warnings;
+    let total_suggestions = report.suggestions;
+    let error = if total_errors > 0 || (strict && total_warnings > 0) {
+        Some(format!(
+            "{} error(s), {} warning(s), and {} suggestion(s)",
+            total_errors, total_warnings, total_suggestions
+        ))
+    } else {
+        None
+    };
+
+    Ok(ReviewArticleLint {
+        sync_ledger_ready: true,
+        target_count: 1,
+        total_errors,
+        total_warnings,
+        total_suggestions,
+        reports: vec![report],
+        error,
+    })
 }
 
 fn validation_issue_count(report: &ValidationReport) -> usize {
@@ -385,6 +558,7 @@ fn print_review_report(report: &ReviewReport) {
     println!("review");
     println!("project_root: {}", report.project_root);
     println!("status: {}", report.status);
+    println!("mode: {}", report.filters.mode);
     println!("profile: {}", report.filters.profile);
     println!("strict: {}", report.filters.strict);
     println!("templates: {}", report.filters.templates);
@@ -400,6 +574,9 @@ fn print_review_report(report: &ReviewReport) {
             "selection.paths: {}",
             report.filters.selection.paths.join(" | ")
         );
+    }
+    if !report.filters.draft_paths.is_empty() {
+        println!("draft_paths: {}", report.filters.draft_paths.join(" | "));
     }
     println!(
         "status.sync_ledger_ready: {}",
@@ -456,6 +633,9 @@ fn print_review_report(report: &ReviewReport) {
     }
     println!("push_dry_run.attempted: {}", report.dry_run_push.attempted);
     println!("push_dry_run.success: {}", report.dry_run_push.success);
+    if let Some(reason) = &report.dry_run_push.skipped_reason {
+        println!("push_dry_run.skipped_reason: {reason}");
+    }
     if let Some(push) = &report.dry_run_push.report {
         println!("push_dry_run.pages: {}", push.pages.len());
         println!("push_dry_run.conflicts: {}", push.conflicts.len());

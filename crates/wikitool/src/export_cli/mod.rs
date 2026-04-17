@@ -11,7 +11,7 @@ use batch::run_urls_file_export;
 use clap::Args;
 use render::{
     fetch_mediawiki_export_page, fetch_single_export_page, format_rendered_fetch_mode,
-    render_export_page, write_or_print_export,
+    render_export_page, write_export_file, write_or_print_export,
 };
 use subpages::{
     build_subpage_index, build_subpage_output_filenames, remaining_subpage_limit,
@@ -68,7 +68,7 @@ pub(crate) struct ExportArgs {
     #[arg(
         long,
         value_name = "DIR",
-        help = "Output directory for --urls-file markdown exports"
+        help = "Output directory for URL batch, single-page, or separate subpage exports"
     )]
     output_dir: Option<PathBuf>,
     #[arg(
@@ -255,8 +255,9 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
             }
         } else {
             let output_dir = args
-                .output
+                .output_dir
                 .clone()
+                .or_else(|| args.output.clone())
                 .or_else(|| {
                     default_export_path(&paths.project_root, &parent_title, true, export_format)
                 })
@@ -277,15 +278,13 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
                     &parsed.domain,
                 );
                 let output_file = output_dir.join(filename);
-                fs::write(&output_file, rendered.as_bytes())
-                    .with_context(|| format!("failed to write {}", normalize_path(&output_file)))?;
+                write_export_file(&output_file, &rendered)?;
             }
 
             let index_content =
                 build_subpage_index(&all_pages, &filenames, &parsed.domain, url, &parent_title);
             let index_path = output_dir.join("_index.md");
-            fs::write(&index_path, index_content.as_bytes())
-                .with_context(|| format!("failed to write {}", normalize_path(&index_path)))?;
+            write_export_file(&index_path, &index_content)?;
 
             println!("export");
             println!("mode: subpages_separate");
@@ -308,9 +307,8 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
             args.code_language.as_deref(),
             &page.source_domain,
         );
-        let output_path = args.output.clone().or_else(|| {
-            default_export_path(&paths.project_root, &page.title, false, export_format)
-        });
+        let output_path =
+            single_page_output_path(&paths.project_root, &page.title, export_format, &args);
         write_or_print_export(&rendered, output_path.as_deref())?;
 
         println!("export");
@@ -363,8 +361,10 @@ fn validate_export_args(args: &ExportArgs, export_format: ExportFormat) -> Resul
         if export_format == ExportFormat::Wikitext {
             bail!("--urls-file supports markdown export only");
         }
-    } else if args.output_dir.is_some() {
-        bail!("--output-dir requires --urls-file");
+    } else if args.output.is_some() && args.output_dir.is_some() {
+        bail!("--output and --output-dir cannot be used together");
+    } else if args.output_dir.is_some() && args.combined {
+        bail!("--output-dir cannot be used with --combined; use --output for the combined file");
     }
     if args.combined && !args.subpages {
         bail!("--combined requires --subpages");
@@ -374,6 +374,25 @@ fn validate_export_args(args: &ExportArgs, export_format: ExportFormat) -> Resul
     }
 
     Ok(())
+}
+
+fn single_page_output_path(
+    project_root: &std::path::Path,
+    title: &str,
+    export_format: ExportFormat,
+    args: &ExportArgs,
+) -> Option<PathBuf> {
+    if let Some(output) = args.output.clone() {
+        return Some(output);
+    }
+    if let Some(output_dir) = args.output_dir.clone() {
+        return Some(output_dir.join(format!(
+            "{}.{}",
+            render::export_filename_stem(title),
+            export_format.file_extension()
+        )));
+    }
+    default_export_path(project_root, title, false, export_format)
 }
 
 #[cfg(test)]
@@ -525,6 +544,41 @@ mod tests {
         let error = validate_export_args(&args, ExportFormat::Wikitext).unwrap_err();
 
         assert!(error.to_string().contains("markdown export only"));
+    }
+
+    #[test]
+    fn validate_export_args_allows_single_page_output_dir() {
+        let mut args = export_args();
+        args.output_dir = Some(PathBuf::from("sources"));
+
+        validate_export_args(&args, ExportFormat::Markdown).expect("single output-dir allowed");
+    }
+
+    #[test]
+    fn validate_export_args_rejects_output_and_output_dir_together() {
+        let mut args = export_args();
+        args.output = Some(PathBuf::from("source.md"));
+        args.output_dir = Some(PathBuf::from("sources"));
+
+        let error = validate_export_args(&args, ExportFormat::Markdown).unwrap_err();
+
+        assert!(error.to_string().contains("--output and --output-dir"));
+    }
+
+    #[test]
+    fn single_page_output_path_uses_title_filename_under_output_dir() {
+        let mut args = export_args();
+        args.output_dir = Some(PathBuf::from("sources"));
+
+        let path = super::single_page_output_path(
+            Path::new("/project"),
+            "Cheetah source",
+            ExportFormat::Markdown,
+            &args,
+        )
+        .expect("output path");
+
+        assert_eq!(path, PathBuf::from("sources").join("Cheetah-source.md"));
     }
 
     #[test]
