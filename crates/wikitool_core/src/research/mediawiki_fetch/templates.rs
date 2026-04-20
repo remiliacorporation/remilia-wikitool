@@ -7,12 +7,14 @@ use super::{MediaWikiFetchOutcome, content::parse_mediawiki_content_payload};
 use crate::content_store::parsing::extract_template_invocations;
 use crate::research::model::{
     ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
-    MediaWikiPageTemplate, MediaWikiTemplateDataParameter, MediaWikiTemplateDataSummary,
-    MediaWikiTemplateInvocation, MediaWikiTemplatePage, MediaWikiTemplateQueryOptions,
-    MediaWikiTemplateReport,
+    ExternalFetchSession, MediaWikiPageTemplate, MediaWikiTemplateDataParameter,
+    MediaWikiTemplateDataSummary, MediaWikiTemplateInvocation, MediaWikiTemplatePage,
+    MediaWikiTemplateQueryOptions, MediaWikiTemplateReport,
 };
 use crate::research::url::{encode_title, parse_wiki_url};
-use crate::research::web_fetch::{ExternalClient, external_client, truncate_to_byte_limit};
+use crate::research::web_fetch::{
+    ExternalClient, external_client_with_session, truncate_to_byte_limit,
+};
 use crate::support::compute_hash;
 
 const DEFAULT_MEDIAWIKI_TEMPLATE_BATCH_SIZE: usize = 50;
@@ -21,6 +23,14 @@ const MEDIAWIKI_TEMPLATE_QUERY_LIMIT: usize = 500;
 pub fn fetch_mediawiki_template_report(
     source_url: &str,
     options: &MediaWikiTemplateQueryOptions,
+) -> Result<MediaWikiTemplateReport> {
+    fetch_mediawiki_template_report_with_session(source_url, options, None)
+}
+
+pub(crate) fn fetch_mediawiki_template_report_with_session(
+    source_url: &str,
+    options: &MediaWikiTemplateQueryOptions,
+    session: Option<ExternalFetchSession>,
 ) -> Result<MediaWikiTemplateReport> {
     if options.limit == 0 {
         bail!("mediawiki template report requires limit >= 1");
@@ -33,7 +43,7 @@ pub fn fetch_mediawiki_template_report(
     }
     let parsed = parse_wiki_url(source_url)
         .ok_or_else(|| anyhow::anyhow!("URL is not a recognized MediaWiki page: {source_url}"))?;
-    let mut client = external_client()?;
+    let mut client = external_client_with_session(session)?;
     let mut candidate_errors = Vec::new();
     let mut saw_missing = false;
 
@@ -136,6 +146,7 @@ fn mediawiki_query_source_template_page(
         format: ExternalFetchFormat::Wikitext,
         max_bytes: 1_000_000,
         profile: ExternalFetchProfile::Research,
+        session: None,
     };
     let mut continuation = None::<String>;
     let mut page = None::<ExternalFetchResult>;

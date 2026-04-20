@@ -100,6 +100,15 @@ and `research discover` for extraction and access diagnostics. Use `wikitool res
 only when searching the configured target wiki API. If fetch returns `status: "error"`, treat it as
 a source-access failure, not article evidence.
 
+If `research fetch --output json` returns `error.challenge_handoffs`, do not try to bypass the
+challenge with stealth clients, TLS impersonation, paid crawlers, or third-party reader services.
+Relay the handoff to the user, ask them to open the URL in their browser, solve any lawful access
+challenge, then import the source-issued cookies with the supplied `suggested_argv` or
+`suggested_command` using `wikitool research session import ... --cookies -`. Retry the fetch with
+`--refresh`. Imported session values are local state under `.wikitool/research/sessions/`; CLI
+list/show output intentionally masks cookie values. Use `wikitool research session list`, `show`,
+`clear`, and `prune` for lifecycle management.
+
 Use `wikitool research mediawiki-templates "URL"` when a source MediaWiki page's own
 template/module contract matters, especially on arbitrary source wikis such as Wikipedia. Treat the
 report as source-wiki context only. Target-wiki template use must still pass local

@@ -7,6 +7,7 @@ use wikitool_core::external::{
     ExternalFetchResult, ParsedWikiUrl, fetch_mediawiki_page, fetch_page_by_url,
     generate_frontmatter, parse_wiki_url, sanitize_filename, source_content_to_markdown,
 };
+use wikitool_core::research::ExternalFetchSession;
 use wikitool_core::support::compute_hash;
 
 use crate::cli_support::normalize_path;
@@ -21,6 +22,7 @@ pub(super) fn fetch_mediawiki_export_page(
 pub(super) fn fetch_single_export_page(
     url: &str,
     export_format: ExportFormat,
+    session: Option<ExternalFetchSession>,
 ) -> Result<ExternalFetchResult> {
     let is_mediawiki = parse_wiki_url(url).is_some();
     if !is_mediawiki && export_format == ExportFormat::Wikitext {
@@ -33,12 +35,14 @@ pub(super) fn fetch_single_export_page(
             format: ExternalFetchFormat::Wikitext,
             max_bytes: 1_000_000,
             profile: ExternalFetchProfile::Legacy,
+            session,
         }
     } else {
         ExternalFetchOptions {
             format: ExternalFetchFormat::Html,
             max_bytes: 1_000_000,
             profile: ExternalFetchProfile::Research,
+            session,
         }
     };
     fetch_page_by_url(url, &options)?.ok_or_else(|| anyhow::anyhow!("page not found: {url}"))

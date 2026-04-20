@@ -11,6 +11,7 @@ use super::model::{
     ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
     MediaWikiTemplateQueryOptions, MediaWikiTemplateReport,
 };
+use super::session::load_research_session_for_url;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -68,8 +69,12 @@ pub fn fetch_page_by_url_cached(
     options: &ExternalFetchOptions,
     cache_options: &ResearchCacheOptions,
 ) -> Result<Option<CachedFetchResult>> {
-    fetch_page_by_url_cached_with(paths, url, options, cache_options, || {
-        super::fetch_page_by_url(url, options)
+    let mut options = options.clone();
+    if options.session.is_none() {
+        options.session = load_research_session_for_url(paths, url)?;
+    }
+    fetch_page_by_url_cached_with(paths, url, &options, cache_options, || {
+        super::fetch_page_by_url(url, &options)
     })
 }
 
@@ -79,8 +84,9 @@ pub fn fetch_mediawiki_template_report_cached(
     options: &MediaWikiTemplateQueryOptions,
     cache_options: &ResearchCacheOptions,
 ) -> Result<CachedMediaWikiTemplateReport> {
+    let session = load_research_session_for_url(paths, url)?;
     fetch_mediawiki_template_report_cached_with(paths, url, options, cache_options, || {
-        super::fetch_mediawiki_template_report(url, options)
+        super::mediawiki_fetch::fetch_mediawiki_template_report_with_session(url, options, session)
     })
 }
 
@@ -513,6 +519,7 @@ mod tests {
             format: ExternalFetchFormat::Html,
             max_bytes: 10_000,
             profile: ExternalFetchProfile::Research,
+            session: None,
         };
 
         let first = fetch_page_by_url_cached_with(
@@ -556,6 +563,7 @@ mod tests {
             format: ExternalFetchFormat::Html,
             max_bytes: 10_000,
             profile: ExternalFetchProfile::Research,
+            session: None,
         };
 
         let _ = fetch_page_by_url_cached_with(
@@ -599,6 +607,7 @@ mod tests {
             format: ExternalFetchFormat::Html,
             max_bytes: 10_000,
             profile: ExternalFetchProfile::Research,
+            session: None,
         };
         let rendered = cache_path_for_result(
             &paths,

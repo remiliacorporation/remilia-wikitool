@@ -22,6 +22,7 @@ use wikitool_core::external::{
     default_export_path, fetch_page_by_url, fetch_pages_by_titles, list_subpages, parse_wiki_url,
     sanitize_filename,
 };
+use wikitool_core::research::load_research_session_for_url;
 
 use crate::cli_support::{
     ExportContentFormat, FetchContentFormat, normalize_path, resolve_runtime_paths,
@@ -108,6 +109,7 @@ pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()>
             format,
             max_bytes: 1_000_000,
             profile: ExternalFetchProfile::Legacy,
+            session: load_research_session_for_url(&paths, &args.url)?,
         },
     )?
     .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
@@ -171,16 +173,11 @@ pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()>
 pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let export_format = ExportFormat::from(args.format);
-    let fetch_options = ExternalFetchOptions {
-        format: ExternalFetchFormat::Wikitext,
-        max_bytes: 1_000_000,
-        profile: ExternalFetchProfile::Legacy,
-    };
     validate_export_args(&args, export_format)?;
 
     if let Some(urls_file) = args.urls_file.as_deref() {
         run_urls_file_export(
-            &paths.project_root,
+            &paths,
             urls_file,
             args.output_dir.as_deref(),
             !args.no_frontmatter,
@@ -198,6 +195,12 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
         .url
         .as_deref()
         .expect("validated URL positional is present");
+    let fetch_options = ExternalFetchOptions {
+        format: ExternalFetchFormat::Wikitext,
+        max_bytes: 1_000_000,
+        profile: ExternalFetchProfile::Legacy,
+        session: load_research_session_for_url(&paths, url)?,
+    };
 
     if args.subpages {
         let parsed = parse_wiki_url(url).ok_or_else(|| {
@@ -299,7 +302,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
             println!("index_path: {}", normalize_path(&index_path));
         }
     } else {
-        let page = fetch_single_export_page(url, export_format)?;
+        let page = fetch_single_export_page(url, export_format, fetch_options.session.clone())?;
         let rendered = render_export_page(
             &page,
             export_format,

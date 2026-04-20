@@ -2,8 +2,8 @@ use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 use wikitool_core::research::{
-    ExternalFetchAttempt, ExternalFetchFailureError, ExternalFetchFormat, ExternalFetchOptions,
-    ExternalFetchProfile, ExternalFetchResult, ExternalMachineSurfaceReport,
+    ChallengeHandoff, ExternalFetchAttempt, ExternalFetchFailureError, ExternalFetchFormat,
+    ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExternalMachineSurfaceReport,
     MachineSurfaceDiscoveryOptions, ResearchCacheOptions, ResearchCacheStatus,
     discover_machine_surfaces, fetch_page_by_url_cached,
 };
@@ -19,6 +19,7 @@ use crate::query_cli::{
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 mod mediawiki_templates;
+mod session;
 
 #[derive(Debug, Args)]
 pub(crate) struct ResearchArgs {
@@ -37,6 +38,8 @@ pub(crate) enum ResearchSubcommand {
     Fetch(ResearchFetchArgs),
     #[command(about = "Discover public machine-readable source surfaces for a URL")]
     Discover(ResearchDiscoverArgs),
+    #[command(about = "Manage human-solved source access sessions")]
+    Session(session::ResearchSessionArgs),
     #[command(about = "Inspect live template contracts used by a source MediaWiki page")]
     MediawikiTemplates(mediawiki_templates::ResearchMediaWikiTemplatesArgs),
 }
@@ -171,6 +174,8 @@ struct ResearchFetchErrorOutput {
     kind: String,
     message: String,
     attempts: Vec<ExternalFetchAttempt>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    challenge_handoffs: Vec<ChallengeHandoff>,
     #[serde(skip_serializing_if = "Option::is_none")]
     discovery: Option<ExternalMachineSurfaceReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -193,6 +198,7 @@ pub(crate) fn run_research(runtime: &RuntimeOptions, args: ResearchArgs) -> Resu
         }
         ResearchSubcommand::Fetch(args) => run_research_fetch(runtime, args),
         ResearchSubcommand::Discover(args) => run_research_discover(runtime, args),
+        ResearchSubcommand::Session(args) => session::run(runtime, args),
         ResearchSubcommand::MediawikiTemplates(args) => mediawiki_templates::run(runtime, args),
     }
 }
@@ -305,6 +311,7 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
             format: fetch_format,
             max_bytes: 1_000_000,
             profile: ExternalFetchProfile::Research,
+            session: None,
         },
         &ResearchCacheOptions {
             use_cache: !args.no_cache,
@@ -322,6 +329,7 @@ fn run_research_fetch(runtime: &RuntimeOptions, args: ResearchFetchArgs) -> Resu
                     kind: "not_found".to_string(),
                     message: format!("page not found: {}", args.url),
                     attempts: Vec::new(),
+                    challenge_handoffs: Vec::new(),
                     discovery: None,
                     discovery_error: None,
                 },
@@ -457,6 +465,7 @@ fn research_fetch_error_output(
             kind: failure.failure.kind.clone(),
             message: failure.failure.message.clone(),
             attempts: failure.failure.attempts.clone(),
+            challenge_handoffs: failure.failure.challenge_handoffs.clone(),
             discovery: None,
             discovery_error: None,
         };
@@ -466,6 +475,7 @@ fn research_fetch_error_output(
         kind: "fetch_failed".to_string(),
         message: error.to_string(),
         attempts: Vec::new(),
+        challenge_handoffs: Vec::new(),
         discovery: None,
         discovery_error: None,
     }
@@ -621,6 +631,27 @@ mod tests {
                     content_type: Some("text/html; charset=UTF-8".to_string()),
                     message: Some("cf-mitigated: challenge".to_string()),
                 }],
+                challenge_handoffs: vec![ChallengeHandoff {
+                    vendor: "cloudflare".to_string(),
+                    url: "https://example.com/protected".to_string(),
+                    domain: "example.com".to_string(),
+                    required_cookies: vec!["cf_clearance".to_string()],
+                    user_agent_pin: "wikitool-test/1.0".to_string(),
+                    suggested_argv: vec![
+                        "wikitool".to_string(),
+                        "research".to_string(),
+                        "session".to_string(),
+                        "import".to_string(),
+                        "https://example.com/protected".to_string(),
+                        "--cookies".to_string(),
+                        "-".to_string(),
+                    ],
+                    suggested_command:
+                        "wikitool research session import https://example.com/protected --cookies -"
+                            .to_string(),
+                    ttl_hint_seconds: Some(1_800),
+                    notes: Vec::new(),
+                }],
             },
         });
 
@@ -631,6 +662,12 @@ mod tests {
         assert_eq!(output.attempts.len(), 1);
         assert_eq!(output.attempts[0].outcome, "access_challenge");
         assert_eq!(output.attempts[0].http_status, Some(403));
+        assert_eq!(output.challenge_handoffs.len(), 1);
+        assert_eq!(output.challenge_handoffs[0].vendor, "cloudflare");
+        assert_eq!(
+            output.challenge_handoffs[0].required_cookies,
+            vec!["cf_clearance"]
+        );
         assert!(output.discovery.is_none());
         assert!(output.discovery_error.is_none());
     }

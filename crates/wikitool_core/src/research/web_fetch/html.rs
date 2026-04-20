@@ -600,25 +600,44 @@ pub(super) fn detect_app_shell_html(html: &str) -> bool {
 }
 
 pub(super) fn detect_access_challenge(html: &str) -> bool {
-    let lowered = html.to_ascii_lowercase();
-    let vendor_signals = [
-        "awswafintegration",
-        "awswafcookiedomainlist",
-        "challenge-container",
-        "__cf_chl_",
-        "cf-browser-verification",
-        "captcha-delivery",
-        "datadome",
-        "perimeterx",
-        "px-captcha",
-    ];
-    if vendor_signals.iter().any(|signal| lowered.contains(signal)) {
+    if detect_access_challenge_vendor(html).is_some() {
         return true;
     }
+    detect_generic_access_challenge(html)
+}
 
+pub(super) fn detect_access_challenge_vendor(html: &str) -> Option<&'static str> {
+    let lowered = html.to_ascii_lowercase();
+    let vendor_signals = [
+        ("cloudflare", "__cf_chl_"),
+        ("cloudflare", "cf-browser-verification"),
+        ("cloudflare", "just a moment..."),
+        ("aws_waf", "awswafintegration"),
+        ("aws_waf", "awswafcookiedomainlist"),
+        ("anubis", "anubis-auth"),
+        ("anubis", "anubis-cookie-verification"),
+        ("anubis", "/.within.website/x/cmd/anubis"),
+        ("anubis", "making sure you're not a bot"),
+        ("anubis", "proof-of-work challenge"),
+        ("datadome", "captcha-delivery"),
+        ("datadome", "datadome"),
+        ("perimeterx", "perimeterx"),
+        ("perimeterx", "px-captcha"),
+    ];
+    for (vendor, signal) in vendor_signals {
+        if lowered.contains(signal) {
+            return Some(vendor);
+        }
+    }
+    None
+}
+
+fn detect_generic_access_challenge(html: &str) -> bool {
+    let lowered = html.to_ascii_lowercase();
     let generic_signals = [
         "verify that you're not a robot",
         "checking your browser",
+        "challenge-container",
         "enable javascript and then reload the page",
         "javascript is disabled",
         "access denied",

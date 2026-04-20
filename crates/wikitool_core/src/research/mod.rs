@@ -3,6 +3,7 @@ mod entities;
 pub mod export;
 pub mod mediawiki_fetch;
 pub mod model;
+pub mod session;
 mod template_render;
 pub mod url;
 pub mod web_fetch;
@@ -21,13 +22,19 @@ pub use mediawiki_fetch::{
     fetch_mediawiki_page, fetch_mediawiki_template_report, fetch_pages_by_titles, list_subpages,
 };
 pub use model::{
-    DEFAULT_EXPORTS_DIR, ExportFormat, ExternalAccessRoute, ExternalContentSignal,
-    ExternalFetchAttempt, ExternalFetchFailure, ExternalFetchFailureError, ExternalFetchFormat,
-    ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExternalMachineSurface,
-    ExternalMachineSurfaceReport, ExtractionQuality, FetchMode, MediaWikiPageTemplate,
-    MediaWikiTemplateDataParameter, MediaWikiTemplateDataSummary, MediaWikiTemplateInvocation,
-    MediaWikiTemplatePage, MediaWikiTemplateQueryOptions, MediaWikiTemplateReport, ParsedWikiUrl,
-    RenderedFetchMode,
+    ChallengeHandoff, DEFAULT_EXPORTS_DIR, ExportFormat, ExternalAccessRoute,
+    ExternalContentSignal, ExternalFetchAttempt, ExternalFetchFailure, ExternalFetchFailureError,
+    ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
+    ExternalFetchSession, ExternalMachineSurface, ExternalMachineSurfaceReport, ExtractionQuality,
+    FetchMode, MediaWikiPageTemplate, MediaWikiTemplateDataParameter, MediaWikiTemplateDataSummary,
+    MediaWikiTemplateInvocation, MediaWikiTemplatePage, MediaWikiTemplateQueryOptions,
+    MediaWikiTemplateReport, ParsedWikiUrl, RenderedFetchMode,
+};
+pub use session::{
+    ResearchSession, ResearchSessionImportOptions, ResearchSessionImportResult,
+    ResearchSessionSummary, clear_research_session, import_research_session,
+    list_research_sessions, load_research_session_for_url, prune_research_sessions,
+    show_research_session,
 };
 pub use url::parse_wiki_url;
 pub use web_fetch::MachineSurfaceDiscoveryOptions;

@@ -7,6 +7,8 @@ use anyhow::{Context, Result, bail};
 use wikitool_core::external::{
     DEFAULT_EXPORTS_DIR, ExportFormat, ExternalFetchResult, sanitize_filename,
 };
+use wikitool_core::research::load_research_session_for_url;
+use wikitool_core::runtime::ResolvedPaths;
 use wikitool_core::support::compute_hash;
 
 use crate::cli_support::normalize_path;
@@ -16,7 +18,7 @@ use super::render::{
     write_export_file,
 };
 pub(super) fn run_urls_file_export(
-    project_root: &Path,
+    paths: &ResolvedPaths,
     urls_file: &Path,
     output_dir: Option<&Path>,
     include_frontmatter: bool,
@@ -25,7 +27,7 @@ pub(super) fn run_urls_file_export(
     let urls = read_urls_file(urls_file)?;
     let output_dir = output_dir
         .map(PathBuf::from)
-        .unwrap_or_else(|| default_urls_file_output_dir(project_root, urls_file));
+        .unwrap_or_else(|| default_urls_file_output_dir(&paths.project_root, urls_file));
     fs::create_dir_all(&output_dir)
         .with_context(|| format!("failed to create {}", normalize_path(&output_dir)))?;
 
@@ -33,7 +35,8 @@ pub(super) fn run_urls_file_export(
     let mut failures = Vec::new();
 
     for url in urls {
-        match fetch_single_export_page(&url, ExportFormat::Markdown) {
+        let session = load_research_session_for_url(paths, &url)?;
+        match fetch_single_export_page(&url, ExportFormat::Markdown, session) {
             Ok(page) => successes.push(UrlBatchSuccess {
                 source_url: url,
                 page,
@@ -67,7 +70,7 @@ pub(super) fn run_urls_file_export(
 
     println!("export");
     println!("mode: urls_file");
-    println!("project_root: {}", normalize_path(project_root));
+    println!("project_root: {}", normalize_path(&paths.project_root));
     println!("urls_file: {}", normalize_path(urls_file));
     println!("urls_total: {}", successes.len() + failures.len());
     println!("pages_exported: {}", successes.len());

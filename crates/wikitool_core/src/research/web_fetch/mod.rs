@@ -4,13 +4,14 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use reqwest::Url;
 use reqwest::blocking::Client;
+use reqwest::blocking::RequestBuilder;
 use serde_json::Value;
 
 use crate::support::{env_value, env_value_u64, env_value_usize};
 
 use super::model::{
-    ExternalFetchAttempt, ExternalFetchFailure, ExternalFetchFailureError, ExternalFetchOptions,
-    ExternalFetchProfile, ExternalFetchResult,
+    ChallengeHandoff, ExternalFetchAttempt, ExternalFetchFailure, ExternalFetchFailureError,
+    ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExternalFetchSession,
 };
 
 const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
@@ -23,6 +24,7 @@ const DIRECT_ACCEPT: &str = "text/html,application/xhtml+xml,application/xml;q=0
 pub(crate) struct ExternalClient {
     pub(crate) client: Client,
     user_agent: String,
+    session: Option<ExternalFetchSession>,
     retries: usize,
     retry_delay_ms: u64,
     last_request_at: Option<Instant>,
@@ -37,7 +39,8 @@ pub(crate) use html::truncate_to_byte_limit;
 
 use html::{
     build_html_fetch_result, build_text_fetch_result, derive_title_from_url,
-    detect_access_challenge, extract_client_redirect_url, read_text_body_limited,
+    detect_access_challenge, detect_access_challenge_vendor, extract_client_redirect_url,
+    read_text_body_limited,
 };
 pub(super) struct TextHttpResponse {
     final_url: String,
@@ -77,8 +80,8 @@ impl ExternalClient {
                 .client
                 .get(api_url)
                 .header("User-Agent", self.user_agent.clone())
-                .query(&pairs)
-                .send();
+                .query(&pairs);
+            let response = self.apply_session_headers(response, api_url).send();
             self.last_request_at = Some(Instant::now());
 
             match response {
@@ -132,13 +135,32 @@ impl ExternalClient {
         let message = last_error.unwrap_or_else(|| "external API request failed".to_string());
         bail!("{message}")
     }
+
+    fn apply_session_headers(&self, request: RequestBuilder, url: &str) -> RequestBuilder {
+        let Some(session) = &self.session else {
+            return request;
+        };
+        if !session_matches_url(session, url) || session.cookie_header.trim().is_empty() {
+            return request;
+        }
+        request.header("Cookie", session.cookie_header.clone())
+    }
 }
 
 pub(crate) fn external_client() -> Result<ExternalClient> {
+    external_client_with_session(None)
+}
+
+pub(crate) fn external_client_with_session(
+    session: Option<ExternalFetchSession>,
+) -> Result<ExternalClient> {
     let timeout_ms = env_value_u64("WIKI_HTTP_TIMEOUT_MS", DEFAULT_TIMEOUT_MS);
     let retries = env_value_usize("WIKI_HTTP_RETRIES", DEFAULT_RETRIES);
     let retry_delay_ms = env_value_u64("WIKI_HTTP_RETRY_DELAY_MS", DEFAULT_RETRY_DELAY_MS);
-    let user_agent = env_value("WIKI_USER_AGENT", DEFAULT_USER_AGENT);
+    let user_agent = session
+        .as_ref()
+        .and_then(|session| session.user_agent.clone())
+        .unwrap_or_else(|| env_value("WIKI_USER_AGENT", DEFAULT_USER_AGENT));
     let client = Client::builder()
         .timeout(Duration::from_millis(timeout_ms))
         .build()
@@ -146,6 +168,7 @@ pub(crate) fn external_client() -> Result<ExternalClient> {
     Ok(ExternalClient {
         client,
         user_agent,
+        session,
         retries,
         retry_delay_ms,
         last_request_at: None,
@@ -156,10 +179,11 @@ pub(crate) fn fetch_web_url(
     url: &str,
     options: &ExternalFetchOptions,
 ) -> Result<ExternalFetchResult> {
-    let client = external_client()?;
+    let client = external_client_with_session(options.session.clone())?;
     let mut current_url = url.to_string();
     let mut client_redirects = 0usize;
     let mut attempts = Vec::new();
+    let mut challenge_handoffs = Vec::new();
 
     loop {
         let response =
@@ -175,7 +199,7 @@ pub(crate) fn fetch_web_url(
                     content_type: None,
                     message: Some(error.to_string()),
                 });
-                return Err(fetch_failure(url, attempts).into());
+                return Err(fetch_failure(url, attempts, challenge_handoffs).into());
             }
         };
         if response.http_status >= 400 {
@@ -186,6 +210,14 @@ pub(crate) fn fetch_web_url(
             } else {
                 "http_error"
             };
+            if outcome == "access_challenge" {
+                challenge_handoffs.push(challenge_handoff_for_response(
+                    url,
+                    &current_url,
+                    &client.user_agent,
+                    &response,
+                ));
+            }
             attempts.push(ExternalFetchAttempt {
                 mode: "direct_static".to_string(),
                 url: current_url.clone(),
@@ -203,7 +235,7 @@ pub(crate) fn fetch_web_url(
                     )
                 }),
             });
-            return Err(fetch_failure(url, attempts).into());
+            return Err(fetch_failure(url, attempts, challenge_handoffs).into());
         }
         if !is_supported_text_content_type(&response.content_type) {
             attempts.push(ExternalFetchAttempt {
@@ -217,11 +249,17 @@ pub(crate) fn fetch_web_url(
                     response.content_type
                 )),
             });
-            return Err(fetch_failure(url, attempts).into());
+            return Err(fetch_failure(url, attempts, challenge_handoffs).into());
         }
         if options.profile == ExternalFetchProfile::Research
             && detect_access_challenge_response(&response)
         {
+            challenge_handoffs.push(challenge_handoff_for_response(
+                url,
+                &current_url,
+                &client.user_agent,
+                &response,
+            ));
             attempts.push(ExternalFetchAttempt {
                 mode: "direct_static".to_string(),
                 url: current_url.clone(),
@@ -230,7 +268,7 @@ pub(crate) fn fetch_web_url(
                 content_type: Some(response.content_type.clone()),
                 message: Some(access_challenge_message(&response)),
             });
-            return Err(fetch_failure(url, attempts).into());
+            return Err(fetch_failure(url, attempts, challenge_handoffs).into());
         }
         attempts.push(ExternalFetchAttempt {
             mode: "direct_static".to_string(),
@@ -298,6 +336,7 @@ pub(super) fn request_text_candidate(
         .header("Accept-Language", "en-US,en;q=0.9")
         .header("Cache-Control", "no-cache")
         .header("Pragma", "no-cache");
+    request = client.apply_session_headers(request, url);
     if mode == "direct_static" {
         request = request
             .header("Upgrade-Insecure-Requests", "1")
@@ -398,6 +437,7 @@ fn content_format_for_content_type(content_type: &str) -> &'static str {
 fn fetch_failure(
     source_url: &str,
     attempts: Vec<ExternalFetchAttempt>,
+    challenge_handoffs: Vec<ChallengeHandoff>,
 ) -> ExternalFetchFailureError {
     let kind = if attempts
         .iter()
@@ -437,8 +477,135 @@ fn fetch_failure(
             kind: kind.to_string(),
             message,
             attempts,
+            challenge_handoffs,
         },
     }
+}
+
+fn session_matches_url(session: &ExternalFetchSession, url: &str) -> bool {
+    let Ok(parsed) = Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let host = host.to_ascii_lowercase();
+    let domain = session
+        .domain
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+    host == domain || host.ends_with(&format!(".{domain}"))
+}
+
+fn challenge_handoff_for_response(
+    source_url: &str,
+    current_url: &str,
+    user_agent: &str,
+    response: &TextHttpResponse,
+) -> ChallengeHandoff {
+    let vendor = challenge_vendor_for_response(response).to_string();
+    let domain = Url::parse(current_url)
+        .ok()
+        .and_then(|url| url.host_str().map(ToString::to_string))
+        .or_else(|| {
+            Url::parse(source_url)
+                .ok()
+                .and_then(|url| url.host_str().map(ToString::to_string))
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+        .to_ascii_lowercase();
+    let (required_cookies, ttl_hint_seconds, mut notes) = challenge_handoff_vendor_policy(&vendor);
+    notes.push("Wikitool does not solve or bypass browser challenges; import only cookies obtained by a human with lawful source access.".to_string());
+    let mut suggested_argv = vec![
+        "wikitool".to_string(),
+        "research".to_string(),
+        "session".to_string(),
+        "import".to_string(),
+        source_url.to_string(),
+        "--cookies".to_string(),
+        "-".to_string(),
+        "--user-agent".to_string(),
+        user_agent.to_string(),
+    ];
+    if let Some(ttl) = ttl_hint_seconds {
+        suggested_argv.push("--ttl-seconds".to_string());
+        suggested_argv.push(ttl.to_string());
+    }
+    let suggested_command = suggested_argv
+        .iter()
+        .map(|argument| shell_display_arg(argument))
+        .collect::<Vec<_>>()
+        .join(" ");
+    ChallengeHandoff {
+        vendor,
+        url: current_url.to_string(),
+        domain,
+        required_cookies,
+        user_agent_pin: user_agent.to_string(),
+        suggested_argv,
+        suggested_command,
+        ttl_hint_seconds,
+        notes,
+    }
+}
+
+fn challenge_vendor_for_response(response: &TextHttpResponse) -> &'static str {
+    if response
+        .cf_mitigated
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("challenge"))
+    {
+        return "cloudflare";
+    }
+    detect_access_challenge_vendor(&response.body).unwrap_or("unknown")
+}
+
+fn challenge_handoff_vendor_policy(vendor: &str) -> (Vec<String>, Option<u64>, Vec<String>) {
+    match vendor {
+        "cloudflare" => (
+            vec!["cf_clearance".to_string()],
+            Some(1_800),
+            vec![
+                "Cloudflare documents cf_clearance as the challenge-passage cookie; default challenge passage is 30 minutes, configurable by the site owner.".to_string(),
+            ],
+        ),
+        "anubis" => (
+            vec![
+                "anubis-auth".to_string(),
+                "anubis-cookie-verification".to_string(),
+            ],
+            Some(86_400),
+            vec![
+                "Anubis stores successful proof-of-work challenge solutions in signed cookies; names may vary when the site owner changes the cookie prefix.".to_string(),
+            ],
+        ),
+        "datadome" => (
+            vec!["datadome".to_string()],
+            None,
+            vec!["DataDome deployments commonly use a datadome cookie, but site policy determines whether a browser session can be reused.".to_string()],
+        ),
+        "aws_waf" => (
+            vec!["aws-waf-token".to_string()],
+            None,
+            vec!["AWS WAF challenge token naming can vary by integration; inspect the browser cookie jar for the exact source-issued cookie.".to_string()],
+        ),
+        _ => (
+            Vec::new(),
+            None,
+            vec!["Unknown challenge vendor; import the relevant source-issued cookies if a human browser session receives them.".to_string()],
+        ),
+    }
+}
+
+fn shell_display_arg(value: &str) -> String {
+    if value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':' | '=' | '%'))
+    {
+        return value.to_string();
+    }
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 #[cfg(test)]
@@ -454,6 +621,7 @@ mod tests {
         normalize_extracted_text,
     };
     use super::{TextHttpResponse, access_challenge_message, detect_access_challenge_response};
+    use super::{challenge_handoff_for_response, challenge_vendor_for_response};
     use crate::research::model::{ExternalFetchAttempt, ExternalMachineSurfaceReport};
     use crate::research::model::{
         ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExtractionQuality,
@@ -669,6 +837,7 @@ mod tests {
                 format: ExternalFetchFormat::Html,
                 max_bytes: 10_000,
                 profile: ExternalFetchProfile::Research,
+                session: None,
             },
         );
 
@@ -708,6 +877,7 @@ mod tests {
                 format: ExternalFetchFormat::Html,
                 max_bytes: 10_000,
                 profile: ExternalFetchProfile::Research,
+                session: None,
             },
         );
 
@@ -747,6 +917,7 @@ mod tests {
                 format: ExternalFetchFormat::Html,
                 max_bytes: 10_000,
                 profile: ExternalFetchProfile::Research,
+                session: None,
             },
         );
 
@@ -778,6 +949,9 @@ mod tests {
             "<html><body><script>window.awsWafCookieDomainList = [];</script></body></html>"
         ));
         assert!(detect_access_challenge(
+            "<html><body>making sure you're not a bot with Anubis proof-of-work challenge</body></html>"
+        ));
+        assert!(detect_access_challenge(
             "<html><body>JavaScript is disabled. Verify that you're not a robot.</body></html>"
         ));
         assert!(!detect_access_challenge(
@@ -798,6 +972,54 @@ mod tests {
 
         assert!(detect_access_challenge_response(&response));
         assert!(access_challenge_message(&response).contains("cf-mitigated"));
+        assert_eq!(challenge_vendor_for_response(&response), "cloudflare");
+    }
+
+    #[test]
+    fn builds_structured_challenge_handoff_for_cloudflare() {
+        let response = TextHttpResponse {
+            final_url: "https://example.com/protected".to_string(),
+            http_status: 403,
+            content_type: "text/html; charset=UTF-8".to_string(),
+            cf_mitigated: Some("challenge".to_string()),
+            crawler_price: None,
+            body: "<html><body>generic challenge shell</body></html>".to_string(),
+        };
+
+        let handoff = challenge_handoff_for_response(
+            "https://example.com/protected",
+            "https://example.com/protected",
+            "wikitool-test/1.0",
+            &response,
+        );
+
+        assert_eq!(handoff.vendor, "cloudflare");
+        assert_eq!(handoff.domain, "example.com");
+        assert_eq!(handoff.required_cookies, vec!["cf_clearance"]);
+        assert_eq!(handoff.ttl_hint_seconds, Some(1_800));
+        assert_eq!(
+            handoff.suggested_argv,
+            vec![
+                "wikitool",
+                "research",
+                "session",
+                "import",
+                "https://example.com/protected",
+                "--cookies",
+                "-",
+                "--user-agent",
+                "wikitool-test/1.0",
+                "--ttl-seconds",
+                "1800"
+            ]
+        );
+        assert!(handoff.suggested_command.contains("--cookies -"));
+        assert!(
+            handoff
+                .notes
+                .iter()
+                .any(|note| note.contains("does not solve"))
+        );
     }
 
     #[test]

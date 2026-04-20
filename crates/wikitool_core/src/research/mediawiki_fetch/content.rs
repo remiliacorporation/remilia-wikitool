@@ -8,7 +8,9 @@ use crate::research::model::{
     RenderedFetchMode,
 };
 use crate::research::url::encode_title;
-use crate::research::web_fetch::{ExternalClient, external_client, truncate_to_byte_limit};
+use crate::research::web_fetch::{
+    ExternalClient, external_client_with_session, truncate_to_byte_limit,
+};
 use crate::support::{compute_hash, now_iso8601_utc};
 
 const DEFAULT_MEDIAWIKI_TITLE_BATCH_SIZE: usize = 50;
@@ -18,7 +20,7 @@ pub fn fetch_mediawiki_page(
     parsed: &ParsedWikiUrl,
     options: &ExternalFetchOptions,
 ) -> Result<Option<ExternalFetchResult>> {
-    let mut client = external_client()?;
+    let mut client = external_client_with_session(options.session.clone())?;
     match fetch_mediawiki_page_with_client(&mut client, title, parsed, options)? {
         MediaWikiFetchOutcome::Found(result) => Ok(Some(*result)),
         MediaWikiFetchOutcome::Missing | MediaWikiFetchOutcome::NotExportable => Ok(None),
@@ -30,7 +32,7 @@ pub fn fetch_pages_by_titles(
     parsed: &ParsedWikiUrl,
     options: &ExternalFetchOptions,
 ) -> Result<Vec<ExternalFetchResult>> {
-    let mut client = external_client()?;
+    let mut client = external_client_with_session(options.session.clone())?;
     let mut output = Vec::new();
     let mut failures = Vec::new();
     for batch in titles.chunks(DEFAULT_MEDIAWIKI_TITLE_BATCH_SIZE) {
@@ -399,6 +401,7 @@ mod tests {
                 format: ExternalFetchFormat::Wikitext,
                 max_bytes: 10_000,
                 profile: ExternalFetchProfile::Legacy,
+                session: None,
             },
         )
         .expect("page should parse");

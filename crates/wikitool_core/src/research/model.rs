@@ -102,6 +102,8 @@ pub struct ExternalFetchFailure {
     pub kind: String,
     pub message: String,
     pub attempts: Vec<ExternalFetchAttempt>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub challenge_handoffs: Vec<ChallengeHandoff>,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +163,20 @@ pub struct ExternalMachineSurfaceReport {
     pub attempts: Vec<ExternalFetchAttempt>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChallengeHandoff {
+    pub vendor: String,
+    pub url: String,
+    pub domain: String,
+    pub required_cookies: Vec<String>,
+    pub user_agent_pin: String,
+    pub suggested_argv: Vec<String>,
+    pub suggested_command: String,
+    pub ttl_hint_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalFetchResult {
     pub title: String,
@@ -206,6 +222,7 @@ pub struct ExternalFetchOptions {
     pub format: ExternalFetchFormat,
     pub max_bytes: usize,
     pub profile: ExternalFetchProfile,
+    pub session: Option<ExternalFetchSession>,
 }
 
 impl Default for ExternalFetchOptions {
@@ -214,8 +231,16 @@ impl Default for ExternalFetchOptions {
             format: ExternalFetchFormat::Wikitext,
             max_bytes: 1_000_000,
             profile: ExternalFetchProfile::Legacy,
+            session: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalFetchSession {
+    pub domain: String,
+    pub cookie_header: String,
+    pub user_agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

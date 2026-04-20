@@ -1209,6 +1209,7 @@ Commands:
   wiki-search          Search the configured wiki API for subject evidence
   fetch                Fetch readable reference material from a URL
   discover             Discover public machine-readable source surfaces for a URL
+  session              Manage human-solved source access sessions
   mediawiki-templates  Inspect live template contracts used by a source MediaWiki page
   help                 Print this message or the help of the given subcommand(s)
 
@@ -1282,6 +1283,121 @@ Options:
       --project-root <PATH>
       --data-dir <PATH>
       --limit <N>            Limit machine-surface entries [default: 20]
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## research session
+
+```text
+Manage human-solved source access sessions
+
+Usage: wikitool research session [OPTIONS] <COMMAND>
+
+Commands:
+  import  Import source-issued browser cookies for a domain
+  list    List imported research access sessions without cookie values
+  show    Show one imported research access session without cookie values
+  clear   Clear one imported research access session
+  prune   Remove expired research access sessions
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## research session import
+
+```text
+Import source-issued browser cookies for a domain
+
+Usage: wikitool research session import [OPTIONS] --cookies <PATH|-|COOKIE_HEADER> <URL>
+
+Arguments:
+  <URL>
+
+Options:
+      --cookies <PATH|-|COOKIE_HEADER>  Read cookies from Netscape cookies.txt, JSON, stdin (-), or a literal Cookie header
+      --project-root <PATH>
+      --data-dir <PATH>
+      --user-agent <UA>                 Pin the browser user-agent used when the cookies were obtained
+      --config <PATH>
+      --ttl-seconds <SECONDS>           Expire this local session after the supplied number of seconds
+      --diagnostics                     Print resolved runtime diagnostics
+      --format <FORMAT>                 Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                            Print help
+```
+
+## research session list
+
+```text
+List imported research access sessions without cookie values
+
+Usage: wikitool research session list [OPTIONS]
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## research session show
+
+```text
+Show one imported research access session without cookie values
+
+Usage: wikitool research session show [OPTIONS] <DOMAIN>
+
+Arguments:
+  <DOMAIN>
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## research session clear
+
+```text
+Clear one imported research access session
+
+Usage: wikitool research session clear [OPTIONS] <DOMAIN>
+
+Arguments:
+  <DOMAIN>
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## research session prune
+
+```text
+Remove expired research access sessions
+
+Usage: wikitool research session prune [OPTIONS]
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help

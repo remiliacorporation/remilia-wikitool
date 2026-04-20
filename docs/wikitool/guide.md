@@ -119,6 +119,11 @@ wikitool knowledge inspect empty-categories
 ```bash
 wikitool research wiki-search "topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
+wikitool research session import "URL" --cookies - --user-agent "UA" --ttl-seconds 1800 --format json
+wikitool research session list --format json
+wikitool research session show example.com --format json
+wikitool research session clear example.com --format json
+wikitool research session prune --format json
 wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --template "Template:Infobox" --format json
 wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --refresh --format json
 wikitool research discover "URL" --format json
@@ -127,7 +132,9 @@ wikitool export "URL" --subpages --combined --limit 25
 wikitool export --urls-file sources.txt --output-dir wikitool_exports/sources --format markdown
 ```
 
-`research wiki-search` searches the configured target wiki API, not the open web. For arbitrary subjects, use the agent's normal web-search capability to choose source URLs, then use `research fetch`, `research discover`, `research mediawiki-templates`, and `export` for source extraction and provenance. `research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind`, `error.attempts`, and `error.discovery`; access challenges and HTTP failures are explicit source-access failures, not citable source content. `research discover` is the same machine-surface discovery pass as a standalone command.
+`research wiki-search` searches the configured target wiki API, not the open web. For arbitrary subjects, use the agent's normal web-search capability to choose source URLs, then use `research fetch`, `research discover`, `research mediawiki-templates`, and `export` for source extraction and provenance. `research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind`, `error.attempts`, `error.challenge_handoffs`, and `error.discovery`; access challenges and HTTP failures are explicit source-access failures, not citable source content. `research discover` is the same machine-surface discovery pass as a standalone command.
+
+When a source returns a browser access challenge, `error.challenge_handoffs` gives the detected vendor, domain, expected cookie names when known, the user-agent that wikitool used, exact `suggested_argv`, and a display `suggested_command`. Wikitool does not solve, bypass, or disguise Cloudflare, Anubis, DataDome, AWS WAF, or similar challenges. If the user has lawful access, ask them to open the URL in a real browser, solve the challenge, then paste source-issued cookies into `wikitool research session import URL --cookies -`. Cookie input may be Netscape `cookies.txt`, JSON, a literal `Cookie` header, or stdin. Imported sessions live under `.wikitool/research/sessions/`, list/show output masks cookie values, and matching sessions are used automatically by `research fetch`, MediaWiki template inspection, `fetch`, and `export`. Retry source fetches with `--refresh` after importing a session. Use `research session clear DOMAIN` to remove a session and `research session prune` to remove expired sessions.
 
 `research mediawiki-templates URL` inspects the live API surface of a source MediaWiki page. Use it when an arbitrary source wiki, such as Wikipedia, has templates/modules that are relevant to understanding the source article but are not part of the current target wiki catalog. The report preserves total transclusion counts, returns a capped inventory, shows selected invocations, fetches selected template pages, and includes TemplateData when the source wiki exposes it. Results are cached under the research cache; use `--refresh` when live freshness matters and `--no-cache` for a one-off bypass. Treat these as source-wiki contracts only; run local `knowledge contracts`, `templates show`, and `article lint` before using any template on the target wiki.
 
