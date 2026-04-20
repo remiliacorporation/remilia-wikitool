@@ -33,6 +33,7 @@ enum ArticleSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct ArticleLintArgs {
+    #[arg(help = "Article path; state-draft paths under .wikitool/ may use --title override")]
     path: Option<PathBuf>,
     #[arg(long, default_value = "remilia", value_name = "PROFILE")]
     profile: String,
@@ -46,7 +47,11 @@ pub(crate) struct ArticleLintArgs {
     format: OutputFormat,
     #[arg(long, help = "Treat warnings as errors")]
     strict: bool,
-    #[arg(long = "title", value_name = "TITLE")]
+    #[arg(
+        long = "title",
+        value_name = "TITLE",
+        help = "Select a canonical article title; with one state-draft PATH, override the draft title"
+    )]
     titles: Vec<String>,
     #[arg(long = "path", value_name = "PATH")]
     paths: Vec<PathBuf>,
@@ -62,6 +67,7 @@ pub(crate) struct ArticleLintArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct ArticleFixArgs {
+    #[arg(help = "Article path; state-draft paths under .wikitool/ may use --title override")]
     path: Option<PathBuf>,
     #[arg(long, default_value = "remilia", value_name = "PROFILE")]
     profile: String,
@@ -81,7 +87,11 @@ pub(crate) struct ArticleFixArgs {
         help = "Output format: text|json"
     )]
     format: OutputFormat,
-    #[arg(long = "title", value_name = "TITLE")]
+    #[arg(
+        long = "title",
+        value_name = "TITLE",
+        help = "Select a canonical article title; with one state-draft PATH, override the draft title"
+    )]
     titles: Vec<String>,
     #[arg(long = "path", value_name = "PATH")]
     paths: Vec<PathBuf>,
@@ -647,6 +657,86 @@ fn resolve_article_selector_path(
     }
     let _ = relative_path_to_title(paths, &relative_path)?;
     Ok(relative_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use wikitool_core::runtime::{ResolvedPaths, ValueSource};
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(label: &str) -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "wikitool-article-cli-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temp test dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn test_paths(project_root: &Path) -> ResolvedPaths {
+        let wiki_content_dir = project_root.join("wiki_content");
+        let templates_dir = project_root.join("templates");
+        let state_dir = project_root.join(".wikitool");
+        let data_dir = state_dir.join("data");
+        fs::create_dir_all(&wiki_content_dir).expect("wiki content dir");
+        fs::create_dir_all(&templates_dir).expect("templates dir");
+        fs::create_dir_all(&data_dir).expect("data dir");
+        ResolvedPaths {
+            project_root: project_root.to_path_buf(),
+            wiki_content_dir,
+            templates_dir,
+            state_dir: state_dir.clone(),
+            data_dir: data_dir.clone(),
+            db_path: data_dir.join("wikitool.db"),
+            config_path: state_dir.join("config.toml"),
+            parser_config_path: state_dir.join("parser-config.json"),
+            root_source: ValueSource::Default,
+            data_source: ValueSource::Default,
+            config_source: ValueSource::Default,
+        }
+    }
+
+    #[test]
+    fn state_draft_title_override_accepts_single_state_path_title() {
+        let temp = TestDir::new("draft-title");
+        let paths = test_paths(&temp.path);
+        let draft_path = paths.state_dir.join("drafts").join("Cheetah.wiki");
+        fs::create_dir_all(draft_path.parent().expect("draft parent")).expect("draft parent");
+        fs::write(&draft_path, "Text.").expect("draft");
+        let titles = vec!["Cheetah".to_string()];
+
+        let override_title =
+            single_state_path_title_override(&paths, Some(&draft_path), &titles, &[], None, false)
+                .expect("title override");
+
+        assert_eq!(override_title, Some("Cheetah"));
+    }
+
+    #[test]
+    fn state_draft_detection_requires_canonical_state_dir_spelling() {
+        let temp = TestDir::new("draft-case");
+        let paths = test_paths(&temp.path);
+        let candidate = paths.project_root.join(".WIKITOOL").join("drafts");
+
+        assert!(!path_is_under_state_dir(&paths, &candidate));
+    }
 }
 
 fn print_article_target_selection(selection: &ArticleTargetSelection) {

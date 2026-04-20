@@ -12,6 +12,7 @@ Use normal reasoning and editorial judgment. Verify the live command surface aga
 Typical gate loop:
 - Preferred full gate: `wikitool review --format json --summary "..."`
 - Draft-first gate: `wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"`
+- Direct draft lint/fix: `wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json`; `wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe`
 - `wikitool article lint <path> --format json`
 - `wikitool article fix <path> --apply safe`
 - `wikitool knowledge inspect references duplicates --title "<Title>" --format json`

@@ -112,7 +112,9 @@ enum Commands {
     Import(import_cli::ImportArgs),
     #[command(about = "Build and query the local knowledge layer")]
     Knowledge(knowledge_cli::KnowledgeArgs),
-    #[command(about = "Inspect target-wiki evidence and fetch source URLs without mutating the wiki")]
+    #[command(
+        about = "Inspect target-wiki evidence and fetch source URLs without mutating the wiki"
+    )]
     Research(research_cli::ResearchArgs),
     #[command(about = "Sync and inspect live wiki capability metadata")]
     Wiki(wiki_cli::WikiArgs),

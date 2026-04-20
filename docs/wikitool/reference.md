@@ -1687,7 +1687,7 @@ Lint article wikitext against wiki/profile rules
 Usage: wikitool article lint [OPTIONS] [PATH]
 
 Arguments:
-  [PATH]
+  [PATH]  Article path; state-draft paths under .wikitool/ may use --title override
 
 Options:
       --profile <PROFILE>    [default: remilia]
@@ -1697,7 +1697,7 @@ Options:
       --config <PATH>
       --strict               Treat warnings as errors
       --diagnostics          Print resolved runtime diagnostics
-      --title <TITLE>
+      --title <TITLE>        Select a canonical article title; with one state-draft PATH, override the draft title
       --path <PATH>
       --titles-file <PATH>   Read one canonical page title per line
       --changed              Lint the current changed main-namespace article set
@@ -1712,7 +1712,7 @@ Apply safe mechanical fixes to article wikitext
 Usage: wikitool article fix [OPTIONS] [PATH]
 
 Arguments:
-  [PATH]
+  [PATH]  Article path; state-draft paths under .wikitool/ may use --title override
 
 Options:
       --profile <PROFILE>    [default: remilia]
@@ -1722,7 +1722,7 @@ Options:
       --config <PATH>
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --diagnostics          Print resolved runtime diagnostics
-      --title <TITLE>
+      --title <TITLE>        Select a canonical article title; with one state-draft PATH, override the draft title
       --path <PATH>
       --titles-file <PATH>   Read one canonical page title per line
       --changed              Fix the current changed main-namespace article set

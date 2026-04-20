@@ -118,6 +118,8 @@ that module form.
 Before any live write push:
 
 ```bash
+wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
+wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
 wikitool article lint --changed --format json
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"
 wikitool validate --summary
@@ -150,6 +152,11 @@ Without host overlay, release bundles stay generic and ship only wikitool-mainta
 Do not put local experiments, mock drafts, probe outputs, or one-off research notes under
 `ai-pack/` unless they are intended to ship in the next release. Use project scratch space such as
 `.wikitool/drafts/`, `plans/`, or test fixtures.
+
+Use semantic area-prefixed commit titles in the form `{area}: {summary}`, for example
+`wikitool: harden draft review` or `docs: align agent guidance`. Keep titles short, prefer
+72 characters or fewer, and add a wrapped body only when the reason for the change is not obvious
+from the diff.
 
 When behavior changes, update the owning surface:
 

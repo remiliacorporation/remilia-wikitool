@@ -56,6 +56,8 @@ wikitool templates examples "Template:Infobox person" --limit 2
 wikitool wiki profile show --format json
 wikitool wiki profile remote "https://www.mediawiki.org/wiki/Manual:Contents" --format json
 # write the article
+wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
+wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
 wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"
 wikitool article fix wiki_content/Main/Title.wiki --apply safe
@@ -134,6 +136,10 @@ wikitool export --urls-file sources.txt --output-dir wikitool_exports/sources --
 `fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs. `export` defaults to markdown: MediaWiki URLs are fetched as wikitext and rendered into agent-readable markdown, while arbitrary web pages use the research extractor and include source/extraction metadata in frontmatter. Use `--output-dir DIR` with a single URL to write a title-based markdown or wikitext file under that directory. Use `--subpages --limit N` to bound large MediaWiki tree exports. Use `--urls-file PATH --output-dir PATH --format markdown` to create off-wiki source packs; blank lines and `#` comments in the URL file are ignored, and `_index.md` records successes and failures. Wikitext export requires a recognizable MediaWiki URL; blocked arbitrary sources fail explicitly instead of producing challenge-page content.
 
 `review --draft-path PATH --title TITLE` runs the article lint and global readiness parts of the review gate on an off-wiki draft under `.wikitool/drafts/`. It intentionally skips the push dry-run because the draft is not syncable yet; move the accepted article under `wiki_content/` and run `review --path` or `review --title` before any push.
+
+For direct draft iteration, `article lint` and `article fix` accept a single state-draft path plus
+`--title TITLE`. This keeps title-sensitive linting and safe fixes available before the draft is
+promoted into `wiki_content/`.
 
 ## Editor integration
 
