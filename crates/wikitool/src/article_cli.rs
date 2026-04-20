@@ -14,7 +14,9 @@ use wikitool_core::filesystem::{
 };
 use wikitool_core::sync::{SyncSelection, collect_changed_article_paths};
 
-use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_paths};
+use crate::cli_support::{
+    OutputFormat, normalize_path, path_is_under_directory, resolve_runtime_paths,
+};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -29,11 +31,15 @@ enum ArticleSubcommand {
     Lint(ArticleLintArgs),
     #[command(about = "Apply safe mechanical fixes to article wikitext")]
     Fix(ArticleFixArgs),
+    #[command(about = "Copy a reviewed state draft into the sync tree")]
+    Promote(ArticlePromoteArgs),
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct ArticleLintArgs {
-    #[arg(help = "Article path; state-draft paths under .wikitool/ may use --title override")]
+    #[arg(
+        help = "Article path; state-draft paths under .wikitool/drafts/ may use --title override"
+    )]
     path: Option<PathBuf>,
     #[arg(long, default_value = "remilia", value_name = "PROFILE")]
     profile: String,
@@ -50,7 +56,7 @@ pub(crate) struct ArticleLintArgs {
     #[arg(
         long = "title",
         value_name = "TITLE",
-        help = "Select a canonical article title; with one state-draft PATH, override the draft title"
+        help = "Select a canonical article title; with one .wikitool/drafts/ PATH, override the draft title"
     )]
     titles: Vec<String>,
     #[arg(long = "path", value_name = "PATH")]
@@ -67,7 +73,9 @@ pub(crate) struct ArticleLintArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct ArticleFixArgs {
-    #[arg(help = "Article path; state-draft paths under .wikitool/ may use --title override")]
+    #[arg(
+        help = "Article path; state-draft paths under .wikitool/drafts/ may use --title override"
+    )]
     path: Option<PathBuf>,
     #[arg(long, default_value = "remilia", value_name = "PROFILE")]
     profile: String,
@@ -90,7 +98,7 @@ pub(crate) struct ArticleFixArgs {
     #[arg(
         long = "title",
         value_name = "TITLE",
-        help = "Select a canonical article title; with one state-draft PATH, override the draft title"
+        help = "Select a canonical article title; with one .wikitool/drafts/ PATH, override the draft title"
     )]
     titles: Vec<String>,
     #[arg(long = "path", value_name = "PATH")]
@@ -103,6 +111,28 @@ pub(crate) struct ArticleFixArgs {
     titles_file: Option<PathBuf>,
     #[arg(long, help = "Fix the current changed main-namespace article set")]
     changed: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ArticlePromoteArgs {
+    #[arg(help = "State-draft path under the canonical .wikitool/drafts/ directory")]
+    path: PathBuf,
+    #[arg(
+        long,
+        value_name = "TITLE",
+        help = "Canonical article title for the destination under wiki_content/"
+    )]
+    title: String,
+    #[arg(long, help = "Overwrite the destination file if it already exists")]
+    overwrite: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -140,6 +170,16 @@ struct ArticleFixBatchReport {
     results: Vec<ArticleFixResult>,
 }
 
+#[derive(Debug, Serialize)]
+struct ArticlePromoteReport {
+    project_root: String,
+    source_path: String,
+    title: String,
+    target_path: String,
+    overwritten: bool,
+    source_preserved: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum ArticleFixApplyArg {
     None,
@@ -174,6 +214,7 @@ pub(crate) fn run_article(runtime: &RuntimeOptions, args: ArticleArgs) -> Result
     match args.command {
         ArticleSubcommand::Lint(args) => run_article_lint(runtime, args),
         ArticleSubcommand::Fix(args) => run_article_fix(runtime, args),
+        ArticleSubcommand::Promote(args) => run_article_promote(runtime, args),
     }
 }
 
@@ -489,6 +530,80 @@ fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) -> Result<()>
     Ok(())
 }
 
+fn run_article_promote(runtime: &RuntimeOptions, args: ArticlePromoteArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let source_absolute = if args.path.is_absolute() {
+        args.path.clone()
+    } else {
+        paths.project_root.join(&args.path)
+    };
+    validate_scoped_path(&paths, &source_absolute)?;
+    if !path_is_under_state_drafts_dir(&paths, &source_absolute) {
+        bail!(
+            "article promote source must be under the canonical draft directory: {}/drafts/",
+            normalize_path(&paths.state_dir)
+        );
+    }
+    if !source_absolute.is_file() {
+        bail!(
+            "article promote source path does not exist or is not a file: {}",
+            normalize_path(&source_absolute)
+        );
+    }
+
+    let title = normalize_article_title(&args.title)?;
+    let target_path = title_to_relative_path(&paths, &title, false)?;
+    if !target_path.starts_with("wiki_content/") {
+        bail!("article promote only supports wiki_content/ article titles, got: {title}");
+    }
+    let target_absolute = paths.project_root.join(&target_path);
+    validate_scoped_path(&paths, &target_absolute)?;
+    let overwritten = target_absolute.exists();
+    if overwritten && !args.overwrite {
+        bail!(
+            "article promote target already exists: {} (use --overwrite to replace it)",
+            normalize_path(&target_absolute)
+        );
+    }
+    if let Some(parent) = target_absolute.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
+    }
+    fs::copy(&source_absolute, &target_absolute).with_context(|| {
+        format!(
+            "failed to copy {} -> {}",
+            normalize_path(&source_absolute),
+            normalize_path(&target_absolute)
+        )
+    })?;
+
+    let report = ArticlePromoteReport {
+        project_root: normalize_path(&paths.project_root),
+        source_path: normalize_path(&source_absolute),
+        title,
+        target_path,
+        overwritten,
+        source_preserved: true,
+    };
+
+    if args.format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("article promote");
+        println!("project_root: {}", report.project_root);
+        println!("source_path: {}", report.source_path);
+        println!("title: {}", report.title);
+        println!("target_path: {}", report.target_path);
+        println!("overwritten: {}", flag(report.overwritten));
+        println!("source_preserved: {}", flag(report.source_preserved));
+        println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+        if runtime.diagnostics {
+            println!("\n[diagnostics]\n{}", paths.diagnostics());
+        }
+    }
+    Ok(())
+}
+
 fn uses_single_path_mode(
     path: Option<&Path>,
     titles: &[String],
@@ -520,19 +635,25 @@ fn single_state_path_title_override<'a>(
         runtime_paths.project_root.join(path)
     };
     validate_scoped_path(runtime_paths, &absolute_path)?;
-    if path_is_under_state_dir(runtime_paths, &absolute_path) {
+    if path_is_under_state_drafts_dir(runtime_paths, &absolute_path) {
         return Ok(Some(titles[0].as_str()));
     }
     Ok(None)
 }
 
-fn path_is_under_state_dir(
+fn path_is_under_state_drafts_dir(
     runtime_paths: &wikitool_core::runtime::ResolvedPaths,
     absolute_path: &Path,
 ) -> bool {
-    let candidate = normalize_path(absolute_path);
-    let state_dir = normalize_path(&runtime_paths.state_dir);
-    candidate == state_dir || candidate.starts_with(&format!("{state_dir}/"))
+    path_is_under_directory(absolute_path, &runtime_paths.state_dir.join("drafts"))
+}
+
+fn normalize_article_title(title: &str) -> Result<String> {
+    let normalized = title.trim().replace('_', " ");
+    if normalized.is_empty() {
+        bail!("article title must not be empty");
+    }
+    Ok(normalized)
 }
 
 fn article_selection_from_args(
@@ -730,12 +851,103 @@ mod tests {
     }
 
     #[test]
+    fn state_title_override_rejects_non_draft_state_path() {
+        let temp = TestDir::new("state-non-draft-title");
+        let paths = test_paths(&temp.path);
+        let state_path = paths.state_dir.join("data").join("Cheetah.wiki");
+        fs::write(&state_path, "Text.").expect("state file");
+        let titles = vec!["Cheetah".to_string()];
+
+        let override_title =
+            single_state_path_title_override(&paths, Some(&state_path), &titles, &[], None, false)
+                .expect("title override");
+
+        assert_eq!(override_title, None);
+    }
+
+    #[test]
     fn state_draft_detection_requires_canonical_state_dir_spelling() {
         let temp = TestDir::new("draft-case");
         let paths = test_paths(&temp.path);
         let candidate = paths.project_root.join(".WIKITOOL").join("drafts");
 
-        assert!(!path_is_under_state_dir(&paths, &candidate));
+        assert!(!path_is_under_state_drafts_dir(&paths, &candidate));
+    }
+
+    #[test]
+    fn article_promote_copies_state_draft_to_title_path() {
+        let temp = TestDir::new("promote");
+        let paths = test_paths(&temp.path);
+        let draft_path = paths.state_dir.join("drafts").join("Cheetah.wiki");
+        fs::create_dir_all(draft_path.parent().expect("draft parent")).expect("draft parent");
+        fs::write(&draft_path, "'''Cheetah''' is a cat.").expect("draft");
+        let runtime = RuntimeOptions {
+            project_root: Some(temp.path.clone()),
+            data_dir: None,
+            config: None,
+            diagnostics: false,
+        };
+
+        run_article_promote(
+            &runtime,
+            ArticlePromoteArgs {
+                path: draft_path.clone(),
+                title: "Cheetah".to_string(),
+                overwrite: false,
+                format: OutputFormat::Json,
+            },
+        )
+        .expect("promote draft");
+
+        let target_path = temp
+            .path
+            .join("wiki_content")
+            .join("Main")
+            .join("Cheetah.wiki");
+        assert_eq!(
+            fs::read_to_string(&target_path).expect("target"),
+            "'''Cheetah''' is a cat."
+        );
+        assert!(draft_path.exists(), "promotion preserves the draft source");
+    }
+
+    #[test]
+    fn article_promote_refuses_existing_target_without_overwrite() {
+        let temp = TestDir::new("promote-existing");
+        let paths = test_paths(&temp.path);
+        let draft_path = paths.state_dir.join("drafts").join("Cheetah.wiki");
+        let target_path = temp
+            .path
+            .join("wiki_content")
+            .join("Main")
+            .join("Cheetah.wiki");
+        fs::create_dir_all(draft_path.parent().expect("draft parent")).expect("draft parent");
+        fs::create_dir_all(target_path.parent().expect("target parent")).expect("target parent");
+        fs::write(&draft_path, "draft").expect("draft");
+        fs::write(&target_path, "existing").expect("target");
+        let runtime = RuntimeOptions {
+            project_root: Some(temp.path.clone()),
+            data_dir: None,
+            config: None,
+            diagnostics: false,
+        };
+
+        let error = run_article_promote(
+            &runtime,
+            ArticlePromoteArgs {
+                path: draft_path,
+                title: "Cheetah".to_string(),
+                overwrite: false,
+                format: OutputFormat::Json,
+            },
+        )
+        .expect_err("must refuse overwrite");
+
+        assert!(error.to_string().contains("target already exists"));
+        assert_eq!(
+            fs::read_to_string(&target_path).expect("target"),
+            "existing"
+        );
     }
 }
 

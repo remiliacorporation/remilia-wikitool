@@ -451,6 +451,12 @@ pub(crate) fn normalize_path(path: impl AsRef<Path>) -> String {
     value
 }
 
+pub(crate) fn path_is_under_directory(candidate: &Path, directory: &Path) -> bool {
+    let candidate = normalize_path(candidate);
+    let directory = normalize_path(directory);
+    candidate == directory || candidate.starts_with(&format!("{directory}/"))
+}
+
 pub(crate) fn format_flag(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
 }

@@ -5,6 +5,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use serde::Serialize;
 use wikitool_core::article_lint::{ArticleLintReport, lint_article, lint_article_with_title};
+use wikitool_core::filesystem::{title_to_relative_path, validate_scoped_path};
 use wikitool_core::knowledge::inspect::{ValidationReport, run_validation_checks};
 use wikitool_core::runtime::{ensure_runtime_ready_for_sync, inspect_runtime};
 use wikitool_core::sync::{
@@ -12,7 +13,9 @@ use wikitool_core::sync::{
     collect_changed_article_paths, plan_sync_changes_with_config, push_to_remote_with_config,
 };
 
-use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_with_config};
+use crate::cli_support::{
+    OutputFormat, normalize_path, path_is_under_directory, resolve_runtime_with_config,
+};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 #[derive(Debug, Args)]
@@ -43,7 +46,7 @@ pub(crate) struct ReviewArgs {
     #[arg(
         long = "draft-path",
         value_name = "PATH",
-        help = "Review one off-wiki draft path; requires exactly one --title and skips push dry-run"
+        help = "Review one off-wiki draft path under .wikitool/drafts/; requires exactly one --title and skips push dry-run"
     )]
     draft_paths: Vec<PathBuf>,
     #[arg(
@@ -71,6 +74,7 @@ struct ReviewReport {
     changed_article_lint: ReviewArticleLint,
     validation: ReviewValidation,
     dry_run_push: ReviewDryRunPush,
+    next_steps: Vec<ReviewNextStep>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -127,6 +131,20 @@ struct ReviewDryRunPush {
     skipped_reason: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct ReviewNextStep {
+    kind: &'static str,
+    description: String,
+    command: Option<ReviewNextStepCommand>,
+    target_path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewNextStepCommand {
+    argv: Vec<String>,
+    display: String,
+}
+
 pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<()> {
     if args.summary.trim().is_empty() {
         bail!("review requires a non-empty --summary");
@@ -136,6 +154,9 @@ pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
     let runtime_status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &runtime_status)?;
     let draft_selection = review_draft_selection_from_args(&args)?;
+    if let Some(selection) = &draft_selection {
+        validate_draft_review_path(&paths, &selection.path)?;
+    }
     let selection = if draft_selection.is_some() {
         SyncSelection {
             titles: args.titles.clone(),
@@ -219,6 +240,8 @@ pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
             args.categories,
         )
     };
+    let next_steps =
+        build_review_next_steps(&paths, draft_selection.as_ref(), args.summary.trim())?;
 
     let mut hard_failures = Vec::new();
     if !status_plan.sync_ledger_ready {
@@ -265,6 +288,7 @@ pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
         changed_article_lint,
         validation,
         dry_run_push,
+        next_steps,
     };
 
     if args.format.is_json() {
@@ -291,6 +315,8 @@ pub(crate) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
 mod tests {
     use super::*;
     use crate::cli_support::OutputFormat;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use wikitool_core::runtime::{ResolvedPaths, ValueSource};
 
     fn review_args() -> ReviewArgs {
         ReviewArgs {
@@ -304,6 +330,54 @@ mod tests {
             draft_paths: Vec::new(),
             titles_file: None,
             summary: "test".to_string(),
+        }
+    }
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(label: &str) -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "wikitool-review-cli-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temp test dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn test_paths(project_root: &Path) -> ResolvedPaths {
+        let wiki_content_dir = project_root.join("wiki_content");
+        let templates_dir = project_root.join("templates");
+        let state_dir = project_root.join(".wikitool");
+        let data_dir = state_dir.join("data");
+        fs::create_dir_all(&wiki_content_dir).expect("wiki content dir");
+        fs::create_dir_all(&templates_dir).expect("templates dir");
+        fs::create_dir_all(&data_dir).expect("data dir");
+        ResolvedPaths {
+            project_root: project_root.to_path_buf(),
+            wiki_content_dir,
+            templates_dir,
+            state_dir: state_dir.clone(),
+            data_dir: data_dir.clone(),
+            db_path: data_dir.join("wikitool.db"),
+            config_path: state_dir.join("config.toml"),
+            parser_config_path: state_dir.join("parser-config.json"),
+            root_source: ValueSource::Default,
+            data_source: ValueSource::Default,
+            config_source: ValueSource::Default,
         }
     }
 
@@ -347,6 +421,98 @@ mod tests {
         assert_eq!(
             selection.path,
             PathBuf::from(".wikitool/drafts/Cheetah.wiki")
+        );
+    }
+
+    #[test]
+    fn review_draft_path_requires_drafts_subdirectory() {
+        let temp = TestDir::new("draft-subdir");
+        let paths = test_paths(&temp.path);
+        let non_draft_state_path = paths.state_dir.join("data").join("Cheetah.wiki");
+        fs::write(&non_draft_state_path, "Text.").expect("state file");
+
+        let error = validate_draft_review_path(&paths, &non_draft_state_path)
+            .expect_err("must reject non-draft state path");
+
+        assert!(error.to_string().contains("canonical draft directory"));
+    }
+
+    #[test]
+    fn review_next_steps_are_empty_for_sync_reviews() {
+        let temp = TestDir::new("sync-next");
+        let paths = test_paths(&temp.path);
+
+        let steps = build_review_next_steps(&paths, None, "Summary").expect("next steps");
+
+        assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
+        let temp = TestDir::new("draft-next");
+        let paths = test_paths(&temp.path);
+        let selection = DraftReviewSelection {
+            title: "Cheetah".to_string(),
+            path: PathBuf::from(".wikitool/drafts/Cheetah.wiki"),
+        };
+
+        let steps =
+            build_review_next_steps(&paths, Some(&selection), "Draft review").expect("next steps");
+
+        assert_eq!(steps.len(), 6);
+        assert_eq!(steps[0].kind, "lint_draft");
+        assert_eq!(
+            steps[0].command.as_ref().expect("lint command").argv,
+            vec![
+                "wikitool",
+                "article",
+                "lint",
+                ".wikitool/drafts/Cheetah.wiki",
+                "--title",
+                "Cheetah",
+                "--format",
+                "json"
+            ]
+        );
+        let promote = steps
+            .iter()
+            .find(|step| step.kind == "promote_draft")
+            .expect("promote step");
+        assert_eq!(
+            promote.target_path.as_deref(),
+            Some("wiki_content/Main/Cheetah.wiki")
+        );
+        assert_eq!(
+            promote.command.as_ref().expect("promote command").argv,
+            vec![
+                "wikitool",
+                "article",
+                "promote",
+                ".wikitool/drafts/Cheetah.wiki",
+                "--title",
+                "Cheetah",
+                "--format",
+                "json"
+            ]
+        );
+        let push = steps
+            .iter()
+            .find(|step| step.kind == "push_dry_run")
+            .and_then(|step| step.command.as_ref())
+            .expect("push command");
+        assert_eq!(
+            push.argv,
+            vec![
+                "wikitool",
+                "push",
+                "--dry-run",
+                "--path",
+                "wiki_content/Main/Cheetah.wiki",
+                "--summary",
+                "Draft review",
+                "--format",
+                "json"
+            ]
         );
     }
 }
@@ -480,6 +646,25 @@ fn review_draft_selection_from_args(args: &ReviewArgs) -> Result<Option<DraftRev
     }))
 }
 
+fn validate_draft_review_path(
+    paths: &wikitool_core::runtime::ResolvedPaths,
+    draft_path: &Path,
+) -> Result<()> {
+    let absolute_path = if draft_path.is_absolute() {
+        draft_path.to_path_buf()
+    } else {
+        paths.project_root.join(draft_path)
+    };
+    validate_scoped_path(paths, &absolute_path)?;
+    if !path_is_under_directory(&absolute_path, &paths.state_dir.join("drafts")) {
+        bail!(
+            "review --draft-path source must be under the canonical draft directory: {}/drafts/",
+            normalize_path(&paths.state_dir)
+        );
+    }
+    Ok(())
+}
+
 fn run_draft_article_lint(
     paths: &wikitool_core::runtime::ResolvedPaths,
     selection: &DraftReviewSelection,
@@ -513,6 +698,148 @@ fn run_draft_article_lint(
         reports: vec![report],
         error,
     })
+}
+
+fn build_review_next_steps(
+    paths: &wikitool_core::runtime::ResolvedPaths,
+    draft_selection: Option<&DraftReviewSelection>,
+    summary: &str,
+) -> Result<Vec<ReviewNextStep>> {
+    let Some(draft_selection) = draft_selection else {
+        return Ok(Vec::new());
+    };
+
+    let draft_path = normalize_path(&draft_selection.path);
+    let title = draft_selection.title.clone();
+    let promote_path = title_to_relative_path(paths, &title, false)?;
+
+    Ok(vec![
+        command_next_step(
+            "lint_draft",
+            "Lint the draft directly with the same title override.",
+            vec![
+                "wikitool",
+                "article",
+                "lint",
+                &draft_path,
+                "--title",
+                &title,
+                "--format",
+                "json",
+            ],
+        ),
+        command_next_step(
+            "fix_draft",
+            "Apply safe mechanical fixes to the draft before reviewing again.",
+            vec![
+                "wikitool",
+                "article",
+                "fix",
+                &draft_path,
+                "--title",
+                &title,
+                "--apply",
+                "safe",
+            ],
+        ),
+        command_next_step(
+            "review_draft",
+            "Rerun the draft review gate after edits or safe fixes.",
+            vec![
+                "wikitool",
+                "review",
+                "--draft-path",
+                &draft_path,
+                "--title",
+                &title,
+                "--format",
+                "json",
+                "--summary",
+                summary,
+            ],
+        ),
+        ReviewNextStep {
+            kind: "promote_draft",
+            description: "Copy the accepted draft to the sync path before push review.".to_string(),
+            command: Some(review_next_step_command(vec![
+                "wikitool",
+                "article",
+                "promote",
+                &draft_path,
+                "--title",
+                &title,
+                "--format",
+                "json",
+            ])),
+            target_path: Some(promote_path.clone()),
+        },
+        command_next_step(
+            "review_promoted_page",
+            "Run the normal pre-push gate after the draft is under wiki_content/.",
+            vec![
+                "wikitool",
+                "review",
+                "--path",
+                &promote_path,
+                "--format",
+                "json",
+                "--summary",
+                summary,
+            ],
+        ),
+        command_next_step(
+            "push_dry_run",
+            "Preview the scoped push only after the promoted review is clean.",
+            vec![
+                "wikitool",
+                "push",
+                "--dry-run",
+                "--path",
+                &promote_path,
+                "--summary",
+                summary,
+                "--format",
+                "json",
+            ],
+        ),
+    ])
+}
+
+fn command_next_step(kind: &'static str, description: &str, argv: Vec<&str>) -> ReviewNextStep {
+    ReviewNextStep {
+        kind,
+        description: description.to_string(),
+        command: Some(review_next_step_command(argv)),
+        target_path: None,
+    }
+}
+
+fn review_next_step_command(argv: Vec<&str>) -> ReviewNextStepCommand {
+    let argv = argv
+        .into_iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>();
+    ReviewNextStepCommand {
+        display: display_command(&argv),
+        argv,
+    }
+}
+
+fn display_command(argv: &[String]) -> String {
+    argv.iter()
+        .map(|arg| display_command_arg(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn display_command_arg(arg: &str) -> String {
+    if arg
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | '\\' | ':'))
+    {
+        return arg.to_string();
+    }
+    format!("\"{}\"", arg.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn validation_issue_count(report: &ValidationReport) -> usize {
@@ -643,6 +970,17 @@ fn print_review_report(report: &ReviewReport) {
     }
     if let Some(error) = &report.dry_run_push.error {
         println!("push_dry_run.error: {error}");
+    }
+    println!("next_steps.count: {}", report.next_steps.len());
+    for step in &report.next_steps {
+        println!("next_step.kind: {}", step.kind);
+        println!("next_step.description: {}", step.description);
+        if let Some(command) = &step.command {
+            println!("next_step.command: {}", command.display);
+        }
+        if let Some(target_path) = &step.target_path {
+            println!("next_step.target_path: {target_path}");
+        }
     }
     if report.hard_failures.is_empty() {
         println!("hard_failures: <none>");

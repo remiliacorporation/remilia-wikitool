@@ -24,7 +24,7 @@ Use `wiki profile remote URL` only for an explicitly scoped remote target capabi
 Use `knowledge inspect references` for indexed citation audits and duplicate cleanup prep.
 Use scoped `validate --category ... --title ... --limit ...` when investigating a specific validation class. Use `--verify-live` for broken-link or redirect findings that need production API corroboration.
 Use scoped `status`, `diff`, and `push --dry-run` selectors when working on a subset of pages.
-Use `article lint .wikitool/drafts/Title.wiki --title "Title"` and `article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe` for direct draft iteration before promotion into `wiki_content/`.
+Use `article lint .wikitool/drafts/Title.wiki --title "Title"`, `article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe`, and `article promote .wikitool/drafts/Title.wiki --title "Title"` for direct draft iteration before push review.
 Use `review --format json --summary "..."` for the full pre-push gate.
 
 Reach for `wikitool` when you need wiki-grounded retrieval, template/profile lookup, lint/fix, sync, or guarded push flows.

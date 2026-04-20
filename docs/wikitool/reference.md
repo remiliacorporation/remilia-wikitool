@@ -245,7 +245,7 @@ Options:
       --categories           Limit sync checks to Category namespace pages
       --title <TITLE>
       --path <PATH>
-      --draft-path <PATH>    Review one off-wiki draft path; requires exactly one --title and skips push dry-run
+      --draft-path <PATH>    Review one off-wiki draft path under .wikitool/drafts/; requires exactly one --title and skips push dry-run
       --titles-file <PATH>   Read one canonical page title per line
       --summary <TEXT>       Edit summary used for the push dry-run report [default: "wikitool review dry-run"]
   -h, --help                 Print help
@@ -1667,9 +1667,10 @@ Lint and mechanically remediate article drafts
 Usage: wikitool article [OPTIONS] <COMMAND>
 
 Commands:
-  lint  Lint article wikitext against wiki/profile rules
-  fix   Apply safe mechanical fixes to article wikitext
-  help  Print this message or the help of the given subcommand(s)
+  lint     Lint article wikitext against wiki/profile rules
+  fix      Apply safe mechanical fixes to article wikitext
+  promote  Copy a reviewed state draft into the sync tree
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -1687,7 +1688,7 @@ Lint article wikitext against wiki/profile rules
 Usage: wikitool article lint [OPTIONS] [PATH]
 
 Arguments:
-  [PATH]  Article path; state-draft paths under .wikitool/ may use --title override
+  [PATH]  Article path; state-draft paths under .wikitool/drafts/ may use --title override
 
 Options:
       --profile <PROFILE>    [default: remilia]
@@ -1697,7 +1698,7 @@ Options:
       --config <PATH>
       --strict               Treat warnings as errors
       --diagnostics          Print resolved runtime diagnostics
-      --title <TITLE>        Select a canonical article title; with one state-draft PATH, override the draft title
+      --title <TITLE>        Select a canonical article title; with one .wikitool/drafts/ PATH, override the draft title
       --path <PATH>
       --titles-file <PATH>   Read one canonical page title per line
       --changed              Lint the current changed main-namespace article set
@@ -1712,7 +1713,7 @@ Apply safe mechanical fixes to article wikitext
 Usage: wikitool article fix [OPTIONS] [PATH]
 
 Arguments:
-  [PATH]  Article path; state-draft paths under .wikitool/ may use --title override
+  [PATH]  Article path; state-draft paths under .wikitool/drafts/ may use --title override
 
 Options:
       --profile <PROFILE>    [default: remilia]
@@ -1722,10 +1723,31 @@ Options:
       --config <PATH>
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --diagnostics          Print resolved runtime diagnostics
-      --title <TITLE>        Select a canonical article title; with one state-draft PATH, override the draft title
+      --title <TITLE>        Select a canonical article title; with one .wikitool/drafts/ PATH, override the draft title
       --path <PATH>
       --titles-file <PATH>   Read one canonical page title per line
       --changed              Fix the current changed main-namespace article set
+  -h, --help                 Print help
+```
+
+## article promote
+
+```text
+Copy a reviewed state draft into the sync tree
+
+Usage: wikitool article promote [OPTIONS] --title <TITLE> <PATH>
+
+Arguments:
+  <PATH>  State-draft path under the canonical .wikitool/drafts/ directory
+
+Options:
+      --project-root <PATH>
+      --title <TITLE>        Canonical article title for the destination under wiki_content/
+      --data-dir <PATH>
+      --overwrite            Overwrite the destination file if it already exists
+      --config <PATH>
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
 

@@ -120,6 +120,7 @@ Before any live write push:
 ```bash
 wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
+wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article lint --changed --format json
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"
 wikitool validate --summary
@@ -132,6 +133,8 @@ wikitool push --dry-run --summary "Summary"
 Only push after the dry run is reviewed. Never use `--force` without explicit user approval.
 For content investigations involving redirects, missing pages, or broken links, verify against the
 live API at `https://wiki.remilia.org/api.php`.
+When using `review --draft-path`, follow the report's `next_steps` field for direct draft lint/fix,
+`article promote`, and the scoped post-promotion review/push dry run.
 
 ## Host Overlay
 
