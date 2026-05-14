@@ -6,6 +6,7 @@ pub mod model;
 pub mod session;
 mod template_render;
 pub mod url;
+mod web_archive;
 pub mod web_fetch;
 
 use anyhow::Result;
@@ -37,6 +38,7 @@ pub use session::{
     show_research_session,
 };
 pub use url::parse_wiki_url;
+pub use web_archive::{WebArchiveEntry, WebArchiveOptions, WebArchiveReport, archive_web_site};
 pub use web_fetch::MachineSurfaceDiscoveryOptions;
 
 pub fn fetch_page_by_url(

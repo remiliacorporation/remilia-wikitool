@@ -4,8 +4,8 @@ use serde::Serialize;
 use wikitool_core::research::{
     ChallengeHandoff, ExternalFetchAttempt, ExternalFetchFailureError, ExternalFetchFormat,
     ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExternalMachineSurfaceReport,
-    MachineSurfaceDiscoveryOptions, ResearchCacheOptions, ResearchCacheStatus,
-    discover_machine_surfaces, fetch_page_by_url_cached,
+    MachineSurfaceDiscoveryOptions, ResearchCacheOptions, ResearchCacheStatus, WebArchiveOptions,
+    archive_web_site, discover_machine_surfaces, fetch_page_by_url_cached,
 };
 use wikitool_core::sync::{ExternalSearchHit, ExternalSearchReport, MediaWikiSearchWhat};
 
@@ -36,6 +36,8 @@ pub(crate) enum ResearchSubcommand {
     WikiSearch(ResearchSearchArgs),
     #[command(about = "Fetch readable reference material from a URL")]
     Fetch(ResearchFetchArgs),
+    #[command(about = "Mirror raw web pages and requisites into a local manifest archive")]
+    Archive(ResearchArchiveArgs),
     #[command(about = "Discover public machine-readable source surfaces for a URL")]
     Discover(ResearchDiscoverArgs),
     #[command(about = "Manage human-solved source access sessions")]
@@ -135,6 +137,46 @@ pub(crate) struct ResearchDiscoverArgs {
     limit: usize,
 }
 
+#[derive(Debug, Args)]
+pub(crate) struct ResearchArchiveArgs {
+    url: String,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Write archive files to this directory"
+    )]
+    output_dir: Option<std::path::PathBuf>,
+    #[arg(
+        long,
+        default_value_t = 1_000,
+        value_name = "N",
+        help = "Maximum URLs to attempt"
+    )]
+    max_pages: usize,
+    #[arg(
+        long,
+        default_value_t = 50_000_000,
+        value_name = "BYTES",
+        help = "Maximum bytes to store for a single response"
+    )]
+    max_bytes: usize,
+    #[arg(long, help = "Allow crawling linked URLs outside the source host")]
+    span_hosts: bool,
+    #[arg(
+        long,
+        help = "Do not enqueue linked page requisites such as CSS image URLs"
+    )]
+    no_page_requisites: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Json,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
 #[derive(Debug, Serialize)]
 struct ResearchSearchOutput {
     schema_version: String,
@@ -197,10 +239,44 @@ pub(crate) fn run_research(runtime: &RuntimeOptions, args: ResearchArgs) -> Resu
             run_research_wiki_search(runtime, args, "research wiki-search")
         }
         ResearchSubcommand::Fetch(args) => run_research_fetch(runtime, args),
+        ResearchSubcommand::Archive(args) => run_research_archive(runtime, args),
         ResearchSubcommand::Discover(args) => run_research_discover(runtime, args),
         ResearchSubcommand::Session(args) => session::run(runtime, args),
         ResearchSubcommand::MediawikiTemplates(args) => mediawiki_templates::run(runtime, args),
     }
+}
+
+fn run_research_archive(runtime: &RuntimeOptions, args: ResearchArchiveArgs) -> Result<()> {
+    let (paths, _) = resolve_runtime_with_config(runtime)?;
+    let report = archive_web_site(
+        &paths,
+        &args.url,
+        WebArchiveOptions {
+            max_pages: args.max_pages,
+            max_bytes: args.max_bytes,
+            same_host_only: !args.span_hosts,
+            include_page_requisites: !args.no_page_requisites,
+            output_dir: args.output_dir,
+        },
+    )?;
+
+    if args.format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    println!("research archive");
+    println!("project_root: {}", normalize_path(&paths.project_root));
+    println!("source_url: {}", report.source_url);
+    println!("origin_host: {}", report.origin_host);
+    println!("output_dir: {}", report.output_dir);
+    println!("attempted: {}", report.attempted);
+    println!("succeeded: {}", report.succeeded);
+    println!("failed: {}", report.failed);
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
 }
 
 fn run_research_wiki_search(
