@@ -127,10 +127,9 @@ fn find_matching_close_tag(html: &str, tag_name: &str, start: usize) -> Option<u
         let lt = html[index..].find('<')?;
         let at = index + lt;
         if starts_with_at(html, at, "<!--") {
-            if let Some(end) = index_of_ignore_case(html, "-->", at + 4) {
+            {
+                let end = index_of_ignore_case(html, "-->", at + 4)?;
                 index = end + 3;
-            } else {
-                return None;
             }
             continue;
         }

@@ -297,10 +297,7 @@ fn recommendation_tags(template_title: &str, overlay: &ProfileOverlay) -> Vec<St
 fn merge_titles(left: Vec<String>, right: Option<Vec<String>>) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
-    for title in left
-        .into_iter()
-        .chain(right.unwrap_or_default().into_iter())
-    {
+    for title in left.into_iter().chain(right.unwrap_or_default()) {
         let normalized = title.to_ascii_lowercase();
         if !title.is_empty() && seen.insert(normalized) {
             out.push(title);

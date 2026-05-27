@@ -242,7 +242,7 @@ pub fn load_research_session_for_url(
             user_agent: session.user_agent.clone(),
         });
     }
-    candidates.sort_by(|left, right| right.domain.len().cmp(&left.domain.len()));
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.domain.len()));
     Ok(candidates.into_iter().next())
 }
 

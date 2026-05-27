@@ -216,17 +216,15 @@ fn normalize_title_override(title_override: Option<&str>) -> Result<Option<Strin
 fn collect_lines(content: &str) -> Vec<LineRecord> {
     let mut out = Vec::new();
     let mut offset = 0usize;
-    let mut line_number = 1usize;
-    for segment in content.split_inclusive('\n') {
+    for (index, segment) in content.split_inclusive('\n').enumerate() {
         let line = segment.trim_end_matches('\n').trim_end_matches('\r');
         out.push(LineRecord {
-            number: line_number,
+            number: index + 1,
             start: offset,
             end: offset + line.len(),
             text: line.to_string(),
         });
         offset += segment.len();
-        line_number += 1;
     }
     if content.is_empty() {
         out.push(LineRecord {

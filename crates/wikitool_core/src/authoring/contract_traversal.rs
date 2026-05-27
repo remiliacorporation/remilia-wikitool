@@ -559,7 +559,7 @@ fn fallback_contract_candidates(options: &AuthoringContractPlanOptions) -> Vec<C
             matched_query_terms: BTreeSet::new(),
         });
     }
-    out.sort_by(|left, right| right.score.cmp(&left.score));
+    out.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
     out
 }
 

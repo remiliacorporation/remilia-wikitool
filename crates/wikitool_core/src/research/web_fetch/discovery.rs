@@ -188,7 +188,7 @@ fn discover_sitemap_surfaces(
                 samples.push(loc);
             }
         }
-        for loc in relevant.into_iter().chain(samples.into_iter()) {
+        for loc in relevant.into_iter().chain(samples) {
             push_machine_surface(
                 &mut report.surfaces,
                 options.surface_limit,
