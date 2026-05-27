@@ -62,6 +62,13 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             "packaged guidance must explain that both shipped filenames carry the same instructions"
         );
         assert!(
+            body.contains("## Token Discipline")
+                && body.contains("Agent-facing defaults are intentionally compact")
+                && body.contains("knowledge pack --payload full")
+                && body.contains("wiki ... --view full"),
+            "packaged guidance must preserve the compact-default/token-discipline contract"
+        );
+        assert!(
             body.contains("## Session Start")
                 && body.contains("wikitool diff --format json")
                 && body.contains("wikitool pull --all --format json")
@@ -119,6 +126,10 @@ fn thin_wrappers_reference_help_and_keep_raw_pack_secondary() {
         assert!(
             body.contains("knowledge pack"),
             "thin wrappers must still mention raw knowledge pack access"
+        );
+        assert!(
+            body.contains("Keep agent context compact"),
+            "thin wrappers must preserve compact-first agent retrieval guidance"
         );
     }
     for body in [&claude_skill, &codex_skill] {

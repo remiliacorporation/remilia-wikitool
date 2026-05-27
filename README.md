@@ -99,6 +99,7 @@ wikitool push --dry-run --title "Topic" --summary "Add article on Topic"
 | `codex_skills/` | Codex skill equivalents |
 | `writing_context/` | Article-writing rules and Remilia default writing profile |
 | `docs/wikitool/guide.md` | Detailed operator manual |
+| `docs/wikitool/architecture.md` | Maintainer architecture and agentic token contract |
 | `docs/wikitool/reference.md` | Generated command reference |
 | `VERSIONING.md` | Maintainer version and release checklist |
 | `RELEASE_LOG.md` | Release history |

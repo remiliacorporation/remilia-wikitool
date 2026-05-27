@@ -1,0 +1,50 @@
+# Wikitool Architecture
+
+Wikitool is shaped around agentic wiki work, not generic scraping. The long-term split is:
+
+- `crates/wikitool` owns CLI argument parsing, command-family dispatch, text output, JSON view selection, and release packaging surfaces.
+- `crates/wikitool_core` owns MediaWiki IO, sync state, indexing, retrieval, profile/catalog construction, parsing, linting, and reusable output models.
+- `ai-pack/` owns shipped agent instructions and writing context. It should describe workflows and decision rules, not duplicate generated command help.
+- `docs/wikitool/reference.md` is generated from CLI help and is the canonical flag reference.
+
+## CLI Shape
+
+CLI modules should stay thin at the top level. Large command families should use a facade plus
+focused submodules:
+
+- `knowledge_cli/`: build/warm/status, article-start, raw pack, contract traversal, shared output helpers.
+- `knowledge_inspect_cli/`: chunks, backlinks, templates, reference audits, index/page summaries.
+- `wiki_cli/`: capabilities, profile probes, rules, authoring surface, text printers, JSON summaries.
+
+Adding a command should put the clap arguments near the facade and the implementation in the
+owning command-family module. Shared behavior belongs in `wikitool_core` when it is reusable across
+CLI lanes, or in a local `shared.rs` only when it is presentation glue.
+
+## Agentic Token Contract
+
+Default outputs must be useful in a constrained model context:
+
+- Prefer interpreted entry points such as `knowledge article-start` and summary JSON views.
+- Keep raw substrate explicit: `knowledge pack --payload full` and `wiki ... --view full` are opt-in.
+- Keep retrieval bounded by `--limit`, `--token-budget`, and `--max-pages`; broad commands should
+  return counts, summaries, and follow-up commands before full bodies.
+- Preserve scoped drill-down lanes: `knowledge inspect chunks`, `knowledge inspect references`,
+  `templates show/examples`, and `wiki surface show` should let agents ask for the next slice rather
+  than loading the whole project.
+- JSON envelopes should expose readiness, degradation, selection, and schema/version fields where
+  agents need to reason about whether an answer is safe to use.
+
+When changing output shape, update the owning docs/skill surface and add or adjust tests that lock
+the compact/default behavior. Generated help changes require regenerating `docs/wikitool/reference.md`.
+
+## Guidance Surfaces
+
+Agent guidance should stay aligned with the command boundaries:
+
+- Route authoring through `knowledge article-start`; use `knowledge pack` only for deeper substrate.
+- Use `wiki profile show` and `wiki surface show` for target-wiki contracts, not assumptions from
+  source wikis.
+- Use `knowledge inspect` subcommands for targeted retrieval and audit slices.
+- Keep Claude and Codex wrappers thin and help-backed; the wrappers should name front doors and
+  safety boundaries, not restate flags.
+

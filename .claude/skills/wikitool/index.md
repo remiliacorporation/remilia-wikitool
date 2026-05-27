@@ -1,6 +1,6 @@
 ﻿---
 name: knowledge-inspect
-description: Run `knowledge inspect` stats/backlinks/templates/orphans workflows. Use `knowledge build` for rebuilds.
+description: Run targeted `knowledge inspect` chunks/backlinks/templates/references/orphans workflows. Use `knowledge build` for rebuilds.
 allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: <subcommand> [options]
 ---

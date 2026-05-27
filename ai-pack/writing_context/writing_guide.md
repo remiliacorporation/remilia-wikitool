@@ -34,6 +34,8 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 
 Use `wikitool knowledge pack ... --format json` when you need the deeper retrieval bundle behind `article-start`. The default compact payload keeps `context_summary.subject_context` separate from `context_summary.wiki_contract_context` and omits heavy template/module implementation chunks; use `--payload full` only when you need those implementation bodies or expanded docs text. Use `wikitool knowledge contracts search "contract terms" --format json` for a direct token-budgeted search of the template/module graph before deciding which template or module to expand.
 
+Keep retrieval token-tight. Prefer the interpreted `article-start` brief and targeted `knowledge inspect chunks` calls for missing sections. Increase `--token-budget`, use broad `--across-pages`, or request `--payload full` only after the compact brief identifies a specific gap.
+
 ### Editing an existing article
 
 1. Pull latest wiki state: `wikitool pull --all --format json`

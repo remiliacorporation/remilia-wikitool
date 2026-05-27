@@ -50,9 +50,11 @@ wikitool workflow full-refresh --yes
 wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
 wikitool knowledge status --docs-profile remilia-mw-1.44
 wikitool knowledge article-start "Topic" --format json
+wikitool knowledge contracts search "contract terms" --format json
 wikitool research wiki-search "Topic" --format json
 wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
 wikitool wiki profile sync
+wikitool wiki surface show --format json
 wikitool templates show "Template:Infobox person"
 wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
@@ -70,3 +72,4 @@ wikitool release build-matrix
 2. Treat SQLite as an AI retrieval index: semantic page profiles, sections, templates, module invocation patterns, references, source authorities, identifiers, template implementation bundles, pinned docs corpora, links, and media.
 3. Do not describe reference rows as quality scored; use the stored retrieval signals, authority/identifier data, and source metadata directly.
 4. Prefer `knowledge article-start` as the default authoring retrieval front door; use `knowledge pack` only when the deeper raw substrate is needed, and use `knowledge status` to verify readiness before depending on local context.
+5. Keep agent context compact: prefer compact `article-start`, `wiki profile show`, `wiki surface show`, and scoped `knowledge inspect` drill-downs before requesting full payloads, broad selections, or high token budgets.

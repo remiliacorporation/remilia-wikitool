@@ -40,8 +40,9 @@ Without a host overlay, release bundles ship the generic wikitool-maintained con
 2. Use `.wikitool/drafts/`, `plans/`, or test fixtures for scratch work.
 3. Keep target-specific writing rules explicit. If a rule only applies to one wiki, label it as
    target-specific or ship it through a host overlay.
-4. After CLI or workflow changes, update the owning agent/docs surface, regenerate
-   `docs/wikitool/reference.md` when help changes, and run the guidance contract tests.
+4. After CLI, output-schema, or workflow changes, update the owning agent/docs surface, preserve the
+   compact default payload contract, regenerate `docs/wikitool/reference.md` when help changes, and
+   run the guidance contract tests.
 
 ## Packaging Contract
 

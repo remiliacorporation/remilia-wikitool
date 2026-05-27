@@ -93,6 +93,15 @@ Use `knowledge pack` only when `article-start` is too collapsed and you need the
 substrate. Its default compact payload separates subject context from wiki contract context; use
 `--payload full` only when implementation bodies or expanded docs text are needed.
 
+## Token Discipline
+
+Agent-facing defaults are intentionally compact. Start from interpreted or summary lanes:
+`knowledge article-start`, `wiki profile show`, `wiki surface show`, scoped `knowledge inspect`
+commands, and `templates show/examples`. Reserve `knowledge pack --payload full`,
+`wiki ... --view full`, broad `knowledge inspect` selections, and high token budgets for cases where
+the compact result identifies a concrete need. Prefer one targeted drill-down over loading a whole
+catalog or page set into context.
+
 ## Research And Source Boundaries
 
 Use normal agent web search to choose arbitrary source URLs, then use `wikitool research fetch`
