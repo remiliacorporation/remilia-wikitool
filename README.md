@@ -1,149 +1,119 @@
 # Wikitool
 
-MediaWiki editing, retrieval, research, linting, and sync in one self-contained CLI.
+A single-binary CLI for working on a MediaWiki wiki: pull and push content, search and
+retrieve context, research sources, lint and validate articles, and sync changes back to the
+live site. It keeps a local SQLite index so an AI agent — Claude, Codex, or another — can read
+the wiki, draft an article, and check it before pushing.
 
-Wikitool is built for agentic wiki work: local files stay human-editable, SQLite holds the
-retrieval/index layer, and release bundles ship the guidance files that Claude, Codex, and other
-agents need to use the tool without a separate unpack step.
+Local article files stay plain wikitext you can edit by hand. The database is derived and
+disposable. Each release ships the agent guidance files alongside the binary, so an agent run
+from the unpacked folder already knows how to drive the tool.
 
-## Release Layout
+## Install
 
-A release zip unpacks into a ready-to-run folder:
+Download the release zip for your platform and unpack it. Everything sits at the top level:
 
 ```text
-wikitool(.exe)
-README.md
-AGENTS.md
-CLAUDE.md
-.claude/
-codex_skills/
-writing_context/
-docs/wikitool/
-manifest.json
-LICENSE*
+wikitool(.exe)        the binary
+README.md             this file
+CLAUDE.md AGENTS.md   agent routing brief (identical content)
+.claude/              Claude skills and rules
+codex_skills/         Codex skill equivalents
+writing_context/      article-writing rules and style profile
+docs/wikitool/        operator manual and generated command reference
+manifest.json LICENSE*
 ```
 
-There is no separate setup document. This README is the top-level entry point; the detailed
-operator manual is `docs/wikitool/guide.md`.
+Put `wikitool` on your `PATH`, or run it from the unpacked folder.
 
-## First Run
+## First run
 
-From the extracted release folder, or from any wiki project root with `wikitool` on `PATH`:
-
-```bash
-wikitool init --templates
-wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing
-wikitool wiki profile sync
-wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
-```
-
-Read-only workflows do not need credentials. Push/delete writes need bot credentials in `.env`:
+Point wikitool at your wiki, then run one command. Create a `.env` in the project folder:
 
 ```bash
-WIKI_BOT_USER=Username@BotName
-WIKI_BOT_PASS=your-bot-password
 WIKI_URL=https://your-wiki.example.org/
 WIKI_API_URL=https://your-wiki.example.org/api.php
+# only needed to push or delete:
+WIKI_BOT_USER=Username@BotName
+WIKI_BOT_PASS=your-bot-password
 ```
 
-`WIKI_URL` and `WIKI_API_URL` are optional when the materialized config already points at the
-target wiki.
-
-## Session Refresh
-
-At the start of an agentic editing session, inspect local changes and refresh wiki state:
+Then bootstrap the local runtime:
 
 ```bash
-wikitool status --modified --format json
-wikitool diff --format json
-wikitool pull --all --format json
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
-wikitool wiki profile sync --format json
-wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool workflow session-refresh
 ```
 
-Use `pull --full --all` for first syncs, missing sync state, or deliberate rebuilds. Do not use
-`--overwrite-local` unless local edits should be discarded.
+This creates the runtime layout, pulls content, builds the knowledge index, and syncs the
+wiki's capability profile. Run it again at the start of any session to refresh state; use
+`wikitool workflow full-refresh` to rebuild from scratch. Read-only work needs no credentials.
 
-## Authoring Loop
+## Using it with an agent
 
-```bash
-wikitool knowledge article-start "Topic" --intent new --format json --view brief
-wikitool research wiki-search "Topic" --format json
-wikitool research fetch "https://example.org/source" --format rendered-html --output json
-wikitool templates show "Template:Infobox person" --format json --view brief
-# edit wiki_content/Main/Topic.wiki
-wikitool article lint wiki_content/Main/Topic.wiki --format json
-wikitool knowledge inspect references duplicates --title "Topic" --format json
-wikitool review --format json --view brief --summary "Add article on Topic"
-wikitool push --dry-run --title "Topic" --summary "Add article on Topic"
-```
+Run `claude` or `codex` from the unpacked folder. The bundled `CLAUDE.md` / `AGENTS.md` and the
+`.claude/` and `codex_skills/` directories tell the agent which commands to use and in what
+order. The `/wikitool` skill drives retrieval, authoring, and sync; `/review` gates content
+before a push.
 
-## What It Does
+## What it does
 
-- `knowledge article-start --view brief` builds an interpreted authoring brief.
-- `knowledge contracts` and `templates` expose target-wiki template/module contracts.
-- `research wiki-search` queries the configured wiki API; `research fetch/discover/mediawiki-templates` gathers source URLs and source-wiki evidence.
-- `export` writes agent-readable markdown source packs.
-- `article lint/fix`, `validate`, `module lint`, and `review` gate content before push.
-- `pull`, `status`, `diff`, and `push --dry-run` keep local files synchronized with the live wiki.
+- **Author** — `knowledge article-start "Topic" --view brief` returns an interpreted brief:
+  section skeleton from comparable pages, applicable templates and categories, and where the
+  evidence is thin.
+- **Research** — `research wiki-search` queries the wiki API; `research fetch` pulls a URL with
+  structured metadata; `research archive` captures a site to disk; `research session` imports
+  cookies for session-gated sources.
+- **Inspect** — `templates show`, `knowledge inspect chunks/references`, and `wiki surface`
+  expose the target wiki's templates, content, and capabilities.
+- **Check** — `article lint`/`fix`, `validate`, `module lint`, and `review` catch structural,
+  citation, and link problems before a push.
+- **Sync** — `pull`, `status`, `diff`, and `push --dry-run` keep local files aligned with the
+  live wiki. Push detects conflicts against the remote and previews every change first.
+
+Every command has `--help`, and `docs/wikitool/reference.md` is the full generated reference.
 
 ## Documentation
 
-| Surface | Role |
+| File | Role |
 |---|---|
-| `README.md` | Top-level first-run, session, and release-layout overview |
-| `AGENTS.md` / `CLAUDE.md` | Compact packaged agent routing brief |
-| `.claude/skills/` | Claude `/wikitool` and `/review` wrappers |
-| `codex_skills/` | Codex skill equivalents |
-| `writing_context/` | Article-writing rules and Remilia default writing profile |
-| `docs/wikitool/guide.md` | Detailed operator manual |
-| `docs/wikitool/architecture.md` | Maintainer architecture and agentic token contract |
+| `docs/wikitool/guide.md` | Operator manual |
 | `docs/wikitool/reference.md` | Generated command reference |
-| `VERSIONING.md` | Maintainer version and release checklist |
-| `RELEASE_LOG.md` | Release history |
+| `docs/wikitool/architecture.md` | Internals and the agent token contract |
+| `writing_context/` | Article structure, style rules, and writing guide |
+| `CLAUDE.md` / `AGENTS.md` | Agent routing brief |
+| `VERSIONING.md` / `RELEASE_LOG.md` | Release process and history |
 
-Every command has `--help`. In a source checkout with the maintainer surface enabled, regenerate the
-reference with:
-
-```bash
-cargo run --features maintainer-surface -- docs generate-reference
-```
-
-## Source Builds
-
-```bash
-cargo build --package wikitool --release
-```
-
-Normal source builds produce the end-user binary. To opt into maintainer-only commands from a
-source checkout:
-
-```bash
-cargo build --package wikitool --release --features maintainer-surface
-```
-
-## Runtime State
+## Runtime state
 
 ```text
 project-root/
   .env
   .wikitool/config.toml
-  .wikitool/data/wikitool.db
-  wiki_content/
-  templates/
+  .wikitool/data/wikitool.db    derived index — safe to delete
+  wiki_content/                 article wikitext
+  templates/                    template and module sources
 ```
 
-The SQLite database is derived and disposable. If local state is incompatible or stale, reset it and
-refresh from the live wiki:
+If the local database is stale or incompatible, reset and rebuild:
 
 ```bash
 wikitool db reset --yes
-wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing
+wikitool workflow full-refresh
+```
+
+## Build from source
+
+```bash
+cargo build --package wikitool --release
+```
+
+Normal builds produce the end-user binary. Maintainer commands (release packaging, reference
+generation, docs audit) live behind a feature flag:
+
+```bash
+cargo build --package wikitool --release --features maintainer
 ```
 
 ## License
 
-AGPL-3.0-only with supplementary terms in `LICENSE-SSL` and `LICENSE-VPL`.
+AGPL-3.0-only, with supplementary terms in `LICENSE-SSL` and `LICENSE-VPL`.

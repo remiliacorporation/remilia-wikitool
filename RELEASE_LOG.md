@@ -2,6 +2,30 @@
 
 Chronological release notes for tagged wikitool versions.
 
+## v0.3.0
+
+Date: 2026-05-28
+
+A structural release. No database reset required; v0.2.0 runtime state carries forward.
+
+### What changed
+
+v0.2.0 proved the knowledge layer; v0.3.0 reshapes the tool around it. The largest source files were split into focused modules (sync, retrieval, reference parsing, template catalog, wiki capabilities, HTML extraction, docs, and the CLI command families), command boundaries were tightened, and legacy public affordances were removed outright rather than aliased.
+
+### New capabilities
+
+- **First-run setup is one command.** `wikitool workflow session-refresh` initializes the runtime layout, pulls content, warms the knowledge index, and syncs the wiki profile in a single pass — and is now part of the end-user surface, not a hidden maintainer command. `workflow full-refresh` rebuilds local state from scratch.
+- **Token-efficient brief outputs.** `--view brief` produces compact, interpreted reports for `knowledge article-start`, `knowledge inspect chunks`, `templates`, `wiki surface`, and `review`, so agents spend fewer tokens on retrieval substrate.
+- **Research session handoff.** Import browser cookies (header, JSON bookmarklet, or Netscape file) so `research fetch` can reach session-gated sources.
+- **Raw web archive crawler.** `research archive` captures a site's pages and requisites to disk, bounded by page count, per-response size, link depth, and an aggregate byte budget.
+- **Maintainer audit lane.** `docs audit` (maintainer surface) verifies the generated CLI reference is current and that packaged guidance and skills stay aligned with the shipped command surface.
+
+### Improvements
+
+- Conflict hydration deduplicates titles before fetching remote timestamps, and `--force` skips the timestamp fetch it would ignore.
+- The `maintainer-surface` build feature is now simply `maintainer`.
+- Access-challenge detection adds Cloudflare/DataDome/Anubis fingerprints and treats generic markers (a lone "challenge-container", "captcha") as weak signals requiring corroboration, reducing false positives.
+
 ## v0.2.0
 
 Date: 2026-03-18
