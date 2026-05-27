@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 
 use crate::RuntimeOptions;
+use crate::briefs::BriefView;
 use crate::cli_support::OutputFormat;
 
 mod backlinks;
@@ -62,6 +63,14 @@ enum KnowledgeInspectSubcommand {
             help = "Output format: text|json"
         )]
         format: OutputFormat,
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = BriefView::Brief,
+            value_name = "VIEW",
+            help = "JSON view: brief|full"
+        )]
+        view: BriefView,
         #[arg(long, help = "Enable lexical de-duplication and diversification")]
         diversify: bool,
         #[arg(long, help = "Disable lexical de-duplication and diversification")]
@@ -124,6 +133,7 @@ pub(crate) fn run_knowledge_inspect(
             token_budget,
             max_pages,
             format,
+            view,
             diversify,
             no_diversify,
         } => chunks::run_inspect_chunks(
@@ -135,6 +145,7 @@ pub(crate) fn run_knowledge_inspect(
             token_budget,
             max_pages,
             format,
+            view,
             diversify,
             no_diversify,
         ),

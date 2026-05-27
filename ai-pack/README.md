@@ -9,7 +9,7 @@ The packaged release root is intentionally flat and ready to use: `AGENTS.md`, `
 
 | Source | Packaged path | Role |
 |---|---|---|
-| `AGENTS.md` | `AGENTS.md` | Agent routing card |
+| `AGENTS.md` | `AGENTS.md` | Agent routing brief |
 | `CLAUDE.md` | `CLAUDE.md` | Same body as `AGENTS.md` |
 | `.claude/rules/*` | `.claude/rules/*` | Claude always-on editing rules |
 | `.claude/skills/*` | `.claude/skills/*` | Claude operator/review wrappers |
@@ -43,7 +43,7 @@ Without a host overlay, release bundles ship the generic wikitool-maintained con
    target-specific or ship it through a host overlay.
 4. After CLI, output-schema, or workflow changes, update the owning agent/docs surface, preserve the
    compact default payload contract, regenerate `docs/wikitool/reference.md` when help changes, and
-   run the guidance contract tests.
+   run the guidance contract tests plus `cargo run --features maintainer-surface -- docs audit`.
 
 ## Packaging Contract
 

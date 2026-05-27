@@ -10,8 +10,8 @@ Thin wrapper for content gating with `wikitool`.
 Use normal reasoning and editorial judgment. Verify the live command surface against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
 Typical gate loop:
-- Preferred full gate: `wikitool review --format json --summary "..."`
-- Draft-first gate: `wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"`; follow its `next_steps` for `article promote` and scoped push dry-run.
+- Preferred gate brief: `wikitool review --format json --view brief --summary "..."`
+- Draft-first gate: `wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --view brief --summary "Draft review"`; follow its `next_steps` for `article promote` and scoped push dry-run.
 - Direct draft iteration: `wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json`; `wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe`; `wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json`
 - `wikitool article lint <path> --format json`
 - `wikitool article fix <path> --apply safe`

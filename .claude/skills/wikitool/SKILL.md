@@ -45,31 +45,27 @@ Reach for `wikitool` when you need wiki-aware retrieval, MediaWiki-aware fetch/e
 wikitool status --modified --format json
 wikitool diff --format json
 wikitool pull --all --format json
-wikitool workflow session-refresh
-wikitool workflow full-refresh --yes
 wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
 wikitool knowledge status --docs-profile remilia-mw-1.44
-wikitool knowledge article-start "Topic" --format json
+wikitool knowledge article-start "Topic" --format json --view brief
 wikitool knowledge contracts search "contract terms" --format json
 wikitool research wiki-search "Topic" --format json
 wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
 wikitool wiki profile sync
-wikitool wiki surface show --format json
-wikitool templates show "Template:Infobox person"
+wikitool wiki surface show --format json --view brief
+wikitool templates show "Template:Infobox person" --format json --view brief
 wikitool article lint wiki_content/Main/Title.wiki --format json
-wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --diversify
+wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --view brief --diversify
 wikitool knowledge pack "Topic" --format json
-wikitool docs generate-reference
-wikitool dev install-git-hooks
-wikitool release build-ai-pack
-wikitool release package
-wikitool release build-matrix
 ```
+
+Maintainer-only lanes (`docs generate-reference`, `docs audit`, `dev`, `release`, `workflow`) require
+`cargo run --features maintainer-surface -- ...` from a source checkout.
 
 ## Retrieval model
 
 1. Treat local files as the editor-facing source of truth.
 2. Treat SQLite as an AI retrieval index: semantic page profiles, sections, templates, module invocation patterns, references, source authorities, identifiers, template implementation bundles, pinned docs corpora, links, and media.
 3. Do not describe reference rows as quality scored; use the stored retrieval signals, authority/identifier data, and source metadata directly.
-4. Prefer `knowledge article-start` as the default authoring retrieval front door; use `knowledge pack` only when the deeper raw substrate is needed, and use `knowledge status` to verify readiness before depending on local context.
-5. Keep agent context compact: prefer compact `article-start`, `wiki profile show`, `wiki surface show`, and scoped `knowledge inspect` drill-downs before requesting full payloads, broad selections, or high token budgets.
+4. Prefer `knowledge article-start --view brief` as the default authoring retrieval front door; use `knowledge pack` only when the deeper raw substrate is needed, and use `knowledge status` to verify readiness before depending on local context.
+5. Keep agent context compact: prefer wikitool briefs (`article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, `review --view brief`) before requesting full payloads, broad selections, or high token budgets.

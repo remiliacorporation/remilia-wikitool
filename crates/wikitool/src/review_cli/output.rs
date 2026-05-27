@@ -1,4 +1,125 @@
-use super::ReviewReport;
+use serde::Serialize;
+
+use crate::briefs::{BriefCommand, brief_command};
+
+use super::{ReviewNextStep, ReviewReport};
+
+#[derive(Debug, Serialize)]
+pub(super) struct ReviewBrief<'a> {
+    schema_version: &'static str,
+    command: &'static str,
+    view: &'static str,
+    status: &'a str,
+    mode: &'a str,
+    profile: &'a str,
+    strict: bool,
+    selection: ReviewSelectionBrief<'a>,
+    counts: ReviewCountsBrief,
+    dry_run_push: ReviewDryRunBrief<'a>,
+    hard_failures: &'a [String],
+    next_steps: &'a [ReviewNextStep],
+    full_view_command: BriefCommand,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewSelectionBrief<'a> {
+    selected_change_count: usize,
+    selection_state: &'a str,
+    titles: &'a [String],
+    paths: &'a [String],
+    draft_paths: &'a [String],
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewCountsBrief {
+    lint_targets: usize,
+    lint_errors: usize,
+    lint_warnings: usize,
+    lint_suggestions: usize,
+    validation_index_ready: bool,
+    validation_issues: usize,
+    sync_conflicts: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewDryRunBrief<'a> {
+    attempted: bool,
+    success: bool,
+    skipped_reason: Option<&'a str>,
+    error: Option<&'a str>,
+    page_count: usize,
+    conflict_count: usize,
+    error_count: usize,
+}
+
+pub(super) fn build_review_brief(report: &ReviewReport) -> ReviewBrief<'_> {
+    ReviewBrief {
+        schema_version: "wikitool_brief_v1",
+        command: "review",
+        view: "brief",
+        status: report.status,
+        mode: report.filters.mode,
+        profile: &report.filters.profile,
+        strict: report.filters.strict,
+        selection: ReviewSelectionBrief {
+            selected_change_count: report.status_plan.selected_change_count,
+            selection_state: report.status_plan.selection_state,
+            titles: &report.filters.selection.titles,
+            paths: &report.filters.selection.paths,
+            draft_paths: &report.filters.draft_paths,
+        },
+        counts: ReviewCountsBrief {
+            lint_targets: report.changed_article_lint.target_count,
+            lint_errors: report.changed_article_lint.total_errors,
+            lint_warnings: report.changed_article_lint.total_warnings,
+            lint_suggestions: report.changed_article_lint.total_suggestions,
+            validation_index_ready: report.validation.index_ready,
+            validation_issues: report.validation.issue_count,
+            sync_conflicts: report
+                .status_plan
+                .plan
+                .as_ref()
+                .map(|plan| plan.conflict_count)
+                .unwrap_or_default(),
+        },
+        dry_run_push: ReviewDryRunBrief {
+            attempted: report.dry_run_push.attempted,
+            success: report.dry_run_push.success,
+            skipped_reason: report.dry_run_push.skipped_reason.as_deref(),
+            error: report.dry_run_push.error.as_deref(),
+            page_count: report
+                .dry_run_push
+                .report
+                .as_ref()
+                .map(|push| push.pages.len())
+                .unwrap_or_default(),
+            conflict_count: report
+                .dry_run_push
+                .report
+                .as_ref()
+                .map(|push| push.conflicts.len())
+                .unwrap_or_default(),
+            error_count: report
+                .dry_run_push
+                .report
+                .as_ref()
+                .map(|push| push.errors.len())
+                .unwrap_or_default(),
+        },
+        hard_failures: &report.hard_failures,
+        next_steps: &report.next_steps,
+        full_view_command: brief_command(&[
+            "wikitool",
+            "review",
+            "--format",
+            "json",
+            "--view",
+            "full",
+            "--summary",
+            "<summary>",
+        ]),
+    }
+}
 
 pub(super) fn print_review_report(report: &ReviewReport) {
     println!("review");

@@ -6,6 +6,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 pub(crate) use wikitool_core::schema::LOCAL_DB_POLICY_MESSAGE;
 
 mod article_cli;
+mod briefs;
 mod cli_support;
 mod db_cli;
 #[cfg(feature = "maintainer-surface")]
@@ -196,6 +197,84 @@ mod tests {
             .expect_err("research search should not parse as wiki-search");
 
         assert!(error.to_string().contains("unrecognized subcommand"));
+    }
+
+    #[test]
+    fn brief_view_surfaces_parse_and_reject_card_wording() {
+        let valid_cases: &[&[&str]] = &[
+            &[
+                "wikitool",
+                "knowledge",
+                "article-start",
+                "Remilia",
+                "--format",
+                "json",
+                "--view",
+                "brief",
+            ],
+            &[
+                "wikitool",
+                "knowledge",
+                "inspect",
+                "chunks",
+                "--across-pages",
+                "--query",
+                "Remilia",
+                "--format",
+                "json",
+                "--view",
+                "brief",
+            ],
+            &[
+                "wikitool",
+                "templates",
+                "show",
+                "Template:Cite web",
+                "--format",
+                "json",
+                "--view",
+                "brief",
+            ],
+            &[
+                "wikitool", "wiki", "surface", "show", "--format", "json", "--view", "brief",
+            ],
+            &[
+                "wikitool",
+                "review",
+                "--format",
+                "json",
+                "--view",
+                "brief",
+                "--summary",
+                "Review",
+            ],
+        ];
+        for args in valid_cases {
+            Cli::try_parse_from(*args).expect("brief view should parse");
+        }
+
+        let rejected_cases: &[&[&str]] = &[
+            &[
+                "wikitool",
+                "knowledge",
+                "article-start",
+                "Remilia",
+                "--view",
+                "agent-card",
+            ],
+            &[
+                "wikitool",
+                "templates",
+                "show",
+                "Template:Cite web",
+                "--view",
+                "function-card",
+            ],
+            &["wikitool", "review", "--view", "function-context"],
+        ];
+        for args in rejected_cases {
+            Cli::try_parse_from(*args).expect_err("rejected card wording should not parse");
+        }
     }
 
     #[test]

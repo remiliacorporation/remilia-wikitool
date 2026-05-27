@@ -194,10 +194,11 @@ Options:
       --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
-      --profile <PROFILE>    [default: remilia]
+      --view <VIEW>          JSON view: brief|full [default: brief] [possible values: brief, full]
       --config <PATH>
-      --strict               Treat article lint warnings as review failures
+      --profile <PROFILE>    [default: remilia]
       --diagnostics          Print resolved runtime diagnostics
+      --strict               Treat article lint warnings as review failures
       --templates            Include template/module/mediawiki namespaces in sync checks
       --categories           Limit sync checks to Category namespace pages
       --title <TITLE>
@@ -744,6 +745,7 @@ Options:
       --contract-profile <PROFILE>  Contract traversal profile for --include-pack: index|author|implementation [default: author] [possible values: index, author, implementation]
       --contract-query <QUERY>      Optional contract traversal query separate from TOPIC, such as "species infobox taxonomy"
       --format <FORMAT>             Output format: text|json [default: json] [possible values: text, json]
+      --view <VIEW>                 JSON view: brief|full [default: brief] [possible values: brief, full]
       --include-pack                Include the raw knowledge pack in JSON output
       --intent <INTENT>             Authoring intent: new|expand|audit|refresh [default: new] [possible values: new, expand, audit, refresh]
       --diversify                   Enable lexical chunk de-duplication and diversification
@@ -878,6 +880,7 @@ Options:
       --token-budget <TOKENS>  Token budget across returned chunks [default: 720]
       --max-pages <N>          Maximum distinct source pages in across-pages mode [default: 12]
       --format <FORMAT>        Output format: text|json [default: text] [possible values: text, json]
+      --view <VIEW>            JSON view: brief|full [default: brief] [possible values: brief, full]
       --diversify              Enable lexical de-duplication and diversification
       --no-diversify           Disable lexical de-duplication and diversification
   -h, --help                   Print help
@@ -1560,7 +1563,7 @@ Options:
       --format <FORMAT>             Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
-      --view <VIEW>                 JSON view: summary|full [default: summary] [possible values: summary, full]
+      --view <VIEW>                 JSON view: brief|full [default: brief] [possible values: brief, full]
       --config <PATH>
       --template-limit <N>          [default: 64]
       --diagnostics                 Print resolved runtime diagnostics
@@ -1583,7 +1586,7 @@ Options:
       --format <FORMAT>             Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
-      --view <VIEW>                 JSON view: summary|full [default: summary] [possible values: summary, full]
+      --view <VIEW>                 JSON view: brief|full [default: brief] [possible values: brief, full]
       --config <PATH>
       --template-limit <N>          [default: 64]
       --diagnostics                 Print resolved runtime diagnostics
@@ -1665,6 +1668,7 @@ Options:
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
+      --view <VIEW>          JSON view: brief|full [default: brief] [possible values: brief, full]
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help

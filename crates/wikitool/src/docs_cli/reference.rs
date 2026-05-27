@@ -35,7 +35,7 @@ pub(crate) fn run_docs_generate_reference(args: DocsGenerateReferenceArgs) -> Re
 }
 
 #[cfg(feature = "maintainer-surface")]
-fn generate_docs_reference_markdown() -> Result<String> {
+pub(super) fn generate_docs_reference_markdown() -> Result<String> {
     let command = Cli::command();
     let mut command_paths = Vec::new();
     collect_command_paths(&command, &[], &mut command_paths);
@@ -74,7 +74,7 @@ fn generate_docs_reference_markdown() -> Result<String> {
 }
 
 #[cfg(feature = "maintainer-surface")]
-fn source_repo_root() -> Result<PathBuf> {
+pub(super) fn source_repo_root() -> Result<PathBuf> {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
@@ -159,6 +159,11 @@ mod tests {
             !paths
                 .iter()
                 .any(|path| { path == &["docs".to_string(), "generate-reference".to_string()] })
+        );
+        assert!(
+            !paths
+                .iter()
+                .any(|path| { path == &["docs".to_string(), "audit".to_string()] })
         );
         assert!(paths.iter().any(|path| path == &["research".to_string()]));
         assert!(paths.iter().any(|path| path == &["lsp".to_string()]));

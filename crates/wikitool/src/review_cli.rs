@@ -7,6 +7,7 @@ use wikitool_core::article_lint::ArticleLintReport;
 use wikitool_core::sync::{PushReport, SyncPlanReport, SyncSelection};
 
 use crate::RuntimeOptions;
+use crate::briefs::BriefView;
 use crate::cli_support::OutputFormat;
 
 mod checks;
@@ -29,6 +30,14 @@ pub(crate) struct ReviewArgs {
         help = "Output format: text|json"
     )]
     format: OutputFormat,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = BriefView::Brief,
+        value_name = "VIEW",
+        help = "JSON view: brief|full"
+    )]
+    view: BriefView,
     #[arg(long, default_value = "remilia", value_name = "PROFILE")]
     profile: String,
     #[arg(long, help = "Treat article lint warnings as review failures")]

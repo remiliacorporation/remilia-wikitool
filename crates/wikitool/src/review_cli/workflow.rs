@@ -10,7 +10,7 @@ use super::draft::{
     review_draft_selection_from_args, run_draft_article_lint, validate_draft_review_path,
 };
 use super::next_steps::build_review_next_steps;
-use super::output::print_review_report;
+use super::output::{build_review_brief, print_review_report};
 use super::selection::review_selection_from_args;
 use super::{ReviewArgs, ReviewDryRunPush, ReviewFilters, ReviewReport, ReviewStatusPlan};
 
@@ -161,7 +161,14 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
     };
 
     if args.format.is_json() {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        if args.view.is_full() {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&build_review_brief(&report))?
+            );
+        }
     } else {
         print_review_report(&report);
         println!("policy: {LOCAL_DB_POLICY_MESSAGE}");

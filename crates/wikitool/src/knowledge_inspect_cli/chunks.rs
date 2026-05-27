@@ -1,9 +1,11 @@
 use anyhow::{Result, bail};
+use serde::Serialize;
 use wikitool_core::knowledge::retrieval::{
     LocalChunkAcrossRetrieval, LocalChunkRetrieval, retrieve_local_context_chunks_across_pages,
     retrieve_local_context_chunks_with_options,
 };
 
+use crate::briefs::{BriefCommand, brief_command, brief_command_owned};
 use crate::cli_support::{normalize_path, normalize_title_query, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -19,6 +21,7 @@ pub(super) fn run_inspect_chunks(
     token_budget: usize,
     max_pages: usize,
     format: OutputFormat,
+    view: BriefView,
     diversify: bool,
     no_diversify: bool,
 ) -> Result<()> {
@@ -55,7 +58,21 @@ pub(super) fn run_inspect_chunks(
             use_diversify,
         )?;
         if format.is_json() {
-            println!("{}", serde_json::to_string_pretty(&retrieval)?);
+            if view.is_full() {
+                println!("{}", serde_json::to_string_pretty(&retrieval)?);
+            } else {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&build_across_pages_brief(
+                        query,
+                        limit,
+                        token_budget,
+                        max_pages,
+                        use_diversify,
+                        &retrieval,
+                    ))?
+                );
+            }
             return Ok(());
         }
 
@@ -109,7 +126,21 @@ pub(super) fn run_inspect_chunks(
             use_diversify,
         )?;
         if format.is_json() {
-            println!("{}", serde_json::to_string_pretty(&retrieval)?);
+            if view.is_full() {
+                println!("{}", serde_json::to_string_pretty(&retrieval)?);
+            } else {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&build_single_page_brief(
+                        title,
+                        query.map(str::trim).filter(|value| !value.is_empty()),
+                        limit,
+                        token_budget,
+                        use_diversify,
+                        &retrieval,
+                    ))?
+                );
+            }
             return Ok(());
         }
 
@@ -150,4 +181,360 @@ pub(super) fn run_inspect_chunks(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct ChunkBrief {
+    schema_version: &'static str,
+    command: &'static str,
+    view: &'static str,
+    status: &'static str,
+    target: String,
+    query: Option<String>,
+    retrieval_mode: Option<String>,
+    source_page_count: Option<usize>,
+    chunk_count: usize,
+    token_estimate_total: usize,
+    limits: ChunkBriefLimits,
+    chunks: Vec<ChunkCard>,
+    blocking: Vec<String>,
+    warnings: Vec<String>,
+    next_commands: Vec<BriefCommand>,
+    full_view_command: BriefCommand,
+}
+
+#[derive(Debug, Serialize)]
+struct ChunkBriefLimits {
+    limit: usize,
+    token_budget: usize,
+    max_pages: Option<usize>,
+    diversify: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ChunkCard {
+    source_title: Option<String>,
+    source_namespace: Option<String>,
+    source_relative_path: Option<String>,
+    section_heading: Option<String>,
+    token_estimate: usize,
+    text: String,
+}
+
+fn build_across_pages_brief(
+    query: &str,
+    limit: usize,
+    token_budget: usize,
+    max_pages: usize,
+    diversify: bool,
+    retrieval: &LocalChunkAcrossRetrieval,
+) -> ChunkBrief {
+    match retrieval {
+        LocalChunkAcrossRetrieval::IndexMissing => ChunkBrief {
+            schema_version: "wikitool_brief_v1",
+            command: "knowledge inspect chunks",
+            view: "brief",
+            status: "index_missing",
+            target: "<across-pages>".to_string(),
+            query: Some(query.to_string()),
+            retrieval_mode: None,
+            source_page_count: None,
+            chunk_count: 0,
+            token_estimate_total: 0,
+            limits: ChunkBriefLimits {
+                limit,
+                token_budget,
+                max_pages: Some(max_pages),
+                diversify,
+            },
+            chunks: Vec::new(),
+            blocking: vec![
+                "knowledge index is missing; run `wikitool knowledge build`".to_string(),
+            ],
+            warnings: Vec::new(),
+            next_commands: vec![brief_command(&[
+                "wikitool",
+                "knowledge",
+                "build",
+                "--format",
+                "json",
+            ])],
+            full_view_command: across_pages_full_command(query, limit, token_budget, max_pages),
+        },
+        LocalChunkAcrossRetrieval::QueryMissing => ChunkBrief {
+            schema_version: "wikitool_brief_v1",
+            command: "knowledge inspect chunks",
+            view: "brief",
+            status: "query_missing",
+            target: "<across-pages>".to_string(),
+            query: None,
+            retrieval_mode: None,
+            source_page_count: None,
+            chunk_count: 0,
+            token_estimate_total: 0,
+            limits: ChunkBriefLimits {
+                limit,
+                token_budget,
+                max_pages: Some(max_pages),
+                diversify,
+            },
+            chunks: Vec::new(),
+            blocking: vec!["--query is required for across-pages chunk retrieval".to_string()],
+            warnings: Vec::new(),
+            next_commands: Vec::new(),
+            full_view_command: across_pages_full_command(query, limit, token_budget, max_pages),
+        },
+        LocalChunkAcrossRetrieval::Found(report) => ChunkBrief {
+            schema_version: "wikitool_brief_v1",
+            command: "knowledge inspect chunks",
+            view: "brief",
+            status: "found",
+            target: "<across-pages>".to_string(),
+            query: Some(report.query.clone()),
+            retrieval_mode: Some(report.retrieval_mode.clone()),
+            source_page_count: Some(report.source_page_count),
+            chunk_count: report.chunks.len(),
+            token_estimate_total: report.token_estimate_total,
+            limits: ChunkBriefLimits {
+                limit,
+                token_budget,
+                max_pages: Some(report.max_pages),
+                diversify,
+            },
+            chunks: report
+                .chunks
+                .iter()
+                .map(|chunk| ChunkCard {
+                    source_title: Some(chunk.source_title.clone()),
+                    source_namespace: Some(chunk.source_namespace.clone()),
+                    source_relative_path: Some(chunk.source_relative_path.clone()),
+                    section_heading: chunk.section_heading.clone(),
+                    token_estimate: chunk.token_estimate,
+                    text: chunk.chunk_text.clone(),
+                })
+                .collect(),
+            blocking: Vec::new(),
+            warnings: if report.chunks.is_empty() {
+                vec!["no chunks matched the query within the current token budget".to_string()]
+            } else {
+                Vec::new()
+            },
+            next_commands: vec![brief_command_owned(vec![
+                "wikitool".to_string(),
+                "knowledge".to_string(),
+                "inspect".to_string(),
+                "chunks".to_string(),
+                "--across-pages".to_string(),
+                "--query".to_string(),
+                report.query.clone(),
+                "--limit".to_string(),
+                (limit.saturating_mul(2)).max(limit).to_string(),
+                "--token-budget".to_string(),
+                (token_budget.saturating_mul(2))
+                    .max(token_budget)
+                    .to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+                "--view".to_string(),
+                "brief".to_string(),
+            ])],
+            full_view_command: across_pages_full_command(
+                &report.query,
+                limit,
+                token_budget,
+                max_pages,
+            ),
+        },
+    }
+}
+
+fn build_single_page_brief(
+    title: &str,
+    query: Option<&str>,
+    limit: usize,
+    token_budget: usize,
+    diversify: bool,
+    retrieval: &LocalChunkRetrieval,
+) -> ChunkBrief {
+    match retrieval {
+        LocalChunkRetrieval::IndexMissing => ChunkBrief {
+            schema_version: "wikitool_brief_v1",
+            command: "knowledge inspect chunks",
+            view: "brief",
+            status: "index_missing",
+            target: normalize_title_query(title),
+            query: query.map(str::to_string),
+            retrieval_mode: None,
+            source_page_count: None,
+            chunk_count: 0,
+            token_estimate_total: 0,
+            limits: ChunkBriefLimits {
+                limit,
+                token_budget,
+                max_pages: None,
+                diversify,
+            },
+            chunks: Vec::new(),
+            blocking: vec![
+                "knowledge index is missing; run `wikitool knowledge build`".to_string(),
+            ],
+            warnings: Vec::new(),
+            next_commands: vec![brief_command(&[
+                "wikitool",
+                "knowledge",
+                "build",
+                "--format",
+                "json",
+            ])],
+            full_view_command: single_page_full_command(title, query, limit, token_budget),
+        },
+        LocalChunkRetrieval::TitleMissing { title } => ChunkBrief {
+            schema_version: "wikitool_brief_v1",
+            command: "knowledge inspect chunks",
+            view: "brief",
+            status: "title_missing",
+            target: title.clone(),
+            query: query.map(str::to_string),
+            retrieval_mode: None,
+            source_page_count: None,
+            chunk_count: 0,
+            token_estimate_total: 0,
+            limits: ChunkBriefLimits {
+                limit,
+                token_budget,
+                max_pages: None,
+                diversify,
+            },
+            chunks: Vec::new(),
+            blocking: vec![format!("page not found in local index: {title}")],
+            warnings: Vec::new(),
+            next_commands: vec![brief_command_owned(vec![
+                "wikitool".to_string(),
+                "research".to_string(),
+                "wiki-search".to_string(),
+                title.clone(),
+                "--what".to_string(),
+                "title".to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+            ])],
+            full_view_command: single_page_full_command(title, query, limit, token_budget),
+        },
+        LocalChunkRetrieval::Found(report) => ChunkBrief {
+            schema_version: "wikitool_brief_v1",
+            command: "knowledge inspect chunks",
+            view: "brief",
+            status: "found",
+            target: report.title.clone(),
+            query: report.query.clone(),
+            retrieval_mode: Some(report.retrieval_mode.clone()),
+            source_page_count: Some(1),
+            chunk_count: report.chunks.len(),
+            token_estimate_total: report.token_estimate_total,
+            limits: ChunkBriefLimits {
+                limit,
+                token_budget,
+                max_pages: None,
+                diversify,
+            },
+            chunks: report
+                .chunks
+                .iter()
+                .map(|chunk| ChunkCard {
+                    source_title: Some(report.title.clone()),
+                    source_namespace: Some(report.namespace.clone()),
+                    source_relative_path: Some(report.relative_path.clone()),
+                    section_heading: chunk.section_heading.clone(),
+                    token_estimate: chunk.token_estimate,
+                    text: chunk.chunk_text.clone(),
+                })
+                .collect(),
+            blocking: Vec::new(),
+            warnings: if report.chunks.is_empty() {
+                vec!["no chunks matched the query within the current token budget".to_string()]
+            } else {
+                Vec::new()
+            },
+            next_commands: vec![brief_command_owned(vec![
+                "wikitool".to_string(),
+                "knowledge".to_string(),
+                "inspect".to_string(),
+                "chunks".to_string(),
+                report.title.clone(),
+                "--limit".to_string(),
+                (limit.saturating_mul(2)).max(limit).to_string(),
+                "--token-budget".to_string(),
+                (token_budget.saturating_mul(2))
+                    .max(token_budget)
+                    .to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+                "--view".to_string(),
+                "brief".to_string(),
+            ])],
+            full_view_command: single_page_full_command(
+                &report.title,
+                report.query.as_deref(),
+                limit,
+                token_budget,
+            ),
+        },
+    }
+}
+
+fn across_pages_full_command(
+    query: &str,
+    limit: usize,
+    token_budget: usize,
+    max_pages: usize,
+) -> BriefCommand {
+    brief_command_owned(vec![
+        "wikitool".to_string(),
+        "knowledge".to_string(),
+        "inspect".to_string(),
+        "chunks".to_string(),
+        "--across-pages".to_string(),
+        "--query".to_string(),
+        query.to_string(),
+        "--limit".to_string(),
+        limit.to_string(),
+        "--max-pages".to_string(),
+        max_pages.to_string(),
+        "--token-budget".to_string(),
+        token_budget.to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+        "--view".to_string(),
+        "full".to_string(),
+    ])
+}
+
+fn single_page_full_command(
+    title: &str,
+    query: Option<&str>,
+    limit: usize,
+    token_budget: usize,
+) -> BriefCommand {
+    let mut argv = vec![
+        "wikitool".to_string(),
+        "knowledge".to_string(),
+        "inspect".to_string(),
+        "chunks".to_string(),
+        title.to_string(),
+    ];
+    if let Some(query) = query {
+        argv.push("--query".to_string());
+        argv.push(query.to_string());
+    }
+    argv.extend([
+        "--limit".to_string(),
+        limit.to_string(),
+        "--token-budget".to_string(),
+        token_budget.to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+        "--view".to_string(),
+        "full".to_string(),
+    ]);
+    brief_command_owned(argv)
 }

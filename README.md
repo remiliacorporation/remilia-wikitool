@@ -69,20 +69,20 @@ Use `pull --full --all` for first syncs, missing sync state, or deliberate rebui
 ## Authoring Loop
 
 ```bash
-wikitool knowledge article-start "Topic" --intent new --format json
+wikitool knowledge article-start "Topic" --intent new --format json --view brief
 wikitool research wiki-search "Topic" --format json
 wikitool research fetch "https://example.org/source" --format rendered-html --output json
-wikitool templates show "Template:Infobox person"
+wikitool templates show "Template:Infobox person" --format json --view brief
 # edit wiki_content/Main/Topic.wiki
 wikitool article lint wiki_content/Main/Topic.wiki --format json
 wikitool knowledge inspect references duplicates --title "Topic" --format json
-wikitool review --format json --summary "Add article on Topic"
+wikitool review --format json --view brief --summary "Add article on Topic"
 wikitool push --dry-run --title "Topic" --summary "Add article on Topic"
 ```
 
 ## What It Does
 
-- `knowledge article-start` builds an interpreted authoring brief.
+- `knowledge article-start --view brief` builds an interpreted authoring brief.
 - `knowledge contracts` and `templates` expose target-wiki template/module contracts.
 - `research wiki-search` queries the configured wiki API; `research fetch/discover/mediawiki-templates` gathers source URLs and source-wiki evidence.
 - `export` writes agent-readable markdown source packs.
@@ -94,7 +94,7 @@ wikitool push --dry-run --title "Topic" --summary "Add article on Topic"
 | Surface | Role |
 |---|---|
 | `README.md` | Top-level first-run, session, and release-layout overview |
-| `AGENTS.md` / `CLAUDE.md` | Compact packaged agent routing card |
+| `AGENTS.md` / `CLAUDE.md` | Compact packaged agent routing brief |
 | `.claude/skills/` | Claude `/wikitool` and `/review` wrappers |
 | `codex_skills/` | Codex skill equivalents |
 | `writing_context/` | Article-writing rules and Remilia default writing profile |
@@ -108,7 +108,7 @@ Every command has `--help`. In a source checkout with the maintainer surface ena
 reference with:
 
 ```bash
-wikitool docs generate-reference
+cargo run --features maintainer-surface -- docs generate-reference
 ```
 
 ## Source Builds

@@ -24,17 +24,17 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 
 1. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
 2. **Refresh local authoring state** - run `wikitool status --modified --format json`, `wikitool diff --format json`, `wikitool pull --all --format json`, `wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json`, and `wikitool wiki profile sync --format json` so local changes, content, templates, docs readiness, and capability signals are current. Use `pull --full --all` only for a deliberate rebuild or missing sync state, and do not use `--overwrite-local` unless the user explicitly approves discarding local edits.
-3. **Build the interpreted authoring brief** - run `wikitool knowledge article-start "<Topic>" --intent new --format json`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks` to fetch targeted content before writing. When your own subject knowledge suggests a different wiki-contract lookup than the title itself, make that visible with `--contract-query`, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json`.
+3. **Build the interpreted authoring brief** - run `wikitool knowledge article-start "<Topic>" --intent new --format json --view brief`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks --view brief` to fetch targeted content before writing. When your own subject knowledge suggests a different wiki-contract lookup than the title itself, make that visible with `--contract-query`, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief`.
 4. **Fetch external evidence selectively** - use normal agent web search to choose source URLs, then run `wikitool research fetch "<URL>" --output json` only for sources you expect to cite. Use `wikitool research wiki-search "<Topic>" --format json` only when you need configured target-wiki API results, not open-web search. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.challenge_handoffs`, `error.discovery`, or run `wikitool research discover "<URL>" --format json` for public robots, sitemap, feed, and structured-data leads. When `error.challenge_handoffs` is present, relay the handoff to the user; if they have lawful browser access, they can solve the challenge and import source-issued cookies with `wikitool research session import "<URL>" --cookies -`, then you can retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. For source MediaWiki pages whose template contract matters, use `wikitool research mediawiki-templates "<URL>" --format json`; this describes the source wiki, not which templates are valid on the target wiki. Add `--refresh` when live freshness matters. Use `wikitool wiki profile remote "<URL>" --format json` only when you need a remote target wiki capability probe and local target profile/import data is unavailable. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
-5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name"`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
+5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name" --format json --view brief`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
 6. **Write the article** following the structure in `article_structure.md`.
 7. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
 8. **Run article-aware lint** â€” `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`. For large reference cleanups, use `wikitool knowledge inspect references summary --title "{Article_Title}" --format json` and `wikitool knowledge inspect references duplicates --title "{Article_Title}" --format json`.
-9. **Review** â€” run `wikitool review --format json --summary "Summary"` before push. Use `wikitool validate --summary` for the lower-level global integrity signal and scoped validation flags when investigating a specific issue.
+9. **Review** â€” run `wikitool review --format json --view brief --summary "Summary"` before push. Use `wikitool validate --summary` for the lower-level global integrity signal and scoped validation flags when investigating a specific issue.
 
 Use `wikitool knowledge pack ... --format json` when you need the deeper retrieval bundle behind `article-start`. The default compact payload keeps `context_summary.subject_context` separate from `context_summary.wiki_contract_context` and omits heavy template/module implementation chunks; use `--payload full` only when you need those implementation bodies or expanded docs text. Use `wikitool knowledge contracts search "contract terms" --format json` for a direct token-budgeted search of the template/module graph before deciding which template or module to expand.
 
-Keep retrieval token-tight. Prefer the interpreted `article-start` brief and targeted `knowledge inspect chunks` calls for missing sections. Increase `--token-budget`, use broad `--across-pages`, or request `--payload full` only after the compact brief identifies a specific gap.
+Keep retrieval token-tight. Prefer wikitool brief views and targeted `knowledge inspect chunks --view brief` calls for missing sections. Increase `--token-budget`, use broad `--across-pages`, or request `--payload full`/`--view full` only after the compact brief identifies a specific gap.
 
 ### Editing an existing article
 
@@ -207,9 +207,9 @@ General rules:
 To see all parameters for any template:
 
 ```bash
-wikitool templates show "Template:Infobox person"
+wikitool templates show "Template:Infobox person" --format json --view brief
 wikitool templates examples "Template:Infobox person" --limit 2
-wikitool templates show "Template:Cite web"
+wikitool templates show "Template:Cite web" --format json --view brief
 ```
 
 This reads the local template catalog from your current pull. If the local index is missing, run `wikitool knowledge build` first; if the catalog is missing, run `wikitool templates catalog build`.
@@ -223,13 +223,13 @@ This reads the local template catalog from your current pull. If the local index
 Use wikitool to inspect template context from your local pull:
 
 ```bash
-wikitool knowledge article-start "Topic Title" --format json
-wikitool knowledge article-start "Topic Title" --contract-query "subject type infobox" --format json
+wikitool knowledge article-start "Topic Title" --format json --view brief
+wikitool knowledge article-start "Topic Title" --contract-query "subject type infobox" --format json --view brief
 wikitool knowledge pack "Topic Title" --format json
 wikitool knowledge contracts search "subject type infobox" --format json
 wikitool knowledge pack "Topic Title" --payload full --format json
 wikitool knowledge pack --stub-path wiki_content/Main/Topic_Draft.wiki --format json
-wikitool templates show "Template:Template Name"
+wikitool templates show "Template:Template Name" --format json --view brief
 wikitool templates examples "Template:Template Name" --limit 2
 wikitool wiki profile show --format json
 wikitool knowledge inspect chunks --across-pages --query "infobox" --limit 10 --token-budget 1200 --format json
@@ -252,7 +252,7 @@ See `extensions.md` for a quick reference of the most-used content tags.
 
 For local/custom features such as Remilia's current D3Charts bridge, prefer target-wiki evidence:
 `wikitool wiki profile show --format json`, `wikitool knowledge contracts search "d3 chart" --format json`,
-`wikitool templates show "Module:D3Chart"` where available, and `wikitool article lint`. Do not add
+`wikitool templates show "Module:D3Chart" --format json --view brief` where available, and `wikitool article lint`. Do not add
 inline JavaScript or raw generated HTML to article wikitext; use the deployed module or extension
 contract, and expect that a future bespoke extension may supersede the current `Module:D3Chart` form.
 

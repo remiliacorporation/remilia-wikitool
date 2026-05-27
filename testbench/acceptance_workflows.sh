@@ -221,8 +221,9 @@ if echo "$OUTPUT" | grep -q "knowledge.readiness: content_ready"; then
 else
     fail "knowledge build prepares the local index for authoring acceptance (got: $OUTPUT)"
 fi
-OUTPUT=$(wt "$PROJ" knowledge article-start "Gamma" --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"schema_version": "article_start"' \
+OUTPUT=$(wt "$PROJ" knowledge article-start "Gamma" --format json --view brief 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"schema_version": "wikitool_brief_v1"' \
+    && echo "$OUTPUT" | grep -q '"command": "knowledge article-start"' \
     && ! echo "$OUTPUT" | grep -q '"article_type"' \
     && ! echo "$OUTPUT" | grep -q '"confidence"' \
     && echo "$OUTPUT" | grep -q '"required_templates"' \

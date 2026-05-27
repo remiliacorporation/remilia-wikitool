@@ -64,8 +64,9 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
         assert!(
             body.contains("## Token Discipline")
                 && body.contains("Agent-facing defaults are intentionally compact")
+                && body.contains("--view brief")
                 && body.contains("knowledge pack --payload full")
-                && body.contains("wiki ... --view full"),
+                && body.contains("--view full"),
             "packaged guidance must preserve the compact-default/token-discipline contract"
         );
         assert!(
@@ -83,7 +84,10 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
                 && !body.contains("wikitool fetch")
                 && !body.contains("wikitool context")
                 && !body.contains("wikitool seo")
-                && !body.contains("wikitool net"),
+                && !body.contains("wikitool net")
+                && !body.contains("agent-card")
+                && !body.contains("function-card")
+                && !body.contains("function-context"),
             "packaged guidance must not refer to removed setup/backcompat artifacts"
         );
         assert!(
@@ -133,7 +137,7 @@ fn thin_wrappers_reference_help_and_keep_raw_pack_secondary() {
             "thin wrappers must still mention raw knowledge pack access"
         );
         assert!(
-            body.contains("Keep agent context compact"),
+            body.contains("Keep agent context compact") && body.contains("--view brief"),
             "thin wrappers must preserve compact-first agent retrieval guidance"
         );
     }
@@ -155,8 +159,9 @@ fn packaged_review_wrappers_stay_aligned_on_gate_sequence() {
     ] {
         let body = read_repo_file(path);
         assert!(
-            body.contains("Preferred full gate: `wikitool review --format json --summary \"...\"`")
+            body.contains("Preferred gate brief: `wikitool review --format json --view brief --summary \"...\"`")
                 && body.contains("Draft-first gate: `wikitool review --draft-path")
+                && body.contains("--view brief")
                 && body.contains("Direct draft iteration:")
                 && body.contains("wikitool article promote")
                 && body.contains("next_steps")
@@ -221,6 +226,9 @@ fn writing_context_does_not_reintroduce_retired_top_level_commands() {
             "wikitool fetch",
             "wikitool seo",
             "wikitool net",
+            "agent-card",
+            "function-card",
+            "function-context",
         ] {
             assert!(
                 !body.contains(retired),

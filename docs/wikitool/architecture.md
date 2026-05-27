@@ -27,7 +27,7 @@ CLI lanes, or in a local `shared.rs` only when it is presentation glue.
 
 Default outputs must be useful in a constrained model context:
 
-- Prefer interpreted entry points such as `knowledge article-start` and summary JSON views.
+- Prefer interpreted entry points such as `knowledge article-start` and wikitool brief JSON views.
 - Keep raw substrate explicit: `knowledge pack --payload full` and `wiki ... --view full` are opt-in.
 - Keep retrieval bounded by `--limit`, `--token-budget`, and `--max-pages`; broad commands should
   return counts, summaries, and follow-up commands before full bodies.
@@ -58,7 +58,7 @@ importing reverse-engineering-specific machinery. Stage these as future implemen
 
 - Add a strict maintainer `doc-audit` lane that verifies CLI help, generated reference, ai-pack
   Claude/Codex wrappers, writing context, and root redirect stubs against the live command surface.
-- Introduce compact agent-card views for high-value retrieval surfaces: `knowledge article-start`,
+- Keep compact wikitool brief views for high-value retrieval surfaces: `knowledge article-start`,
   `knowledge inspect chunks`, `templates show`, `wiki surface show`, and `review`. The default
   should be compact and evidence-rich; full bodies remain explicit opt-in.
 - Make promotion gates first-class: draft-to-article promotion, template/catalog adoption, and

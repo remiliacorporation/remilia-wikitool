@@ -14,7 +14,7 @@ Use it with:
 
 - Input: topic from `writing_pools.json` that does not exist locally
 - Commands:
-  - `wikitool knowledge article-start "<Topic>" --format json`
+  - `wikitool knowledge article-start "<Topic>" --format json --view brief`
   - optional `wikitool research wiki-search "<Topic>" --format json`
   - optional `wikitool research fetch "<URL>" --output json`
 - Review:
@@ -27,7 +27,7 @@ Use it with:
 - Fixture shape: one local page links to the target, but the target page does not exist
 - Commands:
   - `wikitool knowledge build`
-  - `wikitool knowledge article-start "<Missing Topic>" --format json`
+  - `wikitool knowledge article-start "<Missing Topic>" --format json --view brief`
 - Review:
   - `local_state` should surface `linked_but_missing`
   - comparable pages and link/category suggestions should reflect the local graph
@@ -36,7 +36,7 @@ Use it with:
 
 - Fixture shape: existing article with weak structure or outdated conventions
 - Commands:
-  - `wikitool knowledge article-start "<Existing Topic>" --format json`
+  - `wikitool knowledge article-start "<Existing Topic>" --format json --view brief`
   - `wikitool article lint wiki_content/Main/<Existing_Topic>.wiki --format json`
 - Review:
   - Does `article-start` still give useful refactor guidance rather than only greenfield hints?
@@ -47,8 +47,8 @@ Use it with:
 - Fixture shape: article depending on infobox and citation-family choices
 - Commands:
   - `wikitool templates catalog build --format json`
-  - `wikitool templates show "Template:..." --format json`
-  - `wikitool knowledge article-start "<Topic>" --format json`
+  - `wikitool templates show "Template:..." --format json --view brief`
+  - `wikitool knowledge article-start "<Topic>" --format json --view brief`
 - Review:
   - Are recommended templates aligned with local template usage and examples?
   - Are template examples sufficient for an agent to fill parameters correctly?
@@ -101,8 +101,8 @@ Record wall-clock time and whether the run hit local-only or network-backed surf
 
 Commands:
 
-- `wikitool knowledge article-start "<Topic>" --format json`
-- `wikitool knowledge article-start "<Topic>" --format json --include-pack`
+- `wikitool knowledge article-start "<Topic>" --format json --view brief`
+- `wikitool knowledge article-start "<Topic>" --format json --view full --include-pack`
 - `wikitool research fetch "<URL>" --output json`
 - `wikitool article lint wiki_content/Main/<Topic>.wiki --format json`
 - `wikitool wiki capabilities sync --format json`

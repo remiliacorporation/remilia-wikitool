@@ -23,9 +23,9 @@ For another MediaWiki target, provide host `writing_context/` when building the 
 Static writing context is only the baseline. For live target-wiki facts, use wikitool:
 
 ```bash
-wikitool knowledge article-start "Topic" --intent new --format json
+wikitool knowledge article-start "Topic" --intent new --format json --view brief
 wikitool knowledge contracts search "subject type infobox" --format json
-wikitool templates show "Template:Infobox person"
+wikitool templates show "Template:Infobox person" --format json --view brief
 wikitool wiki profile show --format json
 wikitool article lint wiki_content/Main/Topic.wiki --format json
 ```

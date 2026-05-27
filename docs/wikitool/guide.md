@@ -37,7 +37,7 @@ Use `wikitool pull --full --all` for deliberate rebuilds or missing sync state. 
 - The DB is disposable — delete it and repull/rebuild any time.
 - Authoring retrieval uses semantic page profiles, a DB-backed template/module contract graph, normalized source authorities, and bridged MediaWiki docs to narrow context for agents.
 - `knowledge article-start` is the interpreted authoring brief. `knowledge pack` is the retrieval substrate behind it; compact payloads expose subject context and wiki contract context without heavy implementation bodies. Use `--contract-query` when the subject and the wiki-contract lookup are different, for example a cheetah article whose contract search should ask for `species infobox taxonomy`.
-- Token-efficient agent workflows should start from compact summaries and drill down only as needed. Prefer `knowledge article-start`, `wiki profile show`, `wiki surface show`, and scoped `knowledge inspect` commands; reserve `knowledge pack --payload full` and `wiki ... --view full` for cases where implementation bodies or complete capability arrays are explicitly needed.
+- Token-efficient agent workflows should start from wikitool briefs and drill down only as needed. Prefer `knowledge article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, and `review --view brief`; reserve `knowledge pack --payload full` and `--view full` for cases where implementation bodies or complete capability arrays are explicitly needed.
 - `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check; use `--summary` for the global signal and scoped `--category`/`--title` slices for targeted investigation. `module lint` is the Lua/module lane.
 - `article lint` / `article fix` accept repeated `--title`, repeated `--path`, `--titles-file`, and `--changed` for batch work.
 - `review` is the structured pre-push gate: status plan, changed article lint, validation summary, and push dry-run in one JSON report.
@@ -46,13 +46,13 @@ Use `wikitool pull --full --all` for deliberate rebuilds or missing sync state. 
 ## Authoring workflow
 
 ```bash
-wikitool knowledge article-start "Topic" --intent new --format json
-wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json
+wikitool knowledge article-start "Topic" --intent new --format json --view brief
+wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief
 wikitool knowledge contracts search "species infobox taxonomy" --format json
 wikitool research wiki-search "Topic" --format json
 wikitool research fetch "URL" --format rendered-html --output json
 wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --template "Template:Infobox" --format json
-wikitool templates show "Template:Infobox person"
+wikitool templates show "Template:Infobox person" --format json --view brief
 wikitool templates examples "Template:Infobox person" --limit 2
 wikitool wiki profile show --format json
 wikitool wiki profile remote "https://www.mediawiki.org/wiki/Manual:Contents" --format json
@@ -65,7 +65,7 @@ wikitool article fix wiki_content/Main/Title.wiki --apply safe
 wikitool knowledge inspect references summary --title "Title" --format json
 wikitool knowledge inspect references duplicates --title "Title" --format json
 wikitool validate --summary
-wikitool review --format json --summary "Summary"
+wikitool review --format json --view brief --summary "Summary"
 ```
 
 For local custom content features, use the deployed target contract rather than raw HTML/JavaScript.
@@ -85,7 +85,7 @@ wikitool status --modified --format json
 wikitool status --conflicts --title "Title"
 wikitool diff                          # review change set
 wikitool diff --content --title "Title"
-wikitool review --format json --summary "x"
+wikitool review --format json --view brief --summary "x"
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "x"
 wikitool push --dry-run --summary "x"  # remote-safe preflight
 wikitool push --dry-run --title "Title" --summary "x"
@@ -99,7 +99,7 @@ wikitool delete "Title" --reason "x" --dry-run
 wikitool knowledge build                # content index only
 wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing  # index + docs readiness
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
-wikitool knowledge article-start "Topic" --intent new --format json
+wikitool knowledge article-start "Topic" --intent new --format json --view brief
 wikitool knowledge pack "Topic" --format json
 wikitool knowledge pack "Topic" --contract-query "subject type infobox" --format json
 wikitool knowledge pack "Topic" --payload full --format json
@@ -177,7 +177,7 @@ wikitool docs update
 ## Templates and profile
 
 ```bash
-wikitool templates show "Template:Cite web"
+wikitool templates show "Template:Cite web" --format json --view brief
 wikitool templates examples "Template:Cite web" --limit 2
 wikitool templates catalog build
 wikitool wiki capabilities sync --format json

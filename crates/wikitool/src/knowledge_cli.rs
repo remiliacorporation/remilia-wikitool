@@ -14,6 +14,7 @@ use wikitool_core::knowledge::status::{
 };
 
 use crate::RuntimeOptions;
+use crate::briefs::BriefView;
 use crate::cli_support::OutputFormat;
 use crate::knowledge_inspect_cli;
 
@@ -322,6 +323,14 @@ pub(crate) struct KnowledgeArticleStartArgs {
         help = "Output format: text|json"
     )]
     format: OutputFormat,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = BriefView::Brief,
+        value_name = "VIEW",
+        help = "JSON view: brief|full"
+    )]
+    view: BriefView,
     #[arg(long, help = "Include the raw knowledge pack in JSON output")]
     include_pack: bool,
     #[arg(

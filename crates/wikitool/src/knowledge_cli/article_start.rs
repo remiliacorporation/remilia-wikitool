@@ -1,11 +1,19 @@
 use anyhow::{Result, bail};
+use serde::Serialize;
 use wikitool_core::authoring::article_start::build_article_start;
+use wikitool_core::authoring::model::{
+    ArticleStartIntent, ContextSurfaceSource, EvidenceCoverageItem, LocalExistenceState,
+    RequiredTemplate, SectionSkeleton, TemplateSurfaceEntry,
+};
 use wikitool_core::knowledge::authoring::{
     AuthoringKnowledgePack, AuthoringKnowledgePackOptions, build_authoring_knowledge_pack,
 };
 use wikitool_core::knowledge::status::knowledge_status;
 use wikitool_core::profile::load_or_build_remilia_profile_overlay;
 
+use crate::briefs::{
+    BriefCommand, brief_command, brief_command_owned, capped_strings, text_preview,
+};
 use crate::cli_support::{normalize_option, normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -103,7 +111,14 @@ pub(super) fn run_knowledge_article_start(
     };
 
     if args.format.is_json() {
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        if args.view.is_full() {
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&build_article_start_brief(&output))?
+            );
+        }
         return Ok(());
     }
 
@@ -280,4 +295,464 @@ pub(super) fn run_knowledge_article_start(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct ArticleStartBrief<'a> {
+    schema_version: &'static str,
+    command: &'static str,
+    view: &'static str,
+    status: &'static str,
+    docs_profile_requested: &'a str,
+    readiness: &'a KnowledgeReadinessLevel,
+    knowledge_generation: &'a str,
+    topic: Option<&'a str>,
+    intent: Option<&'a ArticleStartIntent>,
+    local_state: Option<&'a LocalExistenceState>,
+    evidence: Option<ArticleStartEvidenceCard<'a>>,
+    local_integration: Option<ArticleStartIntegrationCard<'a>>,
+    blocking: Vec<String>,
+    warnings: Vec<String>,
+    next_commands: Vec<BriefCommand>,
+    drilldowns: Vec<BriefCommand>,
+    full_view_command: Option<BriefCommand>,
+}
+
+#[derive(Debug, Serialize)]
+struct ArticleStartEvidenceCard<'a> {
+    query: &'a str,
+    direct_subject_evidence_count: usize,
+    broad_context_count: usize,
+    comparable_page_count: usize,
+    backlink_count: usize,
+    missing_query_terms: &'a [String],
+    live_leads_status: &'a str,
+    top_direct_evidence: Vec<EvidenceCoverageCard<'a>>,
+    top_context_evidence: Vec<EvidenceCoverageCard<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct EvidenceCoverageCard<'a> {
+    source_kind: &'a str,
+    source_title: &'a str,
+    locator: Option<&'a str>,
+    evidence_id: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct ArticleStartIntegrationCard<'a> {
+    counts: ArticleStartIntegrationCounts,
+    comparable_pages: Vec<String>,
+    required_templates: Vec<RequiredTemplateCard<'a>>,
+    available_infoboxes: Vec<TemplateSurfaceCard<'a>>,
+    citation_templates_seen: Vec<&'a str>,
+    template_surface: Vec<&'a str>,
+    categories_seen: Vec<String>,
+    links_seen: Vec<String>,
+    section_skeleton: Vec<SectionSkeletonCard<'a>>,
+    docs_queries: Vec<String>,
+    contract_query: &'a str,
+    contract_matched_query_terms: &'a [String],
+    contract_missing_query_terms: &'a [String],
+}
+
+#[derive(Debug, Serialize)]
+struct ArticleStartIntegrationCounts {
+    comparable_pages: usize,
+    required_templates: usize,
+    available_infoboxes: usize,
+    citation_templates_seen: usize,
+    template_surface: usize,
+    categories_seen: usize,
+    links_seen: usize,
+    section_skeleton: usize,
+    docs_queries: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct RequiredTemplateCard<'a> {
+    template_title: &'a str,
+    reason: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct TemplateSurfaceCard<'a> {
+    template_title: &'a str,
+    source: &'a ContextSurfaceSource,
+    mapped_subject_type: Option<&'a str>,
+    supporting_pages: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SectionSkeletonCard<'a> {
+    heading: &'a str,
+    required: bool,
+    content_backed: bool,
+    rationale: &'a str,
+    supporting_pages: Vec<String>,
+}
+
+fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> ArticleStartBrief<'a> {
+    match &output.result {
+        KnowledgeArticleStartPayload::IndexMissing => ArticleStartBrief {
+            schema_version: "wikitool_brief_v1",
+            command: "knowledge article-start",
+            view: "brief",
+            status: "index_missing",
+            docs_profile_requested: &output.docs_profile_requested,
+            readiness: &output.readiness,
+            knowledge_generation: &output.knowledge_generation,
+            topic: None,
+            intent: None,
+            local_state: None,
+            evidence: None,
+            local_integration: None,
+            blocking: vec![
+                "knowledge index is missing; run `wikitool knowledge build`".to_string(),
+            ],
+            warnings: output.degradations.clone(),
+            next_commands: vec![brief_command(&[
+                "wikitool",
+                "knowledge",
+                "build",
+                "--format",
+                "json",
+            ])],
+            drilldowns: Vec::new(),
+            full_view_command: None,
+        },
+        KnowledgeArticleStartPayload::QueryMissing => ArticleStartBrief {
+            schema_version: "wikitool_brief_v1",
+            command: "knowledge article-start",
+            view: "brief",
+            status: "query_missing",
+            docs_profile_requested: &output.docs_profile_requested,
+            readiness: &output.readiness,
+            knowledge_generation: &output.knowledge_generation,
+            topic: None,
+            intent: None,
+            local_state: None,
+            evidence: None,
+            local_integration: None,
+            blocking: vec!["topic or stub-derived query is required for article-start".to_string()],
+            warnings: output.degradations.clone(),
+            next_commands: Vec::new(),
+            drilldowns: Vec::new(),
+            full_view_command: None,
+        },
+        KnowledgeArticleStartPayload::Found {
+            article_start,
+            raw_pack,
+        } => {
+            let mut warnings = output.degradations.clone();
+            warnings.extend(
+                article_start
+                    .evidence_profile
+                    .missing_evidence_warnings
+                    .iter()
+                    .take(6)
+                    .cloned(),
+            );
+            warnings.extend(
+                article_start
+                    .local_integration
+                    .contract_warnings
+                    .iter()
+                    .take(6)
+                    .cloned(),
+            );
+
+            let mut blocking = article_start
+                .open_questions
+                .iter()
+                .filter(|question| question.blocking)
+                .map(|question| question.question.clone())
+                .collect::<Vec<_>>();
+            if !article_start
+                .local_integration
+                .contract_missing_query_terms
+                .is_empty()
+            {
+                blocking.push(format!(
+                    "contract query missed terms: {}",
+                    article_start
+                        .local_integration
+                        .contract_missing_query_terms
+                        .join(", ")
+                ));
+            }
+
+            let mut next_commands = Vec::new();
+            next_commands.push(brief_command_owned(vec![
+                "wikitool".to_string(),
+                "knowledge".to_string(),
+                "inspect".to_string(),
+                "chunks".to_string(),
+                "--across-pages".to_string(),
+                "--query".to_string(),
+                article_start.topic.clone(),
+                "--limit".to_string(),
+                "6".to_string(),
+                "--token-budget".to_string(),
+                "600".to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+                "--view".to_string(),
+                "brief".to_string(),
+            ]));
+            if let Some(section) = article_start
+                .local_integration
+                .section_skeleton
+                .iter()
+                .find(|section| !section.content_backed)
+            {
+                next_commands.push(brief_command_owned(vec![
+                    "wikitool".to_string(),
+                    "knowledge".to_string(),
+                    "inspect".to_string(),
+                    "chunks".to_string(),
+                    "--across-pages".to_string(),
+                    "--query".to_string(),
+                    format!("{} {}", article_start.topic, section.heading),
+                    "--limit".to_string(),
+                    "4".to_string(),
+                    "--token-budget".to_string(),
+                    "400".to_string(),
+                    "--format".to_string(),
+                    "json".to_string(),
+                    "--view".to_string(),
+                    "brief".to_string(),
+                ]));
+            }
+            if let Some(template) = article_start
+                .local_integration
+                .required_templates
+                .first()
+                .map(|entry| entry.template_title.as_str())
+                .or_else(|| {
+                    article_start
+                        .local_integration
+                        .available_infoboxes
+                        .first()
+                        .map(|entry| entry.template_title.as_str())
+                })
+            {
+                next_commands.push(brief_command_owned(vec![
+                    "wikitool".to_string(),
+                    "templates".to_string(),
+                    "show".to_string(),
+                    template.to_string(),
+                    "--format".to_string(),
+                    "json".to_string(),
+                    "--view".to_string(),
+                    "brief".to_string(),
+                ]));
+            }
+
+            let drilldowns = vec![
+                brief_command_owned(vec![
+                    "wikitool".to_string(),
+                    "research".to_string(),
+                    "wiki-search".to_string(),
+                    article_start.topic.clone(),
+                    "--format".to_string(),
+                    "json".to_string(),
+                ]),
+                brief_command_owned(vec![
+                    "wikitool".to_string(),
+                    "knowledge".to_string(),
+                    "article-start".to_string(),
+                    article_start.topic.clone(),
+                    "--format".to_string(),
+                    "json".to_string(),
+                    "--view".to_string(),
+                    "full".to_string(),
+                ]),
+            ];
+
+            ArticleStartBrief {
+                schema_version: "wikitool_brief_v1",
+                command: "knowledge article-start",
+                view: "brief",
+                status: "found",
+                docs_profile_requested: &output.docs_profile_requested,
+                readiness: &output.readiness,
+                knowledge_generation: &output.knowledge_generation,
+                topic: Some(&article_start.topic),
+                intent: Some(&article_start.intent),
+                local_state: Some(&article_start.local_state),
+                evidence: Some(ArticleStartEvidenceCard {
+                    query: &article_start.evidence_profile.query,
+                    direct_subject_evidence_count: article_start
+                        .evidence_profile
+                        .direct_subject_evidence
+                        .len(),
+                    broad_context_count: article_start.evidence_profile.broad_context.len(),
+                    comparable_page_count: article_start.evidence_profile.comparable_pages.len(),
+                    backlink_count: article_start.evidence_profile.backlink_count,
+                    missing_query_terms: &article_start.evidence_profile.missing_query_terms,
+                    live_leads_status: &article_start.evidence_profile.live_leads_status,
+                    top_direct_evidence: article_start
+                        .evidence_profile
+                        .direct_subject_evidence
+                        .iter()
+                        .take(3)
+                        .map(evidence_card)
+                        .collect(),
+                    top_context_evidence: article_start
+                        .evidence_profile
+                        .broad_context
+                        .iter()
+                        .take(3)
+                        .map(evidence_card)
+                        .collect(),
+                }),
+                local_integration: Some(ArticleStartIntegrationCard {
+                    counts: ArticleStartIntegrationCounts {
+                        comparable_pages: article_start.local_integration.comparable_pages.len(),
+                        required_templates: article_start
+                            .local_integration
+                            .required_templates
+                            .len(),
+                        available_infoboxes: article_start
+                            .local_integration
+                            .available_infoboxes
+                            .len(),
+                        citation_templates_seen: article_start
+                            .local_integration
+                            .citation_templates_seen
+                            .len(),
+                        template_surface: article_start.local_integration.template_surface.len(),
+                        categories_seen: article_start.local_integration.categories_seen.len(),
+                        links_seen: article_start.local_integration.links_seen.len(),
+                        section_skeleton: article_start.local_integration.section_skeleton.len(),
+                        docs_queries: article_start.local_integration.docs_queries.len(),
+                    },
+                    comparable_pages: capped_strings(
+                        &article_start.local_integration.comparable_pages,
+                        5,
+                    ),
+                    required_templates: article_start
+                        .local_integration
+                        .required_templates
+                        .iter()
+                        .take(4)
+                        .map(required_template_card)
+                        .collect(),
+                    available_infoboxes: article_start
+                        .local_integration
+                        .available_infoboxes
+                        .iter()
+                        .take(4)
+                        .map(template_surface_card)
+                        .collect(),
+                    citation_templates_seen: article_start
+                        .local_integration
+                        .citation_templates_seen
+                        .iter()
+                        .map(|entry| entry.template_title.as_str())
+                        .take(6)
+                        .collect(),
+                    template_surface: article_start
+                        .local_integration
+                        .template_surface
+                        .iter()
+                        .map(|entry| entry.template_title.as_str())
+                        .take(8)
+                        .collect(),
+                    categories_seen: article_start
+                        .local_integration
+                        .categories_seen
+                        .iter()
+                        .take(6)
+                        .map(|entry| entry.category_title.clone())
+                        .collect(),
+                    links_seen: article_start
+                        .local_integration
+                        .links_seen
+                        .iter()
+                        .take(8)
+                        .map(|entry| entry.page_title.clone())
+                        .collect(),
+                    section_skeleton: article_start
+                        .local_integration
+                        .section_skeleton
+                        .iter()
+                        .take(6)
+                        .map(section_card)
+                        .collect(),
+                    docs_queries: capped_strings(&article_start.local_integration.docs_queries, 4),
+                    contract_query: &article_start.local_integration.contract_query,
+                    contract_matched_query_terms: &article_start
+                        .local_integration
+                        .contract_matched_query_terms,
+                    contract_missing_query_terms: &article_start
+                        .local_integration
+                        .contract_missing_query_terms,
+                }),
+                blocking,
+                warnings,
+                next_commands,
+                drilldowns,
+                full_view_command: Some(brief_command_owned(
+                    vec![
+                        "wikitool".to_string(),
+                        "knowledge".to_string(),
+                        "article-start".to_string(),
+                        article_start.topic.clone(),
+                        "--format".to_string(),
+                        "json".to_string(),
+                        "--view".to_string(),
+                        "full".to_string(),
+                        if raw_pack.is_some() {
+                            "--include-pack".to_string()
+                        } else {
+                            String::new()
+                        },
+                    ]
+                    .into_iter()
+                    .filter(|value| !value.is_empty())
+                    .collect(),
+                )),
+            }
+        }
+    }
+}
+
+fn evidence_card(evidence: &EvidenceCoverageItem) -> EvidenceCoverageCard<'_> {
+    EvidenceCoverageCard {
+        source_kind: &evidence.source_kind,
+        source_title: &evidence.source_title,
+        locator: evidence.locator.as_deref(),
+        evidence_id: evidence.evidence_id.as_deref(),
+    }
+}
+
+fn required_template_card(template: &RequiredTemplate) -> RequiredTemplateCard<'_> {
+    RequiredTemplateCard {
+        template_title: &template.template_title,
+        reason: &template.reason,
+    }
+}
+
+fn template_surface_card(template: &TemplateSurfaceEntry) -> TemplateSurfaceCard<'_> {
+    TemplateSurfaceCard {
+        template_title: &template.template_title,
+        source: &template.source,
+        mapped_subject_type: template.mapped_subject_type.as_deref(),
+        supporting_pages: capped_strings(&template.supporting_pages, 3),
+    }
+}
+
+fn section_card(section: &SectionSkeleton) -> SectionSkeletonCard<'_> {
+    SectionSkeletonCard {
+        heading: &section.heading,
+        required: section.required,
+        content_backed: section.content_backed,
+        rationale: &section.rationale,
+        supporting_pages: capped_strings(&section.supporting_pages, 3)
+            .into_iter()
+            .map(|value| text_preview(&value, 120))
+            .collect(),
+    }
 }

@@ -1,4 +1,4 @@
-# Wikitool Agent Card
+# Wikitool Command Brief
 
 This is the compact packaged guidance for AI-assisted MediaWiki editing with wikitool. The same
 guidance body is shipped as both `AGENTS.md` and `CLAUDE.md` so Claude, Codex, and other agent
@@ -33,7 +33,7 @@ Prefer packaged-root paths when working from an extracted release bundle.
 | Surface | Role |
 |---|---|
 | `README.md` | Human first-run and release-layout overview |
-| `AGENTS.md` / `CLAUDE.md` | This compact agent routing card |
+| `AGENTS.md` / `CLAUDE.md` | This compact agent routing brief |
 | `.claude/skills/wikitool.md` | Claude operator wrapper |
 | `.claude/skills/review.md` | Claude pre-push gate wrapper |
 | `codex_skills/` | Codex equivalents of the two wrappers |
@@ -81,11 +81,11 @@ discarding local edits.
 Use these as front doors, then continue with normal research and editing judgment:
 
 ```bash
-wikitool knowledge article-start "Topic" --intent new --format json
-wikitool knowledge article-start "Topic" --intent expand --format json
-wikitool knowledge article-start "Topic" --intent audit --format json
-wikitool knowledge article-start "Topic" --intent refresh --format json
-wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json
+wikitool knowledge article-start "Topic" --intent new --format json --view brief
+wikitool knowledge article-start "Topic" --intent expand --format json --view brief
+wikitool knowledge article-start "Topic" --intent audit --format json --view brief
+wikitool knowledge article-start "Topic" --intent refresh --format json --view brief
+wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief
 wikitool knowledge contracts search "contract terms" --format json
 ```
 
@@ -95,12 +95,12 @@ substrate. Its default compact payload separates subject context from wiki contr
 
 ## Token Discipline
 
-Agent-facing defaults are intentionally compact. Start from interpreted or summary lanes:
-`knowledge article-start`, `wiki profile show`, `wiki surface show`, scoped `knowledge inspect`
-commands, and `templates show/examples`. Reserve `knowledge pack --payload full`,
-`wiki ... --view full`, broad `knowledge inspect` selections, and high token budgets for cases where
-the compact result identifies a concrete need. Prefer one targeted drill-down over loading a whole
-catalog or page set into context.
+Agent-facing defaults are intentionally compact. Start from wikitool brief views:
+`knowledge article-start --view brief`, `knowledge inspect chunks --view brief`,
+`templates show --view brief`, `wiki surface show --view brief`, and
+`review --view brief`. Reserve `knowledge pack --payload full`, `--view full`, broad
+`knowledge inspect` selections, and high token budgets for cases where the brief identifies a
+concrete need. Prefer one targeted drill-down over loading a whole catalog or page set into context.
 
 ## Research And Source Boundaries
 
@@ -140,10 +140,10 @@ wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
 wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article lint --changed --format json
-wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"
+wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --view brief --summary "Draft review"
 wikitool validate --summary
 wikitool validate --category broken-links --title "Title" --limit 20 --verify-live --format json
-wikitool review --format json --summary "Summary"
+wikitool review --format json --view brief --summary "Summary"
 wikitool diff
 wikitool push --dry-run --summary "Summary"
 ```

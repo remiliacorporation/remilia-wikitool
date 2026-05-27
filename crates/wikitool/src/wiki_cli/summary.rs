@@ -1,7 +1,6 @@
 use serde::Serialize;
 use wikitool_core::profile::{
-    AuthoringSurface, ProfileOverlay, TemplateCatalogSummary, WikiCapabilityManifest,
-    WikiProfileSnapshot,
+    ProfileOverlay, TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
 };
 #[derive(Debug, Serialize)]
 pub(super) struct WikiCapabilityManifestSummary<'a> {
@@ -140,33 +139,6 @@ pub(super) struct TemplateCatalogSummaryView<'a> {
     refreshed_at: &'a str,
 }
 
-#[derive(Debug, Serialize)]
-pub(super) struct AuthoringSurfaceSummary<'a> {
-    pub(super) schema_version: &'a str,
-    profile_id: &'a str,
-    generated_at: &'a str,
-    wiki_id: Option<&'a str>,
-    wiki_url: Option<&'a str>,
-    capabilities_refreshed_at: Option<&'a str>,
-    template_catalog_refreshed_at: Option<&'a str>,
-    template_source: &'a str,
-    template_count_total: usize,
-    template_count_returned: usize,
-    module_count_total: usize,
-    module_count_returned: usize,
-    asset_count_total: usize,
-    asset_count_returned: usize,
-    extension_count_total: usize,
-    extension_count_returned: usize,
-    extension_tag_count_total: usize,
-    extension_tag_count_returned: usize,
-    top_templates: Vec<&'a str>,
-    modules: Vec<&'a str>,
-    assets: Vec<&'a str>,
-    extension_tags: Vec<&'a str>,
-    warnings: &'a [String],
-}
-
 pub(super) fn summarize_capability_manifest<'a>(
     manifest: &'a WikiCapabilityManifest,
 ) -> WikiCapabilityManifestSummary<'a> {
@@ -295,55 +267,5 @@ fn summarize_template_catalog_summary<'a>(
         usage_index_ready: summary.usage_index_ready,
         profile_template_titles: &summary.profile_template_titles,
         refreshed_at: &summary.refreshed_at,
-    }
-}
-
-pub(super) fn summarize_authoring_surface<'a>(
-    surface: &'a AuthoringSurface,
-) -> AuthoringSurfaceSummary<'a> {
-    AuthoringSurfaceSummary {
-        schema_version: &surface.schema_version,
-        profile_id: &surface.profile_id,
-        generated_at: &surface.generated_at,
-        wiki_id: surface.wiki_id.as_deref(),
-        wiki_url: surface.wiki_url.as_deref(),
-        capabilities_refreshed_at: surface.capabilities_refreshed_at.as_deref(),
-        template_catalog_refreshed_at: surface.template_catalog_refreshed_at.as_deref(),
-        template_source: &surface.template_source,
-        template_count_total: surface.template_count_total,
-        template_count_returned: surface.template_count_returned,
-        module_count_total: surface.module_count_total,
-        module_count_returned: surface.module_count_returned,
-        asset_count_total: surface.asset_count_total,
-        asset_count_returned: surface.asset_count_returned,
-        extension_count_total: surface.extension_count_total,
-        extension_count_returned: surface.extension_count_returned,
-        extension_tag_count_total: surface.extension_tag_count_total,
-        extension_tag_count_returned: surface.extension_tag_count_returned,
-        top_templates: surface
-            .templates
-            .iter()
-            .map(|template| template.template_title.as_str())
-            .take(24)
-            .collect(),
-        modules: surface
-            .modules
-            .iter()
-            .map(|module| module.module_title.as_str())
-            .take(48)
-            .collect(),
-        assets: surface
-            .assets
-            .iter()
-            .map(|asset| asset.title.as_str())
-            .take(48)
-            .collect(),
-        extension_tags: surface
-            .extension_tags
-            .iter()
-            .map(|tag| tag.tag_name.as_str())
-            .take(48)
-            .collect(),
-        warnings: &surface.warnings,
     }
 }

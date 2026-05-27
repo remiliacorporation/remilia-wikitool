@@ -1,11 +1,13 @@
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
+use serde::Serialize;
 use wikitool_core::profile::{
     TemplateCatalog, TemplateCatalogEntry, TemplateCatalogEntryLookup, find_template_catalog_entry,
     load_or_build_remilia_profile_overlay, load_template_catalog,
     sync_template_catalog_with_overlay,
 };
 
+use crate::briefs::{BriefCommand, BriefView, brief_command_owned, capped_strings, text_preview};
 use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
@@ -60,6 +62,14 @@ pub(crate) struct TemplatesShowArgs {
         help = "Output format: text|json"
     )]
     format: OutputFormat,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = BriefView::Brief,
+        value_name = "VIEW",
+        help = "JSON view: brief|full"
+    )]
+    view: BriefView,
 }
 
 #[derive(Debug, Args)]
@@ -127,7 +137,14 @@ fn run_templates_show(runtime: &RuntimeOptions, args: TemplatesShowArgs) -> Resu
     };
 
     if args.format.is_json() {
-        println!("{}", serde_json::to_string_pretty(&entry)?);
+        if args.view.is_full() {
+            println!("{}", serde_json::to_string_pretty(&entry)?);
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&build_template_brief(&entry))?
+            );
+        }
         return Ok(());
     }
 
@@ -318,5 +335,231 @@ fn join_or_none(values: &[String]) -> String {
         "<none>".to_string()
     } else {
         values.join(", ")
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct TemplateBrief<'a> {
+    schema_version: &'static str,
+    command: &'static str,
+    view: &'static str,
+    status: &'static str,
+    template_title: &'a str,
+    category: &'a str,
+    summary_text: Option<&'a str>,
+    contract: TemplateContractCard<'a>,
+    usage: TemplateUsageCard<'a>,
+    examples: Vec<TemplateExampleCard<'a>>,
+    warnings: Vec<String>,
+    next_commands: Vec<BriefCommand>,
+    full_view_command: BriefCommand,
+}
+
+#[derive(Debug, Serialize)]
+struct TemplateContractCard<'a> {
+    has_templatedata: bool,
+    declared_parameter_count: usize,
+    required_parameters: Vec<TemplateParameterCard<'a>>,
+    suggested_parameters: Vec<TemplateParameterCard<'a>>,
+    deprecated_parameters: Vec<TemplateParameterCard<'a>>,
+    observed_only_parameters: Vec<TemplateParameterCard<'a>>,
+    module_titles: Vec<&'a str>,
+    documentation_titles: Vec<&'a str>,
+    implementation_titles: Vec<&'a str>,
+    recommendation_tags: Vec<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct TemplateParameterCard<'a> {
+    name: &'a str,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    aliases: Vec<&'a str>,
+    sources: Vec<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    param_type: Option<&'a str>,
+    usage_count: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    example_values: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct TemplateUsageCard<'a> {
+    usage_count: usize,
+    distinct_page_count: usize,
+    redirect_aliases: &'a [String],
+    usage_aliases: &'a [String],
+    example_pages: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct TemplateExampleCard<'a> {
+    source_kind: &'a str,
+    source_title: Option<&'a str>,
+    parameter_keys: Vec<&'a str>,
+    invocation_preview: String,
+    token_estimate: usize,
+}
+
+fn build_template_brief(entry: &TemplateCatalogEntry) -> TemplateBrief<'_> {
+    let mut warnings = Vec::new();
+    if entry.templatedata.is_none() {
+        warnings.push("TemplateData is not available; parameter contract comes from local source and observed usage".to_string());
+    }
+    if entry.usage_count == 0 {
+        warnings.push("no indexed usages were found for this template".to_string());
+    }
+    if entry.parameters.is_empty() {
+        warnings.push("no parameters are declared or observed for this template".to_string());
+    }
+
+    TemplateBrief {
+        schema_version: "wikitool_brief_v1",
+        command: "templates show",
+        view: "brief",
+        status: "found",
+        template_title: &entry.template_title,
+        category: &entry.category,
+        summary_text: entry.summary_text.as_deref(),
+        contract: TemplateContractCard {
+            has_templatedata: entry.templatedata.is_some(),
+            declared_parameter_count: entry.declared_parameter_keys.len(),
+            required_parameters: entry
+                .parameters
+                .iter()
+                .filter(|parameter| parameter.required)
+                .take(8)
+                .map(parameter_card)
+                .collect(),
+            suggested_parameters: entry
+                .parameters
+                .iter()
+                .filter(|parameter| parameter.suggested && !parameter.required)
+                .take(8)
+                .map(parameter_card)
+                .collect(),
+            deprecated_parameters: entry
+                .parameters
+                .iter()
+                .filter(|parameter| parameter.deprecated)
+                .take(8)
+                .map(parameter_card)
+                .collect(),
+            observed_only_parameters: entry
+                .parameters
+                .iter()
+                .filter(|parameter| {
+                    parameter.sources.iter().any(|source| source == "usage")
+                        && !parameter
+                            .sources
+                            .iter()
+                            .any(|source| source == "templatedata" || source == "source")
+                })
+                .take(8)
+                .map(parameter_card)
+                .collect(),
+            module_titles: entry
+                .module_titles
+                .iter()
+                .map(String::as_str)
+                .take(6)
+                .collect(),
+            documentation_titles: entry
+                .documentation_titles
+                .iter()
+                .map(String::as_str)
+                .take(4)
+                .collect(),
+            implementation_titles: entry
+                .implementation_titles
+                .iter()
+                .map(String::as_str)
+                .take(4)
+                .collect(),
+            recommendation_tags: entry
+                .recommendation_tags
+                .iter()
+                .map(String::as_str)
+                .take(6)
+                .collect(),
+        },
+        usage: TemplateUsageCard {
+            usage_count: entry.usage_count,
+            distinct_page_count: entry.distinct_page_count,
+            redirect_aliases: &entry.redirect_aliases,
+            usage_aliases: &entry.usage_aliases,
+            example_pages: capped_strings(&entry.example_pages, 5),
+        },
+        examples: entry
+            .examples
+            .iter()
+            .take(2)
+            .map(|example| TemplateExampleCard {
+                source_kind: &example.source_kind,
+                source_title: example.source_title.as_deref(),
+                parameter_keys: example
+                    .parameter_keys
+                    .iter()
+                    .map(String::as_str)
+                    .take(10)
+                    .collect(),
+                invocation_preview: text_preview(&example.invocation_text, 260),
+                token_estimate: example.token_estimate,
+            })
+            .collect(),
+        warnings,
+        next_commands: vec![
+            brief_command_owned(vec![
+                "wikitool".to_string(),
+                "templates".to_string(),
+                "examples".to_string(),
+                entry.template_title.clone(),
+                "--limit".to_string(),
+                "4".to_string(),
+                "--format".to_string(),
+                "json".to_string(),
+            ]),
+            brief_command_owned(vec![
+                "wikitool".to_string(),
+                "knowledge".to_string(),
+                "inspect".to_string(),
+                "templates".to_string(),
+                entry.template_title.clone(),
+                "--format".to_string(),
+                "json".to_string(),
+            ]),
+        ],
+        full_view_command: brief_command_owned(vec![
+            "wikitool".to_string(),
+            "templates".to_string(),
+            "show".to_string(),
+            entry.template_title.clone(),
+            "--format".to_string(),
+            "json".to_string(),
+            "--view".to_string(),
+            "full".to_string(),
+        ]),
+    }
+}
+
+fn parameter_card(
+    parameter: &wikitool_core::profile::TemplateCatalogParameter,
+) -> TemplateParameterCard<'_> {
+    TemplateParameterCard {
+        name: &parameter.name,
+        aliases: parameter
+            .aliases
+            .iter()
+            .map(String::as_str)
+            .take(4)
+            .collect(),
+        sources: parameter
+            .sources
+            .iter()
+            .map(String::as_str)
+            .take(4)
+            .collect(),
+        param_type: parameter.param_type.as_deref(),
+        usage_count: parameter.usage_count,
+        example_values: capped_strings(&parameter.example_values, 3),
     }
 }

@@ -26,6 +26,8 @@ use clap::{Command, CommandFactory, error::ErrorKind};
 use std::fs;
 
 mod admin;
+#[cfg(feature = "maintainer-surface")]
+mod audit;
 mod import;
 mod query;
 mod reference;
@@ -57,6 +59,13 @@ enum DocsSubcommand {
     )]
     #[cfg(feature = "maintainer-surface")]
     GenerateReference(reference::DocsGenerateReferenceArgs),
+    #[command(
+        name = "audit",
+        about = "Audit generated docs and shipped agent guidance against the live CLI surface",
+        hide = true
+    )]
+    #[cfg(feature = "maintainer-surface")]
+    Audit(audit::DocsAuditArgs),
     #[command(about = "List imported docs corpora")]
     List(admin::DocsListArgs),
     #[command(about = "Refresh outdated imported docs corpora")]
@@ -78,6 +87,8 @@ pub(crate) fn run_docs(runtime: &RuntimeOptions, args: DocsArgs) -> Result<()> {
         DocsSubcommand::ImportProfile(args) => import::run_docs_import_profile(runtime, args),
         #[cfg(feature = "maintainer-surface")]
         DocsSubcommand::GenerateReference(args) => reference::run_docs_generate_reference(args),
+        #[cfg(feature = "maintainer-surface")]
+        DocsSubcommand::Audit(args) => audit::run_docs_audit(args),
         DocsSubcommand::List(args) => admin::run_docs_list(runtime, args),
         DocsSubcommand::Update => admin::run_docs_update(runtime),
         DocsSubcommand::Remove { target } => admin::run_docs_remove(runtime, &target),

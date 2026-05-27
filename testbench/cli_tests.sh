@@ -388,7 +388,7 @@ fi
 section "review draft gate"
 mkdir -p "$ARTICLE_PROJ/.wikitool/drafts"
 cp "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki"
-OUTPUT=$(wt "$ARTICLE_PROJ" review --draft-path "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki" --title "Article Draft" --format json --summary "Draft review" 2>&1 || true)
+OUTPUT=$(wt "$ARTICLE_PROJ" review --draft-path "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki" --title "Article Draft" --format json --view brief --summary "Draft review" 2>&1 || true)
 if echo "$OUTPUT" | grep -q '"mode": "draft"' && echo "$OUTPUT" | grep -q '"skipped_reason": "draft review skips push dry-run' && echo "$OUTPUT" | grep -q '"kind": "promote_draft"'; then
     pass "review draft gate emits draft mode, skipped push dry-run, and promotion next step"
 else
@@ -415,8 +415,8 @@ fi
 
 # --- knowledge inspect chunks (across-pages json) ---
 section "knowledge inspect chunks across-pages json"
-OUTPUT=$(wt "$PROJ" knowledge inspect chunks --across-pages --query "article" --limit 3 --max-pages 2 --token-budget 140 --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"Found"' && echo "$OUTPUT" | grep -q '"retrieval_mode"' && echo "$OUTPUT" | grep -q '"source_page_count"'; then
+OUTPUT=$(wt "$PROJ" knowledge inspect chunks --across-pages --query "article" --limit 3 --max-pages 2 --token-budget 140 --format json --view brief 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"schema_version": "wikitool_brief_v1"' && echo "$OUTPUT" | grep -q '"retrieval_mode"' && echo "$OUTPUT" | grep -q '"source_page_count"'; then
     pass "knowledge inspect chunks across-pages emits JSON report"
 else
     fail "knowledge inspect chunks across-pages emits JSON report (got: $OUTPUT)"

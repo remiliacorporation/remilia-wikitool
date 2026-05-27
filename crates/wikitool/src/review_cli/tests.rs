@@ -3,7 +3,7 @@ use super::draft::{
 };
 use super::next_steps::build_review_next_steps;
 use super::*;
-use crate::cli_support::OutputFormat;
+use crate::{briefs::BriefView, cli_support::OutputFormat};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -12,6 +12,7 @@ use wikitool_core::runtime::{ResolvedPaths, ValueSource};
 fn review_args() -> ReviewArgs {
     ReviewArgs {
         format: OutputFormat::Json,
+        view: BriefView::Brief,
         profile: "remilia".to_string(),
         strict: false,
         templates: false,

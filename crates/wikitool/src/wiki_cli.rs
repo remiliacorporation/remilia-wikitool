@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
 
 use crate::RuntimeOptions;
+use crate::briefs::BriefView;
 use crate::cli_support::OutputFormat;
 
 mod capabilities;
@@ -180,11 +181,11 @@ struct WikiSurfaceFormatArgs {
     #[arg(
         long,
         value_enum,
-        default_value_t = WikiJsonView::Summary,
+        default_value_t = BriefView::Brief,
         value_name = "VIEW",
-        help = "JSON view: summary|full"
+        help = "JSON view: brief|full"
     )]
-    view: WikiJsonView,
+    view: BriefView,
     #[arg(long = "template-limit", default_value_t = 64, value_name = "N")]
     template_limit: usize,
     #[arg(long = "template-example-limit", default_value_t = 2, value_name = "N")]

@@ -1,14 +1,15 @@
 use anyhow::Result;
+use serde::Serialize;
 use wikitool_core::profile::{
-    AuthoringSurface, AuthoringSurfaceOptions, build_authoring_surface_with_config,
-    sync_authoring_surface_with_config,
+    AuthoringSurface, AuthoringSurfaceOptions, AuthoringTemplateSurface,
+    build_authoring_surface_with_config, sync_authoring_surface_with_config,
 };
 
+use crate::briefs::{BriefCommand, brief_command_owned};
 use crate::cli_support::{normalize_path, resolve_runtime_with_config};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 use super::output::join_or_none;
-use super::summary::summarize_authoring_surface;
 use super::*;
 pub(super) fn run_wiki_surface(runtime: &RuntimeOptions, args: WikiSurfaceArgs) -> Result<()> {
     match args.command {
@@ -77,7 +78,7 @@ fn print_authoring_surface(
     paths: &wikitool_core::runtime::ResolvedPaths,
     surface: &AuthoringSurface,
     format: OutputFormat,
-    view: WikiJsonView,
+    view: BriefView,
 ) -> Result<()> {
     if format.is_json() {
         if view.is_full() {
@@ -85,7 +86,7 @@ fn print_authoring_surface(
         } else {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&summarize_authoring_surface(surface))?
+                serde_json::to_string_pretty(&build_surface_brief(heading, surface))?
             );
         }
         return Ok(());
@@ -187,4 +188,185 @@ fn print_authoring_surface(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct SurfaceBrief<'a> {
+    schema_version: &'static str,
+    command: &'a str,
+    view: &'static str,
+    status: &'static str,
+    profile_id: &'a str,
+    generated_at: &'a str,
+    wiki_id: Option<&'a str>,
+    wiki_url: Option<&'a str>,
+    freshness: SurfaceFreshness<'a>,
+    counts: SurfaceCounts,
+    top_templates: Vec<SurfaceTemplateBrief<'a>>,
+    modules: Vec<&'a str>,
+    assets: Vec<&'a str>,
+    extension_tags: Vec<&'a str>,
+    source_html_tags: Vec<&'a str>,
+    warnings: &'a [String],
+    next_commands: Vec<BriefCommand>,
+    full_view_command: BriefCommand,
+}
+
+#[derive(Debug, Serialize)]
+struct SurfaceFreshness<'a> {
+    capabilities_refreshed_at: Option<&'a str>,
+    template_catalog_refreshed_at: Option<&'a str>,
+    template_source: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct SurfaceCounts {
+    template_count_total: usize,
+    template_count_returned: usize,
+    module_count_total: usize,
+    module_count_returned: usize,
+    asset_count_total: usize,
+    asset_count_returned: usize,
+    extension_count_total: usize,
+    extension_count_returned: usize,
+    extension_tag_count_total: usize,
+    extension_tag_count_returned: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct SurfaceTemplateBrief<'a> {
+    template_title: &'a str,
+    category: &'a str,
+    has_templatedata: bool,
+    usage_count: usize,
+    required_parameters: Vec<&'a str>,
+    suggested_parameters: Vec<&'a str>,
+    recommendation_tags: &'a [String],
+}
+
+const BRIEF_TEMPLATE_LIMIT: usize = 10;
+const BRIEF_MODULE_LIMIT: usize = 12;
+const BRIEF_ASSET_LIMIT: usize = 12;
+const BRIEF_EXTENSION_TAG_LIMIT: usize = 20;
+const BRIEF_HTML_TAG_LIMIT: usize = 20;
+
+fn build_surface_brief<'a>(command: &'a str, surface: &'a AuthoringSurface) -> SurfaceBrief<'a> {
+    SurfaceBrief {
+        schema_version: "wikitool_brief_v1",
+        command,
+        view: "brief",
+        status: "found",
+        profile_id: &surface.profile_id,
+        generated_at: &surface.generated_at,
+        wiki_id: surface.wiki_id.as_deref(),
+        wiki_url: surface.wiki_url.as_deref(),
+        freshness: SurfaceFreshness {
+            capabilities_refreshed_at: surface.capabilities_refreshed_at.as_deref(),
+            template_catalog_refreshed_at: surface.template_catalog_refreshed_at.as_deref(),
+            template_source: &surface.template_source,
+        },
+        counts: SurfaceCounts {
+            template_count_total: surface.template_count_total,
+            template_count_returned: surface.template_count_returned,
+            module_count_total: surface.module_count_total,
+            module_count_returned: surface.module_count_returned,
+            asset_count_total: surface.asset_count_total,
+            asset_count_returned: surface.asset_count_returned,
+            extension_count_total: surface.extension_count_total,
+            extension_count_returned: surface.extension_count_returned,
+            extension_tag_count_total: surface.extension_tag_count_total,
+            extension_tag_count_returned: surface.extension_tag_count_returned,
+        },
+        top_templates: surface
+            .templates
+            .iter()
+            .take(BRIEF_TEMPLATE_LIMIT)
+            .map(surface_template_brief)
+            .collect(),
+        modules: surface
+            .modules
+            .iter()
+            .take(BRIEF_MODULE_LIMIT)
+            .map(|module| module.module_title.as_str())
+            .collect(),
+        assets: surface
+            .assets
+            .iter()
+            .map(|asset| asset.title.as_str())
+            .take(BRIEF_ASSET_LIMIT)
+            .collect(),
+        extension_tags: surface
+            .extension_tags
+            .iter()
+            .map(|tag| tag.tag_name.as_str())
+            .take(BRIEF_EXTENSION_TAG_LIMIT)
+            .collect(),
+        source_html_tags: surface
+            .source_html_tags
+            .iter()
+            .map(String::as_str)
+            .take(BRIEF_HTML_TAG_LIMIT)
+            .collect(),
+        warnings: &surface.warnings,
+        next_commands: surface
+            .templates
+            .iter()
+            .take(3)
+            .map(|template| {
+                brief_command_owned(vec![
+                    "wikitool".to_string(),
+                    "templates".to_string(),
+                    "show".to_string(),
+                    template.template_title.clone(),
+                    "--format".to_string(),
+                    "json".to_string(),
+                    "--view".to_string(),
+                    "brief".to_string(),
+                ])
+            })
+            .collect(),
+        full_view_command: surface_full_view_command(command),
+    }
+}
+
+fn surface_full_view_command(command: &str) -> BriefCommand {
+    let subcommand = if command.ends_with(" sync") {
+        "sync"
+    } else {
+        "show"
+    };
+    brief_command_owned(vec![
+        "wikitool".to_string(),
+        "wiki".to_string(),
+        "surface".to_string(),
+        subcommand.to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+        "--view".to_string(),
+        "full".to_string(),
+    ])
+}
+
+fn surface_template_brief(template: &AuthoringTemplateSurface) -> SurfaceTemplateBrief<'_> {
+    SurfaceTemplateBrief {
+        template_title: &template.template_title,
+        category: &template.category,
+        has_templatedata: template.has_templatedata,
+        usage_count: template.usage_count,
+        required_parameters: template
+            .parameters
+            .iter()
+            .filter(|parameter| parameter.required)
+            .map(|parameter| parameter.name.as_str())
+            .take(6)
+            .collect(),
+        suggested_parameters: template
+            .parameters
+            .iter()
+            .filter(|parameter| parameter.suggested && !parameter.required)
+            .map(|parameter| parameter.name.as_str())
+            .take(6)
+            .collect(),
+        recommendation_tags: &template.recommendation_tags,
+    }
 }
