@@ -3,7 +3,7 @@ use super::*;
 pub(super) fn build_catalog_entry(
     template: LocalTemplateRecord,
     usage: Option<&crate::knowledge::templates::TemplateUsageSummary>,
-    reference: Option<&crate::knowledge::templates::TemplateReference>,
+    implementation_pages: Option<&[crate::knowledge::templates::TemplateImplementationRecord]>,
     redirect_aliases: &[String],
     overlay: &ProfileOverlay,
 ) -> TemplateCatalogEntry {
@@ -38,11 +38,10 @@ pub(super) fn build_catalog_entry(
             .iter()
             .map(|page| page.title.clone())
             .collect(),
-        reference.map(|item| {
-            item.implementation_pages
-                .iter()
+        implementation_pages.map(|item| {
+            item.iter()
                 .filter(|page| page.role == "documentation")
-                .map(|page| page.page_title.clone())
+                .map(|page| page.title.clone())
                 .collect()
         }),
     );
@@ -55,12 +54,11 @@ pub(super) fn build_catalog_entry(
     let module_titles = merge_titles(
         template.module_titles.clone(),
         Some(
-            reference
+            implementation_pages
                 .map(|item| {
-                    item.implementation_pages
-                        .iter()
+                    item.iter()
                         .filter(|page| page.role == "module")
-                        .map(|page| page.page_title.clone())
+                        .map(|page| page.title.clone())
                         .collect()
                 })
                 .unwrap_or_else(|| {

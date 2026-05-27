@@ -146,4 +146,15 @@ fn import_docs_profile_skips_installed_extension_discovery_failures() {
             .iter()
             .any(|entry| entry.contains("installed extension discovery skipped"))
     );
+    let hits = super::search_docs(
+        &paths,
+        "Profile docs fixture",
+        &super::DocsSearchOptions {
+            tier: None,
+            profile: Some("remilia-mw-1.44".to_string()),
+            limit: 5,
+        },
+    )
+    .expect("profile import should leave docs FTS searchable");
+    assert!(!hits.is_empty());
 }

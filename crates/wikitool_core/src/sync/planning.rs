@@ -208,8 +208,14 @@ pub(super) fn hydrate_remote_conflicts<A: WikiWriteApi>(
     let titles = context
         .changes
         .iter()
-        .map(|change| change.title.clone())
+        .map(|change| (normalized_title_key(&change.title), change.title.clone()))
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
         .collect::<Vec<_>>();
+    if titles.is_empty() {
+        context.request_count = api.request_count();
+        return Ok(());
+    }
     let remote_timestamps = api
         .get_page_timestamps(&titles)?
         .into_iter()

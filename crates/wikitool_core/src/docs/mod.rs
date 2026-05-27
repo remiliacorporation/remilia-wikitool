@@ -52,7 +52,10 @@ use support::{
 };
 
 use catalog::{load_docs_corpora, load_docs_stats, load_outdated_docs, load_outdated_refresh_rows};
-use import::{import_extension_docs_with_api_internal, import_technical_docs_with_api_internal};
+use import::{
+    import_extension_docs_with_api_internal, import_extension_docs_with_api_internal_deferred,
+    import_technical_docs_with_api_internal, import_technical_docs_with_api_internal_deferred,
+};
 use parse::{
     DocsPageParseInput, ParsedDocsExample, ParsedDocsLink, ParsedDocsSection, ParsedDocsSymbol,
     estimate_tokens, is_translation_variant, normalize_retrieval_key, normalize_title,
@@ -259,6 +262,16 @@ pub fn import_docs_profile_with_api<A: DocsApi>(
     config: &WikiConfig,
     api: &mut A,
 ) -> Result<DocsImportProfileReport> {
+    import_docs_profile_with_api_internal(paths, options, config, api, true)
+}
+
+fn import_docs_profile_with_api_internal<A: DocsApi>(
+    paths: &ResolvedPaths,
+    options: &DocsImportProfileOptions,
+    config: &WikiConfig,
+    api: &mut A,
+    rebuild_fts: bool,
+) -> Result<DocsImportProfileReport> {
     let definition = resolve_docs_profile(&options.profile)?;
     let now_unix = unix_timestamp()?;
     let expires_at_unix = now_unix.saturating_add(DOCS_CACHE_TTL_SECONDS);
@@ -307,7 +320,7 @@ pub fn import_docs_profile_with_api<A: DocsApi>(
     normalize_extension_list(&mut extension_names);
 
     if !extension_names.is_empty() {
-        let extension_report = import_extension_docs_with_api_internal(
+        let extension_report = import_extension_docs_with_api_internal_deferred(
             paths,
             &DocsImportOptions {
                 extensions: extension_names,
@@ -325,7 +338,9 @@ pub fn import_docs_profile_with_api<A: DocsApi>(
         failures.extend(extension_report.failures);
     }
 
-    rebuild_docs_fts_indexes(paths)?;
+    if rebuild_fts && stats.pages > 0 {
+        rebuild_docs_fts_indexes(paths)?;
+    }
     let connection = open_initialized_database_connection(&paths.db_path)?;
     record_docs_profile_artifact(
         &connection,
@@ -402,13 +417,14 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
     let mut updated_symbols = 0usize;
     let mut updated_examples = 0usize;
     let mut failures = Vec::new();
+    let mut needs_fts_rebuild = false;
 
     for row in refresh_rows {
         match row.refresh_kind.as_str() {
             "extension" => {
                 let spec: ExtensionRefreshSpec = serde_json::from_str(&row.refresh_spec)
                     .context("invalid extension refresh spec")?;
-                match import_extension_docs_with_api_internal(
+                match import_extension_docs_with_api_internal_deferred(
                     paths,
                     &DocsImportOptions {
                         extensions: vec![spec.extension_name.clone()],
@@ -420,6 +436,7 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
                 ) {
                     Ok(report) => {
                         if report.imported_extensions > 0 {
+                            needs_fts_rebuild = true;
                             updated_corpora += report.imported_extensions;
                             updated_pages += report.imported_pages;
                             updated_sections += report.imported_sections;
@@ -441,7 +458,7 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
                     ));
                     continue;
                 };
-                match import_technical_docs_with_api_internal(
+                match import_technical_docs_with_api_internal_deferred(
                     paths,
                     &DocsImportTechnicalOptions {
                         tasks: vec![TechnicalImportTask {
@@ -457,6 +474,7 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
                 ) {
                     Ok(report) => {
                         if report.imported_corpora > 0 {
+                            needs_fts_rebuild = true;
                             updated_corpora += report.imported_corpora;
                             updated_pages += report.imported_pages;
                             updated_sections += report.imported_sections;
@@ -471,7 +489,7 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
             "profile" => {
                 let spec: ProfileRefreshSpec = serde_json::from_str(&row.refresh_spec)
                     .context("invalid profile refresh spec")?;
-                match import_docs_profile_with_api(
+                match import_docs_profile_with_api_internal(
                     paths,
                     &DocsImportProfileOptions {
                         profile: spec.profile.clone(),
@@ -482,8 +500,12 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
                     },
                     config,
                     api,
+                    false,
                 ) {
                     Ok(report) => {
+                        if report.imported_corpora > 0 {
+                            needs_fts_rebuild = true;
+                        }
                         updated_corpora += report.imported_corpora;
                         updated_pages += report.imported_pages;
                         updated_sections += report.imported_sections;
@@ -496,6 +518,10 @@ pub fn update_outdated_docs_with_api<A: DocsApi>(
             }
             _ => {}
         }
+    }
+
+    if needs_fts_rebuild {
+        rebuild_docs_fts_indexes(paths)?;
     }
 
     Ok(DocsUpdateReport {

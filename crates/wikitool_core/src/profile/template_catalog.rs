@@ -12,7 +12,7 @@ use crate::content_store::parsing::{
 use crate::filesystem::{ScanOptions, scan_files};
 use crate::knowledge::status::KNOWLEDGE_GENERATION;
 use crate::knowledge::templates::{
-    load_template_reference_for_connection, normalize_template_lookup_title,
+    load_template_implementation_pages_for_templates, normalize_template_lookup_title,
     summarize_template_usage_for_sources,
 };
 use crate::runtime::ResolvedPaths;
@@ -51,7 +51,7 @@ pub fn build_template_catalog_with_overlay(
     let (local_templates, redirect_aliases) = load_local_templates(paths)?;
 
     let mut usage_map = BTreeMap::new();
-    let mut reference_map = BTreeMap::new();
+    let mut implementation_pages_by_template = BTreeMap::new();
     let usage_index_ready = if let Some(connection) = open_indexed_connection(paths)? {
         for summary in summarize_template_usage_for_sources(&connection, None, usize::MAX)? {
             usage_map.insert(
@@ -59,13 +59,9 @@ pub fn build_template_catalog_with_overlay(
                 summary,
             );
         }
-        for template_title in local_templates.keys() {
-            if let Some(reference) =
-                load_template_reference_for_connection(&connection, template_title)?
-            {
-                reference_map.insert(template_title.clone(), reference);
-            }
-        }
+        let template_titles = local_templates.keys().cloned().collect::<Vec<_>>();
+        implementation_pages_by_template =
+            load_template_implementation_pages_for_templates(&connection, &template_titles)?;
         true
     } else {
         false
@@ -76,7 +72,6 @@ pub fn build_template_catalog_with_overlay(
     let mut templatedata_count = 0usize;
     for (normalized_title, template) in local_templates {
         let usage = usage_map.get(&normalized_title);
-        let reference = reference_map.get(&normalized_title);
         let redirect_aliases_for_template = redirect_aliases
             .get(&normalized_title)
             .cloned()
@@ -88,7 +83,9 @@ pub fn build_template_catalog_with_overlay(
         entries.push(build_catalog_entry(
             template,
             usage,
-            reference,
+            implementation_pages_by_template
+                .get(&normalized_title)
+                .map(Vec::as_slice),
             &redirect_aliases_for_template,
             overlay,
         ));

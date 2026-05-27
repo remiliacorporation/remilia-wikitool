@@ -7,6 +7,41 @@ pub(super) fn import_extension_docs_with_api_internal<A: DocsApi>(
     source_profile: &str,
     source_version: &str,
 ) -> Result<DocsImportReport> {
+    import_extension_docs_with_api_internal_with_rebuild(
+        paths,
+        options,
+        api,
+        source_profile,
+        source_version,
+        true,
+    )
+}
+
+pub(super) fn import_extension_docs_with_api_internal_deferred<A: DocsApi>(
+    paths: &ResolvedPaths,
+    options: &DocsImportOptions,
+    api: &mut A,
+    source_profile: &str,
+    source_version: &str,
+) -> Result<DocsImportReport> {
+    import_extension_docs_with_api_internal_with_rebuild(
+        paths,
+        options,
+        api,
+        source_profile,
+        source_version,
+        false,
+    )
+}
+
+fn import_extension_docs_with_api_internal_with_rebuild<A: DocsApi>(
+    paths: &ResolvedPaths,
+    options: &DocsImportOptions,
+    api: &mut A,
+    source_profile: &str,
+    source_version: &str,
+    rebuild_fts: bool,
+) -> Result<DocsImportReport> {
     if options.extensions.is_empty() {
         bail!("no extensions specified for docs import");
     }
@@ -98,7 +133,9 @@ pub(super) fn import_extension_docs_with_api_internal<A: DocsApi>(
         accumulate_stats(&mut stats, &persisted);
     }
 
-    rebuild_docs_fts_indexes(paths)?;
+    if rebuild_fts && imported_extensions > 0 {
+        rebuild_docs_fts_indexes(paths)?;
+    }
 
     Ok(DocsImportReport {
         requested_extensions,
@@ -118,6 +155,41 @@ pub(super) fn import_technical_docs_with_api_internal<A: DocsApi>(
     api: &mut A,
     source_profile: &str,
     source_version: &str,
+) -> Result<DocsImportTechnicalReport> {
+    import_technical_docs_with_api_internal_with_rebuild(
+        paths,
+        options,
+        api,
+        source_profile,
+        source_version,
+        true,
+    )
+}
+
+pub(super) fn import_technical_docs_with_api_internal_deferred<A: DocsApi>(
+    paths: &ResolvedPaths,
+    options: &DocsImportTechnicalOptions,
+    api: &mut A,
+    source_profile: &str,
+    source_version: &str,
+) -> Result<DocsImportTechnicalReport> {
+    import_technical_docs_with_api_internal_with_rebuild(
+        paths,
+        options,
+        api,
+        source_profile,
+        source_version,
+        false,
+    )
+}
+
+fn import_technical_docs_with_api_internal_with_rebuild<A: DocsApi>(
+    paths: &ResolvedPaths,
+    options: &DocsImportTechnicalOptions,
+    api: &mut A,
+    source_profile: &str,
+    source_version: &str,
+    rebuild_fts: bool,
 ) -> Result<DocsImportTechnicalReport> {
     if options.tasks.is_empty() {
         bail!("no technical docs tasks specified");
@@ -179,7 +251,9 @@ pub(super) fn import_technical_docs_with_api_internal<A: DocsApi>(
         }
     }
 
-    rebuild_docs_fts_indexes(paths)?;
+    if rebuild_fts && imported_corpora > 0 {
+        rebuild_docs_fts_indexes(paths)?;
+    }
 
     Ok(DocsImportTechnicalReport {
         requested_tasks: options.tasks.len(),

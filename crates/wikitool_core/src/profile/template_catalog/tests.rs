@@ -159,6 +159,13 @@ fn template_catalog_fuses_local_docs_templatedata_and_usage() {
     );
     assert!(
         entry
+            .documentation_titles
+            .iter()
+            .any(|title| title == "Template:Infobox person/doc")
+    );
+    assert!(entry.module_titles.contains(&"Module:Infobox".to_string()));
+    assert!(
+        entry
             .recommendation_tags
             .contains(&"preferred_infobox_template".to_string())
     );

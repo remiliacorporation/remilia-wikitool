@@ -21,6 +21,7 @@ struct MockApi {
     category_members: Vec<String>,
     page_contents: BTreeMap<String, RemotePage>,
     page_timestamps: BTreeMap<String, PageTimestampInfo>,
+    timestamp_batches: Vec<Vec<String>>,
     search_hits: Vec<ExternalSearchHit>,
     edited_pages: Vec<String>,
     deleted_pages: Vec<String>,
@@ -88,6 +89,7 @@ impl WikiWriteApi for MockApi {
 
     fn get_page_timestamps(&mut self, titles: &[String]) -> anyhow::Result<Vec<PageTimestampInfo>> {
         self.request_count += 1;
+        self.timestamp_batches.push(titles.to_vec());
         let mut output = Vec::new();
         for title in titles {
             if let Some(item) = self.page_timestamps.get(title) {
@@ -688,6 +690,124 @@ fn push_dry_run_detects_remote_conflict_without_writes() {
     assert!(report.dry_run);
     assert_eq!(report.conflicts, vec!["Alpha".to_string()]);
     assert!(api.edited_pages.is_empty());
+}
+
+#[test]
+fn forced_push_dry_run_skips_remote_conflict_hydration() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace
+        .insert(NS_MAIN, vec!["Alpha".to_string()]);
+    api.page_contents
+        .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+
+    pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: false,
+        },
+        &mut api,
+    )
+    .expect("seed pull");
+    api.timestamp_batches.clear();
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "alpha forced local edit",
+    );
+
+    let report = push_to_remote_with_api(
+        &paths,
+        &PushOptions {
+            summary: "test forced dry-run".to_string(),
+            dry_run: true,
+            force: true,
+            delete: false,
+            include_templates: false,
+            categories_only: false,
+            selection: SyncSelection::default(),
+        },
+        &mut api,
+        None,
+    )
+    .expect("forced push dry run");
+
+    assert!(report.dry_run);
+    assert!(report.conflicts.is_empty());
+    assert!(api.timestamp_batches.is_empty());
+    assert!(api.edited_pages.is_empty());
+}
+
+#[test]
+fn push_conflict_hydration_fetches_changed_titles_in_one_batch() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace
+        .insert(NS_MAIN, vec!["Alpha".to_string(), "Beta".to_string()]);
+    api.page_contents
+        .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+    api.page_contents
+        .insert("Beta".to_string(), base_page("Beta", "beta body"));
+
+    pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: false,
+        },
+        &mut api,
+    )
+    .expect("seed pull");
+    api.timestamp_batches.clear();
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "alpha local edit",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+        "beta local edit",
+    );
+
+    let report = push_to_remote_with_api(
+        &paths,
+        &PushOptions {
+            summary: "test batched dry-run".to_string(),
+            dry_run: true,
+            force: false,
+            delete: false,
+            include_templates: false,
+            categories_only: false,
+            selection: SyncSelection::default(),
+        },
+        &mut api,
+        None,
+    )
+    .expect("push dry run");
+
+    assert!(report.dry_run);
+    assert_eq!(api.timestamp_batches.len(), 1);
+    assert_eq!(
+        api.timestamp_batches[0],
+        vec!["Alpha".to_string(), "Beta".to_string()]
+    );
 }
 
 #[test]

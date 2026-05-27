@@ -791,11 +791,11 @@ pub(crate) fn load_template_implementation_preview(
 }
 
 #[derive(Debug, Clone)]
-struct TemplateImplementationRecord {
-    title: String,
-    namespace: String,
-    relative_path: String,
-    role: String,
+pub(crate) struct TemplateImplementationRecord {
+    pub(crate) title: String,
+    pub(crate) namespace: String,
+    pub(crate) relative_path: String,
+    pub(crate) role: String,
 }
 
 pub(crate) fn load_template_implementation_titles(
@@ -814,50 +814,147 @@ fn load_template_implementation_pages_for_connection(
     connection: &Connection,
     template_title: &str,
 ) -> Result<Vec<TemplateImplementationRecord>> {
+    let mut pages_by_template = load_template_implementation_pages_for_templates(
+        connection,
+        &[template_title.to_string()],
+    )?;
+    Ok(pages_by_template
+        .remove(&normalize_template_lookup_title(template_title))
+        .unwrap_or_default())
+}
+
+pub(crate) fn load_template_implementation_pages_for_templates(
+    connection: &Connection,
+    template_titles: &[String],
+) -> Result<BTreeMap<String, Vec<TemplateImplementationRecord>>> {
+    let normalized_titles = template_titles
+        .iter()
+        .map(|title| normalize_template_lookup_title(title))
+        .filter(|title| !title.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if normalized_titles.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    let mut out = BTreeMap::<String, Vec<TemplateImplementationRecord>>::new();
     if table_exists(connection, "indexed_template_implementation_pages")? {
+        let placeholders = std::iter::repeat_n("?", normalized_titles.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT template_title, implementation_page_title, implementation_namespace,
+                    source_relative_path, role
+             FROM indexed_template_implementation_pages
+             WHERE lower(template_title) IN ({placeholders})
+             ORDER BY
+               lower(template_title) ASC,
+               CASE role
+                 WHEN 'template' THEN 0
+                 WHEN 'documentation' THEN 1
+                 WHEN 'module' THEN 2
+                 ELSE 3
+               END,
+               implementation_page_title ASC"
+        );
+        let values = normalized_titles
+            .iter()
+            .map(|title| title.to_ascii_lowercase())
+            .map(rusqlite::types::Value::from)
+            .collect::<Vec<_>>();
         let mut statement = connection
-            .prepare(
-                "SELECT implementation_page_title, implementation_namespace, source_relative_path, role
-                 FROM indexed_template_implementation_pages
-                 WHERE lower(template_title) = lower(?1)
-                 ORDER BY
-                   CASE role
-                     WHEN 'template' THEN 0
-                     WHEN 'documentation' THEN 1
-                     WHEN 'module' THEN 2
-                     ELSE 3
-                   END,
-                   implementation_page_title ASC",
-            )
+            .prepare(&sql)
             .context("failed to prepare template implementation page query")?;
         let rows = statement
-            .query_map([template_title], |row| {
-                Ok(TemplateImplementationRecord {
-                    title: row.get(0)?,
-                    namespace: row.get(1)?,
-                    relative_path: row.get(2)?,
-                    role: row.get(3)?,
-                })
+            .query_map(params_from_iter(values), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    TemplateImplementationRecord {
+                        title: row.get(1)?,
+                        namespace: row.get(2)?,
+                        relative_path: row.get(3)?,
+                        role: row.get(4)?,
+                    },
+                ))
             })
             .context("failed to run template implementation page query")?;
-        let mut out = Vec::new();
         for row in rows {
-            out.push(row.context("failed to decode template implementation page row")?);
-        }
-        if !out.is_empty() {
-            return Ok(out);
+            let (template_title, record) =
+                row.context("failed to decode template implementation page row")?;
+            out.entry(normalize_template_lookup_title(&template_title))
+                .or_default()
+                .push(record);
         }
     }
 
-    let Some(page) = load_page_record(connection, template_title)? else {
+    let missing_titles = normalized_titles
+        .iter()
+        .filter(|title| !out.contains_key(*title))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing_titles.is_empty() {
+        for page in load_template_page_records_for_titles(connection, &missing_titles)? {
+            out.insert(
+                normalize_template_lookup_title(&page.title),
+                vec![TemplateImplementationRecord {
+                    title: page.title,
+                    namespace: page.namespace,
+                    relative_path: page.relative_path,
+                    role: "template".to_string(),
+                }],
+            );
+        }
+    }
+
+    Ok(out)
+}
+
+fn load_template_page_records_for_titles(
+    connection: &Connection,
+    template_titles: &[String],
+) -> Result<Vec<IndexedPageRecord>> {
+    if template_titles.is_empty() {
         return Ok(Vec::new());
-    };
-    Ok(vec![TemplateImplementationRecord {
-        title: page.title,
-        namespace: page.namespace,
-        relative_path: page.relative_path,
-        role: "template".to_string(),
-    }])
+    }
+    let placeholders = std::iter::repeat_n("?", template_titles.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT title, namespace, is_redirect, redirect_target, relative_path, bytes
+         FROM indexed_pages
+         WHERE lower(title) IN ({placeholders})
+         ORDER BY title ASC"
+    );
+    let values = template_titles
+        .iter()
+        .map(|title| title.to_ascii_lowercase())
+        .map(rusqlite::types::Value::from)
+        .collect::<Vec<_>>();
+    let mut statement = connection
+        .prepare(&sql)
+        .context("failed to prepare template page fallback query")?;
+    let rows = statement
+        .query_map(params_from_iter(values), |row| {
+            let bytes_i64: i64 = row.get(5)?;
+            let bytes = u64::try_from(bytes_i64)
+                .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(5, bytes_i64))?;
+            Ok(IndexedPageRecord {
+                title: row.get(0)?,
+                namespace: row.get(1)?,
+                is_redirect: row.get::<_, i64>(2)? == 1,
+                redirect_target: row.get(3)?,
+                relative_path: row.get(4)?,
+                bytes,
+            })
+        })
+        .context("failed to run template page fallback query")?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.context("failed to decode template page fallback row")?);
+    }
+    Ok(out)
 }
 
 pub(crate) fn load_template_examples_for_connection(

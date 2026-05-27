@@ -65,7 +65,11 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
         });
     };
 
-    hydrate_remote_conflicts(&mut context, api)?;
+    if options.force {
+        context.request_count = api.request_count();
+    } else {
+        hydrate_remote_conflicts(&mut context, api)?;
+    }
 
     let mut report = PushReport {
         success: true,
