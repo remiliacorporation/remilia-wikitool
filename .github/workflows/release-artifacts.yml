@@ -38,8 +38,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install cross-compilation target
-        if: matrix.target != '' && !contains(runner.arch, 'X64') || matrix.target == 'x86_64-apple-darwin'
+      - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
       - name: Validate artifact version label
@@ -53,7 +52,7 @@ jobs:
 
       - name: Build + package versioned release bundle
         run: >
-          cargo run --quiet --package wikitool --
+          cargo run --quiet --package wikitool --features maintainer --
           release build-matrix
           --targets ${{ matrix.target }}
           --artifact-version ${{ inputs.artifact_version }}

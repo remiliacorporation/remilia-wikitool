@@ -6,25 +6,27 @@ Chronological release notes for tagged wikitool versions.
 
 Date: 2026-05-28
 
-A structural release. No database reset required; v0.2.0 runtime state carries forward.
+A consolidation release. No database reset required — v0.2.0 runtime state carries forward.
 
-### What changed
-
-v0.2.0 proved the knowledge layer; v0.3.0 reshapes the tool around it. The largest source files were split into focused modules (sync, retrieval, reference parsing, template catalog, wiki capabilities, HTML extraction, docs, and the CLI command families), command boundaries were tightened, and legacy public affordances were removed outright rather than aliased.
+v0.2.0 introduced the knowledge layer; v0.3.0 builds the workflow around it and sharpens the agent-facing surface.
 
 ### New capabilities
 
-- **First-run setup is one command.** `wikitool workflow session-refresh` initializes the runtime layout, pulls content, warms the knowledge index, and syncs the wiki profile in a single pass — and is now part of the end-user surface, not a hidden maintainer command. `workflow full-refresh` rebuilds local state from scratch.
-- **Token-efficient brief outputs.** `--view brief` produces compact, interpreted reports for `knowledge article-start`, `knowledge inspect chunks`, `templates`, `wiki surface`, and `review`, so agents spend fewer tokens on retrieval substrate.
-- **Research session handoff.** Import browser cookies (header, JSON bookmarklet, or Netscape file) so `research fetch` can reach session-gated sources.
-- **Raw web archive crawler.** `research archive` captures a site's pages and requisites to disk, bounded by page count, per-response size, link depth, and an aggregate byte budget.
-- **Maintainer audit lane.** `docs audit` (maintainer surface) verifies the generated CLI reference is current and that packaged guidance and skills stay aligned with the shipped command surface.
+- **One-command first-run setup.** `wikitool workflow session-refresh` initializes the local layout, pulls content, warms the knowledge index, and syncs the wiki's capability profile in a single pass. Run it again to refresh a session; use `workflow full-refresh` to rebuild from scratch.
+- **Token-efficient `--view brief` outputs.** Compact, interpreted reports for `knowledge article-start`, `knowledge inspect chunks`, `templates`, `wiki surface`, and `review` — less raw retrieval substrate for an agent to wade through.
+- **Research session handoff.** `research session` imports browser cookies (raw header, JSON bookmarklet, or Netscape file) so `research fetch` can read session-gated sources.
+- **Web archive capture.** `research archive` saves a site's pages and assets to disk, bounded by page count, per-response size, link depth, and a total-bytes budget.
 
-### Improvements
+### Fixes
 
-- Conflict hydration deduplicates titles before fetching remote timestamps, and `--force` skips the timestamp fetch it would ignore.
-- The `maintainer-surface` build feature is now simply `maintainer`.
-- Access-challenge detection adds Cloudflare/DataDome/Anubis fingerprints and treats generic markers (a lone "challenge-container", "captcha") as weak signals requiring corroboration, reducing false positives.
+- Fetched content containing en/em dashes (`&ndash;` / `&mdash;`) now decodes correctly instead of emitting garbled characters.
+- Access-challenge detection recognizes more anti-bot vendors (Cloudflare, DataDome, Anubis) and no longer flags ordinary pages that merely contain a generic marker such as "captcha".
+- Push conflict checking is faster and steadier on large change sets.
+
+### Other
+
+- The source-build feature flag `maintainer-surface` is now simply `maintainer`.
+- Substantial internal restructuring for maintainability, with no change to command behavior or output contracts.
 
 ## v0.2.0
 
