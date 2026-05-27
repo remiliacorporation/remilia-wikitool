@@ -310,6 +310,10 @@ pub(in crate::research::web_fetch) fn detect_access_challenge_vendor(
     None
 }
 
+// Generic markers are individually weak: "challenge-container", "captcha", and
+// "access denied" all occur on legitimate pages, so any single one is not enough
+// to classify a fetch as an anti-bot wall. Require at least two co-occurring signals.
+// Unambiguous vendor fingerprints are handled in detect_access_challenge_vendor.
 fn detect_generic_access_challenge(html: &str) -> bool {
     let lowered = html.to_ascii_lowercase();
     let generic_signals = [

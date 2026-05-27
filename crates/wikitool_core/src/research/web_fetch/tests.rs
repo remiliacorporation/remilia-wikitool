@@ -347,6 +347,18 @@ fn detects_vendor_and_generic_access_challenge_signals() {
 }
 
 #[test]
+fn lone_generic_signal_is_not_an_access_challenge() {
+    // A single generic marker (here the "challenge-container" CSS class) must not
+    // classify an otherwise readable page as an anti-bot wall; two are required.
+    assert!(!detect_access_challenge(
+        "<html><body><div id=\"challenge-container\"></div><p>Real content.</p></body></html>"
+    ));
+    assert!(detect_access_challenge(
+        "<html><body><div id=\"challenge-container\"></div>access denied</body></html>"
+    ));
+}
+
+#[test]
 fn detects_cloudflare_challenge_header() {
     let response = TextHttpResponse {
         final_url: "https://example.com/protected".to_string(),
