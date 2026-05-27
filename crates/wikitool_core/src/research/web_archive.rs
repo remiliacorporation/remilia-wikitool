@@ -21,6 +21,14 @@ const ARCHIVE_ACCEPT: &str = "*/*";
 pub struct WebArchiveOptions {
     pub max_pages: usize,
     pub max_bytes: usize,
+    /// Maximum link depth from the seed URL (seed is depth 0). Bounds breadth-first
+    /// crawl reach, which is the only guardrail against runaway cross-host crawls
+    /// once `same_host_only` is disabled.
+    pub max_depth: usize,
+    /// Aggregate ceiling across the whole crawl. `max_bytes` bounds one response;
+    /// this bounds the total stored, so a large `max_pages` cannot accumulate
+    /// unbounded disk usage.
+    pub max_total_bytes: usize,
     pub same_host_only: bool,
     pub include_page_requisites: bool,
     pub output_dir: Option<PathBuf>,
@@ -31,6 +39,8 @@ impl Default for WebArchiveOptions {
         Self {
             max_pages: 1_000,
             max_bytes: 50_000_000,
+            max_depth: 8,
+            max_total_bytes: 1_000_000_000,
             same_host_only: true,
             include_page_requisites: true,
             output_dir: None,
@@ -83,6 +93,9 @@ pub fn archive_web_site(
     if options.max_bytes == 0 {
         bail!("archive requires max_bytes >= 1");
     }
+    if options.max_total_bytes == 0 {
+        bail!("archive requires max_total_bytes >= 1");
+    }
 
     let start = Url::parse(source_url)
         .with_context(|| format!("failed to parse source URL: {source_url}"))?;
@@ -101,12 +114,16 @@ pub fn archive_web_site(
         .timeout(Duration::from_secs(30))
         .build()
         .context("failed to build web archive HTTP client")?;
-    let mut queue = VecDeque::from([strip_fragment(start)]);
+    let mut queue = VecDeque::from([(strip_fragment(start), 0usize)]);
     let mut seen = HashSet::new();
     let mut entries = Vec::new();
+    let mut total_bytes = 0usize;
 
-    while let Some(url) = queue.pop_front() {
+    while let Some((url, depth)) = queue.pop_front() {
         if entries.len() >= options.max_pages {
+            break;
+        }
+        if total_bytes >= options.max_total_bytes {
             break;
         }
         if !seen.insert(url.to_string()) {
@@ -160,8 +177,9 @@ pub fn archive_web_site(
                 entry.bytes = Some(candidate.body.len());
                 entry.sha256 = Some(sha256);
                 entry.path = Some(relative_archive_path(&output_dir, &local_path));
+                total_bytes = total_bytes.saturating_add(candidate.body.len());
 
-                if entry.ok {
+                if entry.ok && depth < options.max_depth {
                     let enqueue_assets =
                         options.include_page_requisites && is_parseable_requisite(&content_type);
                     let enqueue_pages = is_html_like(&content_type);
@@ -177,7 +195,7 @@ pub fn archive_web_site(
                                 && should_enqueue(&next, &origin_host, options.same_host_only)
                                 && !seen.contains(next.as_str())
                             {
-                                queue.push_back(next);
+                                queue.push_back((next, depth + 1));
                             }
                         }
                     }
@@ -501,7 +519,11 @@ fn starts_with_ascii_case(value: &str, prefix: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_css_urls, extract_html_urls, sanitize_path_component, split_srcset};
+    use super::{
+        extract_css_urls, extract_html_urls, resolve_archive_url, sanitize_path_component,
+        should_enqueue, split_srcset,
+    };
+    use reqwest::Url;
 
     #[test]
     fn extracts_html_requisites_and_links() {
@@ -532,6 +554,34 @@ mod tests {
     #[test]
     fn path_component_sanitizer_replaces_windows_reserved_chars() {
         assert_eq!(sanitize_path_component("a:b*c?"), "a_b_c_");
+    }
+
+    #[test]
+    fn same_host_scope_rejects_foreign_hosts_and_non_http_schemes() {
+        let origin = "example.com";
+        let same = Url::parse("https://example.com/a").expect("url");
+        let foreign = Url::parse("https://other.test/a").expect("url");
+        let ftp = Url::parse("ftp://example.com/a").expect("url");
+
+        assert!(should_enqueue(&same, origin, true));
+        assert!(!should_enqueue(&foreign, origin, true));
+        // span-hosts allows other hosts, but never non-http(s) schemes.
+        assert!(should_enqueue(&foreign, origin, false));
+        assert!(!should_enqueue(&ftp, origin, false));
+    }
+
+    #[test]
+    fn resolve_archive_url_filters_non_navigable_links() {
+        let base = Url::parse("https://example.com/dir/page.html").expect("url");
+
+        assert_eq!(resolve_archive_url(&base, "#section"), None);
+        assert_eq!(resolve_archive_url(&base, "mailto:a@example.com"), None);
+        assert_eq!(resolve_archive_url(&base, "javascript:void(0)"), None);
+        assert_eq!(resolve_archive_url(&base, "data:text/plain,hi"), None);
+        assert_eq!(resolve_archive_url(&base, "   "), None);
+        // Relative links resolve against the base and drop any fragment.
+        let resolved = resolve_archive_url(&base, "../other.html#frag").expect("resolved");
+        assert_eq!(resolved.as_str(), "https://example.com/other.html");
     }
 
     #[test]

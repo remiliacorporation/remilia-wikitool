@@ -160,6 +160,20 @@ pub(crate) struct ResearchArchiveArgs {
         help = "Maximum bytes to store for a single response"
     )]
     max_bytes: usize,
+    #[arg(
+        long,
+        default_value_t = 8,
+        value_name = "N",
+        help = "Maximum link depth from the seed URL (seed is depth 0)"
+    )]
+    max_depth: usize,
+    #[arg(
+        long,
+        default_value_t = 1_000_000_000,
+        value_name = "BYTES",
+        help = "Maximum total bytes to store across the whole crawl"
+    )]
+    max_total_bytes: usize,
     #[arg(long, help = "Allow crawling linked URLs outside the source host")]
     span_hosts: bool,
     #[arg(
@@ -254,6 +268,8 @@ fn run_research_archive(runtime: &RuntimeOptions, args: ResearchArchiveArgs) -> 
         WebArchiveOptions {
             max_pages: args.max_pages,
             max_bytes: args.max_bytes,
+            max_depth: args.max_depth,
+            max_total_bytes: args.max_total_bytes,
             same_host_only: !args.span_hosts,
             include_page_requisites: !args.no_page_requisites,
             output_dir: args.output_dir,
