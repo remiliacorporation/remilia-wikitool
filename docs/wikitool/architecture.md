@@ -14,6 +14,9 @@ focused submodules:
 
 - `knowledge_cli/`: build/warm/status, article-start, raw pack, contract traversal, shared output helpers.
 - `knowledge_inspect_cli/`: chunks, backlinks, templates, reference audits, index/page summaries.
+- `review_cli/`: pre-push workflow orchestration, lint/validation/push dry-run checks, draft gates,
+  next-step shaping, and report output.
+- `sync_cli/`: init, pull, push, diff, status, delete, and sync presentation/shared selection helpers.
 - `wiki_cli/`: capabilities, profile probes, rules, authoring surface, text printers, JSON summaries.
 
 Adding a command should put the clap arguments near the facade and the implementation in the
@@ -47,4 +50,3 @@ Agent guidance should stay aligned with the command boundaries:
 - Use `knowledge inspect` subcommands for targeted retrieval and audit slices.
 - Keep Claude and Codex wrappers thin and help-backed; the wrappers should name front doors and
   safety boundaries, not restate flags.
-

@@ -352,6 +352,17 @@ else
     fail "article fix applies safe markdown, reflist, and citation-order fixes (got: $OUTPUT)"
 fi
 
+# --- review draft gate ---
+section "review draft gate"
+mkdir -p "$ARTICLE_PROJ/.wikitool/drafts"
+cp "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki"
+OUTPUT=$(wt "$ARTICLE_PROJ" review --draft-path "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki" --title "Article Draft" --format json --summary "Draft review" 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"mode": "draft"' && echo "$OUTPUT" | grep -q '"skipped_reason": "draft review skips push dry-run' && echo "$OUTPUT" | grep -q '"kind": "promote_draft"'; then
+    pass "review draft gate emits draft mode, skipped push dry-run, and promotion next step"
+else
+    fail "review draft gate emits draft mode, skipped push dry-run, and promotion next step (got: $OUTPUT)"
+fi
+
 # --- knowledge inspect stats ---
 section "knowledge inspect stats"
 OUTPUT=$(wt "$PROJ" knowledge inspect stats 2>&1)
