@@ -214,7 +214,7 @@ pub(super) fn resolve_href(wiki_url: &str, href: &str) -> Option<String> {
 
 pub(super) fn clean_version_label(value: &str) -> Option<String> {
     let value = clean_label(value)?;
-    if matches!(value.as_str(), "-" | "â€“" | "â€”") {
+    if matches!(value.as_str(), "-" | "–" | "—") {
         None
     } else {
         Some(value)
@@ -662,8 +662,8 @@ pub(super) fn decode_html(text: &str) -> String {
     value = value.replace("&lt;", "<");
     value = value.replace("&gt;", ">");
     value = value.replace("&nbsp;", " ");
-    value = value.replace("&ndash;", "â€“");
-    value = value.replace("&mdash;", "â€”");
+    value = value.replace("&ndash;", "–");
+    value = value.replace("&mdash;", "—");
     value
 }
 

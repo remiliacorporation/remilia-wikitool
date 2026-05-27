@@ -617,6 +617,34 @@ mod tests {
     }
 
     #[test]
+    fn decode_html_resolves_dash_entities_to_real_dashes() {
+        assert_eq!(
+            super::html::decode_html("1.44 &ndash; 1.45"),
+            "1.44 \u{2013} 1.45"
+        );
+        assert_eq!(
+            super::html::decode_html("alpha &mdash; beta"),
+            "alpha \u{2014} beta"
+        );
+        // &nbsp; collapses to a regular space alongside the dash entity.
+        assert_eq!(
+            super::html::decode_html("1.44&nbsp;&ndash;&nbsp;1.45"),
+            "1.44 \u{2013} 1.45"
+        );
+    }
+
+    #[test]
+    fn clean_version_label_treats_lone_dash_as_placeholder() {
+        assert_eq!(super::html::clean_version_label("\u{2013}"), None);
+        assert_eq!(super::html::clean_version_label("\u{2014}"), None);
+        assert_eq!(super::html::clean_version_label("-"), None);
+        assert_eq!(
+            super::html::clean_version_label("1.44.1"),
+            Some("1.44.1".to_string())
+        );
+    }
+
+    #[test]
     fn builds_manifest_from_siteinfo_payload() {
         let payload = serde_json::from_str::<SiteInfoResponse>(
             r#"{
