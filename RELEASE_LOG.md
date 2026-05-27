@@ -15,7 +15,7 @@ The core idea: wikitool's local index should give an AI agent everything it need
 
 ### Breaking changes
 
-- **Database reset required.** The knowledge index schema is incompatible with v0.1.0. Delete `.wikitool/data/wikitool.db` and rebuild with `wikitool pull --full --all && wikitool knowledge warm --docs-profile remilia-mw-1.44`.
+- **Database reset required.** The knowledge index schema is incompatible with v0.1.0. Delete `.wikitool/data/wikitool.db` and rebuild with `wikitool pull --full --all && wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing`.
 - **Removed commands:** `workflow ask`, `workflow authoring-pack`, `db sync`, `index rebuild`. Use `knowledge article-start`, `knowledge pack`, and `knowledge build` respectively.
 - **Skill surface collapsed.** Nine Claude skills reduced to two: `/wikitool` (operator) and `/review` (content gate). The old skill names no longer resolve.
 
@@ -30,7 +30,7 @@ The core idea: wikitool's local index should give an AI agent everything it need
 
 **`knowledge build` / `warm` / `status` / `pack`** — Explicit knowledge lifecycle. `warm` builds the content index and hydrates a docs profile in one pass. `status` reports readiness and degradations so agents can tell the difference between missing content, missing docs, and a fully warmed corpus.
 
-**`research search` / `research fetch`** — External evidence layer. Search the live wiki API and fetch URLs with structured metadata extraction.
+**`research wiki-search` / `research fetch`** — External evidence layer. Search the live wiki API and fetch URLs with structured metadata extraction.
 
 **`article lint` / `article fix`** — Wiki-aware draft quality loop. Catches missing short descriptions, citation placement issues, heading case, and structural problems. `fix --apply safe` auto-corrects mechanical issues.
 

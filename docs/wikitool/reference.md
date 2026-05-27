@@ -1208,6 +1208,7 @@ Usage: wikitool research [OPTIONS] <COMMAND>
 Commands:
   wiki-search          Search the configured wiki API for subject evidence
   fetch                Fetch readable reference material from a URL
+  archive              Mirror raw web pages and requisites into a local manifest archive
   discover             Discover public machine-readable source surfaces for a URL
   session              Manage human-solved source access sessions
   mediawiki-templates  Inspect live template contracts used by a source MediaWiki page
@@ -1266,6 +1267,30 @@ Options:
       --no-discover            Skip machine-surface discovery when a fetch fails
       --discover-limit <N>     Limit machine-surface entries included with failed fetch diagnostics [default: 12]
   -h, --help                   Print help
+```
+
+## research archive
+
+```text
+Mirror raw web pages and requisites into a local manifest archive
+
+Usage: wikitool research archive [OPTIONS] <URL>
+
+Arguments:
+  <URL>
+
+Options:
+      --output-dir <PATH>    Write archive files to this directory
+      --project-root <PATH>
+      --data-dir <PATH>
+      --max-pages <N>        Maximum URLs to attempt [default: 1000]
+      --config <PATH>
+      --max-bytes <BYTES>    Maximum bytes to store for a single response [default: 50000000]
+      --diagnostics          Print resolved runtime diagnostics
+      --span-hosts           Allow crawling linked URLs outside the source host
+      --no-page-requisites   Do not enqueue linked page requisites such as CSS image URLs
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                 Print help
 ```
 
 ## research discover

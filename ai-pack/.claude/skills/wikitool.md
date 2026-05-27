@@ -7,7 +7,7 @@ Do not invent flags or cached behavior; verify against `wikitool --help`, `wikit
 
 At the start of an editing session, refresh local wiki state before relying on indexed content:
 `wikitool status --modified --format json`, `wikitool diff --format json`,
-`wikitool pull --all --format json`, `wikitool knowledge warm --docs-profile remilia-mw-1.44 --format json`, and
+`wikitool pull --all --format json`, `wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json`, and
 `wikitool wiki profile sync --format json`. Use `pull --full --all` only for deliberate rebuilds
 or missing sync state; do not use `--overwrite-local` without explicit approval.
 

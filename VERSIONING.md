@@ -54,7 +54,7 @@ Local retrieval state is intentionally disposable. Starting with `v0.2.0`, readi
 Cutover rule:
 
 1. Do not add compatibility migrations for pre-manifest knowledge databases.
-2. Reset and rebuild local state with `wikitool db reset --yes`, then `wikitool knowledge build` or `wikitool knowledge warm --docs-profile <PROFILE>`.
+2. Reset and rebuild local state with `wikitool db reset --yes`, then `wikitool knowledge build` or `wikitool knowledge warm --docs-profile <PROFILE> --docs-mode missing`.
 3. Use `wikitool knowledge status --docs-profile <PROFILE>` to verify readiness before relying on local authoring retrieval.
 
 ## Release channels
@@ -86,11 +86,11 @@ Packaged / distributable:
    - `TIER=live bash testbench/acceptance_workflows.sh`
 5. Validate the knowledge cutover from a fresh runtime:
    - `cargo run --package wikitool -- db reset --yes`
-   - `cargo run --package wikitool -- knowledge warm --docs-profile remilia-mw-1.44`
+   - `cargo run --package wikitool -- knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing`
    - `cargo run --package wikitool -- wiki profile sync`
    - `cargo run --package wikitool -- knowledge status --docs-profile remilia-mw-1.44`
    - `cargo run --package wikitool -- knowledge article-start "Example Topic" --docs-profile remilia-mw-1.44 --format json`
-   - `cargo run --package wikitool -- research search "Example Topic" --format json`
+   - `cargo run --package wikitool -- research wiki-search "Example Topic" --format json`
    - `cargo run --package wikitool -- article lint wiki_content/Main/Example_Topic.wiki --format json`
    - `cargo run --package wikitool -- knowledge inspect references duplicates --title "Example Topic" --format json`
    - `cargo run --package wikitool -- status --conflicts --title "Example Topic"`

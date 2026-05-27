@@ -47,10 +47,10 @@ wikitool diff --format json
 wikitool pull --all --format json
 wikitool workflow session-refresh
 wikitool workflow full-refresh --yes
-wikitool knowledge warm --docs-profile remilia-mw-1.44
+wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
 wikitool knowledge status --docs-profile remilia-mw-1.44
 wikitool knowledge article-start "Topic" --format json
-wikitool research search "Topic" --format json
+wikitool research wiki-search "Topic" --format json
 wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
 wikitool wiki profile sync
 wikitool templates show "Template:Infobox person"
