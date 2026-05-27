@@ -24,7 +24,7 @@ impl MediaWikiSearchWhat {
         match value.trim().to_ascii_lowercase().as_str() {
             "text" => Ok(Self::Text),
             "title" => Ok(Self::Title),
-            "nearmatch" | "near-match" | "near_match" => Ok(Self::NearMatch),
+            "nearmatch" => Ok(Self::NearMatch),
             _ => bail!(
                 "unsupported search scope: {} (expected text|title|nearmatch)",
                 value
@@ -203,7 +203,7 @@ mod tests {
     use super::{MediaWikiSearchOptions, MediaWikiSearchWhat, decode_search_response};
 
     #[test]
-    fn parses_search_scope_variants() {
+    fn parses_search_scopes() {
         assert_eq!(
             MediaWikiSearchWhat::parse("text").expect("text should parse"),
             MediaWikiSearchWhat::Text
@@ -216,10 +216,8 @@ mod tests {
             MediaWikiSearchWhat::parse("nearmatch").expect("nearmatch should parse"),
             MediaWikiSearchWhat::NearMatch
         );
-        assert_eq!(
-            MediaWikiSearchWhat::parse("near-match").expect("near-match should parse"),
-            MediaWikiSearchWhat::NearMatch
-        );
+        assert!(MediaWikiSearchWhat::parse("near-match").is_err());
+        assert!(MediaWikiSearchWhat::parse("near_match").is_err());
         assert!(MediaWikiSearchWhat::parse("body").is_err());
     }
 

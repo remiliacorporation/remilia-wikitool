@@ -41,7 +41,6 @@ impl std::fmt::Display for OutputFormat {
 pub(crate) enum FetchContentFormat {
     Wikitext,
     Html,
-    #[value(alias = "rendered_html")]
     RenderedHtml,
 }
 
@@ -72,9 +71,7 @@ impl std::fmt::Display for FetchContentFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum ExportContentFormat {
-    #[value(alias = "md")]
     Markdown,
-    #[value(alias = "wiki")]
     Wikitext,
 }
 

@@ -50,3 +50,25 @@ Agent guidance should stay aligned with the command boundaries:
 - Use `knowledge inspect` subcommands for targeted retrieval and audit slices.
 - Keep Claude and Codex wrappers thin and help-backed; the wrappers should name front doors and
   safety boundaries, not restate flags.
+
+## Agentic Maturity Backlog
+
+The ghidramink stack has several mature agent-facing patterns that map cleanly to wikitool without
+importing reverse-engineering-specific machinery. Stage these as future implementation lanes:
+
+- Add a strict maintainer `doc-audit` lane that verifies CLI help, generated reference, ai-pack
+  Claude/Codex wrappers, writing context, and root redirect stubs against the live command surface.
+- Introduce compact agent-card views for high-value retrieval surfaces: `knowledge article-start`,
+  `knowledge inspect chunks`, `templates show`, `wiki surface show`, and `review`. The default
+  should be compact and evidence-rich; full bodies remain explicit opt-in.
+- Make promotion gates first-class: draft-to-article promotion, template/catalog adoption, and
+  push dry-runs should carry machine-readable evidence, blocking reasons, and next commands in one
+  bounded receipt.
+- Add negative-evidence recall for article/review work so disproven links, rejected categories,
+  inaccessible sources, and source-wiki-only template assumptions are recorded and surfaced before
+  agents rediscover them.
+- Prefer capability-first shaping over broad inspection. Commands that expose optional detail
+  levels should report accepted modes and defaults in JSON receipts so agents do not guess which
+  payload shape is token-safe.
+- Keep closeout receipts cheap and replayable: review, validate, docs/reference generation, and
+  release packaging should produce bounded JSON summaries suitable for CI and agent handoff.

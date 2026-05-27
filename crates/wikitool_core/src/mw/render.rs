@@ -32,7 +32,7 @@ struct ParsePayload {
 #[serde(untagged)]
 enum ParseText {
     Html(String),
-    Legacy {
+    StarKey {
         #[serde(default, rename = "*")]
         html: String,
     },
@@ -42,7 +42,7 @@ impl ParseText {
     fn into_html(self) -> String {
         match self {
             Self::Html(html) => html,
-            Self::Legacy { html } => html,
+            Self::StarKey { html } => html,
         }
     }
 }
@@ -129,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn decodes_formatversion_two_rendered_html() {
+    fn decodes_star_key_rendered_html() {
         let rendered = decode_rendered_page_payload(
             json!({
                 "parse": {

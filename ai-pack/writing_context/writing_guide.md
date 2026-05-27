@@ -166,7 +166,7 @@ Never duplicate full citations. Never declare named refs inside `{{Reflist}}`.
 
 - Link to existing wiki articles on first mention in the body: `[[Remilia Corporation]]`, `[[Milady Maker]]`
 - Link each article once â€” first occurrence only, don't re-link in later paragraphs
-- Check if target exists: `wikitool search "Article Name"`
+- Check if target exists: `wikitool research wiki-search "Article Name" --what title --format json`
 - Never place red links in See also sections
 - Use piped links when display text differs: `[[Remilia Corporation|Remilia]]`
 
@@ -179,8 +179,8 @@ Every AI-generated article must include `{{Article quality|unverified}}` on line
 Categories are managed via the wiki database. To find valid categories:
 
 ```bash
-wikitool search "Category:"            # List/browse categories
-wikitool search "Category:Name"    # Search specific category
+wikitool research wiki-search "Category:" --what title --format json       # List/browse categories
+wikitool research wiki-search "Category:Name" --what title --format json   # Search specific category
 ```
 
 General rules:
@@ -232,7 +232,7 @@ wikitool knowledge pack --stub-path wiki_content/Main/Topic_Draft.wiki --format 
 wikitool templates show "Template:Template Name"
 wikitool templates examples "Template:Template Name" --limit 2
 wikitool wiki profile show --format json
-wikitool search "infobox"
+wikitool knowledge inspect chunks --across-pages --query "infobox" --limit 10 --token-budget 1200 --format json
 ```
 
 This is always authoritative â€” it reflects what's actually deployed on the wiki.
@@ -259,7 +259,7 @@ contract, and expect that a future bespoke extension may supersede the current `
 ### Categories
 
 ```bash
-wikitool search "Category:"                    # Browse categories
+wikitool research wiki-search "Category:" --what title --format json       # Browse categories
 ```
 
 ---

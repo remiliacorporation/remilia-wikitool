@@ -15,7 +15,6 @@ mod export_cli;
 #[cfg(test)]
 mod guidance_contracts;
 mod import_cli;
-mod inspect_cli;
 mod knowledge_cli;
 mod knowledge_inspect_cli;
 mod lsp_cli;
@@ -84,18 +83,12 @@ enum Commands {
     Diff(sync_cli::DiffArgs),
     #[command(about = "Show sync status and local project state")]
     Status(sync_cli::StatusArgs),
-    #[command(about = "Show indexed local page context for one title")]
-    Context(query_cli::ContextArgs),
-    #[command(about = "Search indexed local page titles")]
-    Search(query_cli::SearchArgs),
     #[command(about = "Run structural and link integrity checks")]
     Validate(quality_cli::ValidateArgs),
     #[command(about = "Run the structured pre-push review gate")]
     Review(review_cli::ReviewArgs),
     #[command(about = "Run Lua module linting and related checks")]
     Module(module_cli::ModuleArgs),
-    #[command(about = "Fetch a remote URL as wikitext or rendered HTML")]
-    Fetch(export_cli::FetchArgs),
     #[command(about = "Export a remote wiki page tree to local files")]
     Export(export_cli::ExportArgs),
     #[command(about = "Delete a page from the live wiki")]
@@ -104,10 +97,6 @@ enum Commands {
     Db(db_cli::DbArgs),
     #[command(about = "Manage and query pinned MediaWiki docs corpora")]
     Docs(docs_cli::DocsArgs),
-    #[command(about = "Inspect SEO metadata for wiki pages")]
-    Seo(inspect_cli::SeoArgs),
-    #[command(about = "Inspect link network and page relationships")]
-    Net(inspect_cli::NetArgs),
     #[command(about = "Import content from external sources")]
     Import(import_cli::ImportArgs),
     #[command(about = "Build and query the local knowledge layer")]
@@ -157,18 +146,13 @@ fn main() -> Result<()> {
         Some(Commands::Push(args)) => sync_cli::run_push(&runtime, args),
         Some(Commands::Diff(args)) => sync_cli::run_diff(&runtime, args),
         Some(Commands::Status(args)) => sync_cli::run_status(&runtime, args),
-        Some(Commands::Context(args)) => query_cli::run_context(&runtime, args),
-        Some(Commands::Search(args)) => query_cli::run_search(&runtime, args),
         Some(Commands::Validate(args)) => quality_cli::run_validate(&runtime, args),
         Some(Commands::Review(args)) => review_cli::run_review(&runtime, args),
         Some(Commands::Module(args)) => module_cli::run_module(&runtime, args),
-        Some(Commands::Fetch(args)) => export_cli::run_fetch(&runtime, args),
         Some(Commands::Export(args)) => export_cli::run_export(&runtime, args),
         Some(Commands::Delete(args)) => sync_cli::run_delete(&runtime, args),
         Some(Commands::Db(args)) => db_cli::run_db(&runtime, args),
         Some(Commands::Docs(args)) => docs_cli::run_docs(&runtime, args),
-        Some(Commands::Seo(args)) => inspect_cli::run_seo(&runtime, args),
-        Some(Commands::Net(args)) => inspect_cli::run_net(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
         Some(Commands::Knowledge(args)) => knowledge_cli::run_knowledge(&runtime, args),
         Some(Commands::Research(args)) => research_cli::run_research(&runtime, args),
@@ -212,5 +196,65 @@ mod tests {
             .expect_err("research search should not parse as wiki-search");
 
         assert!(error.to_string().contains("unrecognized subcommand"));
+    }
+
+    #[test]
+    fn retired_top_level_primitive_commands_are_not_invocable() {
+        for command in ["context", "search", "fetch", "seo", "net"] {
+            let error = Cli::try_parse_from(["wikitool", command])
+                .expect_err("retired top-level command should not parse");
+
+            assert!(
+                error.to_string().contains("unrecognized subcommand"),
+                "{command} should be retired"
+            );
+        }
+    }
+
+    #[test]
+    fn retained_compatibility_aliases_are_not_invocable() {
+        let cases: &[&[&str]] = &[
+            &["wikitool", "db", "status"],
+            &["wikitool", "validate", "--no-fail"],
+            &["wikitool", "validate", "--category", "broken"],
+            &["wikitool", "validate", "--category", "redirects"],
+            &["wikitool", "validate", "--category", "double"],
+            &["wikitool", "validate", "--category", "uncategorized"],
+            &["wikitool", "validate", "--category", "orphans"],
+            &[
+                "wikitool",
+                "research",
+                "fetch",
+                "https://example.org",
+                "--format",
+                "rendered_html",
+            ],
+            &[
+                "wikitool",
+                "research",
+                "wiki-search",
+                "Remilia",
+                "--what",
+                "near-match",
+            ],
+            &[
+                "wikitool",
+                "export",
+                "https://example.org/wiki/Page",
+                "--format",
+                "md",
+            ],
+            &[
+                "wikitool",
+                "export",
+                "https://example.org/wiki/Page",
+                "--format",
+                "wiki",
+            ],
+        ];
+
+        for args in cases {
+            Cli::try_parse_from(*args).expect_err("compatibility alias should not parse");
+        }
     }
 }

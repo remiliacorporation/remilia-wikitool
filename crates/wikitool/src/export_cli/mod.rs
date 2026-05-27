@@ -10,8 +10,8 @@ mod subpages;
 use batch::run_urls_file_export;
 use clap::Args;
 use render::{
-    fetch_mediawiki_export_page, fetch_single_export_page, format_rendered_fetch_mode,
-    render_export_page, write_export_file, write_or_print_export,
+    fetch_mediawiki_export_page, fetch_single_export_page, render_export_page, write_export_file,
+    write_or_print_export,
 };
 use subpages::{
     build_subpage_index, build_subpage_output_filenames, remaining_subpage_limit,
@@ -19,36 +19,12 @@ use subpages::{
 };
 use wikitool_core::external::{
     ExportFormat, ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile,
-    default_export_path, fetch_page_by_url, fetch_pages_by_titles, list_subpages, parse_wiki_url,
-    sanitize_filename,
+    default_export_path, fetch_pages_by_titles, list_subpages, parse_wiki_url,
 };
 use wikitool_core::research::load_research_session_for_url;
 
-use crate::cli_support::{
-    ExportContentFormat, FetchContentFormat, normalize_path, resolve_runtime_paths,
-};
+use crate::cli_support::{ExportContentFormat, normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
-
-#[derive(Debug, Args)]
-pub(crate) struct FetchArgs {
-    url: String,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = FetchContentFormat::Wikitext,
-        value_name = "FORMAT",
-        help = "Output format: wikitext|html|rendered-html"
-    )]
-    format: FetchContentFormat,
-    #[arg(long, help = "Save output under reference/<source>/ in project root")]
-    save: bool,
-    #[arg(
-        long,
-        value_name = "NAME",
-        help = "Custom name for saved reference file"
-    )]
-    name: Option<String>,
-}
 
 #[derive(Debug, Args)]
 pub(crate) struct ExportArgs {
@@ -100,76 +76,6 @@ pub(crate) struct ExportArgs {
     limit: Option<usize>,
 }
 
-pub(crate) fn run_fetch(runtime: &RuntimeOptions, args: FetchArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let format = ExternalFetchFormat::from(args.format);
-    let result = fetch_page_by_url(
-        &args.url,
-        &ExternalFetchOptions {
-            format,
-            max_bytes: 1_000_000,
-            profile: ExternalFetchProfile::Legacy,
-            session: load_research_session_for_url(&paths, &args.url)?,
-        },
-    )?
-    .ok_or_else(|| anyhow::anyhow!("page not found: {}", args.url))?;
-
-    println!("fetch");
-    println!("project_root: {}", normalize_path(&paths.project_root));
-    println!("source_url: {}", args.url);
-    println!("resolved_url: {}", result.url);
-    println!("title: {}", result.title);
-    println!("source_wiki: {}", result.source_wiki);
-    println!("source_domain: {}", result.source_domain);
-    println!("content_format: {}", result.content_format);
-    if let Some(value) = result.revision_id {
-        println!("revision_id: {value}");
-    }
-    if let Some(value) = result.display_title.as_deref() {
-        println!("display_title: {value}");
-    }
-    if let Some(value) = result.rendered_fetch_mode {
-        println!("rendered_fetch_mode: {}", format_rendered_fetch_mode(value));
-    }
-    println!("content_length: {}", result.content.len());
-
-    if args.save {
-        let safe_name = args
-            .name
-            .as_deref()
-            .map(sanitize_filename)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| {
-                let fallback = sanitize_filename(&result.title);
-                if fallback.is_empty() {
-                    "external-page".to_string()
-                } else {
-                    fallback
-                }
-            });
-        let relative_path = format!("reference/{}/{}.wiki", result.source_wiki, safe_name);
-        let absolute_path = paths.project_root.join(relative_path.replace('/', "\\"));
-        if let Some(parent) = absolute_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
-        }
-        fs::write(&absolute_path, result.content.as_bytes())
-            .with_context(|| format!("failed to write {}", normalize_path(&absolute_path)))?;
-        println!("saved: yes");
-        println!("saved_path: {}", normalize_path(&absolute_path));
-    } else {
-        println!("saved: no");
-        println!("content:");
-        println!("{}", result.content);
-    }
-
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-    Ok(())
-}
-
 pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
     let export_format = ExportFormat::from(args.format);
@@ -198,7 +104,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
     let fetch_options = ExternalFetchOptions {
         format: ExternalFetchFormat::Wikitext,
         max_bytes: 1_000_000,
-        profile: ExternalFetchProfile::Legacy,
+        profile: ExternalFetchProfile::MediaWiki,
         session: load_research_session_for_url(&paths, url)?,
     };
 

@@ -23,8 +23,9 @@ behavior belongs in `AGENTS.md` / `CLAUDE.md` and the skill wrappers.
 
 ## Host Overlay
 
-`wikitool release package --host-project-root <PATH>` and `release build-matrix --host-project-root
-<PATH>` may overlay host context:
+Maintainer release commands run from a source checkout with `--features maintainer-surface`.
+`release package --host-project-root <PATH>` and `release build-matrix --host-project-root <PATH>`
+may overlay host context:
 
 1. Host `CLAUDE.md` becomes the active guidance body and is written to both packaged `CLAUDE.md`
    and packaged `AGENTS.md`.
@@ -46,7 +47,7 @@ Without a host overlay, release bundles ship the generic wikitool-maintained con
 
 ## Packaging Contract
 
-1. `wikitool release build-ai-pack` stages these files.
-2. `wikitool release package` stages one local binary with the AI companion files.
-3. `wikitool release build-matrix` builds target binaries and emits zip artifacts that unpack into
+1. `cargo run --features maintainer-surface -- release build-ai-pack` stages these files.
+2. `cargo run --features maintainer-surface -- release package` stages one local binary with the AI companion files.
+3. `cargo run --features maintainer-surface -- release build-matrix` builds target binaries and emits zip artifacts that unpack into
    ready-to-run agent bundles.

@@ -50,7 +50,7 @@ fn generate_docs_reference_markdown() -> Result<String> {
         "Regenerate from a source checkout with the maintainer surface enabled:".to_string(),
         "".to_string(),
         "```bash".to_string(),
-        "wikitool docs generate-reference".to_string(),
+        "cargo run --features maintainer-surface -- docs generate-reference".to_string(),
         "```".to_string(),
         "".to_string(),
     ];

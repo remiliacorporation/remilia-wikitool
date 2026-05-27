@@ -14,10 +14,7 @@ impl ExternalFetchFormat {
         if value.eq_ignore_ascii_case("wikitext") {
             return Ok(Self::Wikitext);
         }
-        if value.eq_ignore_ascii_case("html")
-            || value.eq_ignore_ascii_case("rendered-html")
-            || value.eq_ignore_ascii_case("rendered_html")
-        {
+        if value.eq_ignore_ascii_case("html") || value.eq_ignore_ascii_case("rendered-html") {
             return Ok(Self::Html);
         }
         bail!("unsupported fetch format: {value} (expected wikitext|html|rendered-html)")
@@ -32,10 +29,10 @@ pub enum ExportFormat {
 
 impl ExportFormat {
     pub fn parse(value: &str) -> Result<Self> {
-        if value.eq_ignore_ascii_case("markdown") || value.eq_ignore_ascii_case("md") {
+        if value.eq_ignore_ascii_case("markdown") {
             return Ok(Self::Markdown);
         }
-        if value.eq_ignore_ascii_case("wikitext") || value.eq_ignore_ascii_case("wiki") {
+        if value.eq_ignore_ascii_case("wikitext") {
             return Ok(Self::Wikitext);
         }
         bail!("unsupported export format: {value} (expected markdown|wikitext)")
@@ -71,7 +68,7 @@ pub enum ExtractionQuality {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExternalFetchProfile {
-    Legacy,
+    MediaWiki,
     Research,
 }
 
@@ -230,7 +227,7 @@ impl Default for ExternalFetchOptions {
         Self {
             format: ExternalFetchFormat::Wikitext,
             max_bytes: 1_000_000,
-            profile: ExternalFetchProfile::Legacy,
+            profile: ExternalFetchProfile::MediaWiki,
             session: None,
         }
     }
@@ -348,4 +345,32 @@ pub struct MediaWikiTemplateDataParameter {
     pub required: bool,
     pub suggested: bool,
     pub deprecated: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ExportFormat, ExternalFetchFormat};
+
+    #[test]
+    fn fetch_format_accepts_only_canonical_rendered_html_separator() {
+        assert_eq!(
+            ExternalFetchFormat::parse("rendered-html").expect("rendered-html should parse"),
+            ExternalFetchFormat::Html
+        );
+        assert!(ExternalFetchFormat::parse("rendered_html").is_err());
+    }
+
+    #[test]
+    fn export_format_rejects_short_compatibility_aliases() {
+        assert_eq!(
+            ExportFormat::parse("markdown").expect("markdown should parse"),
+            ExportFormat::Markdown
+        );
+        assert_eq!(
+            ExportFormat::parse("wikitext").expect("wikitext should parse"),
+            ExportFormat::Wikitext
+        );
+        assert!(ExportFormat::parse("md").is_err());
+        assert!(ExportFormat::parse("wiki").is_err());
+    }
 }

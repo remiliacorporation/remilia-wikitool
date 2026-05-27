@@ -128,7 +128,7 @@ For Remilia projects: use `parent_group = Remilia` instead of `creator` or `arti
 ### Categories
 - 2-4 categories from the wiki's existing category set.
 - Place at the very end of the article, after all sections.
-- Look up valid categories: `wikitool search "Category:"`
+- Look up valid categories: `wikitool research wiki-search "Category:" --what title --format json`
 
 ## Content extension tags
 

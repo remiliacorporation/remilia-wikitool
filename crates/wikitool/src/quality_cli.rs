@@ -48,11 +48,7 @@ pub(crate) struct ValidateArgs {
         help = "Verify selected broken links and redirect issues against the live wiki API"
     )]
     verify_live: bool,
-    #[arg(
-        long,
-        alias = "no-fail",
-        help = "Report validation issues without exiting non-zero"
-    )]
+    #[arg(long, help = "Report validation issues without exiting non-zero")]
     advisory: bool,
 }
 
@@ -72,13 +68,9 @@ impl Default for ValidateArgs {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ValueEnum)]
 enum ValidateCategory {
-    #[value(alias = "broken")]
     BrokenLinks,
-    #[value(alias = "redirects", alias = "double")]
     DoubleRedirects,
-    #[value(alias = "uncategorized")]
     UncategorizedPages,
-    #[value(alias = "orphans")]
     OrphanPages,
 }
 

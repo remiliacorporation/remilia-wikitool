@@ -22,10 +22,7 @@ pub(crate) struct DbArgs {
 
 #[derive(Debug, Subcommand)]
 enum DbSubcommand {
-    #[command(
-        alias = "status",
-        about = "Show local database state and knowledge readiness"
-    )]
+    #[command(about = "Show local database state and knowledge readiness")]
     Stats(DbStatsArgs),
     #[command(about = "Delete the local runtime database")]
     Reset {

@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = ["maintainer-surface"]
+default = []
 maintainer-surface = []
 
 [dependencies]

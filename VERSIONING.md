@@ -67,8 +67,8 @@ Experimental / top-level steered:
 
 Packaged / distributable:
 
-1. Use `wikitool release build-matrix` from a source checkout build with maintainer surface enabled to emit per-target zip bundles.
-2. Bundles are generic by default, include ai-pack baseline `.claude` + instruction files, and compile the packaged binary with `--no-default-features`.
+1. Use `cargo run --package wikitool --features maintainer-surface -- release build-matrix` from a source checkout to emit per-target zip bundles.
+2. Bundles are generic by default, include ai-pack baseline `.claude` + instruction files, and compile the packaged binary without the maintainer surface.
 3. Host context overlay is opt-in via `--host-project-root <PATH>` and uses host `CLAUDE.md`; release bundles still write the same guidance body to both packaged filenames.
 
 ## Manual release checklist
@@ -95,9 +95,9 @@ Packaged / distributable:
    - `cargo run --package wikitool -- knowledge inspect references duplicates --title "Example Topic" --format json`
    - `cargo run --package wikitool -- status --conflicts --title "Example Topic"`
    - `cargo run --package wikitool -- module lint --format text`
-   - `cargo run --package wikitool -- docs generate-reference`
+   - `cargo run --package wikitool --features maintainer-surface -- docs generate-reference`
 6. Build release bundles:
-   - `cargo run --package wikitool -- release build-matrix --targets <triple>`
+   - `cargo run --package wikitool --features maintainer-surface -- release build-matrix --targets <triple>`
    - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=vX.Y.Z` for per-platform artifacts
 7. Verify each zip contains:
    - `wikitool` or `wikitool.exe`

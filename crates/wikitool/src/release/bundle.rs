@@ -236,7 +236,6 @@ fn run_cargo_release_build_for_target(
         .arg("build")
         .arg("--package")
         .arg("wikitool")
-        .arg("--no-default-features")
         .arg("--release")
         .arg("--target")
         .arg(target);

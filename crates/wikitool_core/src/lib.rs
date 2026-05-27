@@ -8,7 +8,6 @@ pub mod external;
 pub mod filesystem;
 pub mod graph;
 pub mod import_cargo;
-pub mod inspect;
 pub mod knowledge;
 pub mod lint;
 pub mod mw;

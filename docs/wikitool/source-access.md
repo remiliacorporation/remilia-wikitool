@@ -45,6 +45,6 @@ wikitool research session prune --format json
 ```
 
 Matching sessions are used automatically by `research fetch`, live MediaWiki template inspection,
-`fetch`, and `export`. The research document cache key does not include cookies; cookies affect
+and `export`. The research document cache key does not include cookies; cookies affect
 access, not source identity. If an earlier unauthenticated fetch failed, retry with `--refresh`
 after importing the session.

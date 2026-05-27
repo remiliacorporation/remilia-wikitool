@@ -128,20 +128,19 @@ wikitool research session prune --format json
 wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --template "Template:Infobox" --format json
 wikitool research mediawiki-templates "https://en.wikipedia.org/wiki/Article" --refresh --format json
 wikitool research discover "URL" --format json
-wikitool fetch "URL" --format wikitext --save
 wikitool export "URL" --subpages --combined --limit 25
 wikitool export --urls-file sources.txt --output-dir wikitool_exports/sources --format markdown
 ```
 
 `research wiki-search` searches the configured target wiki API, not the open web. For arbitrary subjects, use the agent's normal web-search capability to choose source URLs, then use `research fetch`, `research discover`, `research mediawiki-templates`, and `export` for source extraction and provenance. `research fetch --output json` returns a `status` envelope. When `status` is `"error"`, inspect `error.kind`, `error.attempts`, `error.challenge_handoffs`, and `error.discovery`; access challenges and HTTP failures are explicit source-access failures, not citable source content. `research discover` is the same machine-surface discovery pass as a standalone command.
 
-When a source returns a browser access challenge, `error.challenge_handoffs` gives the detected vendor, domain, expected cookie names when known, the user-agent that wikitool used, exact `suggested_argv`, and a display `suggested_command`. Wikitool does not solve, bypass, or disguise Cloudflare, Anubis, DataDome, AWS WAF, or similar challenges. If the user has lawful access, ask them to open the URL in a real browser, solve the challenge, then paste source-issued cookies into `wikitool research session import URL --cookies -`. Cookie input may be Netscape `cookies.txt`, JSON, a literal `Cookie` header, or stdin. Imported sessions live under `.wikitool/research/sessions/`, list/show output masks cookie values, and matching sessions are used automatically by `research fetch`, MediaWiki template inspection, `fetch`, and `export`. Retry source fetches with `--refresh` after importing a session. Use `research session clear DOMAIN` to remove a session and `research session prune` to remove expired sessions.
+When a source returns a browser access challenge, `error.challenge_handoffs` gives the detected vendor, domain, expected cookie names when known, the user-agent that wikitool used, exact `suggested_argv`, and a display `suggested_command`. Wikitool does not solve, bypass, or disguise Cloudflare, Anubis, DataDome, AWS WAF, or similar challenges. If the user has lawful access, ask them to open the URL in a real browser, solve the challenge, then paste source-issued cookies into `wikitool research session import URL --cookies -`. Cookie input may be Netscape `cookies.txt`, JSON, a literal `Cookie` header, or stdin. Imported sessions live under `.wikitool/research/sessions/`, list/show output masks cookie values, and matching sessions are used automatically by `research fetch`, MediaWiki template inspection, and `export`. Retry source fetches with `--refresh` after importing a session. Use `research session clear DOMAIN` to remove a session and `research session prune` to remove expired sessions.
 
 `research mediawiki-templates URL` inspects the live API surface of a source MediaWiki page. Use it when an arbitrary source wiki, such as Wikipedia, has templates/modules that are relevant to understanding the source article but are not part of the current target wiki catalog. The report preserves total transclusion counts, returns a capped inventory, shows selected invocations, fetches selected template pages, and includes TemplateData when the source wiki exposes it. Results are cached under the research cache; use `--refresh` when live freshness matters and `--no-cache` for a one-off bypass. Treat these as source-wiki contracts only; run local `knowledge contracts`, `templates show`, and `article lint` before using any template on the target wiki.
 
 `wiki profile remote URL` probes a target MediaWiki URL without storing it as the local project profile. It reports the remote wiki's live capability surface only: extensions, parser tags, parser functions, namespaces, and related API features. It does not provide a template/module catalog and does not make source-wiki templates portable.
 
-`fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs. `export` defaults to markdown: MediaWiki URLs are fetched as wikitext and rendered into agent-readable markdown, while arbitrary web pages use the research extractor and include source/extraction metadata in frontmatter. Use `--output-dir DIR` with a single URL to write a title-based markdown or wikitext file under that directory. Use `--subpages --limit N` to bound large MediaWiki tree exports. Use `--urls-file PATH --output-dir PATH --format markdown` to create off-wiki source packs; blank lines and `#` comments in the URL file are ignored, and `_index.md` records successes and failures. Wikitext export requires a recognizable MediaWiki URL; blocked arbitrary sources fail explicitly instead of producing challenge-page content.
+`research fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs. `export` defaults to markdown: MediaWiki URLs are fetched as wikitext and rendered into agent-readable markdown, while arbitrary web pages use the research extractor and include source/extraction metadata in frontmatter. Use `--output-dir DIR` with a single URL to write a title-based markdown or wikitext file under that directory. Use `--subpages --limit N` to bound large MediaWiki tree exports. Use `--urls-file PATH --output-dir PATH --format markdown` to create off-wiki source packs; blank lines and `#` comments in the URL file are ignored, and `_index.md` records successes and failures. Wikitext export requires a recognizable MediaWiki URL; blocked arbitrary sources fail explicitly instead of producing challenge-page content.
 
 `review --draft-path PATH --title TITLE` runs the article lint and global readiness parts of the review gate on an off-wiki draft under `.wikitool/drafts/`. It intentionally skips the push dry-run because the draft is not syncable yet. The JSON and text reports include `next_steps`: direct draft lint/fix commands, `wikitool article promote` for copying the accepted draft into `wiki_content/`, and the scoped review/push dry-run commands to run after promotion.
 
@@ -194,21 +193,19 @@ wikitool status
 wikitool lsp status
 wikitool lsp info
 wikitool db stats
-wikitool seo "Page"
-wikitool net "Page" --limit 25
 wikitool module lint --format text
 ```
 
 ## Release packaging
 
-These maintainer commands are available from source-checkout builds with the maintainer surface
-enabled. Packaged end-user binaries do not include them, and they remain hidden from default
+These maintainer commands are available from source-checkout builds only when the maintainer surface
+is explicitly enabled. Packaged end-user binaries do not include them, and they remain hidden from
 `wikitool --help` output and the generated reference.
 
 ```bash
-wikitool release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin
-wikitool release build-matrix --targets x86_64-unknown-linux-gnu --unversioned-names
-wikitool release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
+cargo run --features maintainer-surface -- release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin
+cargo run --features maintainer-surface -- release build-matrix --targets x86_64-unknown-linux-gnu --unversioned-names
+cargo run --features maintainer-surface -- release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
 ```
 
 Host overlays replace packaged `CLAUDE.md`, `AGENTS.md`, and `.claude/`. If the host project also

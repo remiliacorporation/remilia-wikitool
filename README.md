@@ -117,11 +117,11 @@ wikitool docs generate-reference
 cargo build --package wikitool --release
 ```
 
-Source builds keep maintainer-only commands enabled. To build the release-equivalent end-user
-binary:
+Normal source builds produce the end-user binary. To opt into maintainer-only commands from a
+source checkout:
 
 ```bash
-cargo build --package wikitool --release --no-default-features
+cargo build --package wikitool --release --features maintainer-surface
 ```
 
 ## Runtime State

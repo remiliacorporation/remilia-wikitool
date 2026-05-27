@@ -30,7 +30,7 @@ pub(in crate::research::web_fetch) fn build_html_fetch_result(
         ));
 
     match options.profile {
-        ExternalFetchProfile::Legacy => {
+        ExternalFetchProfile::MediaWiki => {
             let extract = metadata
                 .description
                 .clone()
@@ -203,7 +203,7 @@ pub(in crate::research::web_fetch) fn build_text_fetch_result(
 ) -> ExternalFetchResult {
     let extract = summarize_text(content, 280);
     let extraction_quality = match options.profile {
-        ExternalFetchProfile::Legacy => None,
+        ExternalFetchProfile::MediaWiki => None,
         ExternalFetchProfile::Research => {
             Some(score_extraction_quality(content, extract.as_deref()))
         }

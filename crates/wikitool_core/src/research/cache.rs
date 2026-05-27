@@ -275,7 +275,7 @@ fn cache_format_label(format: ExternalFetchFormat) -> &'static str {
 
 fn cache_profile_label(profile: ExternalFetchProfile) -> &'static str {
     match profile {
-        ExternalFetchProfile::Legacy => "legacy",
+        ExternalFetchProfile::MediaWiki => "mediawiki",
         ExternalFetchProfile::Research => "research",
     }
 }

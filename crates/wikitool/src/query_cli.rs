@@ -1,47 +1,15 @@
 use anyhow::{Result, bail};
-use clap::{Args, ValueEnum};
+use clap::ValueEnum;
 use wikitool_core::config::WikiConfig;
-use wikitool_core::knowledge::retrieval::{
-    LocalContextBundle, LocalSearchHit, build_local_context, query_search_local,
-};
 use wikitool_core::sync::{
     ExternalSearchReport, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
     NS_TEMPLATE, search_external_wiki_report_with_config,
 };
 
-use crate::cli_support::{
-    OutputFormat, normalize_path, normalize_title_query, print_string_list, resolve_runtime_paths,
-};
-use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
+use crate::cli_support::normalize_title_query;
 
 const REMOTE_WIKI_SEARCH_NAMESPACES: [i32; 5] =
     [NS_MAIN, NS_CATEGORY, NS_TEMPLATE, NS_MODULE, NS_MEDIAWIKI];
-
-#[derive(Debug, Args)]
-pub(crate) struct ContextArgs {
-    title: String,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = OutputFormat::Text,
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: OutputFormat,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct SearchArgs {
-    query: String,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = OutputFormat::Text,
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: OutputFormat,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RemoteWikiSearchRequest<'a> {
@@ -55,7 +23,7 @@ pub(crate) struct RemoteWikiSearchRequest<'a> {
 pub(crate) enum RemoteSearchScope {
     Text,
     Title,
-    #[value(name = "nearmatch", alias = "near-match")]
+    #[value(name = "nearmatch")]
     Nearmatch,
 }
 
@@ -85,70 +53,6 @@ struct ParsedRemoteWikiSearchRequest {
     query: String,
     limit: usize,
     what: MediaWikiSearchWhat,
-}
-
-pub(crate) fn run_context(runtime: &RuntimeOptions, args: ContextArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let title = normalize_title_query(&args.title);
-    if title.is_empty() {
-        bail!("context requires a non-empty title");
-    }
-
-    match build_local_context(&paths, &title)? {
-        Some(bundle) => {
-            if args.format.is_json() {
-                println!("{}", serde_json::to_string_pretty(&bundle)?);
-                return Ok(());
-            }
-            println!("context");
-            println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("title: {title}");
-            println!("context.backend: indexed");
-            print_context_bundle("context", &bundle);
-        }
-        None => {
-            bail!(
-                "local knowledge index is not ready or page was not found: {title}\nRun `wikitool knowledge build` first."
-            );
-        }
-    }
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-
-    Ok(())
-}
-
-pub(crate) fn run_search(runtime: &RuntimeOptions, args: SearchArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let query = normalize_title_query(&args.query);
-    if query.is_empty() {
-        bail!("search requires a non-empty query");
-    }
-
-    match query_search_local(&paths, &query, 20)? {
-        Some(results) => {
-            if args.format.is_json() {
-                println!("{}", serde_json::to_string_pretty(&results)?);
-                return Ok(());
-            }
-            println!("search");
-            println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("query: {query}");
-            println!("search.backend: indexed");
-            print_search_hits("search", &results);
-        }
-        None => {
-            bail!("local knowledge index is not ready.\nRun `wikitool knowledge build` first.");
-        }
-    }
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
-    }
-
-    Ok(())
 }
 
 pub(crate) fn remote_wiki_search_report(
@@ -181,31 +85,6 @@ fn parse_remote_wiki_search_request(
         limit: request.limit,
         what: request.what.as_search_what(),
     })
-}
-
-fn print_search_hits(prefix: &str, hits: &[LocalSearchHit]) {
-    println!("{prefix}.count: {}", hits.len());
-    if hits.is_empty() {
-        println!("{prefix}.hits: <none>");
-        return;
-    }
-    for hit in hits {
-        let translation_languages = if hit.translation_languages.is_empty() {
-            "<none>".to_string()
-        } else {
-            hit.translation_languages.join(", ")
-        };
-        println!(
-            "{prefix}.hit: {} (namespace={}, redirect={}, translation_languages={}, matched_translation_language={})",
-            hit.title,
-            hit.namespace,
-            if hit.is_redirect { "yes" } else { "no" },
-            translation_languages,
-            hit.matched_translation_language
-                .as_deref()
-                .unwrap_or("<none>")
-        );
-    }
 }
 
 pub(crate) fn print_external_search_report(prefix: &str, report: &ExternalSearchReport) {
@@ -288,88 +167,6 @@ pub(crate) fn print_external_search_report(prefix: &str, report: &ExternalSearch
             println!("{prefix}.hit.category_snippet: {value}");
         }
     }
-}
-
-fn print_context_bundle(prefix: &str, bundle: &LocalContextBundle) {
-    println!("{prefix}.title: {}", bundle.title);
-    println!("{prefix}.namespace: {}", bundle.namespace);
-    println!("{prefix}.relative_path: {}", bundle.relative_path);
-    println!("{prefix}.bytes: {}", bundle.bytes);
-    println!("{prefix}.word_count: {}", bundle.word_count);
-    println!(
-        "{prefix}.is_redirect: {}",
-        if bundle.is_redirect { "yes" } else { "no" }
-    );
-    println!(
-        "{prefix}.redirect_target: {}",
-        bundle.redirect_target.as_deref().unwrap_or("<none>")
-    );
-    println!(
-        "{prefix}.content_preview: {}",
-        if bundle.content_preview.is_empty() {
-            "<empty>"
-        } else {
-            &bundle.content_preview
-        }
-    );
-    println!("{prefix}.sections.count: {}", bundle.sections.len());
-    for section in &bundle.sections {
-        println!(
-            "{prefix}.section: level={} heading={}",
-            section.level, section.heading
-        );
-    }
-    println!(
-        "{prefix}.section_summaries.count: {}",
-        bundle.section_summaries.len()
-    );
-    for section in &bundle.section_summaries {
-        println!(
-            "{prefix}.section_summary: level={} heading={} tokens={} summary={}",
-            section.section_level,
-            section.section_heading.as_deref().unwrap_or("<lead>"),
-            section.token_estimate,
-            section.summary_text
-        );
-    }
-    println!(
-        "{prefix}.context_chunks.count: {}",
-        bundle.context_chunks.len()
-    );
-    println!(
-        "{prefix}.context_chunks.tokens_estimate_total: {}",
-        bundle.context_tokens_estimate
-    );
-    for chunk in &bundle.context_chunks {
-        println!(
-            "{prefix}.context_chunk: section={} tokens={} text={}",
-            chunk.section_heading.as_deref().unwrap_or("<lead>"),
-            chunk.token_estimate,
-            chunk.chunk_text
-        );
-    }
-    print_string_list(&format!("{prefix}.outgoing_links"), &bundle.outgoing_links);
-    print_string_list(&format!("{prefix}.backlinks"), &bundle.backlinks);
-    print_string_list(&format!("{prefix}.categories"), &bundle.categories);
-    print_string_list(&format!("{prefix}.templates"), &bundle.templates);
-    print_string_list(&format!("{prefix}.modules"), &bundle.modules);
-    println!(
-        "{prefix}.template_invocations.count: {}",
-        bundle.template_invocations.len()
-    );
-    for invocation in &bundle.template_invocations {
-        println!(
-            "{prefix}.template_invocation: title={} keys={}",
-            invocation.template_title,
-            if invocation.parameter_keys.is_empty() {
-                "<none>".to_string()
-            } else {
-                invocation.parameter_keys.join(", ")
-            }
-        );
-    }
-    println!("{prefix}.references.count: {}", bundle.references.len());
-    println!("{prefix}.media.count: {}", bundle.media.len());
 }
 
 #[cfg(test)]

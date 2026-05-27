@@ -34,7 +34,7 @@ pub(super) fn fetch_single_export_page(
         ExternalFetchOptions {
             format: ExternalFetchFormat::Wikitext,
             max_bytes: 1_000_000,
-            profile: ExternalFetchProfile::Legacy,
+            profile: ExternalFetchProfile::MediaWiki,
             session,
         }
     } else {

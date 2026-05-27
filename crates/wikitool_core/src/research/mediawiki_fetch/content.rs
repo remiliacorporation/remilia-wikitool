@@ -400,7 +400,7 @@ mod tests {
             &ExternalFetchOptions {
                 format: ExternalFetchFormat::Wikitext,
                 max_bytes: 10_000,
-                profile: ExternalFetchProfile::Legacy,
+                profile: ExternalFetchProfile::MediaWiki,
                 session: None,
             },
         )

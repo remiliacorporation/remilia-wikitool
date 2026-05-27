@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
 WIKITOOL_RAW="${WIKITOOL:-}"
+WIKITOOL_MAINTAINER_RAW="${WIKITOOL_MAINTAINER:-}"
 TMP_BASE="${TMPDIR:-$SCRIPT_DIR/.tmp}"
 mkdir -p "$TMP_BASE"
 TMPDIR_ROOT=$(mktemp -d "$TMP_BASE/wikitool-test-XXXXXX")
@@ -51,6 +52,10 @@ resolve_wikitool_cmd() {
     if [ -n "$WIKITOOL_RAW" ]; then
         # shellcheck disable=SC2206 # Intentional word splitting for command string overrides.
         WIKITOOL_CMD=($WIKITOOL_RAW)
+        if [ -n "$WIKITOOL_MAINTAINER_RAW" ]; then
+            # shellcheck disable=SC2206 # Intentional word splitting for command string overrides.
+            WIKITOOL_MAINTAINER_CMD=($WIKITOOL_MAINTAINER_RAW)
+        fi
         if [ -n "${WIKITOOL_PATH_MODE:-}" ]; then
             return
         fi
@@ -69,6 +74,7 @@ resolve_wikitool_cmd() {
         local cargo_path
         cargo_path=$(command -v cargo)
         WIKITOOL_CMD=(cargo run --quiet --)
+        WIKITOOL_MAINTAINER_CMD=(cargo run --quiet --features maintainer-surface --)
         if [[ "$cargo_path" == *.exe ]]; then
             WIKITOOL_PATH_MODE="windows"
         else
@@ -79,6 +85,7 @@ resolve_wikitool_cmd() {
 
     if command -v cargo.exe > /dev/null 2>&1; then
         WIKITOOL_CMD=(cargo.exe run --quiet --)
+        WIKITOOL_MAINTAINER_CMD=(cargo.exe run --quiet --features maintainer-surface --)
         WIKITOOL_PATH_MODE="windows"
         return
     fi
@@ -87,6 +94,7 @@ resolve_wikitool_cmd() {
     for candidate in /mnt/c/Users/*/.cargo/bin/cargo.exe; do
         if [ -x "$candidate" ]; then
             WIKITOOL_CMD=("$candidate" run --quiet --)
+            WIKITOOL_MAINTAINER_CMD=("$candidate" run --quiet --features maintainer-surface --)
             WIKITOOL_PATH_MODE="windows"
             return
         fi
@@ -143,10 +151,20 @@ WIKI_API_URL=https://wiki.remilia.org/api.php
 ENVEOF
 }
 
-# Run wikitool with a given project root
-wt() {
-    local root="$1"
-    shift
+run_wikitool_cmd() {
+    local command_kind="$1"
+    local root="$2"
+    shift 2
+    local cmd=()
+    if [ "$command_kind" = "maintainer" ]; then
+        if [ "${#WIKITOOL_MAINTAINER_CMD[@]}" -eq 0 ]; then
+            return 127
+        fi
+        cmd=("${WIKITOOL_MAINTAINER_CMD[@]}")
+    else
+        cmd=("${WIKITOOL_CMD[@]}")
+    fi
+
     if [ "${WIKITOOL_PATH_MODE:-posix}" = "windows" ] || [ "${WIKITOOL_PATH_MODE:-posix}" = "auto" ]; then
         local wt_root
         wt_root=$(to_wikitool_path "$root")
@@ -161,14 +179,28 @@ wt() {
             fi
         done
 
-        "${WIKITOOL_CMD[@]}" --project-root "$wt_root" "${normalized_args[@]}"
+        "${cmd[@]}" --project-root "$wt_root" "${normalized_args[@]}"
         return
     fi
 
-    "${WIKITOOL_CMD[@]}" --project-root "$root" "$@"
+    "${cmd[@]}" --project-root "$root" "$@"
+}
+
+# Run wikitool with a given project root
+wt() {
+    run_wikitool_cmd default "$@"
+}
+
+wt_maintainer() {
+    run_wikitool_cmd maintainer "$@"
+}
+
+has_maintainer_surface() {
+    [ "${#WIKITOOL_MAINTAINER_CMD[@]}" -ne 0 ]
 }
 
 WIKITOOL_CMD=()
+WIKITOOL_MAINTAINER_CMD=()
 WIKITOOL_PATH_MODE=""
 resolve_wikitool_cmd
 
@@ -467,31 +499,16 @@ else
     fail "db reset is idempotent (got: $OUTPUT2)"
 fi
 
-# --- context requires knowledge build ---
-section "context requires knowledge build"
-PROJ_CONTEXT=$(setup_project context-unbuilt)
-wt "$PROJ_CONTEXT" init > /dev/null 2>&1
-mkdir -p "$PROJ_CONTEXT/wiki_content/Main"
-cat > "$PROJ_CONTEXT/wiki_content/Main/Alpha.wiki" << 'WIKIEOF'
-{{SHORTDESC:Alpha article}}
-
-'''Alpha''' is an article.
-WIKIEOF
-OUTPUT=$(wt "$PROJ_CONTEXT" context "Alpha" 2>&1 || true)
-if echo "$OUTPUT" | grep -q "Run \`wikitool knowledge build\` first."; then
-    pass "context requires knowledge build before indexed retrieval"
-else
-    fail "context requires knowledge build before indexed retrieval (got: $OUTPUT)"
-fi
-
-# --- context ---
-section "context"
-OUTPUT=$(wt "$PROJ" context "Alpha" 2>&1)
-if echo "$OUTPUT" | grep -q "context.backend: indexed" && echo "$OUTPUT" | grep -q "context.references.count:" && echo "$OUTPUT" | grep -q "context.media.count:"; then
-    pass "context returns indexed data for known title"
-else
-    fail "context returns indexed data for known title (got: $OUTPUT)"
-fi
+# --- retired top-level primitives ---
+section "retired top-level primitives"
+for retired in context search fetch seo net; do
+    OUTPUT=$(wt "$PROJ" "$retired" 2>&1 || true)
+    if echo "$OUTPUT" | grep -q "unrecognized subcommand"; then
+        pass "retired command is unavailable: $retired"
+    else
+        fail "retired command is unavailable: $retired (got: $OUTPUT)"
+    fi
+done
 
 # --- knowledge pack ---
 section "knowledge pack"
@@ -584,32 +601,6 @@ if echo "$OUTPUT" | grep -q "template.implementation_pages.count:" && echo "$OUT
     pass "knowledge inspect templates returns implementation reference for a template"
 else
     fail "knowledge inspect templates returns implementation reference for a template (got: $OUTPUT)"
-fi
-
-# --- search requires knowledge build ---
-section "search requires knowledge build"
-PROJ_SEARCH=$(setup_project search-unbuilt)
-wt "$PROJ_SEARCH" init > /dev/null 2>&1
-mkdir -p "$PROJ_SEARCH/wiki_content/Main"
-cat > "$PROJ_SEARCH/wiki_content/Main/Alpha.wiki" << 'WIKIEOF'
-{{SHORTDESC:Alpha article}}
-
-'''Alpha''' is an article.
-WIKIEOF
-OUTPUT=$(wt "$PROJ_SEARCH" search "Alpha" 2>&1 || true)
-if echo "$OUTPUT" | grep -q "Run \`wikitool knowledge build\` first."; then
-    pass "search requires knowledge build before indexed retrieval"
-else
-    fail "search requires knowledge build before indexed retrieval (got: $OUTPUT)"
-fi
-
-# --- search ---
-section "search"
-OUTPUT=$(wt "$PROJ" search "Alpha" 2>&1)
-if echo "$OUTPUT" | grep -q "search.backend: indexed" && echo "$OUTPUT" | grep -q "search.hit: Alpha"; then
-    pass "search finds indexed article"
-else
-    fail "search finds indexed article (got: $OUTPUT)"
 fi
 
 # --- import cargo (CSV) ---
@@ -714,33 +705,6 @@ else
     fail "docs symbols returns normalized symbol hits (got: $OUTPUT)"
 fi
 
-# --- FTS continuity: local search substring ---
-section "search substring continuity across disposable db rebuild"
-PROJ_FTS=$(setup_project fts-search)
-wt "$PROJ_FTS" init > /dev/null 2>&1
-mkdir -p "$PROJ_FTS/wiki_content/Main"
-cat > "$PROJ_FTS/wiki_content/Main/AlphaBeta.wiki" << 'WIKIEOF'
-{{SHORTDESC:AlphaBeta article}}
-{{Article quality|unverified}}
-
-'''AlphaBeta''' is a test article.
-
-== References ==
-{{Reflist}}
-
-[[Category:Test]]
-WIKIEOF
-wt "$PROJ_FTS" knowledge build > /dev/null 2>&1
-BEFORE=$(wt "$PROJ_FTS" search "pha" 2>&1)
-wt "$PROJ_FTS" db reset --yes > /dev/null 2>&1
-wt "$PROJ_FTS" knowledge build > /dev/null 2>&1
-AFTER=$(wt "$PROJ_FTS" search "pha" 2>&1)
-if echo "$BEFORE" | grep -q "search.hit: AlphaBeta" && echo "$AFTER" | grep -q "search.hit: AlphaBeta"; then
-    pass "substring search works before and after disposable db rebuild"
-else
-    fail "substring search continuity failed across disposable db rebuild (before: $BEFORE | after: $AFTER)"
-fi
-
 # --- FTS continuity: docs search substring ---
 section "docs search substring continuity across disposable db rebuild"
 PROJ_DOCS_FTS=$(setup_project fts-docs)
@@ -794,21 +758,27 @@ fi
 # --- release build-ai-pack ---
 section "release build-ai-pack"
 AI_PACK_OUT="$TMPDIR_ROOT/release-ai-pack"
-OUTPUT=$(wt "$PROJ" release build-ai-pack --repo-root "$REPO_ROOT" --output-dir "$AI_PACK_OUT" 2>&1 || true)
-if [ -f "$AI_PACK_OUT/manifest.json" ] && [ -f "$AI_PACK_OUT/CLAUDE.md" ] \
-    && [ -d "$AI_PACK_OUT/.claude/skills" ] && [ -d "$AI_PACK_OUT/writing_context" ] \
-    && [ ! -e "$AI_PACK_OUT/SETUP.md" ]; then
-    pass "release build-ai-pack stages the packaged AI companion"
+if has_maintainer_surface; then
+    OUTPUT=$(wt_maintainer "$PROJ" release build-ai-pack --repo-root "$REPO_ROOT" --output-dir "$AI_PACK_OUT" 2>&1 || true)
+    if [ -f "$AI_PACK_OUT/manifest.json" ] && [ -f "$AI_PACK_OUT/CLAUDE.md" ] \
+        && [ -d "$AI_PACK_OUT/.claude/skills" ] && [ -d "$AI_PACK_OUT/writing_context" ] \
+        && [ ! -e "$AI_PACK_OUT/SETUP.md" ]; then
+        pass "release build-ai-pack stages the packaged AI companion"
+    else
+        fail "release build-ai-pack stages the packaged AI companion (got: ${OUTPUT:0:300})"
+    fi
 else
-    fail "release build-ai-pack stages the packaged AI companion (got: ${OUTPUT:0:300})"
+    skip "release build-ai-pack stages the packaged AI companion (no maintainer command configured)"
 fi
 
 # --- release package ---
 section "release package"
 LOCAL_BINARY="$(resolve_local_binary_candidate || true)"
-if [ -n "$LOCAL_BINARY" ]; then
+if ! has_maintainer_surface; then
+    skip "release package stages a distributable bundle (no maintainer command configured)"
+elif [ -n "$LOCAL_BINARY" ]; then
     RELEASE_OUT="$TMPDIR_ROOT/release-package"
-    OUTPUT=$(wt "$PROJ" release package --repo-root "$REPO_ROOT" --binary-path "$LOCAL_BINARY" --output-dir "$RELEASE_OUT" 2>&1 || true)
+    OUTPUT=$(wt_maintainer "$PROJ" release package --repo-root "$REPO_ROOT" --binary-path "$LOCAL_BINARY" --output-dir "$RELEASE_OUT" 2>&1 || true)
     if [ -f "$RELEASE_OUT/CLAUDE.md" ] && [ -f "$RELEASE_OUT/README.md" ] \
         && [ -d "$RELEASE_OUT/writing_context" ] && [ ! -e "$RELEASE_OUT/SETUP.md" ] \
         && { [ -f "$RELEASE_OUT/wikitool" ] || [ -f "$RELEASE_OUT/wikitool.exe" ]; }; then
@@ -832,11 +802,15 @@ cat > "$HOOK_SOURCE" << 'HOOKEOF'
 #!/usr/bin/env bash
 exit 0
 HOOKEOF
-OUTPUT=$(wt "$PROJ" dev install-git-hooks --repo-root "$HOOK_WORKTREE" --source "$HOOK_SOURCE" 2>&1 || true)
-if [ -f "$HOOK_GITDIR/hooks/commit-msg" ]; then
-    pass "dev install-git-hooks resolves gitdir pointer files"
+if has_maintainer_surface; then
+    OUTPUT=$(wt_maintainer "$PROJ" dev install-git-hooks --repo-root "$HOOK_WORKTREE" --source "$HOOK_SOURCE" 2>&1 || true)
+    if [ -f "$HOOK_GITDIR/hooks/commit-msg" ]; then
+        pass "dev install-git-hooks resolves gitdir pointer files"
+    else
+        fail "dev install-git-hooks resolves gitdir pointer files (got: ${OUTPUT:0:300})"
+    fi
 else
-    fail "dev install-git-hooks resolves gitdir pointer files (got: ${OUTPUT:0:300})"
+    skip "dev install-git-hooks resolves gitdir pointer files (no maintainer command configured)"
 fi
 
 # ============================================================
@@ -869,47 +843,29 @@ if [ "$TIER" = "live" ]; then
         fail "research wiki-search finds known page (got: ${OUTPUT:0:300})"
     fi
 
-    # --- seo ---
-    section "seo (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" seo "Main Page" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "seo\|title\|meta\|description"; then
-        pass "seo produces report"
+    # --- research fetch ---
+    section "research fetch mediawiki source (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" research fetch "https://www.mediawiki.org/wiki/MediaWiki" --format wikitext --output json 2>&1 || true)
+    if echo "$OUTPUT" | grep -q '"status": "ok"' && echo "$OUTPUT" | grep -qi "MediaWiki"; then
+        pass "research fetch retrieves page content"
     else
-        fail "seo produces report (got: ${OUTPUT:0:300})"
+        fail "research fetch retrieves page content (got: ${OUTPUT:0:300})"
     fi
 
-    # --- net ---
-    section "net (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" net "Main Page" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "net\|status\|response\|http\|dns"; then
-        pass "net produces report"
+    # --- research fetch non-short URL ---
+    section "research fetch non-short mediawiki url (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" research fetch "https://wiki.remilia.org/index.php?title=Main_Page" --format rendered-html --output json 2>&1 || true)
+    if echo "$OUTPUT" | grep -q '"status": "ok"' && echo "$OUTPUT" | grep -qi "Main Page"; then
+        pass "research fetch accepts non-short MediaWiki URLs"
     else
-        fail "net produces report (got: ${OUTPUT:0:300})"
-    fi
-
-    # --- fetch ---
-    section "fetch (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" fetch "https://www.mediawiki.org/wiki/MediaWiki" --format wikitext 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "MediaWiki\|fetch\|content\|wiki"; then
-        pass "fetch retrieves page content"
-    else
-        fail "fetch retrieves page content (got: ${OUTPUT:0:300})"
-    fi
-
-    # --- fetch non-short URL ---
-    section "fetch non-short mediawiki url (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" fetch "https://wiki.remilia.org/index.php?title=Main_Page" --format rendered-html 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "Main Page\|fetch\|content\|wiki"; then
-        pass "fetch accepts non-short MediaWiki URLs"
-    else
-        fail "fetch accepts non-short MediaWiki URLs (got: ${OUTPUT:0:300})"
+        fail "research fetch accepts non-short MediaWiki URLs (got: ${OUTPUT:0:300})"
     fi
 
     # --- export ---
     section "export (live)"
     EXPORT_DIR="$TMPDIR_ROOT/exports"
     mkdir -p "$EXPORT_DIR"
-    OUTPUT=$(wt "$PROJ_LIVE" export "Remilia Corporation" --output "$EXPORT_DIR" 2>&1 || true)
+    OUTPUT=$(wt "$PROJ_LIVE" export "https://wiki.remilia.org/wiki/Remilia_Corporation" --output-dir "$EXPORT_DIR" 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "export\|wrote\|saved\|Remilia"; then
         pass "export saves page locally"
     else
@@ -920,14 +876,18 @@ if [ "$TIER" = "live" ]; then
     section "workflow session-refresh (live)"
     PROJ_SESSION_REFRESH_LIVE=$(setup_project workflow-session-refresh-live)
     write_live_env "$PROJ_SESSION_REFRESH_LIVE"
-    OUTPUT=$(wt "$PROJ_SESSION_REFRESH_LIVE" workflow session-refresh --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "^knowledge warm$" \
-        && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
-        && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
-            || echo "$OUTPUT" | grep -q "docs.failures.count: "; }; then
-        pass "workflow session-refresh invokes knowledge warm"
+    if has_maintainer_surface; then
+        OUTPUT=$(wt_maintainer "$PROJ_SESSION_REFRESH_LIVE" workflow session-refresh --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+        if echo "$OUTPUT" | grep -q "^knowledge warm$" \
+            && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
+            && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
+                || echo "$OUTPUT" | grep -q "docs.failures.count: "; }; then
+            pass "workflow session-refresh invokes knowledge warm"
+        else
+            fail "workflow session-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
+        fi
     else
-        fail "workflow session-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
+        skip "workflow session-refresh invokes knowledge warm (no maintainer command configured)"
     fi
 
     # --- workflow full-refresh (live) ---
@@ -935,15 +895,19 @@ if [ "$TIER" = "live" ]; then
     PROJ_FULL_REFRESH_LIVE=$(setup_project workflow-full-refresh-live)
     write_live_env "$PROJ_FULL_REFRESH_LIVE"
     FULL_REFRESH_LOG="$TMPDIR_ROOT/workflow-full-refresh-live.log"
-    wt "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --skip-reference --docs-profile "$KNOWLEDGE_DOCS_PROFILE" > "$FULL_REFRESH_LOG" 2>&1 || true
-    OUTPUT=$(tail -n 400 "$FULL_REFRESH_LOG")
-    if grep -q "^knowledge warm$" "$FULL_REFRESH_LOG" \
-        && grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" "$FULL_REFRESH_LOG" \
-        && { grep -q "docs.imported_corpora:" "$FULL_REFRESH_LOG" \
-            || grep -q "docs.failures.count: " "$FULL_REFRESH_LOG"; }; then
-        pass "workflow full-refresh invokes knowledge warm"
+    if has_maintainer_surface; then
+        wt_maintainer "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --skip-reference --docs-profile "$KNOWLEDGE_DOCS_PROFILE" > "$FULL_REFRESH_LOG" 2>&1 || true
+        OUTPUT=$(tail -n 400 "$FULL_REFRESH_LOG")
+        if grep -q "^knowledge warm$" "$FULL_REFRESH_LOG" \
+            && grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" "$FULL_REFRESH_LOG" \
+            && { grep -q "docs.imported_corpora:" "$FULL_REFRESH_LOG" \
+                || grep -q "docs.failures.count: " "$FULL_REFRESH_LOG"; }; then
+            pass "workflow full-refresh invokes knowledge warm"
+        else
+            fail "workflow full-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
+        fi
     else
-        fail "workflow full-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
+        skip "workflow full-refresh invokes knowledge warm (no maintainer command configured)"
     fi
 
     # --- knowledge warm (live) ---

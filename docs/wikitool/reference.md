@@ -7,7 +7,7 @@ Maintainer-only commands hidden from default help are intentionally omitted.
 Regenerate from a source checkout with the maintainer surface enabled:
 
 ```bash
-wikitool docs generate-reference
+cargo run --features maintainer-surface -- docs generate-reference
 ```
 
 ## Global
@@ -23,18 +23,13 @@ Commands:
   push       Push local changes to the live wiki
   diff       Show local changes not yet pushed to the wiki
   status     Show sync status and local project state
-  context    Show indexed local page context for one title
-  search     Search indexed local page titles
   validate   Run structural and link integrity checks
   review     Run the structured pre-push review gate
   module     Run Lua module linting and related checks
-  fetch      Fetch a remote URL as wikitext or rendered HTML
   export     Export a remote wiki page tree to local files
   delete     Delete a page from the live wiki
   db         Inspect or reset the local runtime database
   docs       Manage and query pinned MediaWiki docs corpora
-  seo        Inspect SEO metadata for wiki pages
-  net        Inspect link network and page relationships
   import     Import content from external sources
   knowledge  Build and query the local knowledge layer
   research   Inspect target-wiki evidence and fetch source URLs without mutating the wiki
@@ -166,44 +161,6 @@ Options:
   -h, --help                 Print help
 ```
 
-## context
-
-```text
-Show indexed local page context for one title
-
-Usage: wikitool context [OPTIONS] <TITLE>
-
-Arguments:
-  <TITLE>
-
-Options:
-      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
-      --project-root <PATH>
-      --data-dir <PATH>
-      --config <PATH>
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## search
-
-```text
-Search indexed local page titles
-
-Usage: wikitool search [OPTIONS] <QUERY>
-
-Arguments:
-  <QUERY>
-
-Options:
-      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
-      --project-root <PATH>
-      --data-dir <PATH>
-      --config <PATH>
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
 ## validate
 
 ```text
@@ -287,27 +244,6 @@ Options:
       --strict               Treat warnings as errors
       --config <PATH>
       --no-meta              Omit metadata from JSON output
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## fetch
-
-```text
-Fetch a remote URL as wikitext or rendered HTML
-
-Usage: wikitool fetch [OPTIONS] <URL>
-
-Arguments:
-  <URL>
-
-Options:
-      --format <FORMAT>      Output format: wikitext|html|rendered-html [default: wikitext] [possible values: wikitext, html, rendered-html]
-      --project-root <PATH>
-      --data-dir <PATH>
-      --save                 Save output under reference/<source>/ in project root
-      --config <PATH>
-      --name <NAME>          Custom name for saved reference file
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
@@ -622,52 +558,6 @@ Options:
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --diagnostics          Print resolved runtime diagnostics
   -l, --limit <LIMIT>        Limit result count [default: 20]
-  -h, --help                 Print help
-```
-
-## seo
-
-```text
-Inspect SEO metadata for wiki pages
-
-Usage: wikitool seo [OPTIONS] <TARGET>
-
-Arguments:
-  <TARGET>
-
-Options:
-      --json                 Output JSON for AI consumption
-      --project-root <PATH>
-      --data-dir <PATH>
-      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
-      --config <PATH>
-      --no-meta              Omit metadata from JSON output
-      --diagnostics          Print resolved runtime diagnostics
-      --url <URL>            Override target URL
-  -h, --help                 Print help
-```
-
-## net
-
-```text
-Inspect link network and page relationships
-
-Usage: wikitool net [OPTIONS] <TARGET>
-
-Arguments:
-  <TARGET>
-
-Options:
-      --limit <N>            Limit number of resources to probe [default: 25]
-      --project-root <PATH>
-      --data-dir <PATH>
-      --no-probe             Skip HEAD probes (faster, no size/cache info)
-      --config <PATH>
-      --json                 Output JSON for AI consumption
-      --diagnostics          Print resolved runtime diagnostics
-      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
-      --no-meta              Omit metadata from JSON output
-      --url <URL>            Override target URL
   -h, --help                 Print help
 ```
 

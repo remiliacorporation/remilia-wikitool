@@ -45,7 +45,8 @@ scoped here.
   deterministic state machines, structured parsers, or character-by-character parsing.
 - Keep CLI output contracts explicit. Agent-facing commands should prefer `--format json` when the
   output is consumed programmatically.
-- Hidden maintainer commands belong behind the `maintainer-surface` feature.
+- Hidden maintainer commands belong behind the explicit `maintainer-surface` feature; default
+  builds are end-user builds.
 - The runtime project root is the caller's wiki project, not this source checkout, unless the
   command explicitly accepts a repository root.
 - The local SQLite database is disposable state. Do not build correctness around preserving it.
@@ -57,4 +58,4 @@ scoped here.
 - Run `cargo clippy --workspace --all-targets -- -D warnings` for maintainer-facing cleanup or
   release-adjacent changes.
 - For CLI contract changes, run the relevant command help and regenerate
-  `docs/wikitool/reference.md` with `cargo run -- docs generate-reference`.
+  `docs/wikitool/reference.md` with `cargo run --features maintainer-surface -- docs generate-reference`.

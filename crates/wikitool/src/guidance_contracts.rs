@@ -78,7 +78,12 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
         assert!(
             !body.contains("Docs bootstrap")
                 && !body.contains("WIKITOOL_CLAUDE.md")
-                && !body.contains("llm_instructions"),
+                && !body.contains("llm_instructions")
+                && !body.contains("wikitool search")
+                && !body.contains("wikitool fetch")
+                && !body.contains("wikitool context")
+                && !body.contains("wikitool seo")
+                && !body.contains("wikitool net"),
             "packaged guidance must not refer to removed setup/backcompat artifacts"
         );
         assert!(
@@ -151,6 +156,10 @@ fn packaged_review_wrappers_stay_aligned_on_gate_sequence() {
         let body = read_repo_file(path);
         assert!(
             body.contains("Preferred full gate: `wikitool review --format json --summary \"...\"`")
+                && body.contains("Draft-first gate: `wikitool review --draft-path")
+                && body.contains("Direct draft iteration:")
+                && body.contains("wikitool article promote")
+                && body.contains("next_steps")
                 && body.contains("wikitool validate --summary")
                 && body.contains("--verify-live"),
             "{path} must stay aligned with the current content gate sequence"
@@ -199,6 +208,25 @@ fn packaged_skill_wrappers_stay_thin_and_do_not_reintroduce_removed_surfaces() {
             !body.contains("wikitool perf") && !body.contains("perf lighthouse"),
             "{path} must not mention removed perf surfaces"
         );
+    }
+}
+
+#[test]
+fn writing_context_does_not_reintroduce_retired_top_level_commands() {
+    for path in markdown_files_under("ai-pack/writing_context") {
+        let body = read_repo_file(&path);
+        for retired in [
+            "wikitool context",
+            "wikitool search",
+            "wikitool fetch",
+            "wikitool seo",
+            "wikitool net",
+        ] {
+            assert!(
+                !body.contains(retired),
+                "{path} must not mention retired top-level command `{retired}`"
+            );
+        }
     }
 }
 
