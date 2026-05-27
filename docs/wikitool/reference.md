@@ -7,7 +7,7 @@ Maintainer-only commands hidden from default help are intentionally omitted.
 Regenerate from a source checkout with the maintainer surface enabled:
 
 ```bash
-cargo run --features maintainer-surface -- docs generate-reference
+cargo run --features maintainer -- docs generate-reference
 ```
 
 ## Global
@@ -37,6 +37,7 @@ Commands:
   templates  Build and inspect the local template catalog
   article    Lint and mechanically remediate article drafts
   lsp        Generate parser config and editor integration settings
+  workflow   First-run setup and session/full runtime refresh workflows
   help       Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1173,17 +1174,19 @@ Arguments:
   <URL>
 
 Options:
-      --output-dir <PATH>    Write archive files to this directory
+      --output-dir <PATH>        Write archive files to this directory
       --project-root <PATH>
       --data-dir <PATH>
-      --max-pages <N>        Maximum URLs to attempt [default: 1000]
+      --max-pages <N>            Maximum URLs to attempt [default: 1000]
       --config <PATH>
-      --max-bytes <BYTES>    Maximum bytes to store for a single response [default: 50000000]
-      --diagnostics          Print resolved runtime diagnostics
-      --span-hosts           Allow crawling linked URLs outside the source host
-      --no-page-requisites   Do not enqueue linked page requisites such as CSS image URLs
-      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
-  -h, --help                 Print help
+      --max-bytes <BYTES>        Maximum bytes to store for a single response [default: 50000000]
+      --diagnostics              Print resolved runtime diagnostics
+      --max-depth <N>            Maximum link depth from the seed URL (seed is depth 0) [default: 8]
+      --max-total-bytes <BYTES>  Maximum total bytes to store across the whole crawl [default: 1000000000]
+      --span-hosts               Allow crawling linked URLs outside the source host
+      --no-page-requisites       Do not enqueue linked page requisites such as CSS image URLs
+      --format <FORMAT>          Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                     Print help
 ```
 
 ## research discover
@@ -1852,4 +1855,65 @@ Options:
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
+```
+
+## workflow
+
+```text
+First-run setup and session/full runtime refresh workflows
+
+Usage: wikitool workflow [OPTIONS] <COMMAND>
+
+Commands:
+  session-refresh  Refresh runtime content and agent authoring context
+  full-refresh     Rebuild local runtime from scratch and re-warm knowledge
+  help             Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## workflow session-refresh
+
+```text
+Refresh runtime content and agent authoring context
+
+Usage: wikitool workflow session-refresh [OPTIONS]
+
+Options:
+      --project-root <PATH>
+      --templates               Create templates/ during initialization (default: true)
+      --data-dir <PATH>
+      --no-templates            Do not create templates/ during initialization
+      --config <PATH>
+      --full                    Perform a full pull instead of an incremental session pull
+      --diagnostics             Print resolved runtime diagnostics
+      --pull                    Pull content after initialization (default: true)
+      --no-pull                 Skip content pull during session refresh
+      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-mw-1.44]
+      --docs-mode <MODE>        Docs hydration mode for knowledge warmup: missing|refresh|skip [default: missing] [possible values: missing, refresh, skip]
+  -h, --help                    Print help
+```
+
+## workflow full-refresh
+
+```text
+Rebuild local runtime from scratch and re-warm knowledge
+
+Usage: wikitool workflow full-refresh [OPTIONS]
+
+Options:
+      --project-root <PATH>
+      --yes                     Assume yes; do not prompt for confirmation
+      --data-dir <PATH>
+      --templates               Create templates/ during initialization (default: true)
+      --config <PATH>
+      --no-templates            Do not create templates/ during initialization
+      --diagnostics             Print resolved runtime diagnostics
+      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-mw-1.44]
+  -h, --help                    Print help
 ```

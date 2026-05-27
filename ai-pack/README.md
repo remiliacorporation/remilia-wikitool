@@ -23,7 +23,7 @@ behavior belongs in `AGENTS.md` / `CLAUDE.md` and the skill wrappers.
 
 ## Host Overlay
 
-Maintainer release commands run from a source checkout with `--features maintainer-surface`.
+Maintainer release commands run from a source checkout with `--features maintainer`.
 `release package --host-project-root <PATH>` and `release build-matrix --host-project-root <PATH>`
 may overlay host context:
 
@@ -43,11 +43,11 @@ Without a host overlay, release bundles ship the generic wikitool-maintained con
    target-specific or ship it through a host overlay.
 4. After CLI, output-schema, or workflow changes, update the owning agent/docs surface, preserve the
    compact default payload contract, regenerate `docs/wikitool/reference.md` when help changes, and
-   run the guidance contract tests plus `cargo run --features maintainer-surface -- docs audit`.
+   run the guidance contract tests plus `cargo run --features maintainer -- docs audit`.
 
 ## Packaging Contract
 
-1. `cargo run --features maintainer-surface -- release build-ai-pack` stages these files.
-2. `cargo run --features maintainer-surface -- release package` stages one local binary with the AI companion files.
-3. `cargo run --features maintainer-surface -- release build-matrix` builds target binaries and emits zip artifacts that unpack into
+1. `cargo run --features maintainer -- release build-ai-pack` stages these files.
+2. `cargo run --features maintainer -- release package` stages one local binary with the AI companion files.
+3. `cargo run --features maintainer -- release build-matrix` builds target binaries and emits zip artifacts that unpack into
    ready-to-run agent bundles.

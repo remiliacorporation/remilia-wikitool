@@ -6,7 +6,7 @@ license.workspace = true
 
 [features]
 default = []
-maintainer-surface = []
+maintainer = []
 
 [dependencies]
 anyhow.workspace = true

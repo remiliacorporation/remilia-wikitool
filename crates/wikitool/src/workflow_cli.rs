@@ -4,7 +4,6 @@ use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use wikitool_core::profile::sync_wiki_profile_with_config;
 
-use crate::docs_cli::{self, DocsGenerateReferenceArgs};
 use crate::knowledge_cli::{self, KnowledgeWarmArgs, KnowledgeWarmDocsMode};
 use crate::quality_cli;
 use crate::sync_cli::{self, InitArgs, PullArgs, StatusArgs};
@@ -74,8 +73,6 @@ struct WorkflowFullRefreshArgs {
     templates: bool,
     #[arg(long, help = "Do not create templates/ during initialization")]
     no_templates: bool,
-    #[arg(long, help = "Skip docs reference generation")]
-    skip_reference: bool,
     #[arg(
         long,
         default_value = wikitool_core::knowledge::status::DEFAULT_DOCS_PROFILE,
@@ -191,12 +188,6 @@ fn run_workflow_full_refresh(
             no_parser_config: false,
         },
     )?;
-
-    if !args.skip_reference {
-        docs_cli::run_docs_generate_reference(DocsGenerateReferenceArgs {
-            output: Some(paths.project_root.join("docs/wikitool/reference.md")),
-        })?;
-    }
 
     sync_cli::run_pull(
         runtime,

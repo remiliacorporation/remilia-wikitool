@@ -18,7 +18,7 @@ jobs:
         run: cargo test --workspace
       - name: Generated CLI reference is current
         run: |
-          cargo run --quiet --package wikitool -- docs generate-reference --output /tmp/wikitool-reference.md
+          cargo run --quiet --package wikitool --features maintainer -- docs generate-reference --output /tmp/wikitool-reference.md
           diff -u docs/wikitool/reference.md /tmp/wikitool-reference.md
       - name: Offline CLI regression testbench
         run: bash testbench/cli_tests.sh

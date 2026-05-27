@@ -60,7 +60,7 @@ wikitool knowledge pack "Topic" --format json
 ```
 
 Maintainer-only lanes (`docs generate-reference`, `docs audit`, `dev`, `release`, `workflow`) require
-`cargo run --features maintainer-surface -- ...` from a source checkout.
+`cargo run --features maintainer -- ...` from a source checkout.
 
 ## Retrieval model
 

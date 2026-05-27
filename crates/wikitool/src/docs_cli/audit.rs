@@ -112,7 +112,7 @@ fn audit_reference(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
                 if actual == expected {
                     "generated CLI reference is current".to_string()
                 } else {
-                    "generated CLI reference is stale; run `cargo run --features maintainer-surface -- docs generate-reference`".to_string()
+                    "generated CLI reference is stale; run `cargo run --features maintainer -- docs generate-reference`".to_string()
                 },
             );
         }
@@ -146,7 +146,7 @@ fn audit_default_features(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
                 if default_is_empty {
                     "normal source and release builds use the end-user surface".to_string()
                 } else {
-                    "Cargo default features must stay empty; maintainer commands require `--features maintainer-surface`".to_string()
+                    "Cargo default features must stay empty; maintainer commands require `--features maintainer`".to_string()
                 },
             );
         }

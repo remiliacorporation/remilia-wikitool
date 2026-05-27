@@ -18,22 +18,19 @@ use crate::{
     },
 };
 
-#[cfg(any(test, feature = "maintainer-surface"))]
+#[cfg(any(test, feature = "maintainer"))]
 use crate::Cli;
-#[cfg(any(test, feature = "maintainer-surface"))]
+#[cfg(any(test, feature = "maintainer"))]
 use clap::{Command, CommandFactory, error::ErrorKind};
-#[cfg(feature = "maintainer-surface")]
+#[cfg(feature = "maintainer")]
 use std::fs;
 
 mod admin;
-#[cfg(feature = "maintainer-surface")]
+#[cfg(feature = "maintainer")]
 mod audit;
 mod import;
 mod query;
 mod reference;
-
-#[cfg(feature = "maintainer-surface")]
-pub(crate) use reference::{DocsGenerateReferenceArgs, run_docs_generate_reference};
 
 #[derive(Debug, Args)]
 pub(crate) struct DocsArgs {
@@ -57,14 +54,14 @@ enum DocsSubcommand {
         about = "Generate CLI reference docs from help text",
         hide = true
     )]
-    #[cfg(feature = "maintainer-surface")]
+    #[cfg(feature = "maintainer")]
     GenerateReference(reference::DocsGenerateReferenceArgs),
     #[command(
         name = "audit",
         about = "Audit generated docs and shipped agent guidance against the live CLI surface",
         hide = true
     )]
-    #[cfg(feature = "maintainer-surface")]
+    #[cfg(feature = "maintainer")]
     Audit(audit::DocsAuditArgs),
     #[command(about = "List imported docs corpora")]
     List(admin::DocsListArgs),
@@ -85,9 +82,9 @@ pub(crate) fn run_docs(runtime: &RuntimeOptions, args: DocsArgs) -> Result<()> {
         DocsSubcommand::Import(args) => import::run_docs_import(runtime, args),
         DocsSubcommand::ImportTechnical(args) => import::run_docs_import_technical(runtime, args),
         DocsSubcommand::ImportProfile(args) => import::run_docs_import_profile(runtime, args),
-        #[cfg(feature = "maintainer-surface")]
+        #[cfg(feature = "maintainer")]
         DocsSubcommand::GenerateReference(args) => reference::run_docs_generate_reference(args),
-        #[cfg(feature = "maintainer-surface")]
+        #[cfg(feature = "maintainer")]
         DocsSubcommand::Audit(args) => audit::run_docs_audit(args),
         DocsSubcommand::List(args) => admin::run_docs_list(runtime, args),
         DocsSubcommand::Update => admin::run_docs_update(runtime),

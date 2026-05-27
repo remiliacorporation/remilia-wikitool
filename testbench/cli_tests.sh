@@ -74,7 +74,7 @@ resolve_wikitool_cmd() {
         local cargo_path
         cargo_path=$(command -v cargo)
         WIKITOOL_CMD=(cargo run --quiet --)
-        WIKITOOL_MAINTAINER_CMD=(cargo run --quiet --features maintainer-surface --)
+        WIKITOOL_MAINTAINER_CMD=(cargo run --quiet --features maintainer --)
         if [[ "$cargo_path" == *.exe ]]; then
             WIKITOOL_PATH_MODE="windows"
         else
@@ -85,7 +85,7 @@ resolve_wikitool_cmd() {
 
     if command -v cargo.exe > /dev/null 2>&1; then
         WIKITOOL_CMD=(cargo.exe run --quiet --)
-        WIKITOOL_MAINTAINER_CMD=(cargo.exe run --quiet --features maintainer-surface --)
+        WIKITOOL_MAINTAINER_CMD=(cargo.exe run --quiet --features maintainer --)
         WIKITOOL_PATH_MODE="windows"
         return
     fi
@@ -94,7 +94,7 @@ resolve_wikitool_cmd() {
     for candidate in /mnt/c/Users/*/.cargo/bin/cargo.exe; do
         if [ -x "$candidate" ]; then
             WIKITOOL_CMD=("$candidate" run --quiet --)
-            WIKITOOL_MAINTAINER_CMD=("$candidate" run --quiet --features maintainer-surface --)
+            WIKITOOL_MAINTAINER_CMD=("$candidate" run --quiet --features maintainer --)
             WIKITOOL_PATH_MODE="windows"
             return
         fi
@@ -876,18 +876,14 @@ if [ "$TIER" = "live" ]; then
     section "workflow session-refresh (live)"
     PROJ_SESSION_REFRESH_LIVE=$(setup_project workflow-session-refresh-live)
     write_live_env "$PROJ_SESSION_REFRESH_LIVE"
-    if has_maintainer_surface; then
-        OUTPUT=$(wt_maintainer "$PROJ_SESSION_REFRESH_LIVE" workflow session-refresh --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-        if echo "$OUTPUT" | grep -q "^knowledge warm$" \
-            && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
-            && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
-                || echo "$OUTPUT" | grep -q "docs.failures.count: "; }; then
-            pass "workflow session-refresh invokes knowledge warm"
-        else
-            fail "workflow session-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
-        fi
+    OUTPUT=$(wt "$PROJ_SESSION_REFRESH_LIVE" workflow session-refresh --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
+    if echo "$OUTPUT" | grep -q "^knowledge warm$" \
+        && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
+        && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
+            || echo "$OUTPUT" | grep -q "docs.failures.count: "; }; then
+        pass "workflow session-refresh invokes knowledge warm"
     else
-        skip "workflow session-refresh invokes knowledge warm (no maintainer command configured)"
+        fail "workflow session-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
     fi
 
     # --- workflow full-refresh (live) ---
@@ -895,19 +891,15 @@ if [ "$TIER" = "live" ]; then
     PROJ_FULL_REFRESH_LIVE=$(setup_project workflow-full-refresh-live)
     write_live_env "$PROJ_FULL_REFRESH_LIVE"
     FULL_REFRESH_LOG="$TMPDIR_ROOT/workflow-full-refresh-live.log"
-    if has_maintainer_surface; then
-        wt_maintainer "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --skip-reference --docs-profile "$KNOWLEDGE_DOCS_PROFILE" > "$FULL_REFRESH_LOG" 2>&1 || true
-        OUTPUT=$(tail -n 400 "$FULL_REFRESH_LOG")
-        if grep -q "^knowledge warm$" "$FULL_REFRESH_LOG" \
-            && grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" "$FULL_REFRESH_LOG" \
-            && { grep -q "docs.imported_corpora:" "$FULL_REFRESH_LOG" \
-                || grep -q "docs.failures.count: " "$FULL_REFRESH_LOG"; }; then
-            pass "workflow full-refresh invokes knowledge warm"
-        else
-            fail "workflow full-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
-        fi
+    wt "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --docs-profile "$KNOWLEDGE_DOCS_PROFILE" > "$FULL_REFRESH_LOG" 2>&1 || true
+    OUTPUT=$(tail -n 400 "$FULL_REFRESH_LOG")
+    if grep -q "^knowledge warm$" "$FULL_REFRESH_LOG" \
+        && grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" "$FULL_REFRESH_LOG" \
+        && { grep -q "docs.imported_corpora:" "$FULL_REFRESH_LOG" \
+            || grep -q "docs.failures.count: " "$FULL_REFRESH_LOG"; }; then
+        pass "workflow full-refresh invokes knowledge warm"
     else
-        skip "workflow full-refresh invokes knowledge warm (no maintainer command configured)"
+        fail "workflow full-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
     fi
 
     # --- knowledge warm (live) ---

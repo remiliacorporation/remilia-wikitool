@@ -203,9 +203,9 @@ is explicitly enabled. Packaged end-user binaries do not include them, and they 
 `wikitool --help` output and the generated reference.
 
 ```bash
-cargo run --features maintainer-surface -- release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin
-cargo run --features maintainer-surface -- release build-matrix --targets x86_64-unknown-linux-gnu --unversioned-names
-cargo run --features maintainer-surface -- release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
+cargo run --features maintainer -- release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin
+cargo run --features maintainer -- release build-matrix --targets x86_64-unknown-linux-gnu --unversioned-names
+cargo run --features maintainer -- release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
 ```
 
 Host overlays replace packaged `CLAUDE.md`, `AGENTS.md`, and `.claude/`. If the host project also

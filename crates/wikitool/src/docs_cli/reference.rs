@@ -1,7 +1,7 @@
-#[cfg(any(test, feature = "maintainer-surface"))]
+#[cfg(any(test, feature = "maintainer"))]
 use super::*;
 
-#[cfg(feature = "maintainer-surface")]
+#[cfg(feature = "maintainer")]
 #[derive(Debug, Args)]
 pub(crate) struct DocsGenerateReferenceArgs {
     #[arg(
@@ -12,7 +12,7 @@ pub(crate) struct DocsGenerateReferenceArgs {
     pub(crate) output: Option<PathBuf>,
 }
 
-#[cfg(feature = "maintainer-surface")]
+#[cfg(feature = "maintainer")]
 pub(crate) fn run_docs_generate_reference(args: DocsGenerateReferenceArgs) -> Result<()> {
     let output = match args.output {
         Some(output) if output.is_absolute() => output,
@@ -34,7 +34,7 @@ pub(crate) fn run_docs_generate_reference(args: DocsGenerateReferenceArgs) -> Re
     Ok(())
 }
 
-#[cfg(feature = "maintainer-surface")]
+#[cfg(feature = "maintainer")]
 pub(super) fn generate_docs_reference_markdown() -> Result<String> {
     let command = Cli::command();
     let mut command_paths = Vec::new();
@@ -50,7 +50,7 @@ pub(super) fn generate_docs_reference_markdown() -> Result<String> {
         "Regenerate from a source checkout with the maintainer surface enabled:".to_string(),
         "".to_string(),
         "```bash".to_string(),
-        "cargo run --features maintainer-surface -- docs generate-reference".to_string(),
+        "cargo run --features maintainer -- docs generate-reference".to_string(),
         "```".to_string(),
         "".to_string(),
     ];
@@ -73,7 +73,7 @@ pub(super) fn generate_docs_reference_markdown() -> Result<String> {
     Ok(lines.join("\n"))
 }
 
-#[cfg(feature = "maintainer-surface")]
+#[cfg(feature = "maintainer")]
 pub(super) fn source_repo_root() -> Result<PathBuf> {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -81,7 +81,7 @@ pub(super) fn source_repo_root() -> Result<PathBuf> {
         .context("failed to resolve wikitool source repository root")
 }
 
-#[cfg(any(test, feature = "maintainer-surface"))]
+#[cfg(any(test, feature = "maintainer"))]
 fn collect_command_paths(command: &Command, prefix: &[String], out: &mut Vec<Vec<String>>) {
     out.push(prefix.to_vec());
 
@@ -95,7 +95,7 @@ fn collect_command_paths(command: &Command, prefix: &[String], out: &mut Vec<Vec
     }
 }
 
-#[cfg(any(test, feature = "maintainer-surface"))]
+#[cfg(any(test, feature = "maintainer"))]
 fn help_text_for_command_path(path: &[String]) -> Result<String> {
     let mut command = Cli::command();
     command = command.bin_name("wikitool");
@@ -132,7 +132,7 @@ fn help_text_for_command_path(path: &[String]) -> Result<String> {
     }
 }
 
-#[cfg(any(test, feature = "maintainer-surface"))]
+#[cfg(any(test, feature = "maintainer"))]
 fn normalize_help_text(help_text: &str) -> String {
     help_text
         .trim_end()
@@ -152,7 +152,7 @@ mod tests {
         let mut paths = Vec::new();
         collect_command_paths(&command, &[], &mut paths);
 
-        assert!(!paths.iter().any(|path| path == &["workflow".to_string()]));
+        assert!(paths.iter().any(|path| path == &["workflow".to_string()]));
         assert!(!paths.iter().any(|path| path == &["release".to_string()]));
         assert!(!paths.iter().any(|path| path == &["dev".to_string()]));
         assert!(
@@ -175,15 +175,12 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "maintainer-surface")]
+    #[cfg(feature = "maintainer")]
     fn hidden_commands_remain_invocable_directly() {
         let release_help =
             help_text_for_command_path(&["release".to_string()]).expect("render release help");
-        let workflow_help =
-            help_text_for_command_path(&["workflow".to_string()]).expect("render workflow help");
 
         assert!(release_help.contains("Usage: wikitool release"));
-        assert!(workflow_help.contains("Usage: wikitool workflow"));
     }
 
     #[test]

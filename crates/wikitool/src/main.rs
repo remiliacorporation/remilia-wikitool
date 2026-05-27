@@ -9,7 +9,7 @@ mod article_cli;
 mod briefs;
 mod cli_support;
 mod db_cli;
-#[cfg(feature = "maintainer-surface")]
+#[cfg(feature = "maintainer")]
 mod dev_cli;
 mod docs_cli;
 mod export_cli;
@@ -22,14 +22,13 @@ mod lsp_cli;
 mod module_cli;
 mod quality_cli;
 mod query_cli;
-#[cfg(feature = "maintainer-surface")]
+#[cfg(feature = "maintainer")]
 mod release;
 mod research_cli;
 mod review_cli;
 mod sync_cli;
 mod templates_cli;
 mod wiki_cli;
-#[cfg(feature = "maintainer-surface")]
 mod workflow_cli;
 
 const LICENSE_AGPL: &str = include_str!("../../../LICENSE");
@@ -114,13 +113,12 @@ enum Commands {
     Article(article_cli::ArticleArgs),
     #[command(about = "Generate parser config and editor integration settings")]
     Lsp(lsp_cli::LspArgs),
-    #[cfg(feature = "maintainer-surface")]
-    #[command(about = "Run maintainer runtime refresh workflows", hide = true)]
+    #[command(about = "First-run setup and session/full runtime refresh workflows")]
     Workflow(workflow_cli::WorkflowArgs),
-    #[cfg(feature = "maintainer-surface")]
+    #[cfg(feature = "maintainer")]
     #[command(about = "Build AI companion packs and release bundles", hide = true)]
     Release(release::ReleaseArgs),
-    #[cfg(feature = "maintainer-surface")]
+    #[cfg(feature = "maintainer")]
     #[command(about = "Install local development helpers", hide = true)]
     Dev(dev_cli::DevArgs),
 }
@@ -161,11 +159,10 @@ fn main() -> Result<()> {
         Some(Commands::Templates(args)) => templates_cli::run_templates(&runtime, args),
         Some(Commands::Article(args)) => article_cli::run_article(&runtime, args),
         Some(Commands::Lsp(args)) => lsp_cli::run_lsp(&runtime, args),
-        #[cfg(feature = "maintainer-surface")]
         Some(Commands::Workflow(args)) => workflow_cli::run_workflow(&runtime, args),
-        #[cfg(feature = "maintainer-surface")]
+        #[cfg(feature = "maintainer")]
         Some(Commands::Release(args)) => release::run_release(args),
-        #[cfg(feature = "maintainer-surface")]
+        #[cfg(feature = "maintainer")]
         Some(Commands::Dev(args)) => dev_cli::run_dev(args),
         None => {
             let mut command = Cli::command();
