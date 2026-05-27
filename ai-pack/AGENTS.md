@@ -66,15 +66,13 @@ before relying on indexed content:
 ```bash
 wikitool status --modified --format json
 wikitool diff --format json
-wikitool pull --all --format json
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
-wikitool wiki profile sync --format json
+wikitool workflow session-refresh
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
 
-Use `wikitool pull --full --all` only when the local database or sync ledger is missing, stale, or
-being deliberately rebuilt. Do not use `--overwrite-local` unless the user explicitly approves
-discarding local edits.
+Use `wikitool workflow full-refresh` only when the local database or sync ledger is missing, stale,
+or being deliberately rebuilt. Do not use `pull --overwrite-local` unless the user explicitly
+approves discarding local edits.
 
 ## Authoring Entry Points
 

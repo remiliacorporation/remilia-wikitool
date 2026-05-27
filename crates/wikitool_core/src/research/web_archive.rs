@@ -144,7 +144,13 @@ pub fn archive_web_site(
             error: None,
         };
 
-        match fetch_archive_candidate(&client, url.as_str(), options.max_bytes) {
+        let Some(byte_limit) =
+            response_byte_limit(options.max_bytes, options.max_total_bytes, total_bytes)
+        else {
+            break;
+        };
+
+        match fetch_archive_candidate(&client, url.as_str(), byte_limit) {
             Ok(candidate) => {
                 let local_path = archive_path_for_url(
                     &output_dir,
@@ -241,10 +247,31 @@ struct ArchiveCandidate {
     body: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ResponseByteLimit {
+    bytes: usize,
+    constrained_by_total: bool,
+}
+
+fn response_byte_limit(
+    max_bytes: usize,
+    max_total_bytes: usize,
+    total_bytes: usize,
+) -> Option<ResponseByteLimit> {
+    let remaining_total = max_total_bytes.saturating_sub(total_bytes);
+    if remaining_total == 0 {
+        return None;
+    }
+    Some(ResponseByteLimit {
+        bytes: max_bytes.min(remaining_total),
+        constrained_by_total: remaining_total < max_bytes,
+    })
+}
+
 fn fetch_archive_candidate(
     client: &Client,
     url: &str,
-    max_bytes: usize,
+    byte_limit: ResponseByteLimit,
 ) -> Result<ArchiveCandidate> {
     let mut response = client
         .get(url)
@@ -260,7 +287,7 @@ fn fetch_archive_candidate(
         .and_then(|value| value.to_str().ok())
         .map(ToString::to_string);
     let mut body = Vec::new();
-    let limit = u64::try_from(max_bytes)
+    let limit = u64::try_from(byte_limit.bytes)
         .unwrap_or(u64::MAX)
         .saturating_add(1);
     response
@@ -268,8 +295,17 @@ fn fetch_archive_candidate(
         .take(limit)
         .read_to_end(&mut body)
         .with_context(|| format!("failed to read {url}"))?;
-    if body.len() > max_bytes {
-        bail!("response exceeded --max-bytes limit ({max_bytes}) for {url}");
+    if body.len() > byte_limit.bytes {
+        if byte_limit.constrained_by_total {
+            bail!(
+                "response would exceed --max-total-bytes remaining limit ({}) for {url}",
+                byte_limit.bytes
+            );
+        }
+        bail!(
+            "response exceeded --max-bytes limit ({}) for {url}",
+            byte_limit.bytes
+        );
     }
     Ok(ArchiveCandidate {
         final_url,
@@ -520,8 +556,8 @@ fn starts_with_ascii_case(value: &str, prefix: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_css_urls, extract_html_urls, resolve_archive_url, sanitize_path_component,
-        should_enqueue, split_srcset,
+        extract_css_urls, extract_html_urls, resolve_archive_url, response_byte_limit,
+        sanitize_path_component, should_enqueue, split_srcset,
     };
     use reqwest::Url;
 
@@ -582,6 +618,20 @@ mod tests {
         // Relative links resolve against the base and drop any fragment.
         let resolved = resolve_archive_url(&base, "../other.html#frag").expect("resolved");
         assert_eq!(resolved.as_str(), "https://example.com/other.html");
+    }
+
+    #[test]
+    fn response_byte_limit_honors_remaining_total_budget() {
+        let normal = response_byte_limit(50, 100, 25).expect("limit");
+        assert_eq!(normal.bytes, 50);
+        assert!(!normal.constrained_by_total);
+
+        let total_constrained = response_byte_limit(50, 100, 80).expect("limit");
+        assert_eq!(total_constrained.bytes, 20);
+        assert!(total_constrained.constrained_by_total);
+
+        assert!(response_byte_limit(50, 100, 100).is_none());
+        assert!(response_byte_limit(50, 100, 150).is_none());
     }
 
     #[test]

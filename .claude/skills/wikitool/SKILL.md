@@ -44,14 +44,12 @@ Reach for `wikitool` when you need wiki-aware retrieval, MediaWiki-aware fetch/e
 ```bash
 wikitool status --modified --format json
 wikitool diff --format json
-wikitool pull --all --format json
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
+wikitool workflow session-refresh
 wikitool knowledge status --docs-profile remilia-mw-1.44
 wikitool knowledge article-start "Topic" --format json --view brief
 wikitool knowledge contracts search "contract terms" --format json
 wikitool research wiki-search "Topic" --format json
 wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
-wikitool wiki profile sync
 wikitool wiki surface show --format json --view brief
 wikitool templates show "Template:Infobox person" --format json --view brief
 wikitool article lint wiki_content/Main/Title.wiki --format json
@@ -59,7 +57,7 @@ wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pag
 wikitool knowledge pack "Topic" --format json
 ```
 
-Maintainer-only lanes (`docs generate-reference`, `docs audit`, `dev`, `release`, `workflow`) require
+Maintainer-only lanes (`docs generate-reference`, `docs audit`, `dev`, `release`) require
 `cargo run --features maintainer -- ...` from a source checkout.
 
 ## Retrieval model

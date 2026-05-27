@@ -68,6 +68,7 @@ pub(crate) fn run_docs_audit(args: DocsAuditArgs) -> Result<()> {
     audit_packaged_guidance(&repo_root, &mut checks);
     audit_no_retired_public_terms(&repo_root, &mut checks);
     audit_brief_guidance(&repo_root, &mut checks);
+    audit_workflow_guidance(&repo_root, &mut checks);
     if let Some(host_root) = host_project_root.as_ref() {
         audit_host_project(host_root, &mut checks);
     }
@@ -312,6 +313,80 @@ fn audit_brief_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
                 format!("failed to read {relative}: {error}"),
             ),
         }
+    }
+}
+
+fn audit_workflow_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
+    let required = [
+        ("README.md", "wikitool workflow session-refresh"),
+        (
+            "docs/wikitool/guide.md",
+            "wikitool workflow session-refresh",
+        ),
+        ("ai-pack/CLAUDE.md", "wikitool workflow session-refresh"),
+        ("ai-pack/AGENTS.md", "wikitool workflow session-refresh"),
+        (
+            "ai-pack/.claude/skills/wikitool.md",
+            "wikitool workflow session-refresh",
+        ),
+        (
+            "ai-pack/codex_skills/wikitool-operator/SKILL.md",
+            "wikitool workflow session-refresh",
+        ),
+        (
+            "ai-pack/writing_context/writing_guide.md",
+            "wikitool workflow session-refresh",
+        ),
+    ];
+    for (relative, needle) in required {
+        let path = repo_root.join(relative);
+        match read_to_string(&path) {
+            Ok(body) => push_check(
+                checks,
+                "guidance.workflow_surface",
+                body.contains(needle),
+                Some(&path),
+                if body.contains(needle) {
+                    format!("{relative} documents `{needle}`")
+                } else {
+                    format!("{relative} must document `{needle}` as the public refresh lane")
+                },
+            ),
+            Err(error) => push_check(
+                checks,
+                "guidance.workflow_surface",
+                false,
+                Some(&path),
+                format!("failed to read {relative}: {error}"),
+            ),
+        }
+    }
+
+    let local_skill = repo_root.join(".claude/skills/wikitool/SKILL.md");
+    match read_to_string(&local_skill) {
+        Ok(body) => {
+            let ok = body.contains("Maintainer-only lanes")
+                && !body.contains("`release`, `workflow`")
+                && !body.contains("release, workflow");
+            push_check(
+                checks,
+                "guidance.workflow_public",
+                ok,
+                Some(&local_skill),
+                if ok {
+                    "local Claude wrapper treats workflow as an end-user lane".to_string()
+                } else {
+                    "local Claude wrapper must not list workflow as maintainer-only".to_string()
+                },
+            );
+        }
+        Err(error) => push_check(
+            checks,
+            "guidance.workflow_public",
+            false,
+            Some(&local_skill),
+            format!("failed to read local Claude wrapper: {error}"),
+        ),
     }
 }
 

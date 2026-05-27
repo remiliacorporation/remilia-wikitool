@@ -72,8 +72,8 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
         assert!(
             body.contains("## Session Start")
                 && body.contains("wikitool diff --format json")
-                && body.contains("wikitool pull --all --format json")
-                && body.contains("Do not use `--overwrite-local`"),
+                && body.contains("wikitool workflow session-refresh")
+                && body.contains("Do not use `pull --overwrite-local`"),
             "packaged guidance must define the normal session refresh sequence"
         );
         assert!(
@@ -129,7 +129,9 @@ fn thin_wrappers_reference_help_and_keep_raw_pack_secondary() {
             "thin wrappers must point to article-start"
         );
         assert!(
-            body.contains("diff --format json") && body.contains("pull --all --format json"),
+            body.contains("diff --format json")
+                && body.contains("workflow session-refresh")
+                && body.contains("knowledge status"),
             "thin wrappers must tell agents to inspect local changes and refresh wiki state at session start"
         );
         assert!(

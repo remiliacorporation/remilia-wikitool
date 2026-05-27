@@ -7,29 +7,24 @@ For command flags: `wikitool <command> --help` or `reference.md`.
 ## First Run
 
 ```bash
-wikitool init --templates
-wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing
-wikitool wiki profile sync
+wikitool workflow session-refresh
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
 
 ## Session Refresh
 
-Run this at the start of an agentic editing session so local content, template/module state, docs,
-and live capability signals are current before authoring:
+Run this at the start of an agentic editing session. Inspect local edits first, then refresh local
+content, template/module state, docs, and live capability signals through the workflow front door:
 
 ```bash
 wikitool status --modified --format json
 wikitool diff --format json
-wikitool pull --all --format json
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json
-wikitool wiki profile sync --format json
+wikitool workflow session-refresh
 wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
 ```
 
-Use `wikitool pull --full --all` for deliberate rebuilds or missing sync state. Do not use
-`--overwrite-local` unless local edits should be discarded.
+Use `wikitool workflow full-refresh` for deliberate rebuilds or missing sync state. Do not use
+`pull --overwrite-local` unless local edits should be discarded.
 
 ## How it works
 
@@ -218,8 +213,7 @@ If local state drifts or schema changes:
 
 ```bash
 rm .wikitool/data/wikitool.db        # or: wikitool db reset --yes
-wikitool pull --full --all
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing
+wikitool workflow full-refresh
 ```
 
 If push/delete writes fail, verify `WIKI_BOT_USER` and `WIKI_BOT_PASS` in project root `.env`.

@@ -10,11 +10,11 @@ Thin wrapper for the `wikitool` CLI.
 Use normal reasoning, ordinary shell/file tools, and direct editing by default.
 Do not invent flags or workflow details; verify against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 
-At the start of an editing session, refresh local wiki state before relying on indexed content:
+At the start of an editing session, inspect local edits and refresh local wiki state before relying on indexed content:
 `wikitool status --modified --format json`, `wikitool diff --format json`,
-`wikitool pull --all --format json`, `wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing --format json`, and
-`wikitool wiki profile sync --format json`. Use `pull --full --all` only for deliberate rebuilds
-or missing sync state; do not use `--overwrite-local` without explicit approval.
+`wikitool workflow session-refresh`, and
+`wikitool knowledge status --docs-profile remilia-mw-1.44 --format json`. Use `wikitool workflow full-refresh`
+only for deliberate rebuilds or missing sync state; do not use `pull --overwrite-local` without explicit approval.
 
 Use `knowledge article-start --intent new|expand|audit|refresh --view brief` as the authoring front door.
 Use `knowledge pack` only when the raw authoring substrate is needed behind article-start.
