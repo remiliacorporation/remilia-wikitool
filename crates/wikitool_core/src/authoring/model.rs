@@ -2,14 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ExternalResearchPolicy {
-    Fallback,
-    Always,
-    Off,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
 pub enum LocalExistenceState {
     ExactPageExists,
     RedirectExists,
@@ -179,29 +171,6 @@ pub struct AuthoringConstraint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ArticleStartOptions {
-    pub related_page_limit: usize,
-    pub external_policy: ExternalResearchPolicy,
-    pub docs_profile: String,
-    pub profile_id: Option<String>,
-    pub include_raw_pack_ref: bool,
-    pub diversify: bool,
-}
-
-impl Default for ArticleStartOptions {
-    fn default() -> Self {
-        Self {
-            related_page_limit: 18,
-            external_policy: ExternalResearchPolicy::Fallback,
-            docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
-            profile_id: None,
-            include_raw_pack_ref: true,
-            diversify: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArticleStartResult {
     pub schema_version: String,
     pub topic: String,
@@ -213,7 +182,6 @@ pub struct ArticleStartResult {
     pub constraints: Vec<AuthoringConstraint>,
     pub open_questions: Vec<OpenQuestion>,
     pub next_actions: Vec<RecommendedAction>,
-    pub raw_pack_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

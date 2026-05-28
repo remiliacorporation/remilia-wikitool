@@ -144,7 +144,6 @@ pub fn build_article_start(
         constraints,
         open_questions,
         next_actions,
-        raw_pack_ref: Some("knowledge.pack".to_string()),
     }
 }
 
