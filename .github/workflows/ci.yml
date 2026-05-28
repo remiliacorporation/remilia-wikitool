@@ -28,11 +28,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      # Pinned nightly: bleeding-edge nightly adds lints that turn this job red
+      # with no code change. Bump this date deliberately after validating locally.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-05-27
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Rustfmt (nightly)
-        run: cargo +nightly fmt --all -- --check
-      - name: Clippy (nightly)
-        run: cargo +nightly clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Rustfmt (pinned nightly)
+        run: cargo +nightly-2026-05-27 fmt --all -- --check
+      - name: Clippy (pinned nightly)
+        run: cargo +nightly-2026-05-27 clippy --workspace --all-targets --all-features -- -D warnings
