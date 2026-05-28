@@ -127,7 +127,7 @@ fn import_docs_profile_skips_installed_extension_discovery_failures() {
     let report = super::import_docs_profile_with_api(
         &paths,
         &super::DocsImportProfileOptions {
-            profile: "remilia-mw-1.44".to_string(),
+            profile: "remilia-wiki".to_string(),
             include_installed_extensions: false,
             include_extension_subpages: false,
             extra_extensions: Vec::new(),
@@ -138,7 +138,7 @@ fn import_docs_profile_skips_installed_extension_discovery_failures() {
     )
     .expect("profile import should degrade cleanly");
 
-    assert_eq!(report.profile, "remilia-mw-1.44");
+    assert_eq!(report.profile, "remilia-wiki");
     assert!(report.imported_pages > 0);
     assert!(
         report
@@ -151,7 +151,7 @@ fn import_docs_profile_skips_installed_extension_discovery_failures() {
         "Profile docs fixture",
         &super::DocsSearchOptions {
             tier: None,
-            profile: Some("remilia-mw-1.44".to_string()),
+            profile: Some("remilia-wiki".to_string()),
             limit: 5,
         },
     )

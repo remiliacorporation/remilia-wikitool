@@ -8,7 +8,7 @@ For command flags: `wikitool <command> --help` or `reference.md`.
 
 ```bash
 wikitool workflow session-refresh
-wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge status --docs-profile remilia-wiki --format json
 ```
 
 ## Session Refresh
@@ -20,7 +20,7 @@ content, template/module state, docs, and live capability signals through the wo
 wikitool status --modified --format json
 wikitool diff --format json
 wikitool workflow session-refresh
-wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge status --docs-profile remilia-wiki --format json
 ```
 
 Use `wikitool workflow full-refresh` for deliberate rebuilds or missing sync state. Do not use
@@ -31,8 +31,8 @@ Use `wikitool workflow full-refresh` for deliberate rebuilds or missing sync sta
 - Pull/push use the MediaWiki API. Local state lives in SQLite under `.wikitool/data/wikitool.db`.
 - The DB is disposable — delete it and repull/rebuild any time.
 - Authoring retrieval uses semantic page profiles, a DB-backed template/module contract graph, normalized source authorities, and bridged MediaWiki docs to narrow context for agents.
-- `knowledge article-start` is the interpreted authoring brief. `knowledge pack` is the retrieval substrate behind it; compact payloads expose subject context and wiki contract context without heavy implementation bodies. Use `--contract-query` when the subject and the wiki-contract lookup are different, for example a cheetah article whose contract search should ask for `species infobox taxonomy`.
-- Token-efficient agent workflows should start from wikitool briefs and drill down only as needed. Prefer `knowledge article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, and `review --view brief`; reserve `knowledge pack --payload full` and `--view full` for cases where implementation bodies or complete capability arrays are explicitly needed.
+- `knowledge article-start` is the interpreted authoring brief. Use `--contract-query` when the subject and the wiki-contract lookup are different, for example a cheetah article whose contract search should ask for `species infobox taxonomy`.
+- Token-efficient agent workflows should start from wikitool briefs and drill down only as needed. Prefer `knowledge article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, and `review --view brief`; reserve `--view full` for cases where implementation bodies or complete capability arrays are explicitly needed.
 - `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check; use `--summary` for the global signal and scoped `--category`/`--title` slices for targeted investigation. `module lint` is the Lua/module lane.
 - `article lint` / `article fix` accept repeated `--title`, repeated `--path`, `--titles-file`, and `--changed` for batch work.
 - `review` is the structured pre-push gate: status plan, changed article lint, validation summary, and push dry-run in one JSON report.
@@ -92,12 +92,9 @@ wikitool delete "Title" --reason "x" --dry-run
 
 ```bash
 wikitool knowledge build                # content index only
-wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing  # index + docs readiness
-wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing  # index + docs readiness
+wikitool knowledge status --docs-profile remilia-wiki --format json
 wikitool knowledge article-start "Topic" --intent new --format json --view brief
-wikitool knowledge pack "Topic" --format json
-wikitool knowledge pack "Topic" --contract-query "subject type infobox" --format json
-wikitool knowledge pack "Topic" --payload full --format json
 wikitool knowledge contracts plan "Topic" --contract-query "subject type infobox" --format json
 wikitool knowledge inspect stats
 wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480
@@ -160,11 +157,11 @@ wikitool lsp info
 ## Docs
 
 ```bash
-wikitool docs import-profile remilia-mw-1.44
+wikitool docs import-profile remilia-wiki
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
-wikitool docs search "topic" --profile remilia-mw-1.44
-wikitool docs context "Extension" --profile remilia-mw-1.44 --format json
-wikitool docs symbols "$wg" --profile remilia-mw-1.44
+wikitool docs search "topic" --profile remilia-wiki
+wikitool docs context "Extension" --profile remilia-wiki --format json
+wikitool docs symbols "$wg" --profile remilia-wiki
 wikitool docs list
 wikitool docs update
 ```
@@ -216,6 +213,6 @@ rm .wikitool/data/wikitool.db        # or: wikitool db reset --yes
 wikitool workflow full-refresh
 ```
 
-If push/delete writes fail, verify `WIKI_BOT_USER` and `WIKI_BOT_PASS` in project root `.env`.
+If push/delete writes fail, verify `WIKITOOL_BOT_USER` and `WIKITOOL_BOT_PASS` in project root `.env`.
 
 Starting in v0.2.0, pre-manifest databases are treated as incompatible. The supported path is reset, repull, rebuild.

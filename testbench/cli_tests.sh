@@ -8,7 +8,7 @@
 set -euo pipefail
 
 TIER="${TIER:-offline}"
-KNOWLEDGE_DOCS_PROFILE="${KNOWLEDGE_DOCS_PROFILE:-remilia-mw-1.44}"
+KNOWLEDGE_DOCS_PROFILE="${KNOWLEDGE_DOCS_PROFILE:-remilia-wiki}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
@@ -146,8 +146,8 @@ resolve_local_binary_candidate() {
 write_live_env() {
     local root="$1"
     cat > "$root/.env" << 'ENVEOF'
-WIKI_URL=https://wiki.remilia.org/
-WIKI_API_URL=https://wiki.remilia.org/api.php
+WIKITOOL_WIKI_URL=https://wiki.remilia.org/
+WIKITOOL_WIKI_API_URL=https://wiki.remilia.org/api.php
 ENVEOF
 }
 
@@ -510,52 +510,13 @@ for retired in context search fetch seo net; do
     fi
 done
 
-# --- knowledge pack ---
-section "knowledge pack"
-STUB_PATH="$PROJ/wiki_content/Main/Alpha_Stub.wiki"
-cat > "$STUB_PATH" << 'WIKIEOF'
-{{Infobox person|name=Alpha Draft}}
-'''Alpha Draft''' references [[Alpha]] and [[Missing Page]].
-WIKIEOF
-OUTPUT=$(wt "$PROJ" knowledge pack "Alpha" --stub-path "$STUB_PATH" --docs-profile "$KNOWLEDGE_DOCS_PROFILE" --related-limit 6 --chunk-limit 4 --token-budget 220 --max-pages 2 --template-limit 6 --format json 2>&1 || true)
-KNOWLEDGE_PACK_JSON="$TMPDIR_ROOT/knowledge-pack.json"
-printf '%s' "$OUTPUT" > "$KNOWLEDGE_PACK_JSON"
-if python3 - "$KNOWLEDGE_PACK_JSON" "$KNOWLEDGE_DOCS_PROFILE" <<'PY'
-import json
-import pathlib
-import sys
-
-payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
-if payload.get("docs_profile_requested") != sys.argv[2]:
-    raise SystemExit(1)
-if payload.get("readiness") != "content_ready":
-    raise SystemExit(1)
-if "docs_profile_missing" not in payload.get("degradations", []):
-    raise SystemExit(1)
-if not payload.get("knowledge_generation"):
-    raise SystemExit(1)
-report = payload.get("result")
-if not isinstance(report, dict):
-    raise SystemExit(1)
-required = (
-    "suggested_templates",
-    "template_baseline",
-    "stub_missing_links",
-    "suggested_references",
-    "suggested_media",
-    "template_references",
-    "module_patterns",
-    "docs_context",
-)
-if report.get("status") != "found":
-    raise SystemExit(1)
-if any(key not in report for key in required):
-    raise SystemExit(1)
-PY
-then
-    pass "knowledge pack emits authoring knowledge with readiness/degradation metadata"
+# --- retired knowledge pack ---
+section "retired knowledge pack"
+OUTPUT=$(wt "$PROJ" knowledge pack "Alpha" --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q "unrecognized subcommand"; then
+    pass "retired knowledge pack command is unavailable"
 else
-    fail "knowledge pack emits authoring knowledge with readiness/degradation metadata (got: $OUTPUT)"
+    fail "retired knowledge pack command is unavailable (got: $OUTPUT)"
 fi
 
 # --- knowledge inspect templates ---

@@ -33,16 +33,30 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     if !args.no_config {
         let config = load_config(&paths.config_path)
             .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
+        let config_target = config.resolve_wiki_target();
+        let config_api_url_from_env = config_target.api_url.source == "env";
+        let config_wiki_url_from_env = config_target.url.source == "env";
         let resolved_api_url = args
             .api_url
             .clone()
-            .or_else(|| config.api_url_owned())
+            .or_else(|| config_target.api_url.value.clone())
             .or_else(|| Some(DEFAULT_WIKI_API_URL.to_string()));
         let resolved_wiki_url = args
             .wiki_url
             .clone()
             .or_else(|| args.api_url.as_deref().and_then(derive_wiki_url))
-            .or_else(|| config.wiki_url())
+            .or_else(|| {
+                config_api_url_from_env
+                    .then(|| {
+                        config_target
+                            .api_url
+                            .value
+                            .as_deref()
+                            .and_then(derive_wiki_url)
+                    })
+                    .flatten()
+            })
+            .or_else(|| config_target.url.value.clone())
             .or_else(|| resolved_api_url.as_deref().and_then(derive_wiki_url))
             .or_else(|| Some(DEFAULT_WIKI_URL.to_string()));
         let mut discovery_config = config.clone();
@@ -52,16 +66,21 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
         if let Some(wiki_url) = &resolved_wiki_url {
             discovery_config.wiki.url = Some(wiki_url.clone());
         }
-        namespace_discovery_status = "pending".to_string();
-        let discovered = match discover_custom_namespaces(&discovery_config) {
-            Ok(ns) => ns,
-            Err(_) if resolved_api_url.is_none() => {
-                namespace_discovery_status = "skipped (no API URL configured)".to_string();
-                Vec::new()
-            }
-            Err(err) => {
-                namespace_discovery_status = format!("failed: {err:#}");
-                Vec::new()
+        let discovered = if args.no_network {
+            namespace_discovery_status = "skipped (--no-network)".to_string();
+            Vec::new()
+        } else {
+            namespace_discovery_status = "pending".to_string();
+            match discover_custom_namespaces(&discovery_config) {
+                Ok(ns) => ns,
+                Err(_) if resolved_api_url.is_none() => {
+                    namespace_discovery_status = "skipped (no API URL configured)".to_string();
+                    Vec::new()
+                }
+                Err(err) => {
+                    namespace_discovery_status = format!("failed: {err:#}");
+                    Vec::new()
+                }
             }
         };
         let mut patch = WikiConfigPatch {
@@ -69,10 +88,15 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
             set_api_url: None,
             set_custom_namespaces: Some(discovered.clone()),
         };
-        if args.api_url.is_some() || config.wiki.api_url.is_none() {
+        if args.api_url.is_some() || config_api_url_from_env || config.wiki.api_url.is_none() {
             patch.set_api_url = resolved_api_url;
         }
-        if args.wiki_url.is_some() || args.api_url.is_some() || config.wiki.url.is_none() {
+        if args.wiki_url.is_some()
+            || args.api_url.is_some()
+            || config_wiki_url_from_env
+            || config_api_url_from_env
+            || config.wiki.url.is_none()
+        {
             patch.set_url = resolved_wiki_url;
         }
         wrote_namespace_config = patch_wiki_config(&paths.config_path, &patch)

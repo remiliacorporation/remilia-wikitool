@@ -19,7 +19,7 @@ pub(crate) struct ValidateArgs {
         value_enum,
         default_value_t = OutputFormat::Text,
         value_name = "FORMAT",
-        help = "Output format: text|json"
+        help = "Output format: text|json; text exits non-zero on findings, json reports findings via status"
     )]
     format: OutputFormat,
     #[arg(long, help = "Omit detailed issue lists and print category counts")]

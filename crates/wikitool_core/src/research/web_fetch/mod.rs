@@ -154,13 +154,13 @@ pub(crate) fn external_client() -> Result<ExternalClient> {
 pub(crate) fn external_client_with_session(
     session: Option<ExternalFetchSession>,
 ) -> Result<ExternalClient> {
-    let timeout_ms = env_value_u64("WIKI_HTTP_TIMEOUT_MS", DEFAULT_TIMEOUT_MS);
-    let retries = env_value_usize("WIKI_HTTP_RETRIES", DEFAULT_RETRIES);
-    let retry_delay_ms = env_value_u64("WIKI_HTTP_RETRY_DELAY_MS", DEFAULT_RETRY_DELAY_MS);
+    let timeout_ms = env_value_u64("WIKITOOL_HTTP_TIMEOUT_MS", DEFAULT_TIMEOUT_MS);
+    let retries = env_value_usize("WIKITOOL_HTTP_RETRIES", DEFAULT_RETRIES);
+    let retry_delay_ms = env_value_u64("WIKITOOL_HTTP_RETRY_DELAY_MS", DEFAULT_RETRY_DELAY_MS);
     let user_agent = session
         .as_ref()
         .and_then(|session| session.user_agent.clone())
-        .unwrap_or_else(|| env_value("WIKI_USER_AGENT", DEFAULT_USER_AGENT));
+        .unwrap_or_else(|| env_value("WIKITOOL_USER_AGENT", DEFAULT_USER_AGENT));
     let client = Client::builder()
         .timeout(Duration::from_millis(timeout_ms))
         .build()

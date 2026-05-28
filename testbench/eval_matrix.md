@@ -102,7 +102,7 @@ Record wall-clock time and whether the run hit local-only or network-backed surf
 Commands:
 
 - `wikitool knowledge article-start "<Topic>" --format json --view brief`
-- `wikitool knowledge article-start "<Topic>" --format json --view full --include-pack`
+- `wikitool knowledge article-start "<Topic>" --format json --view full`
 - `wikitool research fetch "<URL>" --output json`
 - `wikitool article lint wiki_content/Main/<Topic>.wiki --format json`
 - `wikitool wiki capabilities sync --format json`

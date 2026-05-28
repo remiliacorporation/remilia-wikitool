@@ -2,6 +2,26 @@
 
 Chronological release notes for tagged wikitool versions.
 
+## v0.3.1
+
+Date: 2026-05-28
+
+Surface hardening for the Remilia-first default and agent-facing command contract.
+
+### Breaking changes
+
+- Removed bare `WIKI_*` environment variables. Use `WIKITOOL_WIKI_URL`, `WIKITOOL_WIKI_API_URL`, `WIKITOOL_USER_AGENT`, `WIKITOOL_ARTICLE_PATH`, `WIKITOOL_BOT_USER`, and `WIKITOOL_BOT_PASS`.
+- Renamed the default docs profile from `remilia-mw-1.44` to `remilia-wiki`.
+- Removed the public `knowledge pack` command and the raw-pack flags from `knowledge article-start`; use `knowledge article-start`, `knowledge contracts`, and `knowledge inspect` directly.
+
+### Fixes
+
+- `wikitool init` materializes Remilia Wiki by default while runtime resolution remains env > config > none.
+- `wikitool config show` reports resolved wiki target values with their sources.
+- `init --no-network` skips namespace discovery for offline/bootstrap runs.
+- `validate --format json` keeps findings in the JSON status instead of using the process exit code for expected validation failures.
+- MediaWiki search snippets decode HTML entities before emitting JSON.
+
 ## v0.3.0
 
 Date: 2026-05-28
@@ -41,8 +61,8 @@ The core idea: wikitool's local index should give an AI agent everything it need
 
 ### Breaking changes
 
-- **Database reset required.** The knowledge index schema is incompatible with v0.1.0. Delete `.wikitool/data/wikitool.db` and rebuild with `wikitool pull --full --all && wikitool knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing`.
-- **Removed commands:** `workflow ask`, `workflow authoring-pack`, `db sync`, `index rebuild`. Use `knowledge article-start`, `knowledge pack`, and `knowledge build` respectively.
+- **Database reset required.** The knowledge index schema is incompatible with v0.1.0. Delete `.wikitool/data/wikitool.db` and rebuild with `wikitool pull --full --all && wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing`.
+- **Removed commands:** `workflow ask`, `workflow authoring-pack`, `db sync`, `index rebuild`. Use `knowledge article-start` and `knowledge build` respectively.
 - **Skill surface collapsed.** Nine Claude skills reduced to two: `/wikitool` (operator) and `/review` (content gate). The old skill names no longer resolve.
 
 ### New capabilities
@@ -84,7 +104,7 @@ First public release. Single self-contained binary per platform with bundled AI 
 
 **Sync & editing** — Pull articles, templates, and categories from any MediaWiki wiki. Push changes with conflict detection, dry-run preview, and edit summaries. Diff, status, and delete with backup support.
 
-**Search & context** — FTS5 full-text search. Cross-page chunk retrieval with token budgeting. Authoring knowledge packs.
+**Search & context** — FTS5 full-text search. Cross-page chunk retrieval with token budgeting. Authoring briefs.
 
 **Validation** — Broken link scanning, Lua module linting via Selene, text and JSON report export.
 

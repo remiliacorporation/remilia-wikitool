@@ -8,6 +8,7 @@ pub(crate) use wikitool_core::schema::LOCAL_DB_POLICY_MESSAGE;
 mod article_cli;
 mod briefs;
 mod cli_support;
+mod config_cli;
 mod db_cli;
 #[cfg(feature = "maintainer")]
 mod dev_cli;
@@ -75,6 +76,8 @@ impl RuntimeOptions {
 enum Commands {
     #[command(about = "Initialize a new wikitool project")]
     Init(sync_cli::InitArgs),
+    #[command(about = "Show resolved configuration and target-wiki sources")]
+    Config(config_cli::ConfigArgs),
     #[command(about = "Pull wiki content and templates to local files")]
     Pull(sync_cli::PullArgs),
     #[command(about = "Push local changes to the live wiki")]
@@ -141,6 +144,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Init(args)) => sync_cli::run_init(&runtime, args),
+        Some(Commands::Config(args)) => config_cli::run_config(&runtime, args),
         Some(Commands::Pull(args)) => sync_cli::run_pull(&runtime, args),
         Some(Commands::Push(args)) => sync_cli::run_push(&runtime, args),
         Some(Commands::Diff(args)) => sync_cli::run_diff(&runtime, args),

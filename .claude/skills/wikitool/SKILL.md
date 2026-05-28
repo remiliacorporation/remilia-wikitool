@@ -54,7 +54,6 @@ wikitool wiki surface show --format json --view brief
 wikitool templates show "Template:Infobox person" --format json --view brief
 wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --view brief --diversify
-wikitool knowledge pack "Topic" --format json
 ```
 
 Maintainer-only lanes (`docs generate-reference`, `docs audit`, `dev`, `release`) require
@@ -65,5 +64,5 @@ Maintainer-only lanes (`docs generate-reference`, `docs audit`, `dev`, `release`
 1. Treat local files as the editor-facing source of truth.
 2. Treat SQLite as an AI retrieval index: semantic page profiles, sections, templates, module invocation patterns, references, source authorities, identifiers, template implementation bundles, pinned docs corpora, links, and media.
 3. Do not describe reference rows as quality scored; use the stored retrieval signals, authority/identifier data, and source metadata directly.
-4. Prefer `knowledge article-start --view brief` as the default authoring retrieval front door; use `knowledge pack` only when the deeper raw substrate is needed, and use `knowledge status` to verify readiness before depending on local context.
+4. Prefer `knowledge article-start --view brief` as the default authoring retrieval front door, and use `knowledge status` to verify readiness before depending on local context.
 5. Keep agent context compact: prefer wikitool briefs (`article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, `review --view brief`) before requesting full payloads, broad selections, or high token budgets.

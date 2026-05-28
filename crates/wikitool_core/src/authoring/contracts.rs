@@ -73,11 +73,11 @@ pub(crate) fn apply_payload_mode(report: &mut AuthoringKnowledgePackResult) {
     let omitted = &mut report.context_summary.wiki_contract_context.omitted_detail;
     push_unique(
         omitted,
-        "template implementation chunks omitted; use `--payload full` or `knowledge inspect templates TEMPLATE --format json` for full source context",
+        "template implementation chunks omitted; use `knowledge inspect templates TEMPLATE --format json` for full source context",
     );
     push_unique(
         omitted,
-        "docs section/example bodies omitted; use `docs context` or `--payload full` for expanded technical context",
+        "docs section/example bodies omitted; use `docs context` for expanded technical context",
     );
     refresh_contract_token_estimate(&mut report.context_summary.wiki_contract_context);
 }

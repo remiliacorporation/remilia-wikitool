@@ -65,7 +65,6 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             body.contains("## Token Discipline")
                 && body.contains("Agent-facing defaults are intentionally compact")
                 && body.contains("--view brief")
-                && body.contains("knowledge pack --payload full")
                 && body.contains("--view full"),
             "packaged guidance must preserve the compact-default/token-discipline contract"
         );
@@ -110,7 +109,7 @@ fn ai_pack_readme_keeps_shipping_and_scratch_boundaries_explicit() {
 }
 
 #[test]
-fn thin_wrappers_reference_help_and_keep_raw_pack_secondary() {
+fn thin_wrappers_reference_help_and_keep_article_start_primary() {
     let claude_skill = read_repo_file("ai-pack/.claude/skills/wikitool.md");
     let codex_skill = read_repo_file("ai-pack/codex_skills/wikitool-operator/SKILL.md");
     let local_skill = read_repo_file(".claude/skills/wikitool/SKILL.md");
@@ -135,8 +134,8 @@ fn thin_wrappers_reference_help_and_keep_raw_pack_secondary() {
             "thin wrappers must tell agents to inspect local changes and refresh wiki state at session start"
         );
         assert!(
-            body.contains("knowledge pack"),
-            "thin wrappers must still mention raw knowledge pack access"
+            !body.contains("knowledge pack"),
+            "thin wrappers must not refer to the retired raw pack command"
         );
         assert!(
             body.contains("Keep agent context compact") && body.contains("--view brief"),

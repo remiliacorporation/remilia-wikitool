@@ -67,7 +67,7 @@ before relying on indexed content:
 wikitool status --modified --format json
 wikitool diff --format json
 wikitool workflow session-refresh
-wikitool knowledge status --docs-profile remilia-mw-1.44 --format json
+wikitool knowledge status --docs-profile remilia-wiki --format json
 ```
 
 Use `wikitool workflow full-refresh` only when the local database or sync ledger is missing, stale,
@@ -87,18 +87,14 @@ wikitool knowledge article-start "Cheetah" --contract-query "species infobox tax
 wikitool knowledge contracts search "contract terms" --format json
 ```
 
-Use `knowledge pack` only when `article-start` is too collapsed and you need the deeper retrieval
-substrate. Its default compact payload separates subject context from wiki contract context; use
-`--payload full` only when implementation bodies or expanded docs text are needed.
-
 ## Token Discipline
 
 Agent-facing defaults are intentionally compact. Start from wikitool brief views:
 `knowledge article-start --view brief`, `knowledge inspect chunks --view brief`,
 `templates show --view brief`, `wiki surface show --view brief`, and
-`review --view brief`. Reserve `knowledge pack --payload full`, `--view full`, broad
-`knowledge inspect` selections, and high token budgets for cases where the brief identifies a
-concrete need. Prefer one targeted drill-down over loading a whole catalog or page set into context.
+`review --view brief`. Reserve `--view full`, broad `knowledge inspect` selections, and high token
+budgets for cases where the brief identifies a concrete need. Prefer one targeted drill-down over
+loading a whole catalog or page set into context.
 
 ## Research And Source Boundaries
 

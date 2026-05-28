@@ -7,6 +7,8 @@ use anyhow::{Context, Result, bail};
 
 use crate::config::{
     DEFAULT_ARTICLE_PATH, DEFAULT_USER_AGENT, DEFAULT_WIKI_API_URL, DEFAULT_WIKI_URL,
+    ENV_WIKITOOL_ARTICLE_PATH, ENV_WIKITOOL_USER_AGENT, ENV_WIKITOOL_WIKI_API_URL,
+    ENV_WIKITOOL_WIKI_URL,
 };
 use crate::schema::LOCAL_DB_POLICY_MESSAGE;
 
@@ -336,7 +338,7 @@ pub fn render_materialized_config(paths: &ResolvedPaths, include_templates: bool
     let parser_config_path = normalize_for_display(&paths.parser_config_path);
 
     format!(
-        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Local DB policy: derived + disposable; delete `.wikitool/data/wikitool.db` if you need a clean rebuild.\n\n[wiki]\n# Defaults to Remilia Wiki so first-run agents can work immediately.\n# Replace these for another MediaWiki target.\nurl = \"{DEFAULT_WIKI_URL}\"\napi_url = \"{DEFAULT_WIKI_API_URL}\"\narticle_path = \"{DEFAULT_ARTICLE_PATH}\"\n# user_agent = \"{DEFAULT_USER_AGENT}\"\n\n# Populated by `wikitool init` namespace discovery when API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n",
+        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Local DB policy: derived + disposable; delete `.wikitool/data/wikitool.db` if you need a clean rebuild.\n\n[wiki]\n# Defaults to Remilia Wiki so first-run agents can work immediately.\n# Replace these for another MediaWiki target. Temporary overrides are {ENV_WIKITOOL_WIKI_URL},\n# {ENV_WIKITOOL_WIKI_API_URL}, {ENV_WIKITOOL_ARTICLE_PATH}, and {ENV_WIKITOOL_USER_AGENT}.\nurl = \"{DEFAULT_WIKI_URL}\"\napi_url = \"{DEFAULT_WIKI_API_URL}\"\narticle_path = \"{DEFAULT_ARTICLE_PATH}\"\n# user_agent = \"{DEFAULT_USER_AGENT}\"\n\n# Populated by `wikitool init` namespace discovery when API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n",
     )
 }
 

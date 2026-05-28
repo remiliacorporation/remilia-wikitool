@@ -179,8 +179,8 @@ WIKIEOF
 write_live_env() {
     local root="$1"
     cat > "$root/.env" << 'ENVEOF'
-WIKI_URL=https://wiki.remilia.org/
-WIKI_API_URL=https://wiki.remilia.org/api.php
+WIKITOOL_WIKI_URL=https://wiki.remilia.org/
+WIKITOOL_WIKI_API_URL=https://wiki.remilia.org/api.php
 ENVEOF
 }
 

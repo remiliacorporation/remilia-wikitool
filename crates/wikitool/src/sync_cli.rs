@@ -41,6 +41,8 @@ pub(crate) struct InitArgs {
     pub(crate) no_config: bool,
     #[arg(long, help = "Skip writing parser config")]
     pub(crate) no_parser_config: bool,
+    #[arg(long, help = "Skip network namespace discovery during initialization")]
+    pub(crate) no_network: bool,
 }
 
 #[derive(Debug, Args)]

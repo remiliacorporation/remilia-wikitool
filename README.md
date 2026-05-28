@@ -28,20 +28,21 @@ Put `wikitool` on your `PATH`, or run it from the unpacked folder.
 
 ## First run
 
-Point wikitool at your wiki, then run one command. Create a `.env` in the project folder:
-
-```bash
-WIKI_URL=https://your-wiki.example.org/
-WIKI_API_URL=https://your-wiki.example.org/api.php
-# only needed to push or delete:
-WIKI_BOT_USER=Username@BotName
-WIKI_BOT_PASS=your-bot-password
-```
-
-Then bootstrap the local runtime:
+Run one command. By default, `wikitool init` materializes Remilia Wiki as the target:
 
 ```bash
 wikitool workflow session-refresh
+```
+
+For another MediaWiki target, set project config with `wikitool init --wiki-url ... --api-url ...`
+or use temporary `WIKITOOL_*` environment overrides:
+
+```bash
+WIKITOOL_WIKI_URL=https://your-wiki.example.org/
+WIKITOOL_WIKI_API_URL=https://your-wiki.example.org/api.php
+# only needed to push or delete:
+WIKITOOL_BOT_USER=Username@BotName
+WIKITOOL_BOT_PASS=your-bot-password
 ```
 
 This creates the runtime layout, pulls content, builds the knowledge index, and syncs the

@@ -153,7 +153,7 @@ pub struct DocsImportProfileOptions {
 impl Default for DocsImportProfileOptions {
     fn default() -> Self {
         Self {
-            profile: "remilia-mw-1.44".to_string(),
+            profile: "remilia-wiki".to_string(),
             include_installed_extensions: false,
             include_extension_subpages: true,
             extra_extensions: Vec::new(),
@@ -556,8 +556,8 @@ pub(super) const DOCS_PROFILES: &[DocsProfileDefinition] = &[
         extension_seeds: AUTHORING_EXTENSION_SEEDS,
     },
     DocsProfileDefinition {
-        id: "remilia-mw-1.44",
-        label: "Remilia MediaWiki 1.44 authoring reference",
+        id: "remilia-wiki",
+        label: "Remilia Wiki authoring reference",
         source_version: "1.44",
         include_installed_extensions_by_default: true,
         page_seeds: AUTHORING_PAGE_SEEDS,

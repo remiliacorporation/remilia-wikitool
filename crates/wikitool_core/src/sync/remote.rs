@@ -67,24 +67,24 @@ pub fn delete_remote_page_with_config(
     reason: &str,
     config: &crate::config::WikiConfig,
 ) -> Result<RemoteDeleteReport> {
-    let username = match env::var("WIKI_BOT_USER") {
+    let username = match env::var("WIKITOOL_BOT_USER") {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
             return Ok(RemoteDeleteReport {
                 status: RemoteDeleteStatus::SkippedMissingCredentials,
                 title: title.to_string(),
-                detail: Some("WIKI_BOT_USER is not set".to_string()),
+                detail: Some("WIKITOOL_BOT_USER is not set".to_string()),
                 request_count: 0,
             });
         }
     };
-    let password = match env::var("WIKI_BOT_PASS") {
+    let password = match env::var("WIKITOOL_BOT_PASS") {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
             return Ok(RemoteDeleteReport {
                 status: RemoteDeleteStatus::SkippedMissingCredentials,
                 title: title.to_string(),
-                detail: Some("WIKI_BOT_PASS is not set".to_string()),
+                detail: Some("WIKITOOL_BOT_PASS is not set".to_string()),
                 request_count: 0,
             });
         }
@@ -122,7 +122,7 @@ pub fn discover_custom_namespaces(
     config: &crate::config::WikiConfig,
 ) -> Result<Vec<crate::config::CustomNamespace>> {
     if config.api_url_owned().is_none() {
-        bail!("wiki API URL is not configured (set [wiki].api_url or WIKI_API_URL)");
+        bail!("wiki API URL is not configured (set [wiki].api_url or WIKITOOL_WIKI_API_URL)");
     }
     let mut client = MediaWikiClient::from_config(config)?;
     client.discover_custom_namespaces()

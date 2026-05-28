@@ -295,7 +295,7 @@ pub fn discover_installed_extensions_from_wiki_with_config(
         .or_else(|| config.api_url_owned())
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "wiki API URL is not configured (set [wiki].api_url, WIKI_API_URL, or WIKITOOL_INSTALLED_EXTENSIONS_API_URL)"
+                "wiki API URL is not configured (set [wiki].api_url, WIKITOOL_WIKI_API_URL, or WIKITOOL_INSTALLED_EXTENSIONS_API_URL)"
             )
         })?;
     let user_agent = env_value("WIKITOOL_DOCS_USER_AGENT", DEFAULT_USER_AGENT);

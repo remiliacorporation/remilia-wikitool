@@ -6,7 +6,8 @@ use wikitool_core::authoring::model::{
     RequiredTemplate, SectionSkeleton, TemplateSurfaceEntry,
 };
 use wikitool_core::knowledge::authoring::{
-    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, build_authoring_knowledge_pack,
+    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringPayloadMode,
+    build_authoring_knowledge_pack,
 };
 use wikitool_core::knowledge::status::knowledge_status;
 use wikitool_core::profile::load_or_build_remilia_profile_overlay;
@@ -69,7 +70,7 @@ pub(super) fn run_knowledge_article_start(
             template_limit: args.template_limit,
             docs_profile: args.docs_profile.clone(),
             diversify: use_diversify,
-            payload_mode: args.payload.into(),
+            payload_mode: AuthoringPayloadMode::Compact,
             contract_profile: args.contract_profile.into(),
             contract_query: normalize_option(args.contract_query.as_deref()),
         },
@@ -100,11 +101,6 @@ pub(super) fn run_knowledge_article_start(
                 knowledge_generation: status.knowledge_generation.clone(),
                 result: KnowledgeArticleStartPayload::Found {
                     article_start: Box::new(article_start),
-                    raw_pack: if args.include_pack {
-                        Some(report)
-                    } else {
-                        None
-                    },
                 },
             }
         }
@@ -440,10 +436,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             drilldowns: Vec::new(),
             full_view_command: None,
         },
-        KnowledgeArticleStartPayload::Found {
-            article_start,
-            raw_pack,
-        } => {
+        KnowledgeArticleStartPayload::Found { article_start } => {
             let mut warnings = output.degradations.clone();
             warnings.extend(
                 article_start
@@ -704,11 +697,6 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                         "json".to_string(),
                         "--view".to_string(),
                         "full".to_string(),
-                        if raw_pack.is_some() {
-                            "--include-pack".to_string()
-                        } else {
-                            String::new()
-                        },
                     ]
                     .into_iter()
                     .filter(|value| !value.is_empty())

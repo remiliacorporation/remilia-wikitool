@@ -51,7 +51,7 @@ fn sample_snapshot() -> WikiProfileSnapshot {
             schema_version: "profile_overlay_v1".to_string(),
             profile_id: "remilia".to_string(),
             base_profile_id: "remilia-base".to_string(),
-            docs_profile: "remilia-mw-1.44".to_string(),
+            docs_profile: "remilia-wiki".to_string(),
             source_documents: vec![ProfileSourceDocument {
                 relative_path: "docs/profile.md".to_string(),
                 content_hash: "abc".to_string(),

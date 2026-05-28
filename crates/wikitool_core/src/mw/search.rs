@@ -2,6 +2,8 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::research::entities::decode_html_entities;
+
 use super::client::{ExternalSearchHit, MediaWikiClient};
 
 const SEARCH_PROPS: &str = concat!(
@@ -156,8 +158,8 @@ fn decode_search_response(
         what: options.what,
         namespaces: options.namespaces.clone(),
         total_hits: parse_u64(parsed.query.searchinfo.totalhits),
-        suggestion: normalize_optional_string(parsed.query.searchinfo.suggestion),
-        rewritten_query: normalize_optional_string(parsed.query.searchinfo.rewrittenquery),
+        suggestion: normalize_optional_search_string(parsed.query.searchinfo.suggestion),
+        rewritten_query: normalize_optional_search_string(parsed.query.searchinfo.rewrittenquery),
         hits: parsed
             .query
             .search
@@ -167,15 +169,15 @@ fn decode_search_response(
                 namespace: item.ns,
                 page_id: item.pageid,
                 word_count: parse_u64(item.wordcount),
-                snippet: item.snippet.unwrap_or_default(),
+                snippet: decode_html_entities(&item.snippet.unwrap_or_default()),
                 timestamp: item.timestamp,
                 byte_size: parse_u64(item.size),
-                title_snippet: normalize_optional_string(item.titlesnippet),
+                title_snippet: normalize_optional_search_string(item.titlesnippet),
                 redirect_title: normalize_optional_string(item.redirecttitle),
-                redirect_snippet: normalize_optional_string(item.redirectsnippet),
+                redirect_snippet: normalize_optional_search_string(item.redirectsnippet),
                 section_title: normalize_optional_string(item.sectiontitle),
-                section_snippet: normalize_optional_string(item.sectionsnippet),
-                category_snippet: normalize_optional_string(item.categorysnippet),
+                section_snippet: normalize_optional_search_string(item.sectionsnippet),
+                category_snippet: normalize_optional_search_string(item.categorysnippet),
             })
             .collect(),
     })
@@ -194,6 +196,10 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+fn normalize_optional_search_string(value: Option<String>) -> Option<String> {
+    normalize_optional_string(value).map(|value| decode_html_entities(&value))
 }
 
 #[cfg(test)]
@@ -236,8 +242,8 @@ mod tests {
                 "query": {
                     "searchinfo": {
                         "totalhits": 42,
-                        "suggestion": "Milady",
-                        "rewrittenquery": "Milady Maker"
+                        "suggestion": "Milady &amp; Maker",
+                        "rewrittenquery": "Milady&#039;s Maker"
                     },
                     "search": [
                         {
@@ -246,13 +252,13 @@ mod tests {
                             "pageid": 123,
                             "size": 4096,
                             "wordcount": 512,
-                            "snippet": "A <span>snippet</span>",
-                            "titlesnippet": "<span>Milady</span> Maker",
+                            "snippet": "A &quot;<span>snippet</span>&quot;",
+                            "titlesnippet": "<span>Milady</span> Maker&#039;s",
                             "redirecttitle": "Milady",
-                            "redirectsnippet": "Redirect <span>match</span>",
+                            "redirectsnippet": "Redirect &amp; <span>match</span>",
                             "sectiontitle": "History",
-                            "sectionsnippet": "Section <span>match</span>",
-                            "categorysnippet": "Category:<span>Milady</span>",
+                            "sectionsnippet": "Section &quot;<span>match</span>&quot;",
+                            "categorysnippet": "Category:<span>Milady</span>&amp;Friends",
                             "timestamp": "2026-03-01T12:00:00Z"
                         }
                     ]
@@ -265,8 +271,8 @@ mod tests {
         assert_eq!(report.what, MediaWikiSearchWhat::Title);
         assert_eq!(report.namespaces, vec![0, 14]);
         assert_eq!(report.total_hits, Some(42));
-        assert_eq!(report.suggestion.as_deref(), Some("Milady"));
-        assert_eq!(report.rewritten_query.as_deref(), Some("Milady Maker"));
+        assert_eq!(report.suggestion.as_deref(), Some("Milady & Maker"));
+        assert_eq!(report.rewritten_query.as_deref(), Some("Milady's Maker"));
         assert_eq!(report.hits.len(), 1);
 
         let hit = &report.hits[0];
@@ -278,22 +284,22 @@ mod tests {
         assert_eq!(hit.timestamp.as_deref(), Some("2026-03-01T12:00:00Z"));
         assert_eq!(
             hit.title_snippet.as_deref(),
-            Some("<span>Milady</span> Maker")
+            Some("<span>Milady</span> Maker's")
         );
         assert_eq!(hit.redirect_title.as_deref(), Some("Milady"));
         assert_eq!(
             hit.redirect_snippet.as_deref(),
-            Some("Redirect <span>match</span>")
+            Some("Redirect & <span>match</span>")
         );
         assert_eq!(hit.section_title.as_deref(), Some("History"));
         assert_eq!(
             hit.section_snippet.as_deref(),
-            Some("Section <span>match</span>")
+            Some("Section \"<span>match</span>\"")
         );
         assert_eq!(
             hit.category_snippet.as_deref(),
-            Some("Category:<span>Milady</span>")
+            Some("Category:<span>Milady</span>&Friends")
         );
-        assert_eq!(hit.snippet, "A <span>snippet</span>");
+        assert_eq!(hit.snippet, "A \"<span>snippet</span>\"");
     }
 }

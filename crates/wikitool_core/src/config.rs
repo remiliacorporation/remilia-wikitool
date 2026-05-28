@@ -10,6 +10,10 @@ pub const DEFAULT_USER_AGENT: &str = concat!("wikitool/", env!("CARGO_PKG_VERSIO
 pub const DEFAULT_ARTICLE_PATH: &str = "/$1";
 pub const DEFAULT_WIKI_URL: &str = "https://wiki.remilia.org";
 pub const DEFAULT_WIKI_API_URL: &str = "https://wiki.remilia.org/api.php";
+pub const ENV_WIKITOOL_WIKI_URL: &str = "WIKITOOL_WIKI_URL";
+pub const ENV_WIKITOOL_WIKI_API_URL: &str = "WIKITOOL_WIKI_API_URL";
+pub const ENV_WIKITOOL_USER_AGENT: &str = "WIKITOOL_USER_AGENT";
+pub const ENV_WIKITOOL_ARTICLE_PATH: &str = "WIKITOOL_ARTICLE_PATH";
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct WikiConfig {
@@ -34,6 +38,29 @@ pub struct CustomNamespace {
     pub folder: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ResolvedConfigValue {
+    pub value: Option<String>,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_key: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WikiTargetResolution {
+    pub url: ResolvedConfigValue,
+    pub api_url: ResolvedConfigValue,
+    pub article_path: ResolvedConfigValue,
+    pub user_agent: ResolvedConfigValue,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EnvOverride {
+    value: String,
+    key: &'static str,
+}
+
 impl CustomNamespace {
     pub fn folder(&self) -> &str {
         self.folder.as_deref().unwrap_or(&self.name)
@@ -43,45 +70,23 @@ impl CustomNamespace {
 impl WikiConfig {
     /// Resolve the wiki API URL with owned return: env > config.
     pub fn api_url_owned(&self) -> Option<String> {
-        if let Ok(value) = env::var("WIKI_API_URL") {
-            let trimmed = value.trim().to_string();
-            if !trimmed.is_empty() {
-                return Some(trimmed);
-            }
-        }
-        self.wiki.api_url.clone()
+        self.resolve_wiki_target().api_url.value
     }
 
-    /// Resolve the wiki base URL: env WIKI_URL > config > derived from api_url.
+    /// Resolve the wiki base URL: env > config > derived from api_url.
     pub fn wiki_url(&self) -> Option<String> {
-        if let Ok(value) = env::var("WIKI_URL") {
-            let trimmed = value.trim().to_string();
-            if !trimmed.is_empty() {
-                return Some(trimmed);
-            }
-        }
-        if let Some(ref url) = self.wiki.url {
-            return Some(url.clone());
-        }
-        // Try to derive from api_url by stripping /api.php
-        self.api_url_owned().and_then(|api| derive_wiki_url(&api))
+        self.resolve_wiki_target().url.value
     }
 
-    /// Resolve user agent: env WIKI_USER_AGENT > config > DEFAULT_USER_AGENT.
+    /// Resolve user agent: env > config > DEFAULT_USER_AGENT.
     pub fn user_agent(&self) -> String {
-        if let Ok(value) = env::var("WIKI_USER_AGENT") {
-            let trimmed = value.trim().to_string();
-            if !trimmed.is_empty() {
-                return trimmed;
-            }
-        }
-        self.wiki
+        self.resolve_wiki_target()
             .user_agent
-            .clone()
+            .value
             .unwrap_or_else(|| DEFAULT_USER_AGENT.to_string())
     }
 
-    /// Resolve article path: env WIKI_ARTICLE_PATH > config > DEFAULT_ARTICLE_PATH.
+    /// Resolve article path: config > DEFAULT_ARTICLE_PATH.
     pub fn article_path(&self) -> &str {
         // Can't do env for borrowed return; check config then default.
         self.wiki
@@ -92,13 +97,167 @@ impl WikiConfig {
 
     /// Resolve article path with env override (owned).
     pub fn article_path_owned(&self) -> String {
-        if let Ok(value) = env::var("WIKI_ARTICLE_PATH") {
-            let trimmed = value.trim().to_string();
-            if !trimmed.is_empty() {
-                return trimmed;
-            }
+        self.resolve_wiki_target()
+            .article_path
+            .value
+            .unwrap_or_else(|| DEFAULT_ARTICLE_PATH.to_string())
+    }
+
+    pub fn resolve_wiki_target(&self) -> WikiTargetResolution {
+        let api_url = resolve_string_setting(
+            env_override(ENV_WIKITOOL_WIKI_API_URL),
+            self.wiki.api_url.clone(),
+            "wiki.api_url",
+            None,
+            None,
+        );
+        let derived_wiki_url = api_url
+            .value
+            .as_deref()
+            .and_then(derive_wiki_url)
+            .map(|value| {
+                let source_key = api_url
+                    .source_key
+                    .clone()
+                    .or_else(|| Some("wiki.api_url".to_string()));
+                (value, source_key)
+            });
+        let url = resolve_string_setting(
+            env_override(ENV_WIKITOOL_WIKI_URL),
+            self.wiki.url.clone(),
+            "wiki.url",
+            derived_wiki_url.map(|(value, source_key)| ResolvedConfigValue {
+                value: Some(value),
+                source: "derived_from_api_url".to_string(),
+                source_key,
+            }),
+            None,
+        );
+        let article_path = resolve_string_setting(
+            env_override(ENV_WIKITOOL_ARTICLE_PATH),
+            self.wiki.article_path.clone(),
+            "wiki.article_path",
+            None,
+            Some(DEFAULT_ARTICLE_PATH),
+        );
+        let user_agent = resolve_string_setting(
+            env_override(ENV_WIKITOOL_USER_AGENT),
+            self.wiki.user_agent.clone(),
+            "wiki.user_agent",
+            None,
+            Some(DEFAULT_USER_AGENT),
+        );
+        let warnings = wiki_target_warnings(self);
+        WikiTargetResolution {
+            url,
+            api_url,
+            article_path,
+            user_agent,
+            warnings,
         }
-        self.article_path().to_string()
+    }
+}
+
+pub fn env_override_owned(key: &'static str) -> Option<String> {
+    env_override(key).map(|override_value| override_value.value)
+}
+
+pub fn wiki_target_warnings_for_config(config: &WikiConfig) -> Vec<String> {
+    config.resolve_wiki_target().warnings
+}
+
+fn resolve_string_setting(
+    env_value: Option<EnvOverride>,
+    config_value: Option<String>,
+    config_key: &'static str,
+    derived_value: Option<ResolvedConfigValue>,
+    default_value: Option<&'static str>,
+) -> ResolvedConfigValue {
+    if let Some(value) = env_value {
+        return ResolvedConfigValue {
+            value: Some(value.value),
+            source: "env".to_string(),
+            source_key: Some(value.key.to_string()),
+        };
+    }
+    if let Some(value) = config_value {
+        return ResolvedConfigValue {
+            value: Some(value),
+            source: "config".to_string(),
+            source_key: Some(config_key.to_string()),
+        };
+    }
+    if let Some(value) = derived_value {
+        return value;
+    }
+    if let Some(value) = default_value {
+        return ResolvedConfigValue {
+            value: Some(value.to_string()),
+            source: "default".to_string(),
+            source_key: None,
+        };
+    }
+    ResolvedConfigValue {
+        value: None,
+        source: "none".to_string(),
+        source_key: None,
+    }
+}
+
+fn env_override(key: &'static str) -> Option<EnvOverride> {
+    non_empty_env(key).map(|value| EnvOverride { value, key })
+}
+
+fn non_empty_env(key: &str) -> Option<String> {
+    env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn wiki_target_warnings(config: &WikiConfig) -> Vec<String> {
+    let mut warnings = Vec::new();
+    push_override_warning(
+        &mut warnings,
+        "wiki.api_url",
+        config.wiki.api_url.as_deref(),
+        env_override(ENV_WIKITOOL_WIKI_API_URL),
+    );
+    push_override_warning(
+        &mut warnings,
+        "wiki.url",
+        config.wiki.url.as_deref(),
+        env_override(ENV_WIKITOOL_WIKI_URL),
+    );
+    push_override_warning(
+        &mut warnings,
+        "wiki.article_path",
+        config.wiki.article_path.as_deref(),
+        env_override(ENV_WIKITOOL_ARTICLE_PATH),
+    );
+    push_override_warning(
+        &mut warnings,
+        "wiki.user_agent",
+        config.wiki.user_agent.as_deref(),
+        env_override(ENV_WIKITOOL_USER_AGENT),
+    );
+    warnings
+}
+
+fn push_override_warning(
+    warnings: &mut Vec<String>,
+    config_key: &str,
+    config_value: Option<&str>,
+    env_value: Option<EnvOverride>,
+) {
+    let (Some(config_value), Some(env_value)) = (config_value, env_value) else {
+        return;
+    };
+    if config_value != env_value.value {
+        warnings.push(format!(
+            "{} overrides {} (config={}, env={})",
+            env_value.key, config_key, config_value, env_value.value
+        ));
     }
 }
 

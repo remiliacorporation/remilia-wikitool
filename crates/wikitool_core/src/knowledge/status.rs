@@ -6,7 +6,7 @@ use crate::runtime::ResolvedPaths;
 use crate::schema::open_initialized_database_connection;
 use crate::support::{table_exists, unix_timestamp};
 
-pub const DEFAULT_DOCS_PROFILE: &str = "remilia-mw-1.44";
+pub const DEFAULT_DOCS_PROFILE: &str = "remilia-wiki";
 pub const KNOWLEDGE_GENERATION: &str = concat!("knowledge-v", env!("CARGO_PKG_VERSION"));
 
 const CONTENT_INDEX_ARTIFACT_KEY: &str = "content_index";
@@ -361,7 +361,7 @@ mod tests {
                     expires_at_unix
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
-                    "profile:remilia-mw-1.44",
+                    "profile:remilia-wiki",
                     "profile",
                     "Remilia MediaWiki 1.44 authoring reference",
                     "mediawiki.org",

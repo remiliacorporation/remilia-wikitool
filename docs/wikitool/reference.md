@@ -19,6 +19,7 @@ Usage: wikitool [OPTIONS] [COMMAND]
 
 Commands:
   init       Initialize a new wikitool project
+  config     Show resolved configuration and target-wiki sources
   pull       Pull wiki content and templates to local files
   push       Push local changes to the live wiki
   diff       Show local changes not yet pushed to the wiki
@@ -68,6 +69,42 @@ Options:
       --force                Overwrite existing config/parser files
       --no-config            Skip writing .wikitool/config.toml
       --no-parser-config     Skip writing parser config
+      --no-network           Skip network namespace discovery during initialization
+  -h, --help                 Print help
+```
+
+## config
+
+```text
+Show resolved configuration and target-wiki sources
+
+Usage: wikitool config [OPTIONS] <COMMAND>
+
+Commands:
+  show  Show resolved configuration, paths, and target-wiki sources
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## config show
+
+```text
+Show resolved configuration, paths, and target-wiki sources
+
+Usage: wikitool config show [OPTIONS]
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
 
@@ -172,7 +209,7 @@ Run structural and link integrity checks
 Usage: wikitool validate [OPTIONS]
 
 Options:
-      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --format <FORMAT>      Output format: text|json; text exits non-zero on findings, json reports findings via status [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
       --summary              Omit detailed issue lists and print category counts
@@ -433,7 +470,7 @@ Hydrate a named docs profile
 Usage: wikitool docs import-profile [OPTIONS] [PROFILE]
 
 Arguments:
-  [PROFILE]  [default: remilia-mw-1.44]
+  [PROFILE]  [default: remilia-wiki]
 
 Options:
       --installed              Discover installed extensions from the configured wiki
@@ -622,7 +659,6 @@ Commands:
   build          Rebuild the local content knowledge index
   warm           Build content knowledge and hydrate a docs profile
   status         Report knowledge readiness and degradations
-  pack           Assemble the raw authoring knowledge substrate; prefer article-start for normal authoring
   article-start  Assemble an interpreted authoring brief for a topic
   contracts      Plan and search token-budgeted authoring contracts
   inspect        Inspect indexed knowledge structures directly
@@ -660,7 +696,7 @@ Build content knowledge and hydrate a docs profile
 Usage: wikitool knowledge warm [OPTIONS]
 
 Options:
-      --docs-profile <PROFILE>  Docs profile to hydrate during warmup [default: remilia-mw-1.44]
+      --docs-profile <PROFILE>  Docs profile to hydrate during warmup [default: remilia-wiki]
       --project-root <PATH>
       --data-dir <PATH>
       --docs-mode <MODE>        Docs hydration mode: missing|refresh|skip [default: missing] [possible values: missing, refresh, skip]
@@ -678,46 +714,13 @@ Report knowledge readiness and degradations
 Usage: wikitool knowledge status [OPTIONS]
 
 Options:
-      --docs-profile <PROFILE>  Docs profile to assess for authoring readiness [default: remilia-mw-1.44]
+      --docs-profile <PROFILE>  Docs profile to assess for authoring readiness [default: remilia-wiki]
       --project-root <PATH>
       --data-dir <PATH>
       --format <FORMAT>         Output format: text|json [default: text] [possible values: text, json]
       --config <PATH>
       --diagnostics             Print resolved runtime diagnostics
   -h, --help                    Print help
-```
-
-## knowledge pack
-
-```text
-Assemble the raw authoring knowledge substrate; prefer article-start for normal authoring
-
-Usage: wikitool knowledge pack [OPTIONS] [TOPIC]
-
-Arguments:
-  [TOPIC]  Primary article topic/title for retrieval
-
-Options:
-      --project-root <PATH>
-      --stub-path <PATH>            Optional stub wikitext file used for link/template hint extraction
-      --data-dir <PATH>
-      --related-limit <N>           Maximum related pages in the pack [default: 18]
-      --chunk-limit <N>             Maximum retrieved context chunks [default: 10]
-      --config <PATH>
-      --diagnostics                 Print resolved runtime diagnostics
-      --token-budget <TOKENS>       Token budget across retrieved chunks [default: 1200]
-      --max-pages <N>               Maximum distinct source pages in chunk retrieval [default: 8]
-      --link-limit <N>              Maximum internal link suggestions [default: 18]
-      --category-limit <N>          Maximum category suggestions [default: 8]
-      --template-limit <N>          Maximum template summaries [default: 16]
-      --docs-profile <PROFILE>      Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
-      --payload <MODE>              Authoring payload mode: compact|full [default: compact] [possible values: compact, full]
-      --contract-profile <PROFILE>  Contract traversal profile: index|author|implementation [default: author] [possible values: index, author, implementation]
-      --contract-query <QUERY>      Optional contract traversal query separate from TOPIC, such as "species infobox taxonomy"
-      --format <FORMAT>             Output format: text|json [default: json] [possible values: text, json]
-      --diversify                   Enable lexical chunk de-duplication and diversification
-      --no-diversify                Disable lexical chunk de-duplication and diversification
-  -h, --help                        Print help
 ```
 
 ## knowledge article-start
@@ -743,13 +746,11 @@ Options:
       --link-limit <N>              Maximum internal link suggestions [default: 18]
       --category-limit <N>          Maximum category suggestions [default: 8]
       --template-limit <N>          Maximum template summaries [default: 16]
-      --docs-profile <PROFILE>      Docs profile to use for bridged authoring retrieval [default: remilia-mw-1.44]
-      --payload <MODE>              Raw pack payload mode when --include-pack is used: compact|full [default: compact] [possible values: compact, full]
-      --contract-profile <PROFILE>  Contract traversal profile for --include-pack: index|author|implementation [default: author] [possible values: index, author, implementation]
+      --docs-profile <PROFILE>      Docs profile to use for bridged authoring retrieval [default: remilia-wiki]
+      --contract-profile <PROFILE>  Contract traversal profile: index|author|implementation [default: author] [possible values: index, author, implementation]
       --contract-query <QUERY>      Optional contract traversal query separate from TOPIC, such as "species infobox taxonomy"
       --format <FORMAT>             Output format: text|json [default: json] [possible values: text, json]
       --view <VIEW>                 JSON view: brief|full [default: brief] [possible values: brief, full]
-      --include-pack                Include the raw knowledge pack in JSON output
       --intent <INTENT>             Authoring intent: new|expand|audit|refresh [default: new] [possible values: new, expand, audit, refresh]
       --diversify                   Enable lexical chunk de-duplication and diversification
       --no-diversify                Disable lexical chunk de-duplication and diversification
@@ -1896,7 +1897,7 @@ Options:
       --diagnostics             Print resolved runtime diagnostics
       --pull                    Pull content after initialization (default: true)
       --no-pull                 Skip content pull during session refresh
-      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-mw-1.44]
+      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-wiki]
       --docs-mode <MODE>        Docs hydration mode for knowledge warmup: missing|refresh|skip [default: missing] [possible values: missing, refresh, skip]
   -h, --help                    Print help
 ```
@@ -1916,6 +1917,6 @@ Options:
       --config <PATH>
       --no-templates            Do not create templates/ during initialization
       --diagnostics             Print resolved runtime diagnostics
-      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-mw-1.44]
+      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-wiki]
   -h, --help                    Print help
 ```

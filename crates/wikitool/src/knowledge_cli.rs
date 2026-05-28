@@ -5,9 +5,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use serde::Serialize;
 use wikitool_core::authoring::model::{ArticleStartIntent, ArticleStartResult};
 use wikitool_core::docs::DocsImportProfileReport;
-use wikitool_core::knowledge::authoring::{
-    AuthoringContractProfile, AuthoringKnowledgePackResult, AuthoringPayloadMode,
-};
+use wikitool_core::knowledge::authoring::AuthoringContractProfile;
 use wikitool_core::knowledge::content_index::RebuildReport;
 use wikitool_core::knowledge::status::{
     DEFAULT_DOCS_PROFILE, KnowledgeReadinessLevel, KnowledgeStatusReport,
@@ -21,7 +19,6 @@ use crate::knowledge_inspect_cli;
 mod article_start;
 mod build;
 mod contracts;
-mod pack;
 mod shared;
 mod status;
 mod warm;
@@ -41,10 +38,6 @@ enum KnowledgeSubcommand {
     Warm(KnowledgeWarmArgs),
     #[command(about = "Report knowledge readiness and degradations")]
     Status(KnowledgeStatusArgs),
-    #[command(
-        about = "Assemble the raw authoring knowledge substrate; prefer article-start for normal authoring"
-    )]
-    Pack(KnowledgePackArgs),
     #[command(about = "Assemble an interpreted authoring brief for a topic")]
     ArticleStart(KnowledgeArticleStartArgs),
     #[command(about = "Plan and search token-budgeted authoring contracts")]
@@ -116,114 +109,6 @@ pub(crate) struct KnowledgeStatusArgs {
         help = "Output format: text|json"
     )]
     format: OutputFormat,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct KnowledgePackArgs {
-    #[arg(
-        value_name = "TOPIC",
-        help = "Primary article topic/title for retrieval"
-    )]
-    topic: Option<String>,
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Optional stub wikitext file used for link/template hint extraction"
-    )]
-    stub_path: Option<PathBuf>,
-    #[arg(
-        long,
-        default_value_t = 18,
-        value_name = "N",
-        help = "Maximum related pages in the pack"
-    )]
-    related_limit: usize,
-    #[arg(
-        long,
-        default_value_t = 10,
-        value_name = "N",
-        help = "Maximum retrieved context chunks"
-    )]
-    chunk_limit: usize,
-    #[arg(
-        long,
-        default_value_t = 1200,
-        value_name = "TOKENS",
-        help = "Token budget across retrieved chunks"
-    )]
-    token_budget: usize,
-    #[arg(
-        long,
-        default_value_t = 8,
-        value_name = "N",
-        help = "Maximum distinct source pages in chunk retrieval"
-    )]
-    max_pages: usize,
-    #[arg(
-        long,
-        default_value_t = 18,
-        value_name = "N",
-        help = "Maximum internal link suggestions"
-    )]
-    link_limit: usize,
-    #[arg(
-        long,
-        default_value_t = 8,
-        value_name = "N",
-        help = "Maximum category suggestions"
-    )]
-    category_limit: usize,
-    #[arg(
-        long,
-        default_value_t = 16,
-        value_name = "N",
-        help = "Maximum template summaries"
-    )]
-    template_limit: usize,
-    #[arg(
-        long,
-        default_value = DEFAULT_DOCS_PROFILE,
-        value_name = "PROFILE",
-        help = "Docs profile to use for bridged authoring retrieval"
-    )]
-    docs_profile: String,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = AuthoringPayloadArg::Compact,
-        value_name = "MODE",
-        help = "Authoring payload mode: compact|full"
-    )]
-    payload: AuthoringPayloadArg,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = AuthoringContractProfileArg::Author,
-        value_name = "PROFILE",
-        help = "Contract traversal profile: index|author|implementation"
-    )]
-    contract_profile: AuthoringContractProfileArg,
-    #[arg(
-        long,
-        value_name = "QUERY",
-        help = "Optional contract traversal query separate from TOPIC, such as \"species infobox taxonomy\""
-    )]
-    contract_query: Option<String>,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = OutputFormat::Json,
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: OutputFormat,
-    #[arg(long, help = "Enable lexical chunk de-duplication and diversification")]
-    diversify: bool,
-    #[arg(
-        long,
-        help = "Disable lexical chunk de-duplication and diversification"
-    )]
-    no_diversify: bool,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -298,17 +183,9 @@ pub(crate) struct KnowledgeArticleStartArgs {
     #[arg(
         long,
         value_enum,
-        default_value_t = AuthoringPayloadArg::Compact,
-        value_name = "MODE",
-        help = "Raw pack payload mode when --include-pack is used: compact|full"
-    )]
-    payload: AuthoringPayloadArg,
-    #[arg(
-        long,
-        value_enum,
         default_value_t = AuthoringContractProfileArg::Author,
         value_name = "PROFILE",
-        help = "Contract traversal profile for --include-pack: index|author|implementation"
+        help = "Contract traversal profile: index|author|implementation"
     )]
     contract_profile: AuthoringContractProfileArg,
     #[arg(
@@ -333,8 +210,6 @@ pub(crate) struct KnowledgeArticleStartArgs {
         help = "JSON view: brief|full"
     )]
     view: BriefView,
-    #[arg(long, help = "Include the raw knowledge pack in JSON output")]
-    include_pack: bool,
     #[arg(
         long,
         value_enum,
@@ -453,21 +328,6 @@ impl From<ArticleStartIntentArg> for ArticleStartIntent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-enum AuthoringPayloadArg {
-    Compact,
-    Full,
-}
-
-impl From<AuthoringPayloadArg> for AuthoringPayloadMode {
-    fn from(value: AuthoringPayloadArg) -> Self {
-        match value {
-            AuthoringPayloadArg::Compact => Self::Compact,
-            AuthoringPayloadArg::Full => Self::Full,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum AuthoringContractProfileArg {
     Index,
     Author,
@@ -499,23 +359,6 @@ struct KnowledgeWarmReport {
 }
 
 #[derive(Debug, Serialize)]
-struct KnowledgePackOutput {
-    docs_profile_requested: String,
-    readiness: KnowledgeReadinessLevel,
-    degradations: Vec<String>,
-    knowledge_generation: String,
-    result: KnowledgePackPayload,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "status", rename_all = "snake_case")]
-enum KnowledgePackPayload {
-    IndexMissing,
-    QueryMissing,
-    Found(Box<AuthoringKnowledgePackResult>),
-}
-
-#[derive(Debug, Serialize)]
 struct KnowledgeArticleStartOutput {
     docs_profile_requested: String,
     readiness: KnowledgeReadinessLevel,
@@ -531,7 +374,6 @@ enum KnowledgeArticleStartPayload {
     QueryMissing,
     Found {
         article_start: Box<ArticleStartResult>,
-        raw_pack: Option<Box<AuthoringKnowledgePackResult>>,
     },
 }
 
@@ -540,7 +382,6 @@ pub(crate) fn run_knowledge(runtime: &RuntimeOptions, args: KnowledgeArgs) -> Re
         KnowledgeSubcommand::Build(args) => build::run_knowledge_build(runtime, args),
         KnowledgeSubcommand::Warm(args) => run_knowledge_warm(runtime, args),
         KnowledgeSubcommand::Status(args) => status::run_knowledge_status(runtime, args),
-        KnowledgeSubcommand::Pack(args) => pack::run_knowledge_pack(runtime, args),
         KnowledgeSubcommand::ArticleStart(args) => {
             article_start::run_knowledge_article_start(runtime, args)
         }

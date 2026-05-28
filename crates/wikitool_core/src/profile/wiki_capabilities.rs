@@ -146,7 +146,7 @@ pub fn sync_wiki_capabilities_with_config(
 ) -> Result<WikiCapabilityManifest> {
     let mut client = MediaWikiClient::from_config(config)?;
     if client.config.api_url.trim().is_empty() {
-        bail!("wiki API URL is not configured (set [wiki].api_url or WIKI_API_URL)");
+        bail!("wiki API URL is not configured (set [wiki].api_url or WIKITOOL_WIKI_API_URL)");
     }
 
     let api_url = client.config.api_url.clone();

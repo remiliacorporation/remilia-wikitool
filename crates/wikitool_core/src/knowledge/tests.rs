@@ -75,7 +75,7 @@ fn test_profile_overlay() -> ProfileOverlay {
         schema_version: "profile_overlay_v1".to_string(),
         profile_id: "test-profile".to_string(),
         base_profile_id: "test-base".to_string(),
-        docs_profile: "remilia-mw-1.44".to_string(),
+        docs_profile: "remilia-wiki".to_string(),
         source_documents: Vec::new(),
         authoring: AuthoringRules {
             require_short_description: true,
@@ -1500,7 +1500,7 @@ fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
         crate::schema::open_initialized_database_connection(&paths.db_path).expect("open db");
     connection
         .execute(
-            "UPDATE docs_corpora SET source_profile = 'remilia-mw-1.44'",
+            "UPDATE docs_corpora SET source_profile = 'remilia-wiki'",
             [],
         )
         .expect("set docs profile");

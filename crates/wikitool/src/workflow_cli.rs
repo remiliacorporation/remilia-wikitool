@@ -112,6 +112,7 @@ fn run_workflow_session_refresh(
             force: false,
             no_config: false,
             no_parser_config: false,
+            no_network: false,
         },
     )?;
 
@@ -190,6 +191,7 @@ fn run_workflow_full_refresh(
             force: false,
             no_config: false,
             no_parser_config: false,
+            no_network: false,
         },
     )?;
 

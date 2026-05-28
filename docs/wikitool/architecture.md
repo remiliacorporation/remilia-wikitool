@@ -12,7 +12,7 @@ Wikitool is shaped around agentic wiki work, not generic scraping. The long-term
 CLI modules should stay thin at the top level. Large command families should use a facade plus
 focused submodules:
 
-- `knowledge_cli/`: build/warm/status, article-start, raw pack, contract traversal, shared output helpers.
+- `knowledge_cli/`: build/warm/status, article-start, contract traversal, shared output helpers.
 - `knowledge_inspect_cli/`: chunks, backlinks, templates, reference audits, index/page summaries.
 - `review_cli/`: pre-push workflow orchestration, lint/validation/push dry-run checks, draft gates,
   next-step shaping, and report output.
@@ -28,7 +28,7 @@ CLI lanes, or in a local `shared.rs` only when it is presentation glue.
 Default outputs must be useful in a constrained model context:
 
 - Prefer interpreted entry points such as `knowledge article-start` and wikitool brief JSON views.
-- Keep raw substrate explicit: `knowledge pack --payload full` and `wiki ... --view full` are opt-in.
+- Keep expanded output explicit: `--view full` is opt-in on brief-first surfaces.
 - Keep retrieval bounded by `--limit`, `--token-budget`, and `--max-pages`; broad commands should
   return counts, summaries, and follow-up commands before full bodies.
 - Preserve scoped drill-down lanes: `knowledge inspect chunks`, `knowledge inspect references`,
@@ -44,7 +44,7 @@ the compact/default behavior. Generated help changes require regenerating `docs/
 
 Agent guidance should stay aligned with the command boundaries:
 
-- Route authoring through `knowledge article-start`; use `knowledge pack` only for deeper substrate.
+- Route authoring through `knowledge article-start`; use `knowledge contracts` and `knowledge inspect` for targeted drill-downs.
 - Use `wiki profile show` and `wiki surface show` for target-wiki contracts, not assumptions from
   source wikis.
 - Use `knowledge inspect` subcommands for targeted retrieval and audit slices.

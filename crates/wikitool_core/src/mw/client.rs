@@ -7,7 +7,8 @@ use reqwest::{StatusCode, Url};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::support::{env_value, env_value_u64, env_value_usize};
+use crate::config::{ENV_WIKITOOL_USER_AGENT, ENV_WIKITOOL_WIKI_API_URL, env_override_owned};
+use crate::support::{env_value_u64, env_value_usize};
 
 #[derive(Debug, Clone)]
 pub struct PageTimestampInfo {
@@ -95,14 +96,16 @@ impl MediaWikiClientConfig {
 
     fn from_env_with_defaults(api_url_default: &str, user_agent_default: &str) -> Self {
         Self {
-            api_url: env_value("WIKI_API_URL", api_url_default),
-            user_agent: env_value("WIKI_USER_AGENT", user_agent_default),
-            timeout_ms: env_value_u64("WIKI_HTTP_TIMEOUT_MS", 30_000),
-            rate_limit_read_ms: env_value_u64("WIKI_RATE_LIMIT_READ", 300),
-            rate_limit_write_ms: env_value_u64("WIKI_RATE_LIMIT_WRITE", 1_000),
-            max_retries: env_value_usize("WIKI_HTTP_RETRIES", 2),
-            max_write_retries: env_value_usize("WIKI_HTTP_WRITE_RETRIES", 1),
-            retry_delay_ms: env_value_u64("WIKI_HTTP_RETRY_DELAY_MS", 500),
+            api_url: env_override_owned(ENV_WIKITOOL_WIKI_API_URL)
+                .unwrap_or_else(|| api_url_default.to_string()),
+            user_agent: env_override_owned(ENV_WIKITOOL_USER_AGENT)
+                .unwrap_or_else(|| user_agent_default.to_string()),
+            timeout_ms: env_value_u64("WIKITOOL_HTTP_TIMEOUT_MS", 30_000),
+            rate_limit_read_ms: env_value_u64("WIKITOOL_RATE_LIMIT_READ_MS", 300),
+            rate_limit_write_ms: env_value_u64("WIKITOOL_RATE_LIMIT_WRITE_MS", 1_000),
+            max_retries: env_value_usize("WIKITOOL_HTTP_RETRIES", 2),
+            max_write_retries: env_value_usize("WIKITOOL_HTTP_WRITE_RETRIES", 1),
+            retry_delay_ms: env_value_u64("WIKITOOL_HTTP_RETRY_DELAY_MS", 500),
         }
     }
 }
@@ -141,8 +144,12 @@ impl MediaWikiClient {
     }
 
     pub(crate) fn request_json_get(&mut self, params: &[(&str, String)]) -> Result<Value> {
-        let base_url = Url::parse(&self.config.api_url)
-            .with_context(|| format!("invalid WIKI_API_URL: {}", self.config.api_url))?;
+        let base_url = Url::parse(&self.config.api_url).with_context(|| {
+            format!(
+                "invalid {}: {}",
+                ENV_WIKITOOL_WIKI_API_URL, self.config.api_url
+            )
+        })?;
 
         let mut pairs = Vec::with_capacity(params.len() + 2);
         pairs.push(("format".to_string(), "json".to_string()));

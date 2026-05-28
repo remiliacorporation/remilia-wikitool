@@ -86,10 +86,10 @@ Packaged / distributable:
    - `TIER=live bash testbench/acceptance_workflows.sh`
 5. Validate the knowledge cutover from a fresh runtime:
    - `cargo run --package wikitool -- db reset --yes`
-   - `cargo run --package wikitool -- knowledge warm --docs-profile remilia-mw-1.44 --docs-mode missing`
+   - `cargo run --package wikitool -- knowledge warm --docs-profile remilia-wiki --docs-mode missing`
    - `cargo run --package wikitool -- wiki profile sync`
-   - `cargo run --package wikitool -- knowledge status --docs-profile remilia-mw-1.44`
-   - `cargo run --package wikitool -- knowledge article-start "Example Topic" --docs-profile remilia-mw-1.44 --format json`
+   - `cargo run --package wikitool -- knowledge status --docs-profile remilia-wiki`
+   - `cargo run --package wikitool -- knowledge article-start "Example Topic" --docs-profile remilia-wiki --format json`
    - `cargo run --package wikitool -- research wiki-search "Example Topic" --format json`
    - `cargo run --package wikitool -- article lint wiki_content/Main/Example_Topic.wiki --format json`
    - `cargo run --package wikitool -- knowledge inspect references duplicates --title "Example Topic" --format json`

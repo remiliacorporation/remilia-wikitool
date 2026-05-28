@@ -13,10 +13,10 @@ pub fn push_to_remote_with_config(
     let credentials = if options.dry_run {
         None
     } else {
-        let username = env::var("WIKI_BOT_USER")
-            .map_err(|_| anyhow::anyhow!("WIKI_BOT_USER is required for push"))?;
-        let password = env::var("WIKI_BOT_PASS")
-            .map_err(|_| anyhow::anyhow!("WIKI_BOT_PASS is required for push"))?;
+        let username = env::var("WIKITOOL_BOT_USER")
+            .map_err(|_| anyhow::anyhow!("WIKITOOL_BOT_USER is required for push"))?;
+        let password = env::var("WIKITOOL_BOT_PASS")
+            .map_err(|_| anyhow::anyhow!("WIKITOOL_BOT_PASS is required for push"))?;
         Some((username, password))
     };
     push_to_remote_with_api(

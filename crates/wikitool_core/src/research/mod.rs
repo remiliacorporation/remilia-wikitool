@@ -1,5 +1,5 @@
 pub mod cache;
-mod entities;
+pub(crate) mod entities;
 pub mod export;
 pub mod mediawiki_fetch;
 pub mod model;

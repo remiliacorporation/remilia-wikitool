@@ -1,9 +1,10 @@
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result};
 use clap::ValueEnum;
-use wikitool_core::config::{WikiConfig, load_config};
+use wikitool_core::config::{WikiConfig, load_config, wiki_target_warnings_for_config};
 use wikitool_core::filesystem::ScanStats;
 use wikitool_core::knowledge::content_index::StoredIndexStats;
 use wikitool_core::research::{ExportFormat, ExternalFetchFormat};
@@ -367,7 +368,23 @@ pub(crate) fn resolve_runtime_with_config(
     let paths = resolve_runtime_paths(runtime)?;
     let config = load_config(&paths.config_path)
         .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
+    warn_wiki_target_overrides(&config);
     Ok((paths, config))
+}
+
+fn warn_wiki_target_overrides(config: &WikiConfig) {
+    static WARNED: AtomicBool = AtomicBool::new(false);
+    if std::env::var("WIKITOOL_SILENT")
+        .ok()
+        .map(|value| value.trim() == "1")
+        .unwrap_or(false)
+        || WARNED.swap(true, Ordering::Relaxed)
+    {
+        return;
+    }
+    for warning in wiki_target_warnings_for_config(config) {
+        eprintln!("wikitool: {warning}");
+    }
 }
 
 #[cfg(feature = "maintainer")]

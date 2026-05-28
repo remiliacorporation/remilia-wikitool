@@ -2,6 +2,7 @@ use super::*;
 use wikitool_core::docs::{
     DocsImportProfileReport, DocsImportReport, DocsImportTechnicalReport, is_transient_docs_error,
 };
+use wikitool_core::knowledge::status::DEFAULT_DOCS_PROFILE;
 
 #[derive(Debug, Args)]
 pub(super) struct DocsImportArgs {
@@ -47,7 +48,7 @@ pub(super) struct DocsImportTechnicalArgs {
 
 #[derive(Debug, Args)]
 pub(super) struct DocsImportProfileArgs {
-    #[arg(value_name = "PROFILE", default_value = "remilia-mw-1.44")]
+    #[arg(value_name = "PROFILE", default_value = DEFAULT_DOCS_PROFILE)]
     profile: String,
     #[arg(long, help = "Discover installed extensions from the configured wiki")]
     installed: bool,

@@ -193,7 +193,7 @@ impl Default for ArticleStartOptions {
         Self {
             related_page_limit: 18,
             external_policy: ExternalResearchPolicy::Fallback,
-            docs_profile: "remilia-mw-1.44".to_string(),
+            docs_profile: crate::knowledge::status::DEFAULT_DOCS_PROFILE.to_string(),
             profile_id: None,
             include_raw_pack_ref: true,
             diversify: true,
