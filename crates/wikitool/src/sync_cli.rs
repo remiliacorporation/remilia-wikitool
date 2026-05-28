@@ -181,4 +181,12 @@ pub(crate) struct DeleteArgs {
     pub(crate) backup_dir: Option<PathBuf>,
     #[arg(long, help = "Preview deletion without making changes")]
     pub(crate) dry_run: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    pub(crate) format: OutputFormat,
 }

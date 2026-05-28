@@ -334,6 +334,7 @@ Options:
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
       --dry-run              Preview deletion without making changes
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
   -h, --help                 Print help
 ```
 
