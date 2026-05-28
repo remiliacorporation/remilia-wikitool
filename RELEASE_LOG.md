@@ -21,8 +21,14 @@ Surface hardening for the Remilia-first default and agent-facing command contrac
 - `wikitool config show` reports resolved wiki target values with their sources, and now notes the push-credential variables (`WIKITOOL_BOT_USER`, `WIKITOOL_BOT_PASS`) alongside the wiki-target ones.
 - `init --no-network` skips namespace discovery for offline/bootstrap runs.
 - `knowledge article-start --view full` no longer carries a `raw_pack_ref` field pointing at the removed `knowledge pack` command.
+- `delete` accepts `--format json`, matching the other commands.
+- Docs fetches against mediawiki.org now send a User-Agent with a project contact URL and honor the upstream `Retry-After` header on rate-limit responses. Wikimedia began phasing in API rate limits in 2026, and a bare agent is more likely to be throttled.
 - `validate --format json` keeps findings in the JSON status instead of using the process exit code for expected validation failures.
 - MediaWiki search snippets decode HTML entities before emitting JSON.
+
+### Upgrade
+
+- The docs profile rename means docs imported under the old `remilia-mw-1.44` name are no longer found under `remilia-wiki`. Re-run `wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing` (or `wikitool workflow session-refresh`) once to re-hydrate. Fresh installs are unaffected.
 
 ## v0.3.0
 

@@ -16,6 +16,9 @@ use crate::support::{env_value, env_value_u64, env_value_usize};
 
 const DEFAULT_DOCS_API_URL: &str = "https://www.mediawiki.org/w/api.php";
 const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
+/// Upper bound on an honored `Retry-After` so a single retry cannot hang the CLI on
+/// a long rate-limit window; beyond this we cap and let the retry budget run out.
+const MAX_RETRY_AFTER_SECS: u64 = 30;
 
 #[derive(Debug, Clone)]
 pub struct DocsTransientError {
@@ -134,7 +137,10 @@ impl MediaWikiDocsClient {
                     let status = response.status();
                     if !status.is_success() {
                         if attempt < self.config.max_retries && is_retryable_status(status) {
-                            self.wait_before_retry(attempt);
+                            let delay = retry_after_delay(&response).unwrap_or_else(|| {
+                                backoff_duration(self.config.retry_delay_ms, attempt)
+                            });
+                            sleep(delay);
                             continue;
                         }
                         if is_retryable_status(status) {
@@ -160,7 +166,7 @@ impl MediaWikiDocsClient {
                 }
                 Err(error) => {
                     if attempt < self.config.max_retries && is_retryable_error(&error) {
-                        self.wait_before_retry(attempt);
+                        sleep(backoff_duration(self.config.retry_delay_ms, attempt));
                         continue;
                     }
                     if is_retryable_error(&error) {
@@ -184,14 +190,6 @@ impl MediaWikiDocsClient {
         }
         self.last_request_at = Some(Instant::now());
         self.request_count = self.request_count.saturating_add(1);
-    }
-
-    fn wait_before_retry(&self, attempt: usize) {
-        let exponent = u32::try_from(attempt).unwrap_or(8).min(8);
-        let scale = 1u64.checked_shl(exponent).unwrap_or(256);
-        let base = self.config.retry_delay_ms.saturating_mul(scale);
-        let jitter = (u64::try_from(attempt).unwrap_or(0) * 17 + 31) % 97;
-        sleep(Duration::from_millis(base.saturating_add(jitter)));
     }
 }
 
@@ -328,7 +326,9 @@ pub fn discover_installed_extensions_from_wiki_with_config(
                 let status = response.status();
                 if !status.is_success() {
                     if attempt < max_retries && is_retryable_status(status) {
-                        wait_retry_delay(retry_delay_ms, attempt);
+                        let delay = retry_after_delay(&response)
+                            .unwrap_or_else(|| backoff_duration(retry_delay_ms, attempt));
+                        sleep(delay);
                         continue;
                     }
                     if is_retryable_status(status) {
@@ -351,7 +351,7 @@ pub fn discover_installed_extensions_from_wiki_with_config(
             }
             Err(error) => {
                 if attempt < max_retries && is_retryable_error(&error) {
-                    wait_retry_delay(retry_delay_ms, attempt);
+                    sleep(backoff_duration(retry_delay_ms, attempt));
                     continue;
                 }
                 if is_retryable_error(&error) {
@@ -375,12 +375,27 @@ fn normalize_extension_name(value: &str) -> String {
         .join(" ")
 }
 
-fn wait_retry_delay(retry_delay_ms: u64, attempt: usize) {
+fn backoff_duration(retry_delay_ms: u64, attempt: usize) -> Duration {
     let exponent = u32::try_from(attempt).unwrap_or(8).min(8);
     let scale = 1u64.checked_shl(exponent).unwrap_or(256);
     let base = retry_delay_ms.saturating_mul(scale);
     let jitter = (u64::try_from(attempt).unwrap_or(0) * 17 + 31) % 97;
-    sleep(Duration::from_millis(base.saturating_add(jitter)));
+    Duration::from_millis(base.saturating_add(jitter))
+}
+
+/// Honor an upstream `Retry-After` header (integer-seconds form, capped at
+/// `MAX_RETRY_AFTER_SECS`) so 429/503 backoff matches the server's stated wait
+/// instead of guessing. Missing or HTTP-date values fall back to exponential backoff.
+fn retry_after_delay(response: &reqwest::blocking::Response) -> Option<Duration> {
+    let seconds: u64 = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    Some(Duration::from_secs(seconds.min(MAX_RETRY_AFTER_SECS)))
 }
 
 fn is_retryable_status(status: StatusCode) -> bool {

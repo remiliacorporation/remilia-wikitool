@@ -6,7 +6,14 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
-pub const DEFAULT_USER_AGENT: &str = concat!("wikitool/", env!("CARGO_PKG_VERSION"));
+// Wikimedia's User-Agent policy asks automated clients to identify themselves with
+// a contact URL; a bare "wikitool/x.y" agent risks rate limiting or blocking when
+// hitting mediawiki.org for docs. Keep the project URL in the default agent.
+pub const DEFAULT_USER_AGENT: &str = concat!(
+    "wikitool/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/remiliacorporation/remilia-wikitool)"
+);
 pub const DEFAULT_ARTICLE_PATH: &str = "/$1";
 pub const DEFAULT_WIKI_URL: &str = "https://wiki.remilia.org";
 pub const DEFAULT_WIKI_API_URL: &str = "https://wiki.remilia.org/api.php";
