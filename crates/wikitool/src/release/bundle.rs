@@ -217,10 +217,24 @@ fn resolve_release_artifact_version(
     Ok(Some(label))
 }
 
+/// Friendly os-arch slug for release artifact names, e.g. `macos-arm64` instead of
+/// the raw `aarch64-apple-darwin` target triple. Unknown triples fall back to the
+/// triple so an unmapped target still produces a usable name.
+fn release_platform_slug(target: &str) -> &str {
+    match target {
+        "x86_64-pc-windows-msvc" => "windows-x86_64",
+        "x86_64-unknown-linux-gnu" => "linux-x86_64",
+        "x86_64-apple-darwin" => "macos-x86_64",
+        "aarch64-apple-darwin" => "macos-arm64",
+        other => other,
+    }
+}
+
 fn release_bundle_name(target: &str, artifact_version: Option<&str>) -> String {
+    let platform = release_platform_slug(target);
     match artifact_version {
-        Some(version) => format!("wikitool-{version}-{target}"),
-        None => format!("wikitool-{target}"),
+        Some(version) => format!("wikitool-{version}-{platform}"),
+        None => format!("wikitool-{platform}"),
     }
 }
 
@@ -379,8 +393,8 @@ fn is_release_binary_entry(relative_path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        release_binary_name_for_target, release_bundle_name, resolve_release_artifact_version,
-        resolve_release_targets,
+        release_binary_name_for_target, release_bundle_name, release_platform_slug,
+        resolve_release_artifact_version, resolve_release_targets,
     };
 
     #[test]
@@ -423,8 +437,12 @@ mod tests {
     #[test]
     fn release_bundle_and_binary_names_are_platform_aware() {
         assert_eq!(
-            release_bundle_name("x86_64-unknown-linux-gnu", Some("v0.1.0")),
-            "wikitool-v0.1.0-x86_64-unknown-linux-gnu"
+            release_bundle_name("x86_64-unknown-linux-gnu", Some("0.1.0")),
+            "wikitool-0.1.0-linux-x86_64"
+        );
+        assert_eq!(
+            release_bundle_name("aarch64-apple-darwin", Some("0.3.1")),
+            "wikitool-0.3.1-macos-arm64"
         );
         assert_eq!(
             release_binary_name_for_target("x86_64-pc-windows-msvc"),
@@ -433,6 +451,20 @@ mod tests {
         assert_eq!(
             release_binary_name_for_target("x86_64-unknown-linux-gnu"),
             "wikitool"
+        );
+    }
+
+    #[test]
+    fn release_platform_slug_maps_known_triples_and_falls_back() {
+        assert_eq!(
+            release_platform_slug("x86_64-pc-windows-msvc"),
+            "windows-x86_64"
+        );
+        assert_eq!(release_platform_slug("x86_64-apple-darwin"), "macos-x86_64");
+        assert_eq!(release_platform_slug("aarch64-apple-darwin"), "macos-arm64");
+        assert_eq!(
+            release_platform_slug("riscv64gc-unknown-linux-gnu"),
+            "riscv64gc-unknown-linux-gnu"
         );
     }
 }

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       artifact_version:
-        description: "Version label for artifact names (example: v0.2.0)"
+        description: "Release version tag, v-prefixed (example: v0.3.1)"
         required: true
         type: string
       create_release:
@@ -22,78 +22,94 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
             binary_name: wikitool
           - os: macos-latest
             target: x86_64-apple-darwin
+            platform: macos-x86_64
             binary_name: wikitool
           - os: macos-latest
             target: aarch64-apple-darwin
+            platform: macos-arm64
             binary_name: wikitool
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
             binary_name: wikitool.exe
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Validate artifact version label
+      - name: Resolve release names
+        id: names
+        shell: bash
         run: |
-          if [[ ! "${{ inputs.artifact_version }}" =~ ^[A-Za-z0-9._-]+$ ]]; then
-            echo "Invalid artifact_version: ${{ inputs.artifact_version }}"
-            echo "Allowed characters: A-Z a-z 0-9 . _ -"
+          # Release versions are bare semver (no leading v); strip one if present.
+          re='^v?[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'
+          if [[ ! "${RAW}" =~ $re ]]; then
+            echo "Invalid artifact_version: ${RAW}"
+            echo "Expected a bare semver version, e.g. 0.3.1"
             exit 1
           fi
-        shell: bash
+          version="${RAW#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "bundle=wikitool-${version}-${{ matrix.platform }}" >> "$GITHUB_OUTPUT"
+        env:
+          RAW: ${{ inputs.artifact_version }}
 
       - name: Build + package versioned release bundle
         run: >
           cargo run --quiet --package wikitool --features maintainer --
           release build-matrix
           --targets ${{ matrix.target }}
-          --artifact-version ${{ inputs.artifact_version }}
+          --artifact-version ${{ steps.names.outputs.version }}
           --output-dir dist/release-matrix
 
       - name: Verify packaged release (Unix)
         if: runner.os != 'Windows'
+        env:
+          BUNDLE: dist/release-matrix/${{ steps.names.outputs.bundle }}
         run: |
-          test -f dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/${{ matrix.binary_name }}
-          test -f dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/AGENTS.md
-          test -f dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/CLAUDE.md
-          test -d dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/.claude/rules
-          test -d dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/.claude/skills
-          cmp -s dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/AGENTS.md dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/CLAUDE.md
-          test -d dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/writing_context
-          test ! -e dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/llm_instructions
-          test ! -e dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/SETUP.md
-          test -f dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/manifest.json
-          test -f dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}.zip
+          test -f "$BUNDLE/${{ matrix.binary_name }}"
+          test -f "$BUNDLE/AGENTS.md"
+          test -f "$BUNDLE/CLAUDE.md"
+          test -d "$BUNDLE/.claude/rules"
+          test -d "$BUNDLE/.claude/skills"
+          cmp -s "$BUNDLE/AGENTS.md" "$BUNDLE/CLAUDE.md"
+          test -d "$BUNDLE/writing_context"
+          test ! -e "$BUNDLE/llm_instructions"
+          test ! -e "$BUNDLE/SETUP.md"
+          test -f "$BUNDLE/manifest.json"
+          test -f "${BUNDLE}.zip"
 
       - name: Verify packaged release (Windows)
         if: runner.os == 'Windows'
+        env:
+          BUNDLE: dist/release-matrix/${{ steps.names.outputs.bundle }}
         run: |
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/${{ matrix.binary_name }})) { throw "release binary missing" }
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/AGENTS.md)) { throw "AGENTS.md missing" }
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/CLAUDE.md)) { throw "CLAUDE.md missing" }
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/.claude/rules)) { throw ".claude/rules missing" }
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/.claude/skills)) { throw ".claude/skills missing" }
-          $agentsHash = (Get-FileHash -Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/AGENTS.md -Algorithm SHA256).Hash
-          $claudeHash = (Get-FileHash -Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/CLAUDE.md -Algorithm SHA256).Hash
+          if (!(Test-Path "$env:BUNDLE/${{ matrix.binary_name }}")) { throw "release binary missing" }
+          if (!(Test-Path "$env:BUNDLE/AGENTS.md")) { throw "AGENTS.md missing" }
+          if (!(Test-Path "$env:BUNDLE/CLAUDE.md")) { throw "CLAUDE.md missing" }
+          if (!(Test-Path "$env:BUNDLE/.claude/rules")) { throw ".claude/rules missing" }
+          if (!(Test-Path "$env:BUNDLE/.claude/skills")) { throw ".claude/skills missing" }
+          $agentsHash = (Get-FileHash -Path "$env:BUNDLE/AGENTS.md" -Algorithm SHA256).Hash
+          $claudeHash = (Get-FileHash -Path "$env:BUNDLE/CLAUDE.md" -Algorithm SHA256).Hash
           if ($agentsHash -ne $claudeHash) { throw "AGENTS.md and CLAUDE.md mismatch" }
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/writing_context)) { throw "writing_context missing" }
-          if (Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/llm_instructions) { throw "legacy llm_instructions directory must not ship" }
-          if (Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/SETUP.md) { throw "SETUP.md must not ship" }
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/manifest.json)) { throw "manifest.json missing" }
-          if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}.zip)) { throw "zip artifact missing" }
+          if (!(Test-Path "$env:BUNDLE/writing_context")) { throw "writing_context missing" }
+          if (Test-Path "$env:BUNDLE/llm_instructions") { throw "legacy llm_instructions directory must not ship" }
+          if (Test-Path "$env:BUNDLE/SETUP.md") { throw "SETUP.md must not ship" }
+          if (!(Test-Path "$env:BUNDLE/manifest.json")) { throw "manifest.json missing" }
+          if (!(Test-Path "${env:BUNDLE}.zip")) { throw "zip artifact missing" }
 
       - uses: actions/upload-artifact@v7
         with:
-          name: wikitool-release-${{ inputs.artifact_version }}-${{ matrix.target }}
-          path: dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}.zip
+          name: wikitool-release-${{ steps.names.outputs.version }}-${{ matrix.platform }}
+          path: dist/release-matrix/${{ steps.names.outputs.bundle }}.zip
           if-no-files-found: error
 
   publish-release:
@@ -104,39 +120,40 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+
+      - name: Resolve release version
+        id: ver
+        run: echo "version=${RAW#v}" >> "$GITHUB_OUTPUT"
+        env:
+          RAW: ${{ inputs.artifact_version }}
 
       - uses: actions/download-artifact@v8
         with:
           path: release-zips
-          pattern: wikitool-release-${{ inputs.artifact_version }}-*
+          pattern: wikitool-release-${{ steps.ver.outputs.version }}-*
           merge-multiple: true
 
       - name: List downloaded assets
         run: ls -lh release-zips/
 
-      - name: Extract release notes from RELEASE_LOG.md
-        id: notes
+      - name: Extract release notes
         run: |
-          # Extract the section for the current version (everything between its ## heading and the next)
-          awk '/^## '"${VERSION_TAG#v}"'/{found=1; next} /^## /{if(found) exit} found' RELEASE_LOG.md > release_body.md
-          # If nothing matched by bare version, try with v-prefix
+          # RELEASE_LOG headings are bare semver ("## <x.y.z>"); subsections use "### "
+          # so they are not section boundaries. Capture up to the next "## " heading.
+          awk '/^## '"${VERSION}"'$/{found=1; next} /^## /{if(found) exit} found' RELEASE_LOG.md > release_body.md
           if [ ! -s release_body.md ]; then
-            awk '/^## '"${VERSION_TAG}"'/{found=1; next} /^## /{if(found) exit} found' RELEASE_LOG.md > release_body.md
-          fi
-          # Fallback
-          if [ ! -s release_body.md ]; then
-            echo "Release ${VERSION_TAG}" > release_body.md
+            echo "Release ${VERSION}" > release_body.md
           fi
           cat release_body.md
         env:
-          VERSION_TAG: ${{ inputs.artifact_version }}
+          VERSION: ${{ steps.ver.outputs.version }}
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ inputs.artifact_version }}" \
-            --title "wikitool ${{ inputs.artifact_version }}" \
+          gh release create "${{ steps.ver.outputs.version }}" \
+            --title "wikitool ${{ steps.ver.outputs.version }}" \
             --notes-file release_body.md \
             release-zips/*.zip

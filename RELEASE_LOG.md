@@ -2,13 +2,13 @@
 
 Chronological release notes for tagged wikitool versions.
 
-## v0.3.1
+## 0.3.1
 
 Date: 2026-05-29
 
-A follow-up to v0.3.0 that makes the wiki target durable and explicit, removes ambiguous
-overrides and vestigial flags, and tightens the agent-facing command contract. v0.3.0
-reorganized the public surface; v0.3.1 makes the tool behave the way that surface implies.
+A follow-up to 0.3.0 that makes the wiki target durable and explicit, removes ambiguous
+overrides and vestigial flags, and tightens the agent-facing command contract. 0.3.0
+reorganized the public surface; 0.3.1 makes the tool behave the way that surface implies.
 
 ### Breaking changes
 
@@ -34,13 +34,13 @@ reorganized the public surface; v0.3.1 makes the tool behave the way that surfac
 
 - Because the docs profile was renamed, docs imported under `remilia-mw-1.44` are no longer found under `remilia-wiki`. Run `wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing` (or `wikitool workflow session-refresh`) once to re-hydrate. Fresh installs need no action.
 
-## v0.3.0
+## 0.3.0
 
 Date: 2026-05-28
 
-A consolidation release. No database reset required — v0.2.0 runtime state carries forward.
+A consolidation release. No database reset required — 0.2.0 runtime state carries forward.
 
-v0.2.0 introduced the knowledge layer; v0.3.0 builds the workflow around it and sharpens the agent-facing surface.
+0.2.0 introduced the knowledge layer; 0.3.0 builds the workflow around it and sharpens the agent-facing surface.
 
 ### New capabilities
 
@@ -60,7 +60,7 @@ v0.2.0 introduced the knowledge layer; v0.3.0 builds the workflow around it and 
 - The source-build feature flag `maintainer-surface` is now simply `maintainer`.
 - Substantial internal restructuring for maintainability, with no change to command behavior or output contracts.
 
-## v0.2.0
+## 0.2.0
 
 Date: 2026-03-18
 
@@ -69,11 +69,11 @@ Just delete your old wikitool installation ;d
 
 ### What changed
 
-The core idea: wikitool's local index should give an AI agent everything it needs to write a good wiki article in one call. v0.1.0 had the raw materials — page chunks, template data, link graphs — but left the agent to assemble them. v0.2.0 introduces `knowledge article-start`, which interprets those materials into an opinionated authoring brief: which sections comparable articles use, which templates and categories apply, what type of subject this is, and where the evidence gaps are.
+The core idea: wikitool's local index should give an AI agent everything it needs to write a good wiki article in one call. 0.1.0 had the raw materials — page chunks, template data, link graphs — but left the agent to assemble them. 0.2.0 introduces `knowledge article-start`, which interprets those materials into an opinionated authoring brief: which sections comparable articles use, which templates and categories apply, what type of subject this is, and where the evidence gaps are.
 
 ### Breaking changes
 
-- **Database reset required.** The knowledge index schema is incompatible with v0.1.0. Delete `.wikitool/data/wikitool.db` and rebuild with `wikitool pull --full --all && wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing`.
+- **Database reset required.** The knowledge index schema is incompatible with 0.1.0. Delete `.wikitool/data/wikitool.db` and rebuild with `wikitool pull --full --all && wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing`.
 - **Removed commands:** `workflow ask`, `workflow authoring-pack`, `db sync`, `index rebuild`. Use `knowledge article-start` and `knowledge build` respectively.
 - **Skill surface collapsed.** Nine Claude skills reduced to two: `/wikitool` (operator) and `/review` (content gate). The old skill names no longer resolve.
 
@@ -106,7 +106,7 @@ The core idea: wikitool's local index should give an AI agent everything it need
 - Docs bridge enriches authoring retrieval with pinned MediaWiki 1.44 documentation, blending "how MediaWiki says it works" with "how this wiki uses it."
 - 146 unit tests (up from 78). CLI regression testbench and acceptance workflow harness expanded.
 
-## v0.1.0
+## 0.1.0
 
 Date: 2026-02-21
 
