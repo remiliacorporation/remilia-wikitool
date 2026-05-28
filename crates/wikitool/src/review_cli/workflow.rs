@@ -40,7 +40,6 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
         } else {
             "sync"
         },
-        profile: args.profile.clone(),
         strict: args.strict,
         templates: args.templates,
         categories: args.categories,
@@ -83,9 +82,9 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
     };
 
     let changed_article_lint = if let Some(draft_selection) = &draft_selection {
-        run_draft_article_lint(&paths, draft_selection, &args.profile, args.strict)?
+        run_draft_article_lint(&paths, draft_selection, args.strict)?
     } else {
-        run_changed_article_lint(&paths, &selection, &args.profile, args.strict)?
+        run_changed_article_lint(&paths, &selection, args.strict)?
     };
     let validation = run_review_validation(&paths)?;
     let dry_run_push = if draft_selection.is_some() {

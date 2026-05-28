@@ -161,11 +161,11 @@ fn detects_markdown_heading_and_applies_safe_fix() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n## History\nText.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "structure.markdown_heading"));
 
     let fixed =
-        fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("== History =="));
@@ -184,7 +184,7 @@ fn detects_raw_wikitext_balance_errors_inside_references() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\nAlpha cites a malformed source.<ref>{{Cite web|url=https://example.com|title=Example}</ref>\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "wikitext.unclosed_template"));
 }
@@ -202,7 +202,7 @@ fn detects_sentence_case_heading() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n== Early Life ==\nText.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "style.sentence_case_heading"));
 }
 
@@ -219,7 +219,7 @@ fn accepts_tabber_separator_lines_as_extension_markup() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n<tabber>\n|-|First tab=\nText.\n|-|Second tab=\nMore text.\n</tabber>\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(!has_rule(&report, "structure.malformed_heading"));
 }
 
@@ -236,7 +236,7 @@ fn accepts_template_parameter_lines_that_end_with_equals() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{Infobox subject\n| name = Alpha\n| image =\n| type = Test\n}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(!has_rule(&report, "structure.malformed_heading"));
 }
 
@@ -253,7 +253,7 @@ fn detects_invalid_extension_block_shapes() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n<tabber>\n|-|=\nText.\n</tabber>\n\n<gallery>\nNot a file line\n</gallery>\n\n<DPL>\n</DPL>\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "extension.tabber_empty_label"));
     assert!(has_rule(&report, "extension.gallery_empty"));
@@ -281,7 +281,7 @@ fn detects_unavailable_module_functions_from_local_lua_exports() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:Chart|scatter|data=1:2}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "module.unavailable_function"));
 }
@@ -307,7 +307,7 @@ fn detects_d3chart_semantic_contract_errors() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:D3Chart|bar|title=No data}}\n{{#invoke:D3Chart|scatter|data=badpair}}\n{{#invoke:D3Chart|chart|type=heatmap|data=A:1}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "module.d3chart_missing_data_source"));
     assert!(has_rule(&report, "module.d3chart_invalid_data"));
@@ -328,7 +328,7 @@ fn lints_state_draft_with_explicit_title_override() {
     );
 
     let report =
-        lint_article_with_title(&paths, &article_path, None, Some("Category:Alpha")).expect("lint");
+        lint_article_with_title(&paths, &article_path, Some("Category:Alpha")).expect("lint");
 
     assert_eq!(report.relative_path, ".wikitool/drafts/Alpha.wiki");
     assert_eq!(report.title, "Category:Alpha");
@@ -351,7 +351,6 @@ fn safe_fix_preserves_state_draft_title_override() {
     let fixed = fix_article_with_title(
         &paths,
         &article_path,
-        None,
         ArticleFixApplyMode::Safe,
         Some("Draft Alpha"),
     )
@@ -375,7 +374,7 @@ fn detects_missing_short_description() {
         "{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "structure.require_short_description"));
 }
 
@@ -393,7 +392,7 @@ fn inserts_missing_article_quality_banner_with_safe_fix() {
     );
 
     let fixed =
-        fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n"));
@@ -412,11 +411,11 @@ fn detects_missing_reflist_and_applies_safe_fix() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.<ref>{{Cite web|title=Source}}</ref>\n\n== References ==\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "structure.require_reflist"));
 
     let fixed =
-        fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("== References ==\n{{Reflist}}\n"));
@@ -436,7 +435,7 @@ fn inserts_reflist_before_reference_section_trailing_categories() {
     );
 
     let fixed =
-        fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("== References ==\n{{Reflist}}\n[[Category:Ideas and Concepts]]"));
@@ -455,11 +454,11 @@ fn detects_citation_after_punctuation_and_applies_safe_fix() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page<ref>{{Cite web|title=Source}}</ref>.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "citation.after_punctuation"));
 
     let fixed =
-        fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("page.<ref>{{Cite web|title=Source}}</ref>"));
@@ -479,11 +478,11 @@ fn clustered_citations_move_punctuation_before_the_whole_cluster() {
     );
 
     let fixed =
-        fix_article(&paths, &article_path, None, ArticleFixApplyMode::Safe).expect("safe fix");
+        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("page.<ref name=\"a\">{{Cite web|title=Source A}}</ref><ref name=\"b\">{{Cite web|title=Source B}}</ref>"));
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(!has_rule(&report, "citation.after_punctuation"));
 }
 
@@ -503,7 +502,7 @@ fn detects_remilia_parent_group_rule() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{Infobox NFT collection\n| name = Milady Maker\n| creator = Remilia\n}}\n\n'''Milady Maker''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "profile.remilia_parent_group"));
 }
 
@@ -520,7 +519,7 @@ fn rejects_citation_needed_templates() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page. {{Citation needed}}\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "profile.no_citation_needed"));
 }
 
@@ -542,7 +541,7 @@ fn detects_red_links_in_see_also() {
     );
     rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "integration.red_link_in_see_also"));
 }
 
@@ -559,7 +558,7 @@ fn detects_unavailable_templates_against_local_catalog() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{Mystery box|value=1}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "template.unavailable"));
 }
 
@@ -593,7 +592,7 @@ fn detects_unknown_parameters_for_templatedata_backed_templates() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{Profile box|name=Alpha|photo=Alpha.png|made_up=1}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "template.unknown_parameter"));
 }
@@ -615,7 +614,7 @@ fn detects_unavailable_modules_for_direct_invoke() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:Missing|render|name=Alpha}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "module.unavailable"));
 }
@@ -641,7 +640,7 @@ fn accepts_direct_invoke_for_local_module() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:Profile|render|name=Alpha}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(!has_rule(&report, "module.unavailable"));
     assert!(!has_rule(&report, "capability.scribunto_unsupported"));
@@ -668,7 +667,7 @@ fn detects_invoke_when_scribunto_is_not_available() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n{{#invoke:Profile|render|name=Alpha}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "capability.scribunto_unsupported"));
 }
@@ -694,7 +693,7 @@ fn accepts_templatestyles_for_local_asset() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n<templatestyles src=\"profile/style.css\" />\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(!has_rule(
         &report,
@@ -715,7 +714,7 @@ fn detects_unavailable_templatestyles_source() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n<templatestyles src=\"Missing/style.css\" />\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "asset.templatestyles_unavailable_source"));
 }
@@ -733,7 +732,7 @@ fn detects_templatestyles_missing_src() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n<templatestyles />\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
 
     assert!(has_rule(&report, "asset.templatestyles_missing_src"));
 }
@@ -781,7 +780,7 @@ fn detects_unsupported_extension_tags_from_capabilities() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n<tabber>\n|-|One=Alpha\n</tabber>\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "capability.unsupported_extension_tag"));
 }
 
@@ -828,6 +827,6 @@ fn detects_suspicious_html_tags_even_when_they_are_not_known_extensions() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n<blink>Alpha</blink>\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let report = lint_article(&paths, &article_path, None).expect("lint");
+    let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "capability.unsupported_extension_tag"));
 }

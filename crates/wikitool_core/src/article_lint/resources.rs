@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use rusqlite::Connection;
 
 use crate::content_store::parsing::open_indexed_connection;
@@ -12,8 +12,6 @@ use crate::profile::{
     scan_local_asset_titles, scan_local_module_titles,
 };
 use crate::runtime::ResolvedPaths;
-
-use super::REMILIA_PROFILE_ID;
 
 #[derive(Debug)]
 pub(super) struct LoadedResources {
@@ -26,12 +24,8 @@ pub(super) struct LoadedResources {
     pub(super) index_connection: Option<Connection>,
 }
 
-pub(super) fn load_resources(paths: &ResolvedPaths, profile_id: &str) -> Result<LoadedResources> {
-    let overlay = if profile_id.eq_ignore_ascii_case(REMILIA_PROFILE_ID) {
-        load_or_build_remilia_profile_overlay(paths)?
-    } else {
-        bail!("unsupported article lint profile: {profile_id}");
-    };
+pub(super) fn load_resources(paths: &ResolvedPaths) -> Result<LoadedResources> {
+    let overlay = load_or_build_remilia_profile_overlay(paths)?;
 
     let capabilities = if paths.db_path.exists() {
         load_latest_wiki_capabilities(paths)?

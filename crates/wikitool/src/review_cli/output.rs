@@ -11,7 +11,6 @@ pub(super) struct ReviewBrief<'a> {
     view: &'static str,
     status: &'a str,
     mode: &'a str,
-    profile: &'a str,
     strict: bool,
     selection: ReviewSelectionBrief<'a>,
     counts: ReviewCountsBrief,
@@ -59,7 +58,6 @@ pub(super) fn build_review_brief(report: &ReviewReport) -> ReviewBrief<'_> {
         view: "brief",
         status: report.status,
         mode: report.filters.mode,
-        profile: &report.filters.profile,
         strict: report.filters.strict,
         selection: ReviewSelectionBrief {
             selected_change_count: report.status_plan.selected_change_count,
@@ -126,7 +124,6 @@ pub(super) fn print_review_report(report: &ReviewReport) {
     println!("project_root: {}", report.project_root);
     println!("status: {}", report.status);
     println!("mode: {}", report.filters.mode);
-    println!("profile: {}", report.filters.profile);
     println!("strict: {}", report.filters.strict);
     println!("templates: {}", report.filters.templates);
     println!("categories: {}", report.filters.categories);

@@ -38,8 +38,6 @@ pub(crate) struct ReviewArgs {
         help = "JSON view: brief|full"
     )]
     view: BriefView,
-    #[arg(long, default_value = "remilia", value_name = "PROFILE")]
-    profile: String,
     #[arg(long, help = "Treat article lint warnings as review failures")]
     strict: bool,
     #[arg(
@@ -90,7 +88,6 @@ struct ReviewReport {
 #[derive(Debug, Clone, Serialize)]
 struct ReviewFilters {
     mode: &'static str,
-    profile: String,
     strict: bool,
     templates: bool,
     categories: bool,

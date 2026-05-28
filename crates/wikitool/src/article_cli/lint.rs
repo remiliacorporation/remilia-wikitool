@@ -16,7 +16,6 @@ use super::*;
 #[derive(Debug, Serialize)]
 struct ArticleLintBatchReport {
     project_root: String,
-    profile: String,
     strict: bool,
     selection: ArticleTargetSelection,
     target_count: usize,
@@ -39,7 +38,6 @@ pub(super) fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) 
         let report = lint_article_with_title(
             &paths,
             args.path.as_deref().expect("single path"),
-            Some(&args.profile),
             Some(title_override),
         )?;
 
@@ -73,11 +71,7 @@ pub(super) fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) 
         args.titles_file.as_ref(),
         args.changed,
     ) {
-        let report = lint_article(
-            &paths,
-            args.path.as_deref().expect("single path"),
-            Some(&args.profile),
-        )?;
+        let report = lint_article(&paths, args.path.as_deref().expect("single path"))?;
 
         if args.format.is_json() {
             println!("{}", serde_json::to_string_pretty(&report)?);
@@ -111,14 +105,13 @@ pub(super) fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) 
     let target_paths = resolve_article_targets(&paths, args.path.as_deref(), &selection, false)?;
     let reports = target_paths
         .iter()
-        .map(|relative_path| lint_article(&paths, Path::new(relative_path), Some(&args.profile)))
+        .map(|relative_path| lint_article(&paths, Path::new(relative_path)))
         .collect::<Result<Vec<_>>>()?;
     let total_errors = reports.iter().map(|report| report.errors).sum();
     let total_warnings = reports.iter().map(|report| report.warnings).sum();
     let total_suggestions = reports.iter().map(|report| report.suggestions).sum();
     let batch_report = ArticleLintBatchReport {
         project_root: normalize_path(&paths.project_root),
-        profile: args.profile.clone(),
         strict: args.strict,
         selection,
         target_count: reports.len(),
@@ -133,7 +126,6 @@ pub(super) fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) 
     } else {
         println!("article lint");
         println!("project_root: {}", normalize_path(&paths.project_root));
-        println!("profile: {}", batch_report.profile);
         println!("strict: {}", flag(batch_report.strict));
         print_article_target_selection(&batch_report.selection);
         println!("target_count: {}", batch_report.target_count);

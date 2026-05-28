@@ -13,12 +13,14 @@ Surface hardening for the Remilia-first default and agent-facing command contrac
 - Removed bare `WIKI_*` environment variables. Use `WIKITOOL_WIKI_URL`, `WIKITOOL_WIKI_API_URL`, `WIKITOOL_USER_AGENT`, `WIKITOOL_ARTICLE_PATH`, `WIKITOOL_BOT_USER`, and `WIKITOOL_BOT_PASS`.
 - Renamed the default docs profile from `remilia-mw-1.44` to `remilia-wiki`.
 - Removed the public `knowledge pack` command and the raw-pack flags from `knowledge article-start`; use `knowledge article-start`, `knowledge contracts`, and `knowledge inspect` directly.
+- Removed the `--profile` flag from `article lint`, `article fix`, and `review`. It only ever accepted `remilia`, so the lint profile is now applied automatically; each report still names it under `profile_id`.
 
 ### Fixes
 
 - `wikitool init` materializes Remilia Wiki by default while runtime resolution remains env > config > none.
-- `wikitool config show` reports resolved wiki target values with their sources.
+- `wikitool config show` reports resolved wiki target values with their sources, and now notes the push-credential variables (`WIKITOOL_BOT_USER`, `WIKITOOL_BOT_PASS`) alongside the wiki-target ones.
 - `init --no-network` skips namespace discovery for offline/bootstrap runs.
+- `knowledge article-start --view full` no longer carries a `raw_pack_ref` field pointing at the removed `knowledge pack` command.
 - `validate --format json` keeps findings in the JSON status instead of using the process exit code for expected validation failures.
 - MediaWiki search snippets decode HTML entities before emitting JSON.
 

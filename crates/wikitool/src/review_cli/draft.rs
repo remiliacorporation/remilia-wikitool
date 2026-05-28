@@ -58,15 +58,9 @@ pub(super) fn validate_draft_review_path(paths: &ResolvedPaths, draft_path: &Pat
 pub(super) fn run_draft_article_lint(
     paths: &ResolvedPaths,
     selection: &DraftReviewSelection,
-    profile: &str,
     strict: bool,
 ) -> Result<ReviewArticleLint> {
-    let report = lint_article_with_title(
-        paths,
-        &selection.path,
-        Some(profile),
-        Some(&selection.title),
-    )?;
+    let report = lint_article_with_title(paths, &selection.path, Some(&selection.title))?;
     let total_errors = report.errors;
     let total_warnings = report.warnings;
     let total_suggestions = report.suggestions;

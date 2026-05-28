@@ -18,7 +18,6 @@ use super::*;
 #[derive(Debug, Serialize)]
 struct ArticleFixBatchReport {
     project_root: String,
-    profile: String,
     apply_mode: String,
     selection: ArticleTargetSelection,
     target_count: usize,
@@ -44,7 +43,6 @@ pub(super) fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) ->
         let result = fix_article_with_title(
             &paths,
             args.path.as_deref().expect("single path"),
-            Some(&args.profile),
             apply_mode,
             Some(title_override),
         )?;
@@ -82,7 +80,6 @@ pub(super) fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) ->
         let result = fix_article(
             &paths,
             args.path.as_deref().expect("single path"),
-            Some(&args.profile),
             apply_mode,
         )?;
 
@@ -123,12 +120,7 @@ pub(super) fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) ->
     let results = target_paths
         .iter()
         .map(|relative_path| {
-            fix_article(
-                &paths,
-                Path::new(relative_path),
-                Some(&args.profile),
-                apply_mode,
-            )
+            fix_article(&paths, Path::new(relative_path), apply_mode)
         })
         .collect::<Result<Vec<_>>>()?;
     let changed_files = results.iter().filter(|result| result.changed).count();
@@ -147,7 +139,6 @@ pub(super) fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) ->
         .sum();
     let batch_report = ArticleFixBatchReport {
         project_root: normalize_path(&paths.project_root),
-        profile: args.profile.clone(),
         apply_mode: apply_mode.as_str().to_string(),
         selection,
         target_count: results.len(),
@@ -164,7 +155,6 @@ pub(super) fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) ->
     } else {
         println!("article fix");
         println!("project_root: {}", normalize_path(&paths.project_root));
-        println!("profile: {}", batch_report.profile);
         println!("apply_mode: {}", batch_report.apply_mode);
         print_article_target_selection(&batch_report.selection);
         println!("target_count: {}", batch_report.target_count);

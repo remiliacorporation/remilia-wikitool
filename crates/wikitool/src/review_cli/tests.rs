@@ -13,7 +13,6 @@ fn review_args() -> ReviewArgs {
     ReviewArgs {
         format: OutputFormat::Json,
         view: BriefView::Brief,
-        profile: "remilia".to_string(),
         strict: false,
         templates: false,
         categories: false,

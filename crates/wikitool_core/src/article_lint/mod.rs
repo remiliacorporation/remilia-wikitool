@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 
 use crate::runtime::ResolvedPaths;
 
@@ -36,43 +36,37 @@ const REMILIA_PROFILE_ID: &str = "remilia";
 pub fn lint_article(
     paths: &ResolvedPaths,
     article_path: &Path,
-    profile_id: Option<&str>,
 ) -> Result<ArticleLintReport> {
-    lint_article_with_title(paths, article_path, profile_id, None)
+    lint_article_with_title(paths, article_path, None)
 }
 
 pub fn lint_article_with_title(
     paths: &ResolvedPaths,
     article_path: &Path,
-    profile_id: Option<&str>,
     title_override: Option<&str>,
 ) -> Result<ArticleLintReport> {
-    let profile_id = normalize_profile_id(profile_id)?;
     let document = load_article_document_with_title(paths, article_path, title_override)?;
-    let resources = load_resources(paths, &profile_id)?;
+    let resources = load_resources(paths)?;
     let matches = collect_issue_matches(paths, &document, &resources)?;
-    Ok(build_report(&document, &profile_id, &resources, matches))
+    Ok(build_report(&document, &resources, matches))
 }
 
 pub fn fix_article(
     paths: &ResolvedPaths,
     article_path: &Path,
-    profile_id: Option<&str>,
     apply_mode: ArticleFixApplyMode,
 ) -> Result<ArticleFixResult> {
-    fix_article_with_title(paths, article_path, profile_id, apply_mode, None)
+    fix_article_with_title(paths, article_path, apply_mode, None)
 }
 
 pub fn fix_article_with_title(
     paths: &ResolvedPaths,
     article_path: &Path,
-    profile_id: Option<&str>,
     apply_mode: ArticleFixApplyMode,
     title_override: Option<&str>,
 ) -> Result<ArticleFixResult> {
-    let profile_id = normalize_profile_id(profile_id)?;
     let document = load_article_document_with_title(paths, article_path, title_override)?;
-    let resources = load_resources(paths, &profile_id)?;
+    let resources = load_resources(paths)?;
     let matches = collect_issue_matches(paths, &document, &resources)?;
     let safe_fixes = collect_safe_fixes(&matches);
     let changed = apply_mode == ArticleFixApplyMode::Safe && !safe_fixes.is_empty();
@@ -89,11 +83,10 @@ pub fn fix_article_with_title(
             .with_context(|| format!("failed to write {}", absolute_path.display()))?;
     }
 
-    let remaining_report =
-        lint_article_with_title(paths, article_path, Some(&profile_id), title_override)?;
+    let remaining_report = lint_article_with_title(paths, article_path, title_override)?;
     Ok(ArticleFixResult {
         schema_version: ARTICLE_FIX_SCHEMA_VERSION.to_string(),
-        profile_id,
+        profile_id: REMILIA_PROFILE_ID.to_string(),
         relative_path: remaining_report.relative_path.clone(),
         title: remaining_report.title.clone(),
         namespace: remaining_report.namespace.clone(),
@@ -116,20 +109,8 @@ pub fn fix_article_with_title(
     })
 }
 
-fn normalize_profile_id(profile_id: Option<&str>) -> Result<String> {
-    let profile_id = profile_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(REMILIA_PROFILE_ID);
-    if !profile_id.eq_ignore_ascii_case(REMILIA_PROFILE_ID) {
-        bail!("unsupported article lint profile: {profile_id} (expected remilia)");
-    }
-    Ok(REMILIA_PROFILE_ID.to_string())
-}
-
 fn build_report(
     document: &ParsedArticleDocument,
-    profile_id: &str,
     resources: &LoadedResources,
     matches: Vec<IssueMatch>,
 ) -> ArticleLintReport {
@@ -152,7 +133,7 @@ fn build_report(
 
     ArticleLintReport {
         schema_version: ARTICLE_LINT_SCHEMA_VERSION.to_string(),
-        profile_id: profile_id.to_string(),
+        profile_id: REMILIA_PROFILE_ID.to_string(),
         relative_path: document.relative_path.clone(),
         title: document.title.clone(),
         namespace: document.namespace.clone(),

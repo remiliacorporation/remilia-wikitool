@@ -45,7 +45,7 @@ Reach for `wikitool` when you need wiki-aware retrieval, MediaWiki-aware fetch/e
 wikitool status --modified --format json
 wikitool diff --format json
 wikitool workflow session-refresh
-wikitool knowledge status --docs-profile remilia-mw-1.44
+wikitool knowledge status --docs-profile remilia-wiki
 wikitool knowledge article-start "Topic" --format json --view brief
 wikitool knowledge contracts search "contract terms" --format json
 wikitool research wiki-search "Topic" --format json

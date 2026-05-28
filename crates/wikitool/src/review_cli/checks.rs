@@ -14,7 +14,6 @@ use super::{ReviewArticleLint, ReviewDryRunPush, ReviewValidation, ReviewValidat
 pub(super) fn run_changed_article_lint(
     paths: &ResolvedPaths,
     selection: &SyncSelection,
-    profile: &str,
     strict: bool,
 ) -> Result<ReviewArticleLint> {
     let Some(target_paths) = collect_changed_article_paths(paths, selection, false)? else {
@@ -31,7 +30,7 @@ pub(super) fn run_changed_article_lint(
 
     let reports = target_paths
         .iter()
-        .map(|relative_path| lint_article(paths, Path::new(relative_path), Some(profile)))
+        .map(|relative_path| lint_article(paths, Path::new(relative_path)))
         .collect::<Result<Vec<_>>>()?;
     let total_errors = reports.iter().map(|report| report.errors).sum();
     let total_warnings = reports.iter().map(|report| report.warnings).sum();

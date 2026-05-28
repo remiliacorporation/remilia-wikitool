@@ -38,8 +38,6 @@ pub(crate) struct ArticleLintArgs {
         help = "Article path; state-draft paths under .wikitool/drafts/ may use --title override"
     )]
     path: Option<PathBuf>,
-    #[arg(long, default_value = "remilia", value_name = "PROFILE")]
-    profile: String,
     #[arg(
         long,
         value_enum,
@@ -74,8 +72,6 @@ pub(crate) struct ArticleFixArgs {
         help = "Article path; state-draft paths under .wikitool/drafts/ may use --title override"
     )]
     path: Option<PathBuf>,
-    #[arg(long, default_value = "remilia", value_name = "PROFILE")]
-    profile: String,
     #[arg(
         long,
         value_enum,

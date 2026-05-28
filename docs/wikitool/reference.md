@@ -236,9 +236,8 @@ Options:
       --data-dir <PATH>
       --view <VIEW>          JSON view: brief|full [default: brief] [possible values: brief, full]
       --config <PATH>
-      --profile <PROFILE>    [default: remilia]
-      --diagnostics          Print resolved runtime diagnostics
       --strict               Treat article lint warnings as review failures
+      --diagnostics          Print resolved runtime diagnostics
       --templates            Include template/module/mediawiki namespaces in sync checks
       --categories           Limit sync checks to Category namespace pages
       --title <TITLE>
@@ -1732,14 +1731,13 @@ Arguments:
   [PATH]  Article path; state-draft paths under .wikitool/drafts/ may use --title override
 
 Options:
-      --profile <PROFILE>    [default: remilia]
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
-      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
-      --config <PATH>
       --strict               Treat warnings as errors
-      --diagnostics          Print resolved runtime diagnostics
+      --config <PATH>
       --title <TITLE>        Select a canonical article title; with one .wikitool/drafts/ PATH, override the draft title
+      --diagnostics          Print resolved runtime diagnostics
       --path <PATH>
       --titles-file <PATH>   Read one canonical page title per line
       --changed              Lint the current changed main-namespace article set
@@ -1757,14 +1755,13 @@ Arguments:
   [PATH]  Article path; state-draft paths under .wikitool/drafts/ may use --title override
 
 Options:
-      --profile <PROFILE>    [default: remilia]
-      --project-root <PATH>
       --apply <MODE>         Apply mode: none|safe [default: none] [possible values: none, safe]
+      --project-root <PATH>
       --data-dir <PATH>
-      --config <PATH>
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
-      --diagnostics          Print resolved runtime diagnostics
+      --config <PATH>
       --title <TITLE>        Select a canonical article title; with one .wikitool/drafts/ PATH, override the draft title
+      --diagnostics          Print resolved runtime diagnostics
       --path <PATH>
       --titles-file <PATH>   Read one canonical page title per line
       --changed              Fix the current changed main-namespace article set

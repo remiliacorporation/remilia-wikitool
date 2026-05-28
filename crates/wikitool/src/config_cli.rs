@@ -121,7 +121,8 @@ fn build_config_show(paths: &ResolvedPaths, config: &WikiConfig) -> Result<Confi
         },
         notes: vec![
             "project config is the durable wiki target; WIKITOOL_* env vars are temporary overrides",
-            "bare WIKI_* env vars are not read; use WIKITOOL_WIKI_URL, WIKITOOL_WIKI_API_URL, WIKITOOL_USER_AGENT, and WIKITOOL_ARTICLE_PATH",
+            "bare WIKI_* env vars are not read; target overrides are WIKITOOL_WIKI_URL, WIKITOOL_WIKI_API_URL, WIKITOOL_USER_AGENT, and WIKITOOL_ARTICLE_PATH",
+            "push authentication reads WIKITOOL_BOT_USER and WIKITOOL_BOT_PASS from the environment only; they are never written to config",
             "authoring and lint overlays are currently Remilia-specific even when the sync target is changed",
         ],
     })
