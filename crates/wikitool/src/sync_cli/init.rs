@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
-use wikitool_core::config::{WikiConfigPatch, derive_wiki_url, load_config, patch_wiki_config};
+use wikitool_core::config::{
+    DEFAULT_WIKI_API_URL, DEFAULT_WIKI_URL, WikiConfigPatch, derive_wiki_url, load_config,
+    patch_wiki_config,
+};
 use wikitool_core::runtime::{InitOptions, init_layout};
 use wikitool_core::sync::discover_custom_namespaces;
 
@@ -30,12 +33,18 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     if !args.no_config {
         let config = load_config(&paths.config_path)
             .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
-        let resolved_api_url = args.api_url.clone().or_else(|| config.api_url_owned());
+        let resolved_api_url = args
+            .api_url
+            .clone()
+            .or_else(|| config.api_url_owned())
+            .or_else(|| Some(DEFAULT_WIKI_API_URL.to_string()));
         let resolved_wiki_url = args
             .wiki_url
             .clone()
+            .or_else(|| args.api_url.as_deref().and_then(derive_wiki_url))
+            .or_else(|| config.wiki_url())
             .or_else(|| resolved_api_url.as_deref().and_then(derive_wiki_url))
-            .or_else(|| config.wiki_url());
+            .or_else(|| Some(DEFAULT_WIKI_URL.to_string()));
         let mut discovery_config = config.clone();
         if let Some(api_url) = &resolved_api_url {
             discovery_config.wiki.api_url = Some(api_url.clone());

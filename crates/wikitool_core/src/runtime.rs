@@ -525,6 +525,10 @@ mod tests {
         assert!(paths.data_dir.exists());
         assert!(paths.config_path.exists());
         assert!(paths.parser_config_path.exists());
+
+        let config = fs::read_to_string(&paths.config_path).expect("read config");
+        assert!(config.contains(crate::config::DEFAULT_WIKI_URL));
+        assert!(config.contains(crate::config::DEFAULT_WIKI_API_URL));
     }
 
     #[test]
