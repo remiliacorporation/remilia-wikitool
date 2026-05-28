@@ -4,31 +4,35 @@ Chronological release notes for tagged wikitool versions.
 
 ## v0.3.1
 
-Date: 2026-05-28
+Date: 2026-05-29
 
-Surface hardening for the Remilia-first default and agent-facing command contract.
+A follow-up to v0.3.0 that makes the wiki target durable and explicit, removes ambiguous
+overrides and vestigial flags, and tightens the agent-facing command contract. v0.3.0
+reorganized the public surface; v0.3.1 makes the tool behave the way that surface implies.
 
 ### Breaking changes
 
-- Removed bare `WIKI_*` environment variables. Use `WIKITOOL_WIKI_URL`, `WIKITOOL_WIKI_API_URL`, `WIKITOOL_USER_AGENT`, `WIKITOOL_ARTICLE_PATH`, `WIKITOOL_BOT_USER`, and `WIKITOOL_BOT_PASS`.
-- Renamed the default docs profile from `remilia-mw-1.44` to `remilia-wiki`.
-- Removed the public `knowledge pack` command and the raw-pack flags from `knowledge article-start`; use `knowledge article-start`, `knowledge contracts`, and `knowledge inspect` directly.
-- Removed the `--profile` flag from `article lint`, `article fix`, and `review`. It only ever accepted `remilia`, so the lint profile is now applied automatically; each report still names it under `profile_id`.
+- Bare `WIKI_*` environment variables are no longer read. Use `WIKITOOL_WIKI_URL`, `WIKITOOL_WIKI_API_URL`, `WIKITOOL_USER_AGENT`, `WIKITOOL_ARTICLE_PATH`, `WIKITOOL_BOT_USER`, and `WIKITOOL_BOT_PASS`.
+- The default docs profile is renamed from `remilia-mw-1.44` to `remilia-wiki`, so the profile no longer pins a MediaWiki version.
+- The `knowledge pack` command and the `knowledge article-start` raw-pack flags are removed. Use `knowledge article-start`, `knowledge contracts`, and `knowledge inspect` directly.
+- The `--profile` flag is removed from `article lint`, `article fix`, and `review`. It only ever accepted `remilia`; the lint profile is now applied automatically and still reported as `profile_id` on each report.
+
+### Improvements
+
+- `wikitool config show` reports the resolved wiki target with the source of each value (env, config, default, or derived from the API URL) and notes which environment variables apply.
+- `wikitool init` writes the Remilia Wiki target by default while runtime resolution stays env > config; `init --no-network` skips namespace discovery for offline bootstrap.
+- `delete` gains `--format json`, so every command now has a structured output mode.
+- Docs fetches against mediawiki.org send a User-Agent with a project contact URL and honor the upstream `Retry-After` header. Wikimedia began phasing in API rate limits in 2026, and a bare agent is more likely to be throttled.
 
 ### Fixes
 
-- `wikitool init` materializes Remilia Wiki by default while runtime resolution remains env > config > none.
-- `wikitool config show` reports resolved wiki target values with their sources, and now notes the push-credential variables (`WIKITOOL_BOT_USER`, `WIKITOOL_BOT_PASS`) alongside the wiki-target ones.
-- `init --no-network` skips namespace discovery for offline/bootstrap runs.
-- `knowledge article-start --view full` no longer carries a `raw_pack_ref` field pointing at the removed `knowledge pack` command.
-- `delete` accepts `--format json`, matching the other commands.
-- Docs fetches against mediawiki.org now send a User-Agent with a project contact URL and honor the upstream `Retry-After` header on rate-limit responses. Wikimedia began phasing in API rate limits in 2026, and a bare agent is more likely to be throttled.
-- `validate --format json` keeps findings in the JSON status instead of using the process exit code for expected validation failures.
-- MediaWiki search snippets decode HTML entities before emitting JSON.
+- `knowledge article-start --view full` no longer emits a `raw_pack_ref` field pointing at the removed `knowledge pack` command.
+- `validate --format json` reports findings in the JSON status instead of through a non-zero exit code on expected validation failures.
+- Live wiki search snippets decode HTML entities before they reach JSON output.
 
 ### Upgrade
 
-- The docs profile rename means docs imported under the old `remilia-mw-1.44` name are no longer found under `remilia-wiki`. Re-run `wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing` (or `wikitool workflow session-refresh`) once to re-hydrate. Fresh installs are unaffected.
+- Because the docs profile was renamed, docs imported under `remilia-mw-1.44` are no longer found under `remilia-wiki`. Run `wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing` (or `wikitool workflow session-refresh`) once to re-hydrate. Fresh installs need no action.
 
 ## v0.3.0
 
