@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       artifact_version:
-        description: "Release version tag, v-prefixed (example: v0.3.1)"
+        description: "Release version, bare semver (example: 0.3.1)"
         required: true
         type: string
       create_release:
