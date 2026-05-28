@@ -8,6 +8,8 @@ use toml::Value;
 
 pub const DEFAULT_USER_AGENT: &str = concat!("wikitool/", env!("CARGO_PKG_VERSION"));
 pub const DEFAULT_ARTICLE_PATH: &str = "/$1";
+pub const DEFAULT_WIKI_URL: &str = "https://wiki.remilia.org";
+pub const DEFAULT_WIKI_API_URL: &str = "https://wiki.remilia.org/api.php";
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct WikiConfig {
@@ -39,7 +41,7 @@ impl CustomNamespace {
 }
 
 impl WikiConfig {
-    /// Resolve the wiki API URL with owned return: env > config > None.
+    /// Resolve the wiki API URL with owned return: env > config > Remilia Wiki default.
     pub fn api_url_owned(&self) -> Option<String> {
         if let Ok(value) = env::var("WIKI_API_URL") {
             let trimmed = value.trim().to_string();
@@ -47,10 +49,13 @@ impl WikiConfig {
                 return Some(trimmed);
             }
         }
-        self.wiki.api_url.clone()
+        self.wiki
+            .api_url
+            .clone()
+            .or_else(|| Some(DEFAULT_WIKI_API_URL.to_string()))
     }
 
-    /// Resolve the wiki base URL: env WIKI_URL > config > derived from api_url.
+    /// Resolve the wiki base URL: env WIKI_URL > config > derived from api_url > Remilia Wiki default.
     pub fn wiki_url(&self) -> Option<String> {
         if let Ok(value) = env::var("WIKI_URL") {
             let trimmed = value.trim().to_string();
@@ -62,7 +67,9 @@ impl WikiConfig {
             return Some(url.clone());
         }
         // Try to derive from api_url by stripping /api.php
-        self.api_url_owned().and_then(|api| derive_wiki_url(&api))
+        self.api_url_owned()
+            .and_then(|api| derive_wiki_url(&api))
+            .or_else(|| Some(DEFAULT_WIKI_URL.to_string()))
     }
 
     /// Resolve user agent: env WIKI_USER_AGENT > config > DEFAULT_USER_AGENT.
@@ -216,17 +223,23 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn default_config_has_no_urls() {
+    fn default_config_resolves_remilia_urls_without_persisting_them() {
         let config = WikiConfig::default();
         assert!(config.wiki.url.is_none());
         assert!(config.wiki.api_url.is_none());
         assert!(config.wiki.custom_namespaces.is_empty());
+        assert_eq!(config.wiki_url().as_deref(), Some(DEFAULT_WIKI_URL));
+        assert_eq!(
+            config.api_url_owned().as_deref(),
+            Some(DEFAULT_WIKI_API_URL)
+        );
     }
 
     #[test]
     fn load_config_returns_default_for_missing_file() {
         let config = load_config(Path::new("/nonexistent/config.toml")).expect("load config");
         assert!(config.wiki.url.is_none());
+        assert_eq!(config.wiki_url().as_deref(), Some(DEFAULT_WIKI_URL));
     }
 
     #[test]

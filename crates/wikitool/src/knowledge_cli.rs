@@ -41,7 +41,9 @@ enum KnowledgeSubcommand {
     Warm(KnowledgeWarmArgs),
     #[command(about = "Report knowledge readiness and degradations")]
     Status(KnowledgeStatusArgs),
-    #[command(about = "Assemble the authoring knowledge pack")]
+    #[command(
+        about = "Assemble the raw authoring knowledge substrate; prefer article-start for normal authoring"
+    )]
     Pack(KnowledgePackArgs),
     #[command(about = "Assemble an interpreted authoring brief for a topic")]
     ArticleStart(KnowledgeArticleStartArgs),

@@ -150,7 +150,7 @@ pub(crate) struct WikiRulesArgs {
 
 #[derive(Debug, Subcommand)]
 enum WikiRulesSubcommand {
-    #[command(about = "Show the current Remilia rules overlay")]
+    #[command(about = "Show the current profile rules overlay")]
     Show(WikiFormatArgs),
 }
 

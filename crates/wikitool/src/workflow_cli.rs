@@ -106,6 +106,8 @@ fn run_workflow_session_refresh(
     sync_cli::run_init(
         runtime,
         InitArgs {
+            wiki_url: None,
+            api_url: None,
             templates: include_templates,
             force: false,
             no_config: false,
@@ -182,6 +184,8 @@ fn run_workflow_full_refresh(
     sync_cli::run_init(
         runtime,
         InitArgs {
+            wiki_url: None,
+            api_url: None,
             templates: include_templates,
             force: false,
             no_config: false,

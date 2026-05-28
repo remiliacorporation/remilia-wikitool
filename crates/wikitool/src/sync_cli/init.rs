@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use wikitool_core::config::{WikiConfigPatch, load_config, patch_wiki_config};
+use wikitool_core::config::{WikiConfigPatch, derive_wiki_url, load_config, patch_wiki_config};
 use wikitool_core::runtime::{InitOptions, init_layout};
 use wikitool_core::sync::discover_custom_namespaces;
 
@@ -30,11 +30,23 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     if !args.no_config {
         let config = load_config(&paths.config_path)
             .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
-        let resolved_api_url = config.api_url_owned();
-        let resolved_wiki_url = config.wiki_url();
-        let discovered = match discover_custom_namespaces(&config) {
+        let resolved_api_url = args.api_url.clone().or_else(|| config.api_url_owned());
+        let resolved_wiki_url = args
+            .wiki_url
+            .clone()
+            .or_else(|| resolved_api_url.as_deref().and_then(derive_wiki_url))
+            .or_else(|| config.wiki_url());
+        let mut discovery_config = config.clone();
+        if let Some(api_url) = &resolved_api_url {
+            discovery_config.wiki.api_url = Some(api_url.clone());
+        }
+        if let Some(wiki_url) = &resolved_wiki_url {
+            discovery_config.wiki.url = Some(wiki_url.clone());
+        }
+        namespace_discovery_status = "pending".to_string();
+        let discovered = match discover_custom_namespaces(&discovery_config) {
             Ok(ns) => ns,
-            Err(_) if config.api_url_owned().is_none() => {
+            Err(_) if resolved_api_url.is_none() => {
                 namespace_discovery_status = "skipped (no API URL configured)".to_string();
                 Vec::new()
             }
@@ -48,19 +60,19 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
             set_api_url: None,
             set_custom_namespaces: Some(discovered.clone()),
         };
-        if config.wiki.api_url.is_none() {
+        if args.api_url.is_some() || config.wiki.api_url.is_none() {
             patch.set_api_url = resolved_api_url;
-            persisted_api_url = patch.set_api_url.is_some();
         }
-        if config.wiki.url.is_none() {
+        if args.wiki_url.is_some() || args.api_url.is_some() || config.wiki.url.is_none() {
             patch.set_url = resolved_wiki_url;
-            persisted_wiki_url = patch.set_url.is_some();
         }
         wrote_namespace_config = patch_wiki_config(&paths.config_path, &patch)
             .with_context(|| format!("failed to update {}", normalize_path(&paths.config_path)))?;
 
         let refreshed = load_config(&paths.config_path)
             .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
+        persisted_api_url = refreshed.wiki.api_url.is_some();
+        persisted_wiki_url = refreshed.wiki.url.is_some();
         let created = materialize_custom_namespace_dirs(&paths, &refreshed)?;
         created_namespace_dirs = created.len();
         discovered_namespaces = discovered.len();

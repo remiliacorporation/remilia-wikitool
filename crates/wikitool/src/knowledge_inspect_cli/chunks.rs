@@ -288,7 +288,7 @@ fn build_across_pages_brief(
             schema_version: "wikitool_brief_v1",
             command: "knowledge inspect chunks",
             view: "brief",
-            status: "found",
+            status: chunk_match_status(report.chunks.len()),
             target: "<across-pages>".to_string(),
             query: Some(report.query.clone()),
             retrieval_mode: Some(report.retrieval_mode.clone()),
@@ -424,7 +424,7 @@ fn build_single_page_brief(
             schema_version: "wikitool_brief_v1",
             command: "knowledge inspect chunks",
             view: "brief",
-            status: "found",
+            status: chunk_match_status(report.chunks.len()),
             target: report.title.clone(),
             query: report.query.clone(),
             retrieval_mode: Some(report.retrieval_mode.clone()),
@@ -479,6 +479,14 @@ fn build_single_page_brief(
                 token_budget,
             ),
         },
+    }
+}
+
+fn chunk_match_status(chunk_count: usize) -> &'static str {
+    if chunk_count == 0 {
+        "no_matches"
+    } else {
+        "found"
     }
 }
 

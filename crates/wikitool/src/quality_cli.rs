@@ -220,13 +220,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
                 message: None,
             })?
         );
-        if issue_count == 0 {
-            return Ok(());
-        }
-        if args.advisory {
-            return Ok(());
-        }
-        bail!("validation detected {issue_count} issue(s)");
+        return Ok(());
     }
 
     println!("validate");

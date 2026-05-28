@@ -59,12 +59,14 @@ Usage: wikitool init [OPTIONS]
 
 Options:
       --project-root <PATH>
-      --templates            Create templates/ during initialization
+      --wiki-url <URL>       Target wiki base URL; defaults to https://wiki.remilia.org
+      --api-url <URL>        Target MediaWiki API URL; defaults to https://wiki.remilia.org/api.php
       --data-dir <PATH>
-      --force                Overwrite existing config/parser files
       --config <PATH>
-      --no-config            Skip writing .wikitool/config.toml
+      --templates            Create templates/ during initialization
       --diagnostics          Print resolved runtime diagnostics
+      --force                Overwrite existing config/parser files
+      --no-config            Skip writing .wikitool/config.toml
       --no-parser-config     Skip writing parser config
   -h, --help                 Print help
 ```
@@ -620,7 +622,7 @@ Commands:
   build          Rebuild the local content knowledge index
   warm           Build content knowledge and hydrate a docs profile
   status         Report knowledge readiness and degradations
-  pack           Assemble the authoring knowledge pack
+  pack           Assemble the raw authoring knowledge substrate; prefer article-start for normal authoring
   article-start  Assemble an interpreted authoring brief for a topic
   contracts      Plan and search token-budgeted authoring contracts
   inspect        Inspect indexed knowledge structures directly
@@ -688,7 +690,7 @@ Options:
 ## knowledge pack
 
 ```text
-Assemble the authoring knowledge pack
+Assemble the raw authoring knowledge substrate; prefer article-start for normal authoring
 
 Usage: wikitool knowledge pack [OPTIONS] [TOPIC]
 
@@ -1508,7 +1510,7 @@ Show the structured local editorial rules overlay
 Usage: wikitool wiki rules [OPTIONS] <COMMAND>
 
 Commands:
-  show  Show the current Remilia rules overlay
+  show  Show the current profile rules overlay
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1522,7 +1524,7 @@ Options:
 ## wiki rules show
 
 ```text
-Show the current Remilia rules overlay
+Show the current profile rules overlay
 
 Usage: wikitool wiki rules show [OPTIONS]
 

@@ -165,6 +165,12 @@ fn main() -> Result<()> {
         #[cfg(feature = "maintainer")]
         Some(Commands::Dev(args)) => dev_cli::run_dev(args),
         None => {
+            if runtime.diagnostics {
+                let paths = cli_support::resolve_runtime_paths(&runtime)?;
+                println!("wikitool diagnostics");
+                println!("{}", paths.diagnostics());
+                return Ok(());
+            }
             let mut command = Cli::command();
             command.print_help()?;
             println!();
