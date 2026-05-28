@@ -33,10 +33,7 @@ const ARTICLE_LINT_SCHEMA_VERSION: &str = "article_lint_v1";
 const ARTICLE_FIX_SCHEMA_VERSION: &str = "article_fix_v1";
 const REMILIA_PROFILE_ID: &str = "remilia";
 
-pub fn lint_article(
-    paths: &ResolvedPaths,
-    article_path: &Path,
-) -> Result<ArticleLintReport> {
+pub fn lint_article(paths: &ResolvedPaths, article_path: &Path) -> Result<ArticleLintReport> {
     lint_article_with_title(paths, article_path, None)
 }
 

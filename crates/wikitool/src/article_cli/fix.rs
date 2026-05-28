@@ -119,9 +119,7 @@ pub(super) fn run_article_fix(runtime: &RuntimeOptions, args: ArticleFixArgs) ->
     let target_paths = resolve_article_targets(&paths, args.path.as_deref(), &selection, true)?;
     let results = target_paths
         .iter()
-        .map(|relative_path| {
-            fix_article(&paths, Path::new(relative_path), apply_mode)
-        })
+        .map(|relative_path| fix_article(&paths, Path::new(relative_path), apply_mode))
         .collect::<Result<Vec<_>>>()?;
     let changed_files = results.iter().filter(|result| result.changed).count();
     let applied_fix_count = results.iter().map(|result| result.applied_fix_count).sum();

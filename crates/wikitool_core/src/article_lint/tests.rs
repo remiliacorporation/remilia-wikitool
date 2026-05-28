@@ -164,8 +164,7 @@ fn detects_markdown_heading_and_applies_safe_fix() {
     let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "structure.markdown_heading"));
 
-    let fixed =
-        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
+    let fixed = fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("== History =="));
@@ -391,8 +390,7 @@ fn inserts_missing_article_quality_banner_with_safe_fix() {
         "{{SHORTDESC:Alpha}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let fixed =
-        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
+    let fixed = fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n"));
@@ -414,8 +412,7 @@ fn detects_missing_reflist_and_applies_safe_fix() {
     let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "structure.require_reflist"));
 
-    let fixed =
-        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
+    let fixed = fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("== References ==\n{{Reflist}}\n"));
@@ -434,8 +431,7 @@ fn inserts_reflist_before_reference_section_trailing_categories() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.<ref>{{Cite web|title=Source}}</ref>\n\n== References ==\n[[Category:Ideas and Concepts]]\n",
     );
 
-    let fixed =
-        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
+    let fixed = fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("== References ==\n{{Reflist}}\n[[Category:Ideas and Concepts]]"));
@@ -457,8 +453,7 @@ fn detects_citation_after_punctuation_and_applies_safe_fix() {
     let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "citation.after_punctuation"));
 
-    let fixed =
-        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
+    let fixed = fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("page.<ref>{{Cite web|title=Source}}</ref>"));
@@ -477,8 +472,7 @@ fn clustered_citations_move_punctuation_before_the_whole_cluster() {
         "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page<ref name=\"a\">{{Cite web|title=Source A}}</ref><ref name=\"b\">{{Cite web|title=Source B}}</ref>.\n\n== References ==\n{{Reflist}}\n",
     );
 
-    let fixed =
-        fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
+    let fixed = fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
     assert!(fixed.changed);
     let content = fs::read_to_string(&article_path).expect("read article");
     assert!(content.contains("page.<ref name=\"a\">{{Cite web|title=Source A}}</ref><ref name=\"b\">{{Cite web|title=Source B}}</ref>"));
