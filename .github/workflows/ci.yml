@@ -23,19 +23,18 @@ jobs:
       - name: Offline CLI regression testbench
         run: bash testbench/cli_tests.sh
 
-  rust-nightly-lint:
+  rust-lint:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
-      # Pinned nightly: bleeding-edge nightly adds lints that turn this job red
-      # with no code change. Bump this date deliberately after validating locally.
-      - uses: dtolnay/rust-toolchain@master
+      # Stable toolchain: avoids the maintenance and spurious red of a pinned
+      # nightly. Only goes red on real fmt/clippy issues in committed code.
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly-2026-05-27
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Rustfmt (pinned nightly)
-        run: cargo +nightly-2026-05-27 fmt --all -- --check
-      - name: Clippy (pinned nightly)
-        run: cargo +nightly-2026-05-27 clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
