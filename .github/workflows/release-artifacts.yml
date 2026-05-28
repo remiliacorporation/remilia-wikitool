@@ -34,7 +34,7 @@ jobs:
             binary_name: wikitool.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -90,7 +90,7 @@ jobs:
           if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}/manifest.json)) { throw "manifest.json missing" }
           if (!(Test-Path dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}.zip)) { throw "zip artifact missing" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wikitool-release-${{ inputs.artifact_version }}-${{ matrix.target }}
           path: dist/release-matrix/wikitool-${{ inputs.artifact_version }}-${{ matrix.target }}.zip
@@ -104,9 +104,9 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release-zips
           pattern: wikitool-release-${{ inputs.artifact_version }}-*
