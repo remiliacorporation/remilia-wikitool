@@ -230,7 +230,9 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
     assert!(
         playbook.contains("Scout first")
             && playbook.contains("freeform dump")
-            && playbook.contains("evidence-gated")
+            && playbook.contains("Read supplied materials")
+            && playbook.contains("no fixed number of rounds")
+            && playbook.contains("interviewer/critic loop")
             && playbook.contains("explicit opt-out")
             && playbook.contains("mechanical link checks")
             && playbook.contains("wikitool knowledge interview init")
@@ -239,7 +241,8 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
             && playbook.contains("inaccessible-source")
             && playbook.contains("knowledge interview audit")
             && playbook.contains("claim IDs only for interview-introduced or high-risk claims")
-            && playbook.contains("not article prose, citation evidence, or proof"),
+            && playbook.contains("not article prose, citation evidence, proof")
+            && playbook.contains("Mechanical validation does not imply editorial"),
         "interview playbook must preserve the adaptive, evidence-bounded intake contract"
     );
     assert!(
@@ -358,6 +361,35 @@ fn writing_context_does_not_reintroduce_retired_top_level_commands() {
             );
         }
     }
+}
+
+#[test]
+fn visual_subjects_guidance_is_present_and_indexed() {
+    let visual = read_repo_file("ai-pack/writing_context/visual_subjects.md");
+    assert!(
+        visual.contains("primary source")
+            && visual.contains("describe / interpret boundary")
+            && visual.contains("do_not_assert"),
+        "visual_subjects.md must define the artifact-as-source and describe/interpret rules"
+    );
+    for index in [
+        "ai-pack/CLAUDE.md",
+        "ai-pack/AGENTS.md",
+        "ai-pack/writing_context/README.md",
+        "ai-pack/writing_context/writing_guide.md",
+        "ai-pack/writing_context/article_structure.md",
+    ] {
+        let body = read_repo_file(index);
+        assert!(
+            body.contains("visual_subjects.md"),
+            "{index} must reference visual_subjects.md so agents discover it"
+        );
+    }
+    let host_claude = read_repo_file("../../CLAUDE.md");
+    assert!(
+        host_claude.contains("visual_subjects.md"),
+        "host CLAUDE.md writing-guidelines table must list visual_subjects.md"
+    );
 }
 
 #[test]

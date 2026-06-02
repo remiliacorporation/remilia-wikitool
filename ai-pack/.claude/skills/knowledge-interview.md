@@ -10,18 +10,24 @@ validation, summaries, audits, and structured open-item logging through
 
 Read `writing_context/interview_playbook.md` before using this skill. Start with a compact scout:
 `wikitool knowledge article-start "<Topic>" --intent new|expand|audit|refresh --format json --view brief`,
-plus a cursory wiki/source search when useful. Then interview only to the depth that improves the
-article or review.
+plus a cursory wiki/source search when useful. If the user provides documents, links, screenshots,
+transcripts, notes, or source excerpts, read them before narrowing the interview and use them to ask
+better questions. Then interview to the depth needed to improve the article or review; there is no
+fixed round count.
 
 Default to an interview for new articles and substantial expansions unless the user explicitly opts
 out. Skip it for mechanical lint, link, sync, source-fetch, or validation tasks unless a conflict
-requires user judgment. Begin with a freeform dump, reflect the scope back in neutral wiki language,
-and ask adaptive follow-ups based on evidence gaps.
+requires user judgment. Begin with a broad freeform prompt that asks the user what the subject is,
+why it matters, what sources or artifacts matter, what outsiders misunderstand, and what should not
+be overstated. Reflect the scope back in neutral wiki language, ask adaptive follow-ups based on
+article-shaping gaps, and continue while new answers materially improve scope, chronology,
+terminology, source strategy, section planning, or risk.
 
 When the interview yields reusable knowledge, write a brief under
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat the brief as working notes,
 not article prose or citation evidence. Use claim IDs only for interview-introduced or high-risk
-claims that need tracking through research and review.
+claims that need tracking through research and review. A mechanically valid brief is not proof that
+the interview is complete or that the draft is acceptable.
 
 Use `wikitool knowledge interview init "<Topic>" --intent new|expand|audit|refresh --format json`
 to create the timestamped brief and sidecars, then fill the brief from the interview. Before
@@ -33,3 +39,7 @@ to record unresolved research work or negative evidence without turning it into 
 Pass validated briefs to `wikitool knowledge article-start "<Topic>" --brief-path PATH --format json --view brief`
 and `wikitool review --brief-path PATH --format json --view brief --summary "..."` when the
 interview should inform research planning or review.
+
+Before drafting, run a short interviewer/critic pass: identify what would make the article thin,
+duplicative, unsourced, wrongly framed, or missing the user's actual knowledge. If that critique
+raises article-shaping gaps, ask another interview round instead of closing on a checklist.

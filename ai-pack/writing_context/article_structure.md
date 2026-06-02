@@ -1,6 +1,6 @@
-﻿# Article Structure Template
+# Article Structure Template
 
-Every article follows this structure. Adapt sections to fit the subject â€” not every article needs every section.
+Every article follows this structure. Adapt sections to fit the subject — not every article needs every section.
 
 ---
 
@@ -55,7 +55,7 @@ For Remilia projects: use `parent_group = Remilia` instead of `creator` or `arti
 
 - 1-4 paragraphs summarizing the article.
 - First sentence: `'''Subject'''` is/was [definition with context].
-- No section heading â€” the lead comes before any `==` heading.
+- No section heading — the lead comes before any `==` heading.
 - Citations in the lead are optional if the same facts are cited in the body.
 
 ## Body sections
@@ -64,16 +64,16 @@ For Remilia projects: use `parent_group = Remilia` instead of `creator` or `arti
 
 `wikitool knowledge article-start` returns a `section_skeleton` with headings observed across comparable pages. Each entry includes:
 
-- **`heading`** â€" the section title seen on comparables
-- **`required`** â€" `true` for Overview and References (always present)
-- **`content_backed`** â€" `true` if retrieved evidence chunks already cover this section; `false` means the section exists on comparables but no content was retrieved
-- **`supporting_pages`** â€" which comparable pages have this section
+- **`heading`** — the section title seen on comparables
+- **`required`** — `true` for Overview and References (always present)
+- **`content_backed`** — `true` if retrieved evidence chunks already cover this section; `false` means the section exists on comparables but no content was retrieved
+- **`supporting_pages`** — which comparable pages have this section
 
 **Use the skeleton as a starting point, not a contract:**
 
-1. **Drop** sections that don't apply to your subject. A section appearing on comparables doesn't mean it belongs on every article â€" apply editorial judgment.
+1. **Drop** sections that don't apply to your subject. A section appearing on comparables doesn't mean it belongs on every article — apply editorial judgment.
 2. **Add** sections the skeleton missed if your evidence supports them. The skeleton reflects structural consensus among comparables; unique aspects of your subject won't appear.
-3. **Investigate** sections marked `content_backed: false` â€" these exist on comparables but weren't in the retrieved evidence. Use `wikitool knowledge inspect chunks "<Page>" --query "<heading>" --limit 4 --token-budget 400` to fetch targeted content before writing those sections.
+3. **Investigate** sections marked `content_backed: false` — these exist on comparables but weren't in the retrieved evidence. Use `wikitool knowledge inspect chunks "<Page>" --query "<heading>" --limit 4 --token-budget 400` to fetch targeted content before writing those sections.
 4. **Sparse skeletons are normal** when comparables are structurally diverse (e.g., an organization compared against artworks, events, and people). Fall back on the subject-type patterns below.
 
 When a knowledge interview exists, combine the `section_skeleton` with the interview brief before
@@ -90,6 +90,8 @@ article prose or citation evidence. Corroborate user assertions before publishin
 | NFT Collection | Development, Launch, Design, Community, Impact |
 | Event | Background, The event, Aftermath |
 | Artwork | Creation, Description, Exhibition, Reception |
+
+For subjects that are primarily visual works (art, character designs, collections, card art), also follow `visual_subjects.md`, which covers describing the artifact as a primary source and the boundary between description and interpretation.
 
 ### Section rules
 - Use `==` for main sections, `===` for subsections.

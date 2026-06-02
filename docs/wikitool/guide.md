@@ -71,9 +71,11 @@ For new articles and substantial expansions, the recommended agent flow is scout
 interview when human context can improve the article. Start with
 `knowledge article-start --view brief` and a cursory wiki/source search so questions are grounded in
 what wikitool already knows. Then use the packaged knowledge-interview skill and
-`writing_context/interview_playbook.md` to collect the user's freeform knowledge, reflect the
-emerging article scope, and ask adaptive follow-ups where the answer changes structure, research
-targets, terminology, chronology, or risk.
+`writing_context/interview_playbook.md` to collect the user's freeform knowledge. Read any supplied
+documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the
+interview. Reflect the emerging article scope and ask adaptive follow-ups where the answer changes
+structure, research targets, terminology, chronology, source strategy, or risk. There is no fixed
+round count; continue while new answers materially improve the article.
 
 Reusable interview distillations should be saved as:
 
@@ -81,9 +83,10 @@ Reusable interview distillations should be saved as:
 .wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md
 ```
 
-The brief is a research artifact, not article prose and not citation evidence. User assertions
-should be treated as leads until corroborated. Use stable claim IDs only for
-interview-introduced or high-risk claims that need tracking through research and review.
+The brief is a research artifact, not article prose, not citation evidence, and not proof that the
+interview is complete. User assertions should be treated as leads until corroborated. Use stable
+claim IDs only for interview-introduced or high-risk claims that need tracking through research and
+review.
 
 Use the Rust interview ledger commands for deterministic paths, starter files, validation, compact
 handoff summaries, and ledger audits:
@@ -98,8 +101,9 @@ wikitool knowledge interview audit --view brief --format json
 ```
 
 The conversational interview loop still belongs in the agent skill. The CLI does not infer source
-support from user prose; it validates structured metadata, required sections, sidecars, claim ID
-uniqueness, typed open-items JSONL records, negative-evidence counts, and freshness.
+support from user prose and does not decide that an interview is editorially sufficient; it
+validates structured metadata, required sections, sidecars, claim ID uniqueness, typed open-items
+JSONL records, negative-evidence counts, and freshness.
 
 Pass the validated brief to `knowledge article-start --brief-path` or `review --brief-path` when
 the interview should shape research planning or gate review. These integrations surface explicit

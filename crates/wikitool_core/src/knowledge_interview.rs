@@ -18,12 +18,15 @@ pub const OPEN_ITEM_SCHEMA_VERSION: &str = "knowledge_interview_open_item_v1";
 const REQUIRED_BRIEF_SECTIONS: &[&str] = &[
     "Article Object",
     "Scope",
+    "Initial Materials",
     "User-Framed Summary",
+    "Interview Transcript and Context",
     "Claim Map Summary",
     "Chronology",
     "Entities and Relationships",
     "Editorial Framing",
     "Research Plan",
+    "Interviewer Critic Notes",
     "Draft Plan",
 ];
 
@@ -672,7 +675,7 @@ fn render_brief_template(
     let source_article = source_article.unwrap_or("null");
     let related_draft = related_draft.unwrap_or("null");
     format!(
-        "---\nschema_version: {INTERVIEW_SCHEMA_VERSION}\ndoc_kind: {INTERVIEW_DOC_KIND}\ndoc_id: {doc_id}\ntitle: {title}\ntitle_key: {title_key}\nintent: {intent}\ncreated_at: {created_at}\nlast_updated: {created_at}\nfreshness_state: fresh\nagent: {agent}\nsource_article: {source_article}\nrelated_draft: {related_draft}\nclaims_sidecar: {claims_name}\nopen_items_sidecar: {open_items_name}\n---\n\n# Knowledge Interview Brief: {title}\n\n## Article Object\n\nTBD.\n\n## Scope\n\nIncluded:\n\nExcluded:\n\nPossible redirects:\n\nPossible merge/split targets:\n\n## User-Framed Summary\n\nTBD.\n\n## Claim Map Summary\n\nNo interview claims recorded yet.\n\n## Chronology\n\nKnown dates:\n\nApproximate periods:\n\nOpen timeline gaps:\n\n## Entities and Relationships\n\nPeople:\n\nProjects:\n\nGroups:\n\nTerms:\n\nRelated wiki pages:\n\n## Editorial Framing\n\nRecommended angle:\n\nTone risks:\n\nLikely misconceptions:\n\nTerminology notes:\n\n## Research Plan\n\nPrimary-source leads:\n\nSearch queries:\n\nArchive targets:\n\nExisting wiki pages to inspect:\n\nBlocking evidence gaps:\n\n## Draft Plan\n\nLikely sections:\n\nInfobox/template candidates:\n\nCategories to verify:\n\nClaims that require citations:\n\nOpen questions before drafting:\n"
+        "---\nschema_version: {INTERVIEW_SCHEMA_VERSION}\ndoc_kind: {INTERVIEW_DOC_KIND}\ndoc_id: {doc_id}\ntitle: {title}\ntitle_key: {title_key}\nintent: {intent}\ncreated_at: {created_at}\nlast_updated: {created_at}\nfreshness_state: fresh\nagent: {agent}\nsource_article: {source_article}\nrelated_draft: {related_draft}\nclaims_sidecar: {claims_name}\nopen_items_sidecar: {open_items_name}\n---\n\n# Knowledge Interview Brief: {title}\n\n## Article Object\n\nTBD.\n\n## Scope\n\nIncluded:\n\nExcluded:\n\nPossible redirects:\n\nPossible merge/split targets:\n\n## Initial Materials\n\nSupplied documents, links, transcripts, screenshots, source excerpts, or notes:\n\nHow the materials should steer interview questions or research:\n\n## User-Framed Summary\n\nTBD.\n\n## Interview Transcript and Context\n\nFreeform knowledge from the user's initial monologue:\n\nFollow-up rounds and answers:\n\nNuance that may not yet be publishable:\n\n## Claim Map Summary\n\nNo interview claims recorded yet.\n\n## Chronology\n\nKnown dates:\n\nApproximate periods:\n\nOpen timeline gaps:\n\n## Entities and Relationships\n\nPeople:\n\nProjects:\n\nGroups:\n\nTerms:\n\nRelated wiki pages:\n\n## Editorial Framing\n\nRecommended angle:\n\nTone risks:\n\nLikely misconceptions:\n\nTerminology notes:\n\n## Research Plan\n\nPrimary-source leads:\n\nSearch queries:\n\nArchive targets:\n\nExisting wiki pages to inspect:\n\nBlocking evidence gaps:\n\n## Interviewer Critic Notes\n\nWhat would make the article thin, duplicative, unsourced, wrongly framed, or missing the user's actual knowledge:\n\nFollow-up questions triggered by this critique:\n\nDeferred gaps and why they are acceptable:\n\n## Draft Plan\n\nLikely sections:\n\nInfobox/template candidates:\n\nCategories to verify:\n\nClaims that require citations:\n\nOpen questions before drafting:\n"
     )
 }
 
@@ -763,6 +766,158 @@ fn parse_second_level_headings(body: &str) -> Vec<String> {
         }
     }
     headings
+}
+
+/// Draft-plan signals extracted from a knowledge interview brief body, used by
+/// `article-start` to fold human planning into its section skeleton and warnings.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BriefDraftPlan {
+    pub likely_sections: Vec<String>,
+    pub open_questions: Vec<String>,
+    pub critic_notes_present: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DraftCapture {
+    None,
+    Likely,
+    Open,
+}
+
+const DRAFT_PLAN_LABELS: &[&str] = &[
+    "Likely sections:",
+    "Infobox/template candidates:",
+    "Categories to verify:",
+    "Claims that require citations:",
+    "Open questions before drafting:",
+];
+
+/// Parse the `Draft Plan` and `Interviewer Critic Notes` sections of an interview
+/// brief body. Deterministic line scan with no regex, per the wikitool parsing rule.
+/// Returns the planned section names, pre-draft open questions, and whether the
+/// interviewer/critic loop left any notes.
+pub fn parse_brief_draft_plan(body: &str) -> BriefDraftPlan {
+    let mut plan = BriefDraftPlan::default();
+    let mut section = String::new();
+    let mut capture = DraftCapture::None;
+    let mut likely_lines: Vec<String> = Vec::new();
+    let mut open_lines: Vec<String> = Vec::new();
+
+    for raw in body.lines() {
+        let trimmed = raw.trim();
+        if trimmed.starts_with("## ") && !trimmed.starts_with("### ") {
+            section = trimmed.trim_start_matches('#').trim().to_string();
+            capture = DraftCapture::None;
+            continue;
+        }
+        if section.eq_ignore_ascii_case("Interviewer Critic Notes") {
+            if !trimmed.is_empty() && !trimmed.ends_with(':') {
+                plan.critic_notes_present = true;
+            }
+            continue;
+        }
+        if !section.eq_ignore_ascii_case("Draft Plan") {
+            capture = DraftCapture::None;
+            continue;
+        }
+        if let Some(label) = DRAFT_PLAN_LABELS
+            .iter()
+            .find(|label| trimmed.starts_with(**label))
+        {
+            let rest = trimmed[label.len()..].trim();
+            capture = match *label {
+                "Likely sections:" => DraftCapture::Likely,
+                "Open questions before drafting:" => DraftCapture::Open,
+                _ => DraftCapture::None,
+            };
+            if !rest.is_empty() {
+                match capture {
+                    DraftCapture::Likely => likely_lines.push(rest.to_string()),
+                    DraftCapture::Open => open_lines.push(rest.to_string()),
+                    DraftCapture::None => {}
+                }
+            }
+            continue;
+        }
+        if trimmed.is_empty() {
+            continue;
+        }
+        match capture {
+            DraftCapture::Likely => likely_lines.push(trimmed.to_string()),
+            DraftCapture::Open => open_lines.push(trimmed.to_string()),
+            DraftCapture::None => {}
+        }
+    }
+
+    plan.likely_sections = split_labeled_items(&likely_lines, true);
+    plan.open_questions = split_labeled_items(&open_lines, false);
+    plan
+}
+
+fn strip_list_bullet(line: &str) -> &str {
+    line.trim()
+        .trim_start_matches(|c: char| c == '-' || c == '*' || c == '+' || c == '\u{2022}')
+        .trim()
+}
+
+/// Split accumulated label lines into deduplicated items. Section names split on
+/// `;` and `,`; open questions split on `;` only, since questions often contain
+/// commas.
+fn split_labeled_items(lines: &[String], split_commas: bool) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in lines {
+        let stripped = strip_list_bullet(line);
+        for part in stripped.split(|c: char| c == ';' || (split_commas && c == ',')) {
+            let item = part.trim().trim_end_matches('.').trim();
+            if item.is_empty() {
+                continue;
+            }
+            if !out.iter().any(|existing| existing.eq_ignore_ascii_case(item)) {
+                out.push(item.to_string());
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod draft_plan_tests {
+    use super::*;
+
+    #[test]
+    fn parses_inline_semicolon_sections_and_questions() {
+        let body = "## Draft Plan\n\nLikely sections: lead; Design and aesthetic; Card presentation; Roster and seasonal variants\n\nInfobox/template candidates: none\n\nOpen questions before drafting: confirm plural title, with the user; whether to include an infobox\n\n## Interviewer Critic Notes\n\nWhat would make the article thin: the lineage claims are uncited\n";
+        let plan = parse_brief_draft_plan(body);
+        assert_eq!(
+            plan.likely_sections,
+            vec![
+                "lead".to_string(),
+                "Design and aesthetic".to_string(),
+                "Card presentation".to_string(),
+                "Roster and seasonal variants".to_string(),
+            ]
+        );
+        assert_eq!(
+            plan.open_questions,
+            vec![
+                "confirm plural title, with the user".to_string(),
+                "whether to include an infobox".to_string(),
+            ]
+        );
+        assert!(plan.critic_notes_present);
+    }
+
+    #[test]
+    fn parses_bulleted_sections_and_detects_empty_critic_notes() {
+        let body = "## Draft Plan\n\nLikely sections:\n- Design\n- Reception\n\nOpen questions before drafting:\n\n## Interviewer Critic Notes\n\nWhat would make the article thin, duplicative, unsourced, wrongly framed, or missing knowledge:\n\nFollow-up questions triggered by this critique:\n";
+        let plan = parse_brief_draft_plan(body);
+        assert_eq!(
+            plan.likely_sections,
+            vec!["Design".to_string(), "Reception".to_string()]
+        );
+        assert!(plan.open_questions.is_empty());
+        assert!(!plan.critic_notes_present);
+    }
 }
 
 fn validate_frontmatter(

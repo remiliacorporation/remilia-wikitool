@@ -2,8 +2,8 @@ use anyhow::{Result, bail};
 use serde::Serialize;
 use wikitool_core::authoring::article_start::build_article_start;
 use wikitool_core::authoring::model::{
-    ArticleStartIntent, ContextSurfaceSource, EvidenceCoverageItem, LocalExistenceState,
-    RequiredTemplate, SectionSkeleton, TemplateSurfaceEntry,
+    ArticleStartIntent, ArticleStartResult, ContextSurfaceSource, EvidenceCoverageItem,
+    LocalExistenceState, OpenQuestion, RequiredTemplate, SectionSkeleton, TemplateSurfaceEntry,
 };
 use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::knowledge::authoring::{
@@ -13,7 +13,7 @@ use wikitool_core::knowledge::authoring::{
 use wikitool_core::knowledge::status::knowledge_status;
 use wikitool_core::knowledge_interview::{
     InterviewBriefSummary, InterviewValidationReport, InterviewValidationStatus,
-    validate_interview_brief,
+    parse_brief_draft_plan, validate_interview_brief,
 };
 use wikitool_core::profile::load_or_build_remilia_profile_overlay;
 
@@ -58,7 +58,7 @@ pub(super) fn run_knowledge_article_start(
 
     let use_diversify = !args.no_diversify;
     let paths = resolve_runtime_paths(runtime)?;
-    let interview_brief = match args.brief_path.as_deref() {
+    let (mut interview_brief, brief_abs) = match args.brief_path.as_deref() {
         Some(path) => {
             let absolute = if path.is_absolute() {
                 path.to_path_buf()
@@ -66,9 +66,10 @@ pub(super) fn run_knowledge_article_start(
                 paths.project_root.join(path)
             };
             validate_scoped_path(&paths, &absolute)?;
-            Some(validate_interview_brief(&absolute, args.brief_stale_days)?)
+            let report = validate_interview_brief(&absolute, args.brief_stale_days)?;
+            (Some(report), Some(absolute))
         }
-        None => None,
+        None => (None, None),
     };
     let topic = normalize_option(args.topic.as_deref())
         .or_else(|| derive_topic_from_stub_path(args.stub_path.as_deref()));
@@ -112,7 +113,16 @@ pub(super) fn run_knowledge_article_start(
         },
         AuthoringKnowledgePack::Found(report) => {
             let overlay = load_or_build_remilia_profile_overlay(&paths)?;
-            let article_start = build_article_start(&report, &overlay, args.intent.into());
+            let mut article_start = build_article_start(&report, &overlay, args.intent.into());
+            if let (Some(brief_report), Some(brief_path)) =
+                (interview_brief.as_mut(), brief_abs.as_deref())
+            {
+                fold_interview_brief_into_article_start(
+                    &mut article_start,
+                    brief_report,
+                    brief_path,
+                );
+            }
             KnowledgeArticleStartOutput {
                 docs_profile_requested: status.docs_profile_requested.clone(),
                 readiness: status.readiness.clone(),
@@ -311,6 +321,85 @@ pub(super) fn run_knowledge_article_start(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+const BRIEF_SECTION_RATIONALE: &str =
+    "Planned in the interview brief Draft Plan; not observed on comparable pages.";
+const BRIEF_OPEN_QUESTION_REASON: &str =
+    "Recorded as an open question before drafting in the interview brief.";
+
+/// Fold the interview brief's Draft Plan into the article-start result: add planned
+/// sections the comparables missed, surface pre-draft open questions as non-blocking
+/// open questions, and flag a skipped interviewer/critic loop.
+fn fold_interview_brief_into_article_start(
+    article_start: &mut ArticleStartResult,
+    brief_report: &mut InterviewValidationReport,
+    brief_path: &std::path::Path,
+) {
+    let Ok(body) = std::fs::read_to_string(brief_path) else {
+        return;
+    };
+    let plan = parse_brief_draft_plan(&body);
+
+    const STRUCTURAL: &[&str] = &[
+        "lead",
+        "overview",
+        "introduction",
+        "summary",
+        "references",
+        "see also",
+        "external links",
+        "further reading",
+        "notes",
+        "citations",
+    ];
+    let mut present: std::collections::BTreeSet<String> = article_start
+        .local_integration
+        .section_skeleton
+        .iter()
+        .map(|section| section.heading.to_ascii_lowercase())
+        .collect();
+    for name in &plan.likely_sections {
+        let key = name.to_ascii_lowercase();
+        if STRUCTURAL.contains(&key.as_str()) || present.contains(&key) {
+            continue;
+        }
+        present.insert(key);
+        article_start
+            .local_integration
+            .section_skeleton
+            .push(SectionSkeleton {
+                heading: name.clone(),
+                rationale: BRIEF_SECTION_RATIONALE.to_string(),
+                required: false,
+                content_backed: false,
+                supporting_pages: Vec::new(),
+            });
+    }
+
+    let existing: std::collections::BTreeSet<String> = article_start
+        .open_questions
+        .iter()
+        .map(|question| question.question.to_ascii_lowercase())
+        .collect();
+    for question in &plan.open_questions {
+        if existing.contains(&question.to_ascii_lowercase()) {
+            continue;
+        }
+        article_start.open_questions.push(OpenQuestion {
+            question: question.clone(),
+            reason: BRIEF_OPEN_QUESTION_REASON.to_string(),
+            blocking: false,
+            evidence: Vec::new(),
+        });
+    }
+
+    if !plan.critic_notes_present {
+        brief_report.warnings.push(
+            "interview brief has no Interviewer Critic Notes; run the interviewer/critic loop before drafting"
+                .to_string(),
+        );
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -519,6 +608,12 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                         brief.summary.claim_counts.pending_corroboration
                     ));
                 }
+                if brief.summary.do_not_assert_count > 0 {
+                    warnings.push(format!(
+                        "interview brief marks {} do-not-assert item(s); do not state these as fact without a source",
+                        brief.summary.do_not_assert_count
+                    ));
+                }
                 if brief.summary.open_item_counts.open > 0 {
                     warnings.push(format!(
                         "interview brief has {} open research item(s)",
@@ -534,7 +629,32 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                 if brief.summary.computed_freshness == "stale" {
                     warnings.push("interview brief is stale".to_string());
                 }
-                warnings.extend(brief.warnings.iter().take(4).cloned());
+                warnings.extend(brief.warnings.iter().take(6).cloned());
+
+                let brief_section_count = article_start
+                    .local_integration
+                    .section_skeleton
+                    .iter()
+                    .filter(|section| section.rationale == BRIEF_SECTION_RATIONALE)
+                    .count();
+                if brief_section_count > 0 {
+                    warnings.push(format!(
+                        "interview brief contributed {brief_section_count} planned section(s) beyond comparables; confirm they fit the subject"
+                    ));
+                }
+                for question in article_start
+                    .open_questions
+                    .iter()
+                    .filter(|question| {
+                        !question.blocking && question.reason == BRIEF_OPEN_QUESTION_REASON
+                    })
+                    .take(6)
+                {
+                    warnings.push(format!(
+                        "open question before drafting: {}",
+                        question.question
+                    ));
+                }
             }
 
             let mut next_commands = Vec::new();
@@ -734,7 +854,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                         .local_integration
                         .section_skeleton
                         .iter()
-                        .take(6)
+                        .take(if output.interview_brief.is_some() { 12 } else { 6 })
                         .map(section_card)
                         .collect(),
                     docs_queries: capped_strings(&article_start.local_integration.docs_queries, 4),

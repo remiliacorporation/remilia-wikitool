@@ -50,7 +50,7 @@ Do not duplicate command reference material here. Check `wikitool --help`,
 For article work, read in this order:
 
 1. `writing_context/style_rules.md`
-2. `writing_context/article_structure.md`
+2. `writing_context/article_structure.md` (plus `writing_context/visual_subjects.md` for art, character, and other visual subjects)
 3. `writing_context/writing_guide.md`
 4. `writing_context/interview_playbook.md` for article creation, substantial expansion, or non-mechanical review gaps
 5. `writing_context/extensions.md`
@@ -95,6 +95,13 @@ relationships, or source leads. Skip interview rounds for mechanical lint, link,
 or validation work unless a conflict requires user judgment. Respect explicit opt-outs such as
 "no interview".
 
+The interview is an elicitation loop, not a checklist. Read any user-supplied documents, links,
+screenshots, transcripts, notes, or source excerpts before narrowing the questions. Start with a
+broad freeform prompt about what the subject is, why it matters, what sources or artifacts matter,
+what outsiders misunderstand, and what should not be overstated. Reflect the shape back, ask
+adaptive follow-ups, and continue without a hard round limit while answers improve the article's
+scope, chronology, terminology, source strategy, section plan, or risk profile.
+
 Reusable interview distillations belong under
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat these briefs as working
 notes: user assertions are research leads, not citation evidence or article prose. Use claim IDs
@@ -105,9 +112,10 @@ Use `wikitool knowledge interview init "Topic" --intent new|expand|audit|refresh
 to create the timestamped brief and sidecars. Use `knowledge interview open-item add/list` to
 record unresolved follow-up, source rejection, access failures, and negative evidence as structured
 ledger entries instead of article prose. Use `knowledge interview validate`, `show`, and `audit`
-for deterministic checks, compact handoff summaries, and ledger review. Pass a validated brief to
-`knowledge article-start --brief-path PATH` and `review --brief-path PATH` when it should shape
-research planning or gate review.
+for deterministic checks, compact handoff summaries, and ledger review. Mechanical validation only
+proves the ledger is parseable; it does not prove the interview is complete or the draft is good.
+Pass a validated brief to `knowledge article-start --brief-path PATH` and `review --brief-path PATH`
+when it should shape research planning or gate review.
 
 ## Token Discipline
 

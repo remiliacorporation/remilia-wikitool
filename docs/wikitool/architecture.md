@@ -57,15 +57,20 @@ Agent guidance should stay aligned with the command boundaries:
 
 The first human-in-loop authoring boundary is an agent skill plus a Rust-validated ledger artifact:
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. These briefs capture distilled
-user knowledge, candidate structure, source leads, open questions, and high-risk interview claims.
+user knowledge, supplied materials, candidate structure, source leads, open questions, and
+high-risk interview claims.
 They are not article prose, citation evidence, or a replacement for source corroboration.
 
 `knowledge interview init|validate|show|audit|open-item` owns deterministic path creation, starter
 sidecars, frontmatter/section validation, claim ID uniqueness checks, typed open-items JSONL
 records, negative-evidence counts, freshness classification, compact summaries, and ledger audits.
-The conversational interview loop stays in the agent skill. `knowledge article-start` remains the
-authoring scout front door and accepts `--brief-path` to surface a validated interview summary.
-`review --brief-path` carries the same summary into the gate and fails on invalid brief metadata.
+The conversational interview loop stays in the agent skill. It is open-ended and critic-driven:
+agents should ask broad initial questions, inspect supplied materials, reflect the emerging article
+shape, and continue follow-up rounds while answers materially improve the article. `knowledge
+article-start` remains the authoring scout front door and accepts `--brief-path` to surface a
+validated interview summary. `review --brief-path` carries the same summary into the gate and fails
+on invalid brief metadata. Mechanical validation proves the ledger is parseable, not that the
+interview is complete or the article is good.
 Neither command treats user assertions as evidence.
 
 ## Agentic Maturity Backlog

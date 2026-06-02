@@ -2,11 +2,12 @@
 
 Use this playbook when a user asks for article creation, substantial expansion, article refresh,
 or a review where human context can materially improve the article. It is a general knowledge
-distillation workflow, not a script for one article type.
+elicitation workflow, not a script for one article type and not a checklist to rush through.
 
-Interview briefs are working notes. They are not article prose, citation evidence, or proof that a
-claim is true. Treat user assertions as leads to corroborate with sources, comparable wiki pages,
-or target-wiki records before publishing them as facts.
+Interview briefs are working notes. They are not article prose, citation evidence, proof that a
+claim is true, or proof that the interview is complete. Treat user assertions as leads to
+corroborate with sources, comparable wiki pages, target-wiki records, or later creator-published
+statements before publishing them as facts.
 
 ## When To Interview
 
@@ -30,14 +31,53 @@ Skip or keep it minimal for:
 1. Scout first. Run the normal authoring front door, usually
    `wikitool knowledge article-start "<Topic>" --intent new|expand|audit|refresh --format json --view brief`,
    and do a cursory source/wiki search before asking broad questions.
-2. Start with a freeform dump. Invite the user to say what they know, what matters, what common
-   misunderstandings exist, and what the article should not overstate.
-3. Reflect the shape back. Summarize the emerging scope in neutral wiki language, separating
-   source-backed facts, user-provided leads, open questions, and editorial constraints.
-4. Ask evidence-gated follow-ups. Focus questions on gaps that change article structure, not on
-   trivia the agent can find mechanically. Keep rounds adaptive; do not force a fixed checklist.
-5. Stop when marginal value drops. Move to research and drafting once the article shape, likely
-   sections, major claims, and unresolved risks are clear.
+2. Read supplied materials before narrowing the interview. If the user provides documents, links,
+   notes, screenshots, transcripts, or source excerpts, inspect them first when access permits.
+   Start the interview by asking the user to explain what the subject is, why it matters, and what
+   the supplied materials should make legible.
+3. Start with a freeform dump. Invite the user to speak broadly, as if recording a monologue for a
+   future editor: what the subject is, origin and chronology, names and terminology, relationships,
+   aesthetics or mechanics, why it belongs on the wiki, what outsiders miss, what is uncertain, and
+   what the article must not overstate.
+4. Reflect the shape back. Summarize the emerging scope in neutral wiki language, separating
+   source-backed facts, user-provided leads, source leads from supplied materials, open questions,
+   and editorial constraints. Do not collapse uncited but important context into thin prose; turn it
+   into follow-up questions, source requests, artifact-description decisions, or a creator-statement
+   publishing path.
+5. Ask adaptive follow-ups. Focus questions on gaps that change article structure, not on trivia the
+   agent can find mechanically. There is no fixed number of rounds and no hard cap. Continue as long
+   as new answers materially improve the article's scope, chronology, terminology, source strategy,
+   section plan, or risk profile.
+6. Run an interviewer/critic loop before drafting. The same agent should briefly critique the
+   emerging article plan: what would make this article thin, duplicative, unsourced, wrongly framed,
+   or missing the human's actual knowledge? Use that critique to ask another round of questions when
+   needed.
+7. Stop only when the interview is editorially sufficient. Move to research and drafting once the
+   article object, source strategy, likely sections, major claims, unresolved risks, and any
+   intentionally deferred gaps are clear. A mechanically valid brief is not enough.
+
+## Interview Stance
+
+The agent is the interviewer, not a form-filler. It should use ordinary conversation, open-ended
+prompts, reflection, and follow-up questions to elicit context broadly. Good interviews often begin
+with one broad question and then branch into several rounds:
+
+```text
+Before I narrow this into article sections, tell me what this subject is in your own words. Include
+why it matters, where it came from, what people misunderstand about it, what sources or artifacts I
+should look at, and what you would be disappointed to see omitted.
+```
+
+When supplied materials exist, ask from them:
+
+```text
+I read the supplied source. It supports X and Y, but it does not explain Z. Is Z part of the subject,
+an inferred reading, or something we should seek a publishable source for?
+```
+
+Avoid turning the interview into quality-marker compliance. The checklist exists to preserve a
+handoff, not to decide that the article is good. The interviewer should prefer more context, clearer
+source leads, and better article judgment over early closure.
 
 ## Interview Brief Ledger
 
@@ -65,7 +105,11 @@ that go missing, so keep these headings:
 
 - Article Object: a neutral definition of what the subject is and what kind of page it may become.
 - Scope: what is included or excluded, plus possible redirects and merge/split targets.
+- Initial Materials: documents, links, transcripts, screenshots, source excerpts, or other context
+  supplied at the start, with a note on how each should steer interview questions or research.
 - User-Framed Summary: the user's high-level framing in neutral wiki language.
+- Interview Transcript and Context: distilled freeform knowledge from the user's monologue and
+  follow-up rounds, including important nuance that may not yet be publishable.
 - Claim Map Summary: a short read of the interview claims; the claims themselves live in the
   `.claims.json` sidecar with provenance and status, not in the brief prose.
 - Chronology: known dates, approximate periods, and open timeline gaps.
@@ -73,6 +117,8 @@ that go missing, so keep these headings:
 - Editorial Framing: recommended angle, tone risks, likely misconceptions, and terminology notes.
 - Research Plan: primary-source leads, search queries, archive targets, pages to inspect, and
   blocking evidence gaps.
+- Interviewer Critic Notes: the agent's critique of the emerging article plan, including thinness,
+  duplication, source, framing, and missing-context risks that should trigger more questions.
 - Draft Plan: likely sections, infobox/template candidates, categories to verify, claims that
   require citations, and open questions before drafting.
 
@@ -92,12 +138,18 @@ failure, or editorial uncertainty.
 
 ## Drafting Boundary
 
-Before drafting, convert the brief into a research plan:
+Before drafting, convert the brief into a research plan and an editorial sufficiency check:
 
 - Corroborate factual claims with external sources, target-wiki pages, or known primary records.
 - Preserve the user's thematic framing only when it survives neutral article language.
 - Attribute disputed or source-specific claims rather than presenting them as settled facts.
-- Omit claims that remain uncited, unverifiable, or too thin for the target wiki.
+- Omit or defer claims that remain uncited, unverifiable, or too thin for the target wiki, but do not
+  let omission silently produce a poor article. If the omitted material is central, ask more
+  questions, request a publishable source, propose a creator-statement lane, or recommend
+  redirect/merge until sources exist.
 - Run `wikitool knowledge interview validate PATH --format json` and resolve invalid metadata,
   duplicate claim IDs, missing sidecars, unsupported claim statuses, and invalid open-item records
   before relying on the brief.
+- Confirm that open questions before drafting are either answered, intentionally deferred, or
+  escalated into a clear editorial decision. Mechanical validation does not imply editorial
+  acceptance.

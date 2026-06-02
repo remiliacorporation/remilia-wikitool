@@ -15,6 +15,7 @@ For another MediaWiki target, provide host `writing_context/` when building the 
 |---|---|
 | `style_rules.md` | Natural writing rules and AI-writing antipatterns. Read before every article. |
 | `article_structure.md` | Required article skeleton and section patterns. |
+| `visual_subjects.md` | Rules for art, character designs, and other visual subjects (artifact-as-source, describe vs. interpret). |
 | `writing_guide.md` | Sourcing, citations, categories, and article workflow. |
 | `interview_playbook.md` | Human knowledge intake flow and interview brief artifact guidance. |
 | `extensions.md` | Content extension tags and target-local chart contracts. |
