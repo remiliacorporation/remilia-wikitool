@@ -397,6 +397,35 @@ fn inserts_missing_article_quality_banner_with_safe_fix() {
 }
 
 #[test]
+fn preserves_existing_article_quality_review_states() {
+    for state in ["wip", "verified"] {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        let paths = paths(&project_root);
+        write_instruction_sources(&paths);
+        write_common_templates(&paths);
+        let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+        write_file(
+            &article_path,
+            &format!(
+                "{{{{SHORTDESC:Alpha}}}}\n{{{{Article quality|{state}}}}}\n\n'''Alpha''' is a page.\n\n== References ==\n{{{{Reflist}}}}\n"
+            ),
+        );
+
+        let report = lint_article(&paths, &article_path).expect("lint");
+
+        assert!(
+            !has_rule(&report, "structure.require_article_quality_banner"),
+            "{state} should satisfy the article quality banner requirement"
+        );
+        assert!(
+            !has_rule(&report, "structure.article_quality_state"),
+            "{state} should not be normalized back to unverified"
+        );
+    }
+}
+
+#[test]
 fn detects_missing_reflist_and_applies_safe_fix() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");

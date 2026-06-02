@@ -97,7 +97,7 @@ pub(super) fn lint_article_quality_banner(
             issue: ArticleLintIssue {
                 rule_id: "structure.require_article_quality_banner".to_string(),
                 severity: ArticleLintSeverity::Warning,
-                message: "AI-generated drafts should include the article quality banner near the top.".to_string(),
+                message: "Main-namespace articles should include the article quality review banner near the top.".to_string(),
                 span: document.first_nonblank_line().and_then(|line| document.span_for_line(line)),
                 evidence: document.first_nonblank_line().map(|line| make_content_preview(&line.text, 96)),
                 suggested_remediation: Some(
@@ -117,38 +117,6 @@ pub(super) fn lint_article_quality_banner(
             }],
         });
         return;
-    }
-
-    if let Some(expected_state) = resources
-        .overlay
-        .authoring
-        .article_quality_default_state
-        .as_deref()
-        && let Some(line) = banner_line
-        && !line
-            .text
-            .to_ascii_lowercase()
-            .contains(&format!("|{}", expected_state.to_ascii_lowercase()))
-    {
-        matches.push(IssueMatch {
-            issue: ArticleLintIssue {
-                rule_id: "structure.article_quality_state".to_string(),
-                severity: ArticleLintSeverity::Warning,
-                message: "Article quality banner is using a non-default state for an AI-authored draft.".to_string(),
-                span: document.span_for_line(line),
-                evidence: Some(line.text.trim().to_string()),
-                suggested_remediation: Some(
-                    "Use {{Article quality|unverified}} until a human editor changes the review state.".to_string(),
-                ),
-                suggested_fixes: vec![SuggestedFix {
-                    label: "Normalize article quality state".to_string(),
-                    kind: SuggestedFixKind::AssistedFix,
-                    replacement_preview: Some("{{Article quality|unverified}}".to_string()),
-                    patch: None,
-                }],
-            },
-            safe_fixes: Vec::new(),
-        });
     }
 }
 
