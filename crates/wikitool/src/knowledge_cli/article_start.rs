@@ -623,25 +623,15 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                     .cloned(),
             );
 
+            // Only genuine blockers belong here. A contract query term miss is
+            // advisory (already surfaced via contract_warnings) and is expected for
+            // niche subjects, so it must not force readiness to not_ready.
             let mut blocking = article_start
                 .open_questions
                 .iter()
                 .filter(|question| question.blocking)
                 .map(|question| question.question.clone())
                 .collect::<Vec<_>>();
-            if !article_start
-                .local_integration
-                .contract_missing_query_terms
-                .is_empty()
-            {
-                blocking.push(format!(
-                    "contract query missed terms: {}",
-                    article_start
-                        .local_integration
-                        .contract_missing_query_terms
-                        .join(", ")
-                ));
-            }
             if let Some(brief) = &output.interview_brief {
                 if brief.status == InterviewValidationStatus::Invalid {
                     blocking.push(format!(
@@ -1139,7 +1129,7 @@ mod tests {
     fn brief_readiness_is_not_ready_when_article_start_has_blockers() {
         let readiness = article_start_brief_readiness(
             &KnowledgeReadinessLevel::ContentReady,
-            &["contract query missed terms: baroque, saturn, sega".to_string()],
+            &["interview brief is invalid: missing required frontmatter".to_string()],
             None,
         );
 
