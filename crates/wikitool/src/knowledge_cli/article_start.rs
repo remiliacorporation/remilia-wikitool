@@ -94,7 +94,7 @@ pub(super) fn run_knowledge_article_start(
         },
     )?;
     let status = knowledge_status(&paths, &args.docs_profile)?;
-    let output = match pack {
+    let mut output = match pack {
         AuthoringKnowledgePack::IndexMissing => KnowledgeArticleStartOutput {
             docs_profile_requested: status.docs_profile_requested.clone(),
             readiness: status.readiness.clone(),
@@ -135,6 +135,7 @@ pub(super) fn run_knowledge_article_start(
             }
         }
     };
+    output.readiness = article_start_output_readiness(&output);
 
     if args.format.is_json() {
         if args.view.is_full() {
@@ -623,22 +624,8 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                     .cloned(),
             );
 
-            // Only genuine blockers belong here. A contract query term miss is
-            // advisory (already surfaced via contract_warnings) and is expected for
-            // niche subjects, so it must not force readiness to not_ready.
-            let mut blocking = article_start
-                .open_questions
-                .iter()
-                .filter(|question| question.blocking)
-                .map(|question| question.question.clone())
-                .collect::<Vec<_>>();
+            let blocking = article_start_blocking(article_start, output.interview_brief.as_ref());
             if let Some(brief) = &output.interview_brief {
-                if brief.status == InterviewValidationStatus::Invalid {
-                    blocking.push(format!(
-                        "interview brief is invalid: {}",
-                        brief.errors.join("; ")
-                    ));
-                }
                 if brief.summary.claim_counts.pending_corroboration > 0 {
                     warnings.push(format!(
                         "interview brief has {} pending corroboration claim(s)",
@@ -781,19 +768,13 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                     "full".to_string(),
                 ]),
             ];
-            let readiness = article_start_brief_readiness(
-                &output.readiness,
-                &blocking,
-                output.interview_brief.as_ref(),
-            );
-
             ArticleStartBrief {
                 schema_version: "wikitool_brief_v1",
                 command: "knowledge article-start",
                 view: "brief",
                 status: "found",
                 docs_profile_requested: &output.docs_profile_requested,
-                readiness,
+                readiness: output.readiness.clone(),
                 knowledge_generation: &output.knowledge_generation,
                 topic: Some(&article_start.topic),
                 intent: Some(&article_start.intent),
@@ -953,14 +934,56 @@ fn article_start_brief_readiness(
     {
         return KnowledgeReadinessLevel::NotReady;
     }
+    // Open interview items are normal for high-context subjects and are already
+    // surfaced as warnings. Only unresolved factual claims or negative evidence
+    // should cap an otherwise authoring-ready brief.
     if brief.summary.claim_counts.pending_corroboration > 0
-        || brief.summary.open_item_counts.open > 0
         || brief.summary.open_item_counts.negative_evidence > 0
     {
         return KnowledgeReadinessLevel::ContentReady;
     }
 
     base.clone()
+}
+
+fn article_start_output_readiness(output: &KnowledgeArticleStartOutput) -> KnowledgeReadinessLevel {
+    match &output.result {
+        KnowledgeArticleStartPayload::IndexMissing | KnowledgeArticleStartPayload::QueryMissing => {
+            KnowledgeReadinessLevel::NotReady
+        }
+        KnowledgeArticleStartPayload::Found { article_start } => {
+            let blocking = article_start_blocking(article_start, output.interview_brief.as_ref());
+            article_start_brief_readiness(
+                &output.readiness,
+                &blocking,
+                output.interview_brief.as_ref(),
+            )
+        }
+    }
+}
+
+fn article_start_blocking(
+    article_start: &ArticleStartResult,
+    interview_brief: Option<&InterviewValidationReport>,
+) -> Vec<String> {
+    // Only genuine blockers belong here. A contract query term miss is advisory
+    // (already surfaced via contract_warnings) and is expected for niche
+    // subjects, so it must not force readiness to not_ready.
+    let mut blocking = article_start
+        .open_questions
+        .iter()
+        .filter(|question| question.blocking)
+        .map(|question| question.question.clone())
+        .collect::<Vec<_>>();
+    if let Some(brief) = interview_brief
+        && brief.status == InterviewValidationStatus::Invalid
+    {
+        blocking.push(format!(
+            "interview brief is invalid: {}",
+            brief.errors.join("; ")
+        ));
+    }
+    blocking
 }
 
 fn evidence_card(evidence: &EvidenceCoverageItem) -> EvidenceCoverageCard<'_> {
@@ -1137,10 +1160,23 @@ mod tests {
     }
 
     #[test]
-    fn brief_readiness_downgrades_open_interview_work() {
+    fn brief_readiness_keeps_open_items_advisory() {
+        let mut brief = valid_interview_report();
+        brief.summary.open_item_counts.open = 1;
+
+        let readiness = article_start_brief_readiness(
+            &KnowledgeReadinessLevel::AuthoringReady,
+            &[],
+            Some(&brief),
+        );
+
+        assert_eq!(readiness, KnowledgeReadinessLevel::AuthoringReady);
+    }
+
+    #[test]
+    fn brief_readiness_downgrades_pending_claims() {
         let mut brief = valid_interview_report();
         brief.summary.claim_counts.pending_corroboration = 1;
-        brief.summary.open_item_counts.open = 1;
 
         let readiness = article_start_brief_readiness(
             &KnowledgeReadinessLevel::AuthoringReady,
