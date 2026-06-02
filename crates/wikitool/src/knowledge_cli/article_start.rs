@@ -10,7 +10,7 @@ use wikitool_core::knowledge::authoring::{
     AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringPayloadMode,
     build_authoring_knowledge_pack,
 };
-use wikitool_core::knowledge::status::knowledge_status;
+use wikitool_core::knowledge::status::{KnowledgeReadinessLevel, knowledge_status};
 use wikitool_core::knowledge_interview::{
     InterviewBriefSummary, InterviewValidationReport, InterviewValidationStatus,
     parse_brief_draft_plan, validate_interview_brief,
@@ -341,41 +341,10 @@ fn fold_interview_brief_into_article_start(
     };
     let plan = parse_brief_draft_plan(&body);
 
-    const STRUCTURAL: &[&str] = &[
-        "lead",
-        "overview",
-        "introduction",
-        "summary",
-        "references",
-        "see also",
-        "external links",
-        "further reading",
-        "notes",
-        "citations",
-    ];
-    let mut present: std::collections::BTreeSet<String> = article_start
-        .local_integration
-        .section_skeleton
-        .iter()
-        .map(|section| section.heading.to_ascii_lowercase())
-        .collect();
-    for name in &plan.likely_sections {
-        let key = name.to_ascii_lowercase();
-        if STRUCTURAL.contains(&key.as_str()) || present.contains(&key) {
-            continue;
-        }
-        present.insert(key);
-        article_start
-            .local_integration
-            .section_skeleton
-            .push(SectionSkeleton {
-                heading: name.clone(),
-                rationale: BRIEF_SECTION_RATIONALE.to_string(),
-                required: false,
-                content_backed: false,
-                supporting_pages: Vec::new(),
-            });
-    }
+    merge_brief_planned_sections(
+        &mut article_start.local_integration.section_skeleton,
+        &plan.likely_sections,
+    );
 
     let existing: std::collections::BTreeSet<String> = article_start
         .open_questions
@@ -402,6 +371,84 @@ fn fold_interview_brief_into_article_start(
     }
 }
 
+fn merge_brief_planned_sections(section_skeleton: &mut Vec<SectionSkeleton>, planned: &[String]) {
+    let mut planned_keys = std::collections::BTreeSet::new();
+    let mut planned_sections = Vec::new();
+
+    for name in planned {
+        let key = normalized_heading_key(name);
+        if key.is_empty() || is_structural_heading_key(&key) || !planned_keys.insert(key.clone()) {
+            continue;
+        }
+
+        if let Some(index) = section_skeleton
+            .iter()
+            .position(|section| normalized_heading_key(&section.heading) == key)
+        {
+            planned_sections.push(section_skeleton.remove(index));
+        } else {
+            planned_sections.push(SectionSkeleton {
+                heading: name.trim().to_string(),
+                rationale: BRIEF_SECTION_RATIONALE.to_string(),
+                required: false,
+                content_backed: false,
+                supporting_pages: Vec::new(),
+            });
+        }
+    }
+
+    if planned_sections.is_empty() {
+        return;
+    }
+
+    let mut lead_sections = Vec::new();
+    let mut remaining_body_sections = Vec::new();
+    let mut appendix_sections = Vec::new();
+
+    for section in std::mem::take(section_skeleton) {
+        let key = normalized_heading_key(&section.heading);
+        if key == "overview" {
+            lead_sections.push(section);
+        } else if is_terminal_appendix_key(&key) {
+            appendix_sections.push(section);
+        } else {
+            remaining_body_sections.push(section);
+        }
+    }
+
+    section_skeleton.extend(lead_sections);
+    section_skeleton.extend(planned_sections);
+    section_skeleton.extend(remaining_body_sections);
+    section_skeleton.extend(appendix_sections);
+}
+
+fn normalized_heading_key(heading: &str) -> String {
+    heading.trim().to_ascii_lowercase()
+}
+
+fn is_structural_heading_key(key: &str) -> bool {
+    matches!(
+        key,
+        "lead"
+            | "overview"
+            | "introduction"
+            | "summary"
+            | "references"
+            | "see also"
+            | "external links"
+            | "further reading"
+            | "notes"
+            | "citations"
+    )
+}
+
+fn is_terminal_appendix_key(key: &str) -> bool {
+    matches!(
+        key,
+        "see also" | "references" | "external links" | "further reading" | "notes" | "citations"
+    )
+}
+
 #[derive(Debug, Serialize)]
 struct ArticleStartBrief<'a> {
     schema_version: &'static str,
@@ -409,7 +456,7 @@ struct ArticleStartBrief<'a> {
     view: &'static str,
     status: &'static str,
     docs_profile_requested: &'a str,
-    readiness: &'a KnowledgeReadinessLevel,
+    readiness: KnowledgeReadinessLevel,
     knowledge_generation: &'a str,
     topic: Option<&'a str>,
     intent: Option<&'a ArticleStartIntent>,
@@ -515,7 +562,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             view: "brief",
             status: "index_missing",
             docs_profile_requested: &output.docs_profile_requested,
-            readiness: &output.readiness,
+            readiness: output.readiness.clone(),
             knowledge_generation: &output.knowledge_generation,
             topic: None,
             intent: None,
@@ -543,7 +590,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             view: "brief",
             status: "query_missing",
             docs_profile_requested: &output.docs_profile_requested,
-            readiness: &output.readiness,
+            readiness: output.readiness.clone(),
             knowledge_generation: &output.knowledge_generation,
             topic: None,
             intent: None,
@@ -744,6 +791,11 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                     "full".to_string(),
                 ]),
             ];
+            let readiness = article_start_brief_readiness(
+                &output.readiness,
+                &blocking,
+                output.interview_brief.as_ref(),
+            );
 
             ArticleStartBrief {
                 schema_version: "wikitool_brief_v1",
@@ -751,7 +803,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                 view: "brief",
                 status: "found",
                 docs_profile_requested: &output.docs_profile_requested,
-                readiness: &output.readiness,
+                readiness,
                 knowledge_generation: &output.knowledge_generation,
                 topic: Some(&article_start.topic),
                 intent: Some(&article_start.intent),
@@ -854,7 +906,11 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                         .local_integration
                         .section_skeleton
                         .iter()
-                        .take(if output.interview_brief.is_some() { 12 } else { 6 })
+                        .take(if output.interview_brief.is_some() {
+                            12
+                        } else {
+                            6
+                        })
                         .map(section_card)
                         .collect(),
                     docs_queries: capped_strings(&article_start.local_integration.docs_queries, 4),
@@ -888,6 +944,33 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             }
         }
     }
+}
+
+fn article_start_brief_readiness(
+    base: &KnowledgeReadinessLevel,
+    blocking: &[String],
+    interview_brief: Option<&InterviewValidationReport>,
+) -> KnowledgeReadinessLevel {
+    if matches!(base, KnowledgeReadinessLevel::NotReady) || !blocking.is_empty() {
+        return KnowledgeReadinessLevel::NotReady;
+    }
+
+    let Some(brief) = interview_brief else {
+        return base.clone();
+    };
+    if brief.status == InterviewValidationStatus::Invalid
+        || brief.summary.computed_freshness == "stale"
+    {
+        return KnowledgeReadinessLevel::NotReady;
+    }
+    if brief.summary.claim_counts.pending_corroboration > 0
+        || brief.summary.open_item_counts.open > 0
+        || brief.summary.open_item_counts.negative_evidence > 0
+    {
+        return KnowledgeReadinessLevel::ContentReady;
+    }
+
+    base.clone()
 }
 
 fn evidence_card(evidence: &EvidenceCoverageItem) -> EvidenceCoverageCard<'_> {
@@ -935,5 +1018,146 @@ fn section_card(section: &SectionSkeleton) -> SectionSkeletonCard<'_> {
             .into_iter()
             .map(|value| text_preview(&value, 120))
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+    use wikitool_core::knowledge_interview::{InterviewClaimCounts, InterviewOpenItemCounts};
+
+    fn section(heading: &str, rationale: &str, required: bool) -> SectionSkeleton {
+        SectionSkeleton {
+            heading: heading.to_string(),
+            rationale: rationale.to_string(),
+            required,
+            content_backed: false,
+            supporting_pages: Vec::new(),
+        }
+    }
+
+    fn valid_interview_report() -> InterviewValidationReport {
+        InterviewValidationReport {
+            schema_version: "knowledge_interview_validation_v1",
+            path: PathBuf::from("brief.md"),
+            status: InterviewValidationStatus::Valid,
+            summary: InterviewBriefSummary {
+                doc_id: None,
+                title: None,
+                title_key: None,
+                intent: None,
+                created_at: None,
+                last_updated: None,
+                freshness_state: Some("fresh".to_string()),
+                computed_freshness: "fresh".to_string(),
+                agent: None,
+                claims_sidecar: None,
+                open_items_sidecar: None,
+                sections_present: Vec::new(),
+                sections_missing: Vec::new(),
+                claim_counts: InterviewClaimCounts::default(),
+                source_lead_count: 0,
+                do_not_assert_count: 0,
+                open_item_count: 0,
+                open_item_counts: InterviewOpenItemCounts {
+                    by_kind: BTreeMap::new(),
+                    by_status: BTreeMap::new(),
+                    ..InterviewOpenItemCounts::default()
+                },
+            },
+            errors: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn brief_planned_sections_define_body_order_before_appendices() {
+        let mut skeleton = vec![
+            section("Overview", "lead", true),
+            section("Background", "Seen on comparables.", false),
+            section("References", "Required appendix.", true),
+            section("Reception", "Seen on comparables.", false),
+        ];
+
+        merge_brief_planned_sections(
+            &mut skeleton,
+            &[
+                "Design, aesthetic, and presentation".to_string(),
+                "Reception".to_string(),
+                "References".to_string(),
+            ],
+        );
+
+        let headings = skeleton
+            .iter()
+            .map(|section| section.heading.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            headings,
+            vec![
+                "Overview",
+                "Design, aesthetic, and presentation",
+                "Reception",
+                "Background",
+                "References"
+            ]
+        );
+        assert_eq!(
+            skeleton[1].rationale,
+            "Planned in the interview brief Draft Plan; not observed on comparable pages."
+        );
+        assert_eq!(skeleton[2].rationale, "Seen on comparables.");
+    }
+
+    #[test]
+    fn brief_planned_sections_ignore_duplicates_and_structural_labels() {
+        let mut skeleton = vec![
+            section("Overview", "lead", true),
+            section("References", "Required appendix.", true),
+        ];
+
+        merge_brief_planned_sections(
+            &mut skeleton,
+            &[
+                "Lead".to_string(),
+                "Design".to_string(),
+                "design".to_string(),
+                "See also".to_string(),
+            ],
+        );
+
+        let headings = skeleton
+            .iter()
+            .map(|section| section.heading.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(headings, vec!["Overview", "Design", "References"]);
+    }
+
+    #[test]
+    fn brief_readiness_is_not_ready_when_article_start_has_blockers() {
+        let readiness = article_start_brief_readiness(
+            &KnowledgeReadinessLevel::ContentReady,
+            &["contract query missed terms: baroque, saturn, sega".to_string()],
+            None,
+        );
+
+        assert_eq!(readiness, KnowledgeReadinessLevel::NotReady);
+    }
+
+    #[test]
+    fn brief_readiness_downgrades_open_interview_work() {
+        let mut brief = valid_interview_report();
+        brief.summary.claim_counts.pending_corroboration = 1;
+        brief.summary.open_item_counts.open = 1;
+
+        let readiness = article_start_brief_readiness(
+            &KnowledgeReadinessLevel::AuthoringReady,
+            &[],
+            Some(&brief),
+        );
+
+        assert_eq!(readiness, KnowledgeReadinessLevel::ContentReady);
     }
 }

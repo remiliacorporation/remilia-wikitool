@@ -33,6 +33,12 @@ When the interview yields reusable knowledge, write a brief under
 not article prose or citation evidence. Use claim IDs only for interview-introduced or high-risk
 claims that need tracking through research and review. A mechanically valid brief is not proof that
 the interview is complete or that the draft is acceptable.
+For Remilia Wiki, corroboration may be a target-wiki record, hosted artifact, first-party source,
+archived primary record, or creator/editor-published statement; do not require outside secondary
+coverage when the wiki is preserving niche subcultural history for the first time.
+Do not force adjacent subjects into a "relationship to Remilia" frame. Ask for the editorial
+vantage, adjacency, or canon purpose, then write the subject as itself unless a direct
+Remilia/Milady/community relationship is real and article-shaping.
 
 Use `wikitool knowledge interview init "<Topic>" --intent new|expand|audit|refresh --format json`
 to create the timestamped brief and sidecars, then fill the brief from the interview. Before

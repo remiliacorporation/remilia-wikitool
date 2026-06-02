@@ -5,10 +5,15 @@ designs, PFP/NFT art collections, card art, logos, generative output, comics, an
 `style_rules.md`, `article_structure.md`, and `writing_guide.md` first; this file adds the rules that
 those general docs do not cover.
 
-Most wiki writing guidance assumes prose about people, organizations, and events, where every claim
-needs a secondary source. Visual subjects are different in one specific way: the work itself is a
-primary source you are allowed to describe. The skill is knowing exactly where description ends and
-interpretation begins.
+Most wiki writing guidance assumes prose about people, organizations, and events, where important
+claims need independent coverage. Remilia Wiki is different from Wikipedia in one important way: it
+often preserves niche subcultural material before anyone else has written it down. Primary sources,
+hosted artifacts, creator/editor attestations, and the wiki's own source record may be the first
+durable tether to the history. The standard is provenance and attribution, not externality for its
+own sake.
+
+Visual subjects add one specific primary-source lane: the work itself is a primary source you are
+allowed to describe. The skill is knowing exactly where description ends and interpretation begins.
 
 ---
 
@@ -32,7 +37,7 @@ it), or attribute and defer.
 
 This is the central discipline for visual subjects.
 
-| You MAY assert from the work itself | You NEED a secondary source (or omit) |
+| You MAY assert from the work itself | You NEED a separate source, attestation, or omit |
 |---|---|
 | Subject matter ("a winged figure in armored boots") | Intent ("designed to evoke fragility") |
 | Composition, pose, framing, recurring motifs | Influence and lineage ("inspired by Touhou") |
@@ -47,8 +52,8 @@ meaning feel like description but are interpretation; they require a source that
 claim. A comparison ("reminiscent of X") needs a cited critic who drew it, never the agent's own eye.
 See the notability-name-dropping rule in `style_rules.md`.
 
-When the creator states intent or lineage in an interview, that is a lead, not license to assert it.
-Route it as in section 4.
+When the creator states intent or lineage in an interview, that is a lead, not license to smuggle it
+into article prose without provenance. Route it as in section 4.
 
 ## 3. Sourcing and showing the work
 
@@ -72,10 +77,12 @@ interview is where that knowledge is captured, but capture is not publication.
   and Context and as claims with `pending_corroboration`.
 - Separate the seen from the said. "The cards show pointed ears" is corroborated by the artifact.
   "The ears reference Milady" is the creator's reading; it goes to `do_not_assert` until sourced.
-- Offer the creator-statement lane. The richest material is often uncitable only because it was never
-  published. The correct fix is not to assert it anyway, and not to silently drop it, but to ask the
-  creator to publish it (a collection page, a post, a design note) and then cite that. Log this as a
-  `missing-source` open item so a later session can close it.
+- Offer the durable-primary-record lane. The richest material is often uncitable only because it was
+  never made publicly inspectable. The correct fix is not to assert it anyway, and not to silently
+  drop it, but to create or locate a durable record: a collection page, a post, a design note, a
+  wiki source note, an archived primary artifact, or another creator/editor-published statement that
+  can be cited or otherwise inspected. Log this as a `missing-source` open item so a later session
+  can close it.
 - Decide the artifact-description boundary explicitly with the user. Some wikis and editors are
   comfortable with rich primary-artifact description; others want strictly secondary-sourced prose.
   This choice materially changes article length; make it on purpose, not by default.
@@ -90,7 +97,7 @@ Adapt these to the subject; not every article needs every section. Each carries 
 | Design and aesthetic | Visible style, motifs, medium, series consistency | Primary-artifact description, anchored to shown images |
 | Production / technique | How it was made, tools, process, who made it | Needs a source; do not infer process from the image alone |
 | Series / roster | Named works or variants, seasonal or limited entries | Visible entries from artifacts; totals need a source |
-| Influence and lineage | Stated influences, traditions, relationships | Secondary source or attributed creator statement only |
+| Influence and lineage | Stated influences, traditions, relationships | Separate source or attributed creator/editor statement only |
 | Reception | Coverage, response, notable use | Secondary sources only; never the agent's judgment |
 
 Thinness test: if "Design and aesthetic" can only restate one sourced sentence, the subject may not
@@ -118,8 +125,9 @@ In addition to the general antipatterns in `style_rules.md`:
 - Visual lexicon: terms like network spirituality, dollcore, oekaki, and gijinka may be used as
   established terminology, but a claim that a specific work belongs to or derives from one of these
   traditions is an interpretive claim that needs a source or an attributed creator statement.
-- Many Remilia subjects are art-first and recent. Expect uncitable creator knowledge to be the norm;
-  the creator-statement lane and primary-artifact description are the two honest ways to raise quality.
+- Many Remilia subjects are art-first and recent. Expect unprovenanced creator knowledge to be the
+  norm; durable primary records and primary-artifact description are the two honest ways to raise
+  quality without pretending a broader source exists.
 
 ## 8. Worked example: beetle girls
 

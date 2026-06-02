@@ -849,8 +849,8 @@ pub fn parse_brief_draft_plan(body: &str) -> BriefDraftPlan {
         }
     }
 
-    plan.likely_sections = split_labeled_items(&likely_lines, true);
-    plan.open_questions = split_labeled_items(&open_lines, false);
+    plan.likely_sections = split_labeled_items(&likely_lines);
+    plan.open_questions = split_labeled_items(&open_lines);
     plan
 }
 
@@ -860,19 +860,22 @@ fn strip_list_bullet(line: &str) -> &str {
         .trim()
 }
 
-/// Split accumulated label lines into deduplicated items. Section names split on
-/// `;` and `,`; open questions split on `;` only, since questions often contain
-/// commas.
-fn split_labeled_items(lines: &[String], split_commas: bool) -> Vec<String> {
+/// Split accumulated label lines into deduplicated items. Semicolons separate
+/// inline items; commas remain part of the item because section names and
+/// questions often contain them.
+fn split_labeled_items(lines: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in lines {
         let stripped = strip_list_bullet(line);
-        for part in stripped.split(|c: char| c == ';' || (split_commas && c == ',')) {
+        for part in stripped.split(';') {
             let item = part.trim().trim_end_matches('.').trim();
             if item.is_empty() {
                 continue;
             }
-            if !out.iter().any(|existing| existing.eq_ignore_ascii_case(item)) {
+            if !out
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(item))
+            {
                 out.push(item.to_string());
             }
         }
@@ -886,13 +889,13 @@ mod draft_plan_tests {
 
     #[test]
     fn parses_inline_semicolon_sections_and_questions() {
-        let body = "## Draft Plan\n\nLikely sections: lead; Design and aesthetic; Card presentation; Roster and seasonal variants\n\nInfobox/template candidates: none\n\nOpen questions before drafting: confirm plural title, with the user; whether to include an infobox\n\n## Interviewer Critic Notes\n\nWhat would make the article thin: the lineage claims are uncited\n";
+        let body = "## Draft Plan\n\nLikely sections: lead; Design, aesthetic, and presentation; Card presentation; Roster and seasonal variants\n\nInfobox/template candidates: none\n\nOpen questions before drafting: confirm plural title, with the user; whether to include an infobox\n\n## Interviewer Critic Notes\n\nWhat would make the article thin: the lineage claims are uncited\n";
         let plan = parse_brief_draft_plan(body);
         assert_eq!(
             plan.likely_sections,
             vec![
                 "lead".to_string(),
-                "Design and aesthetic".to_string(),
+                "Design, aesthetic, and presentation".to_string(),
                 "Card presentation".to_string(),
                 "Roster and seasonal variants".to_string(),
             ]

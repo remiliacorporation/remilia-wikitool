@@ -1877,7 +1877,7 @@ fn build_article_start_marks_empty_local_evidence_without_forcing_comparables() 
         article_start
             .open_questions
             .iter()
-            .any(|question| question.question.contains("source-backed scope"))
+            .any(|question| question.question.contains("editorial vantage"))
     );
 }
 

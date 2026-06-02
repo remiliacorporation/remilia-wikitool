@@ -6,8 +6,10 @@ elicitation workflow, not a script for one article type and not a checklist to r
 
 Interview briefs are working notes. They are not article prose, citation evidence, proof that a
 claim is true, or proof that the interview is complete. Treat user assertions as leads to
-corroborate with sources, comparable wiki pages, target-wiki records, or later creator-published
-statements before publishing them as facts.
+corroborate with durable provenance before publishing them as facts: comparable wiki pages,
+target-wiki records, hosted artifacts, first-party posts, archived primary records, or later
+creator/editor-published statements. For Remilia Wiki, provenance does not have to be external or
+secondary; the wiki often exists because no broader source has preserved the subcultural record.
 
 ## When To Interview
 
@@ -37,13 +39,13 @@ Skip or keep it minimal for:
    the supplied materials should make legible.
 3. Start with a freeform dump. Invite the user to speak broadly, as if recording a monologue for a
    future editor: what the subject is, origin and chronology, names and terminology, relationships,
-   aesthetics or mechanics, why it belongs on the wiki, what outsiders miss, what is uncertain, and
-   what the article must not overstate.
+   aesthetics or mechanics, what makes it worth canonicalizing from the wiki's perspective, what
+   outsiders miss, what is uncertain, and what the article must not overstate.
 4. Reflect the shape back. Summarize the emerging scope in neutral wiki language, separating
    source-backed facts, user-provided leads, source leads from supplied materials, open questions,
-   and editorial constraints. Do not collapse uncited but important context into thin prose; turn it
-   into follow-up questions, source requests, artifact-description decisions, or a creator-statement
-   publishing path.
+   and editorial constraints. Do not collapse unprovenanced but important context into thin prose;
+   turn it into follow-up questions, source requests, artifact-description decisions, or a durable
+   primary-record publishing path.
 5. Ask adaptive follow-ups. Focus questions on gaps that change article structure, not on trivia the
    agent can find mechanically. There is no fixed number of rounds and no hard cap. Continue as long
    as new answers materially improve the article's scope, chronology, terminology, source strategy,
@@ -78,6 +80,12 @@ an inferred reading, or something we should seek a publishable source for?
 Avoid turning the interview into quality-marker compliance. The checklist exists to preserve a
 handoff, not to decide that the article is good. The interviewer should prefer more context, clearer
 source leads, and better article judgment over early closure.
+
+For Remilia Wiki, do not force every adjacent subject into a "relationship to Remilia" frame. The
+wiki is the online world viewed from Remilia's perspective; a visual artist, game, scene, or artifact
+may belong because it is part of the field of view, adjacent canon, or subcultural record. Write the
+subject as itself. Add explicit Remilia/Milady/community relationship framing only when that
+relationship is real, sourceable or editor-attested, and central enough to improve the article.
 
 ## Interview Brief Ledger
 
@@ -122,6 +130,14 @@ that go missing, so keep these headings:
 - Draft Plan: likely sections, infobox/template candidates, categories to verify, claims that
   require citations, and open questions before drafting.
 
+For machine-readable Draft Plan extraction, write `Likely sections` and `Open questions before
+drafting` one item per line, or use semicolons on the label line. Do not comma-separate section
+names; commas often belong inside natural headings.
+
+Do not put planning labels such as "Editorial vantage", "Remilia Wiki context", or "Why this
+belongs here" into `Likely sections` unless they name an actual sourceable article section. Use
+those as open questions or framing notes. The article sections should describe the subject.
+
 Record source leads and unresolved follow-up as structured open items in the `.open_items.jsonl`
 sidecar rather than only as prose, so future sessions do not rediscover them.
 
@@ -140,13 +156,14 @@ failure, or editorial uncertainty.
 
 Before drafting, convert the brief into a research plan and an editorial sufficiency check:
 
-- Corroborate factual claims with external sources, target-wiki pages, or known primary records.
+- Corroborate factual claims with durable provenance: target-wiki pages, hosted artifacts,
+  first-party sources, archived primary records, or creator/editor-published statements.
 - Preserve the user's thematic framing only when it survives neutral article language.
 - Attribute disputed or source-specific claims rather than presenting them as settled facts.
 - Omit or defer claims that remain uncited, unverifiable, or too thin for the target wiki, but do not
   let omission silently produce a poor article. If the omitted material is central, ask more
-  questions, request a publishable source, propose a creator-statement lane, or recommend
-  redirect/merge until sources exist.
+  questions, request durable provenance, propose a creator/editor-statement lane, or recommend
+  redirect/merge until the article has enough sourceable shape.
 - Run `wikitool knowledge interview validate PATH --format json` and resolve invalid metadata,
   duplicate claim IDs, missing sidecars, unsupported claim statuses, and invalid open-item records
   before relying on the brief.

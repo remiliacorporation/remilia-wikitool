@@ -91,9 +91,9 @@ wikitool knowledge contracts search "contract terms" --format json
 
 For new articles and substantial expansions, scout first with `knowledge article-start`, then use
 the knowledge-interview faculty when human context can improve scope, chronology, terminology,
-relationships, or source leads. Skip interview rounds for mechanical lint, link, sync, source-fetch,
-or validation work unless a conflict requires user judgment. Respect explicit opt-outs such as
-"no interview".
+relationships, or source/provenance leads. Skip interview rounds for mechanical lint, link, sync,
+source-fetch, or validation work unless a conflict requires user judgment. Respect explicit
+opt-outs such as "no interview".
 
 The interview is an elicitation loop, not a checklist. Read any user-supplied documents, links,
 screenshots, transcripts, notes, or source excerpts before narrowing the questions. Start with a
@@ -104,9 +104,11 @@ scope, chronology, terminology, source strategy, section plan, or risk profile.
 
 Reusable interview distillations belong under
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat these briefs as working
-notes: user assertions are research leads, not citation evidence or article prose. Use claim IDs
-only for interview-introduced or high-risk claims that need to be tracked through sourcing and
-review.
+notes: user assertions are research leads, not citation evidence or article prose. For this niche
+subcultural wiki, corroboration may be a target-wiki record, hosted artifact, first-party source,
+archived primary record, or creator/editor-published statement; it does not have to be outside
+secondary coverage. Use claim IDs only for interview-introduced or high-risk claims that need to be
+tracked through sourcing and review.
 
 Use `wikitool knowledge interview init "Topic" --intent new|expand|audit|refresh --format json`
 to create the timestamped brief and sidecars. Use `knowledge interview open-item add/list` to

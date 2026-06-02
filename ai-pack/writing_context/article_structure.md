@@ -79,6 +79,9 @@ For Remilia projects: use `parent_group = Remilia` instead of `creator` or `arti
 When a knowledge interview exists, combine the `section_skeleton` with the interview brief before
 drafting. The brief can suggest missing sections, source leads, and terminology, but it is not
 article prose or citation evidence. Corroborate user assertions before publishing factual claims.
+When the brief's Draft Plan proposes a subject-specific body shape, prefer that plan over generic
+comparable-page sections that would make the article thin or wrongly framed. Appendices such as
+References still remain at the end.
 
 ### Common section patterns by subject type
 

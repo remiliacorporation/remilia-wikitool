@@ -84,7 +84,7 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
                 && body.contains("knowledge article-start --brief-path")
                 && body.contains("review --brief-path")
                 && body.contains("user assertions are research leads")
-                && body.contains("Respect explicit opt-outs"),
+                && body.contains("opt-outs"),
             "packaged guidance must route human-in-loop article work through the interview faculty"
         );
         assert!(
@@ -386,9 +386,10 @@ fn visual_subjects_guidance_is_present_and_indexed() {
         );
     }
     let host_claude = read_repo_file("../../CLAUDE.md");
+    let host_agents = read_repo_file("../../AGENTS.md");
     assert!(
-        host_claude.contains("visual_subjects.md"),
-        "host CLAUDE.md writing-guidelines table must list visual_subjects.md"
+        host_claude.contains("visual_subjects.md") && host_agents.contains("visual_subjects.md"),
+        "host CLAUDE.md and AGENTS.md writing-guidelines tables must list visual_subjects.md"
     );
 }
 

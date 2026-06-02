@@ -121,10 +121,11 @@ pub fn build_article_start(
     }
     if !has_local_authoring_evidence(&evidence_profile) {
         open_questions.push(OpenQuestion {
-            question: "What source-backed scope justifies this page on the target wiki?"
-                .to_string(),
+            question:
+                "What editorial vantage, adjacency, or canon purpose should define this page?"
+                    .to_string(),
             reason:
-                "The local index returned no exact page, chunks, backlinks, or comparable pages."
+                "The local index returned no exact page, chunks, backlinks, or comparable pages; ask for the article boundary without forcing a direct relationship frame."
                     .to_string(),
             blocking: false,
             evidence: Vec::new(),

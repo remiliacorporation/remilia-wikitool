@@ -57,9 +57,16 @@ Agent guidance should stay aligned with the command boundaries:
 
 The first human-in-loop authoring boundary is an agent skill plus a Rust-validated ledger artifact:
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. These briefs capture distilled
-user knowledge, supplied materials, candidate structure, source leads, open questions, and
+user knowledge, supplied materials, candidate structure, source/provenance leads, open questions, and
 high-risk interview claims.
-They are not article prose, citation evidence, or a replacement for source corroboration.
+They are not article prose, citation evidence, or a replacement for provenance. On Remilia Wiki,
+valid provenance may be a target-wiki record, hosted artifact, first-party source, archived primary
+record, or creator/editor-published statement; the architecture should not require outside
+secondary coverage for niche subjects the wiki is preserving first.
+It should also avoid forcing adjacent subjects into direct Remilia-relation framing. The interview
+surface should elicit editorial vantage, adjacency, and canon purpose, then let articles cover
+subjects as themselves unless a direct Remilia/Milady/community relationship is real and
+article-shaping.
 
 `knowledge interview init|validate|show|audit|open-item` owns deterministic path creation, starter
 sidecars, frontmatter/section validation, claim ID uniqueness checks, typed open-items JSONL

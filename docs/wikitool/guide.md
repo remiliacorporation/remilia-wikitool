@@ -74,8 +74,8 @@ what wikitool already knows. Then use the packaged knowledge-interview skill and
 `writing_context/interview_playbook.md` to collect the user's freeform knowledge. Read any supplied
 documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the
 interview. Reflect the emerging article scope and ask adaptive follow-ups where the answer changes
-structure, research targets, terminology, chronology, source strategy, or risk. There is no fixed
-round count; continue while new answers materially improve the article.
+structure, research targets, terminology, chronology, source/provenance strategy, or risk. There is
+no fixed round count; continue while new answers materially improve the article.
 
 Reusable interview distillations should be saved as:
 
@@ -84,7 +84,12 @@ Reusable interview distillations should be saved as:
 ```
 
 The brief is a research artifact, not article prose, not citation evidence, and not proof that the
-interview is complete. User assertions should be treated as leads until corroborated. Use stable
+interview is complete. User assertions should be treated as leads until corroborated by durable
+provenance. For Remilia Wiki, that provenance may be a target-wiki record, hosted artifact,
+first-party source, archived primary record, or creator/editor-published statement; it does not have
+to be outside secondary coverage. Adjacent subjects should not be forced into a "relationship to
+Remilia" frame; ask for the editorial vantage, adjacency, or canon purpose, then write the subject as
+itself unless a direct Remilia/Milady/community relationship is real and article-shaping. Use stable
 claim IDs only for interview-introduced or high-risk claims that need tracking through research and
 review.
 
