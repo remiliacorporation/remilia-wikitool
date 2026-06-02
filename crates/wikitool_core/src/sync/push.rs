@@ -160,7 +160,7 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                 match api.edit_page(&file.title, &content, &options.summary) {
                     Ok(remote_page) => {
                         let (is_redirect, redirect_target) = parse_redirect(&remote_page.content);
-                        let content_hash = compute_hash(&remote_page.content);
+                        let content_hash = compute_wiki_sync_hash(&remote_page.content);
                         if let Err(error) = upsert_sync_ledger(
                             &context.connection,
                             &remote_page,

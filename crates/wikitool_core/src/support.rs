@@ -16,6 +16,27 @@ pub fn compute_hash(content: &str) -> String {
     output
 }
 
+/// Normalize wiki page content to MediaWiki's canonical stored form for sync comparison.
+/// MediaWiki rewrites CR and CRLF line endings to LF and strips trailing whitespace on
+/// save, so a local file's trailing newline (the POSIX editor default) would otherwise
+/// hash differently from the saved page and drift as "modified" forever. Used only for
+/// sync-state hashing — never for content-addressed cache keys, which must hash exact
+/// bytes.
+pub fn normalize_wiki_content(content: &str) -> String {
+    content
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .trim_end()
+        .to_string()
+}
+
+/// Hash content for sync-state comparison after normalizing it to MediaWiki's canonical
+/// form, so trailing-newline and line-ending differences between a local file and the
+/// saved page do not register as spurious modifications.
+pub fn compute_wiki_sync_hash(content: &str) -> String {
+    compute_hash(&normalize_wiki_content(content))
+}
+
 pub fn parse_redirect(content: &str) -> (bool, Option<String>) {
     let trimmed = content.trim();
     if !trimmed.to_ascii_uppercase().starts_with("#REDIRECT") {
@@ -150,12 +171,39 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        compute_hash, format_iso8601_utc, normalize_path, normalize_pathbuf, parse_redirect,
+        compute_hash, compute_wiki_sync_hash, format_iso8601_utc, normalize_path, normalize_pathbuf,
+        normalize_wiki_content, parse_redirect,
     };
 
     #[test]
     fn short_hash_is_stable() {
         assert_eq!(compute_hash("alpha"), "8ed3f6ad685b959e");
+    }
+
+    #[test]
+    fn wiki_sync_hash_ignores_trailing_newline_and_line_endings() {
+        // A local trailing newline (the POSIX editor default) must not drift against
+        // MediaWiki's stripped canonical form.
+        assert_eq!(
+            compute_wiki_sync_hash("return p\n"),
+            compute_wiki_sync_hash("return p")
+        );
+        // CR and CRLF normalize to LF.
+        assert_eq!(compute_wiki_sync_hash("a\r\nb"), compute_wiki_sync_hash("a\nb"));
+        assert_eq!(compute_wiki_sync_hash("a\rb"), compute_wiki_sync_hash("a\nb"));
+        // The sync hash equals the raw hash of the canonical (normalized) form.
+        assert_eq!(compute_wiki_sync_hash("x\n\n"), compute_hash("x"));
+        // Genuine content differences still register.
+        assert_ne!(compute_wiki_sync_hash("foo"), compute_wiki_sync_hash("bar"));
+    }
+
+    #[test]
+    fn normalize_wiki_content_matches_mediawiki_canonical_form() {
+        assert_eq!(normalize_wiki_content("line\n"), "line");
+        assert_eq!(normalize_wiki_content("a\r\nb\r\n"), "a\nb");
+        assert_eq!(normalize_wiki_content("trailing spaces  \n\n"), "trailing spaces");
+        // Internal newlines are preserved; only the trailing edge is trimmed.
+        assert_eq!(normalize_wiki_content("a\n\nb\n"), "a\n\nb");
     }
 
     #[test]

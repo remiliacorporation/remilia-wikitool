@@ -18,7 +18,9 @@ pub use crate::mw::{
 };
 use crate::runtime::ResolvedPaths;
 use crate::schema::{ensure_database_schema_connection, open_initialized_database_connection};
-use crate::support::{compute_hash, normalize_path, parse_redirect, table_exists, unix_timestamp};
+use crate::support::{
+    compute_wiki_sync_hash, normalize_path, parse_redirect, table_exists, unix_timestamp,
+};
 
 mod diff;
 mod model;

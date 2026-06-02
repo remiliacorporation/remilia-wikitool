@@ -12,7 +12,7 @@ use walkdir::WalkDir;
 
 use crate::config::load_config;
 use crate::runtime::ResolvedPaths;
-use crate::support::{compute_hash, normalize_pathbuf, parse_redirect};
+use crate::support::{compute_wiki_sync_hash, normalize_pathbuf, parse_redirect};
 
 #[derive(Debug, Clone)]
 struct CachedTemplateCategoryMappings {
@@ -587,7 +587,7 @@ fn read_scanned_file(
         namespace,
         is_redirect,
         redirect_target,
-        content_hash: compute_hash(&content),
+        content_hash: compute_wiki_sync_hash(&content),
         bytes: metadata.len(),
     })
 }

@@ -75,7 +75,7 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
         validate_scoped_path(paths, &absolute_path)?;
         ensure_parent_dir(&absolute_path)?;
 
-        let remote_hash = compute_hash(&page.content);
+        let remote_hash = compute_wiki_sync_hash(&page.content);
         let ledger_entry = ledger_by_title.get(&key).cloned();
         let stale_synced_path = stale_synced_path_for_removal(
             paths,
@@ -85,7 +85,7 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
         )?;
 
         let local_content = fs::read_to_string(&absolute_path).ok();
-        let local_hash = local_content.as_deref().map(compute_hash);
+        let local_hash = local_content.as_deref().map(compute_wiki_sync_hash);
 
         let local_modified = match (&local_hash, &ledger_entry) {
             (Some(local_hash), Some(entry)) => local_hash != &entry.content_hash,
@@ -290,7 +290,7 @@ fn stale_synced_path_for_removal(
             old_absolute.display()
         )
     })?;
-    let old_hash = compute_hash(&old_content);
+    let old_hash = compute_wiki_sync_hash(&old_content);
     let old_modified = old_hash != existing.content_hash;
     if old_modified && !overwrite_local {
         bail!(
