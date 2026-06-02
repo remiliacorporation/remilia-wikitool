@@ -218,6 +218,8 @@ mod tests {
                 "json",
                 "--view",
                 "brief",
+                "--brief-path",
+                ".wikitool/interviews/Remilia/20260601T172430Z.brief.md",
             ],
             &[
                 "wikitool",
@@ -247,6 +249,27 @@ mod tests {
             ],
             &[
                 "wikitool",
+                "knowledge",
+                "interview",
+                "show",
+                ".wikitool/interviews/Radbro_Webring/20260601T172430Z.brief.md",
+                "--format",
+                "json",
+                "--view",
+                "brief",
+            ],
+            &[
+                "wikitool",
+                "knowledge",
+                "interview",
+                "audit",
+                "--format",
+                "json",
+                "--view",
+                "brief",
+            ],
+            &[
+                "wikitool",
                 "review",
                 "--format",
                 "json",
@@ -254,6 +277,8 @@ mod tests {
                 "brief",
                 "--summary",
                 "Review",
+                "--brief-path",
+                ".wikitool/interviews/Remilia/20260601T172430Z.brief.md",
             ],
         ];
         for args in valid_cases {
@@ -294,6 +319,72 @@ mod tests {
                 error.to_string().contains("unrecognized subcommand"),
                 "{command} should be retired"
             );
+        }
+    }
+
+    #[test]
+    fn knowledge_interview_command_family_parses() {
+        let cases: &[&[&str]] = &[
+            &[
+                "wikitool",
+                "knowledge",
+                "interview",
+                "init",
+                "Radbro Webring",
+                "--intent",
+                "new",
+                "--timestamp",
+                "20260601T172430Z",
+                "--format",
+                "json",
+            ],
+            &[
+                "wikitool",
+                "knowledge",
+                "interview",
+                "validate",
+                ".wikitool/interviews/Radbro_Webring/20260601T172430Z.brief.md",
+            ],
+            &[
+                "wikitool",
+                "knowledge",
+                "interview",
+                "show",
+                ".wikitool/interviews/Radbro_Webring/20260601T172430Z.brief.md",
+                "--view",
+                "full",
+            ],
+            &["wikitool", "knowledge", "interview", "audit"],
+            &[
+                "wikitool",
+                "knowledge",
+                "interview",
+                "open-item",
+                "add",
+                ".wikitool/interviews/Radbro_Webring/20260601T172430Z.brief.md",
+                "--kind",
+                "rejected-source",
+                "--status",
+                "open",
+                "--text",
+                "Mirror did not support the claimed date.",
+                "--claim-id",
+                "IK-001",
+                "--source-lead",
+                "https://example.org/archive",
+            ],
+            &[
+                "wikitool",
+                "knowledge",
+                "interview",
+                "open-item",
+                "list",
+                ".wikitool/interviews/Radbro_Webring/20260601T172430Z.brief.md",
+            ],
+        ];
+
+        for args in cases {
+            Cli::try_parse_from(*args).expect("knowledge interview command should parse");
         }
     }
 

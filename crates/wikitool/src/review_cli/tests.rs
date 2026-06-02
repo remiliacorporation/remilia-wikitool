@@ -19,6 +19,8 @@ fn review_args() -> ReviewArgs {
         titles: Vec::new(),
         paths: Vec::new(),
         draft_paths: Vec::new(),
+        brief_path: None,
+        brief_stale_days: 45,
         titles_file: None,
         summary: "test".to_string(),
     }
@@ -133,7 +135,7 @@ fn review_next_steps_are_empty_for_sync_reviews() {
     let temp = TestDir::new("sync-next");
     let paths = test_paths(&temp.path);
 
-    let steps = build_review_next_steps(&paths, None, "Summary").expect("next steps");
+    let steps = build_review_next_steps(&paths, None, "Summary", None).expect("next steps");
 
     assert!(steps.is_empty());
 }
@@ -147,8 +149,8 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
         path: PathBuf::from(".wikitool/drafts/Cheetah.wiki"),
     };
 
-    let steps =
-        build_review_next_steps(&paths, Some(&selection), "Draft review").expect("next steps");
+    let steps = build_review_next_steps(&paths, Some(&selection), "Draft review", None)
+        .expect("next steps");
 
     assert_eq!(steps.len(), 6);
     assert_eq!(steps[0].kind, "lint_draft");
@@ -204,5 +206,43 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
             "--format",
             "json"
         ]
+    );
+}
+
+#[test]
+fn review_next_steps_preserve_interview_brief_path() {
+    let temp = TestDir::new("draft-brief-next");
+    let paths = test_paths(&temp.path);
+    let selection = DraftReviewSelection {
+        title: "Cheetah".to_string(),
+        path: PathBuf::from(".wikitool/drafts/Cheetah.wiki"),
+    };
+    let brief_path = ".wikitool/interviews/Cheetah/20260601T172430Z.brief.md";
+
+    let steps = build_review_next_steps(&paths, Some(&selection), "Draft review", Some(brief_path))
+        .expect("next steps");
+
+    let review_draft = steps
+        .iter()
+        .find(|step| step.kind == "review_draft")
+        .and_then(|step| step.command.as_ref())
+        .expect("review draft command");
+    assert!(
+        review_draft
+            .argv
+            .windows(2)
+            .any(|pair| pair == ["--brief-path", brief_path])
+    );
+
+    let review_promoted = steps
+        .iter()
+        .find(|step| step.kind == "review_promoted_page")
+        .and_then(|step| step.command.as_ref())
+        .expect("review promoted command");
+    assert!(
+        review_promoted
+            .argv
+            .windows(2)
+            .any(|pair| pair == ["--brief-path", brief_path])
     );
 }

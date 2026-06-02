@@ -231,21 +231,23 @@ Run the structured pre-push review gate
 Usage: wikitool review [OPTIONS]
 
 Options:
-      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --format <FORMAT>          Output format: text|json [default: json] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
-      --view <VIEW>          JSON view: brief|full [default: brief] [possible values: brief, full]
+      --view <VIEW>              JSON view: brief|full [default: brief] [possible values: brief, full]
       --config <PATH>
-      --strict               Treat article lint warnings as review failures
-      --diagnostics          Print resolved runtime diagnostics
-      --templates            Include template/module/mediawiki namespaces in sync checks
-      --categories           Limit sync checks to Category namespace pages
+      --strict                   Treat article lint warnings as review failures
+      --diagnostics              Print resolved runtime diagnostics
+      --templates                Include template/module/mediawiki namespaces in sync checks
+      --categories               Limit sync checks to Category namespace pages
       --title <TITLE>
       --path <PATH>
-      --draft-path <PATH>    Review one off-wiki draft path under .wikitool/drafts/; requires exactly one --title and skips push dry-run
-      --titles-file <PATH>   Read one canonical page title per line
-      --summary <TEXT>       Edit summary used for the push dry-run report [default: "wikitool review dry-run"]
-  -h, --help                 Print help
+      --draft-path <PATH>        Review one off-wiki draft path under .wikitool/drafts/; requires exactly one --title and skips push dry-run
+      --brief-path <PATH>        Validate and include a knowledge interview brief in the review gate
+      --brief-stale-days <DAYS>  Age in days after which an interview brief is considered stale [default: 45]
+      --titles-file <PATH>       Read one canonical page title per line
+      --summary <TEXT>           Edit summary used for the push dry-run report [default: "wikitool review dry-run"]
+  -h, --help                     Print help
 ```
 
 ## module
@@ -661,6 +663,7 @@ Commands:
   status         Report knowledge readiness and degradations
   article-start  Assemble an interpreted authoring brief for a topic
   contracts      Plan and search token-budgeted authoring contracts
+  interview      Create, validate, show, and audit knowledge interview briefs
   inspect        Inspect indexed knowledge structures directly
   help           Print this message or the help of the given subcommand(s)
 
@@ -736,11 +739,13 @@ Arguments:
 Options:
       --project-root <PATH>
       --stub-path <PATH>            Optional stub wikitext file used for link/template hint extraction
+      --brief-path <PATH>           Optional knowledge interview brief to validate and include in the authoring brief
       --data-dir <PATH>
-      --related-limit <N>           Maximum related pages in the brief [default: 18]
-      --chunk-limit <N>             Maximum retrieved context chunks [default: 10]
+      --brief-stale-days <DAYS>     Age in days after which an interview brief is considered stale [default: 45]
       --config <PATH>
       --diagnostics                 Print resolved runtime diagnostics
+      --related-limit <N>           Maximum related pages in the brief [default: 18]
+      --chunk-limit <N>             Maximum retrieved context chunks [default: 10]
       --token-budget <TOKENS>       Token budget across retrieved chunks [default: 1200]
       --max-pages <N>               Maximum distinct source pages in chunk retrieval [default: 8]
       --link-limit <N>              Maximum internal link suggestions [default: 18]
@@ -821,6 +826,180 @@ Options:
       --contract-query <QUERY>  Optional contract traversal query separate from TOPIC
       --format <FORMAT>         Output format: text|json [default: json] [possible values: text, json]
   -h, --help                    Print help
+```
+
+## knowledge interview
+
+```text
+Create, validate, show, and audit knowledge interview briefs
+
+Usage: wikitool knowledge interview [OPTIONS] <COMMAND>
+
+Commands:
+  init       Create a timestamped knowledge interview brief and sidecars
+  validate   Validate a knowledge interview brief and sidecars
+  show       Show a knowledge interview brief summary
+  audit      Audit all knowledge interview briefs in the local ledger
+  open-item  Append or list structured interview open items
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge interview init
+
+```text
+Create a timestamped knowledge interview brief and sidecars
+
+Usage: wikitool knowledge interview init [OPTIONS] <TITLE>
+
+Arguments:
+  <TITLE>  Article title or topic for the interview
+
+Options:
+      --intent <INTENT>               Interview intent: new|expand|audit|refresh [default: new] [possible values: new, expand, audit, refresh]
+      --project-root <PATH>
+      --agent <AGENT>                 Agent label for brief metadata
+      --data-dir <PATH>
+      --config <PATH>
+      --source-article <TITLE>        Existing article title this interview concerns
+      --diagnostics                   Print resolved runtime diagnostics
+      --related-draft <PATH>          Related draft path to record in brief metadata
+      --timestamp <YYYYMMDDTHHMMSSZ>  UTC ledger timestamp; defaults to current time
+      --force                         Overwrite files if the timestamped brief already exists
+      --format <FORMAT>               Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                          Print help
+```
+
+## knowledge interview validate
+
+```text
+Validate a knowledge interview brief and sidecars
+
+Usage: wikitool knowledge interview validate [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>  Path to .brief.md interview brief
+
+Options:
+      --project-root <PATH>
+      --stale-days <DAYS>    Age in days after which a brief is considered stale [default: 45]
+      --data-dir <PATH>
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge interview show
+
+```text
+Show a knowledge interview brief summary
+
+Usage: wikitool knowledge interview show [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>  Path to .brief.md interview brief
+
+Options:
+      --project-root <PATH>
+      --stale-days <DAYS>    Age in days after which a brief is considered stale [default: 45]
+      --data-dir <PATH>
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --config <PATH>
+      --view <VIEW>          JSON view: brief|full [default: brief] [possible values: brief, full]
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge interview audit
+
+```text
+Audit all knowledge interview briefs in the local ledger
+
+Usage: wikitool knowledge interview audit [OPTIONS]
+
+Options:
+      --project-root <PATH>
+      --stale-days <DAYS>    Age in days after which a brief is considered stale [default: 45]
+      --data-dir <PATH>
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --config <PATH>
+      --view <VIEW>          JSON view: brief|full [default: brief] [possible values: brief, full]
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge interview open-item
+
+```text
+Append or list structured interview open items
+
+Usage: wikitool knowledge interview open-item [OPTIONS] <COMMAND>
+
+Commands:
+  add   Append a structured open item to an interview brief sidecar
+  list  List structured open items for an interview brief
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge interview open-item add
+
+```text
+Append a structured open item to an interview brief sidecar
+
+Usage: wikitool knowledge interview open-item add [OPTIONS] --kind <KIND> --text <TEXT> <PATH>
+
+Arguments:
+  <PATH>  Path to .brief.md interview brief
+
+Options:
+      --kind <KIND>                   Open item kind [possible values: pending-corroboration, rejected-source, inaccessible-source, disproven-link, source-wiki-only-template, rejected-category, scope-unresolved, stale-interview, privacy-exclusion, missing-source, user-followup-needed, other]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --status <STATUS>               Open item status: open|resolved|rejected|deferred [default: open] [possible values: open, resolved, rejected, deferred]
+      --config <PATH>
+      --text <TEXT>                   Open item text
+      --diagnostics                   Print resolved runtime diagnostics
+      --item-id <ID>                  Explicit open item id
+      --claim-id <ID>                 Claim id associated with this open item; repeatable
+      --source-lead <VALUE>           Source lead associated with this open item; repeatable
+      --notes <TEXT>                  Optional note
+      --timestamp <YYYYMMDDTHHMMSSZ>  UTC item timestamp; defaults to current time
+      --no-touch-brief                Do not update brief last_updated/freshness metadata
+      --format <FORMAT>               Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                          Print help
+```
+
+## knowledge interview open-item list
+
+```text
+List structured open items for an interview brief
+
+Usage: wikitool knowledge interview open-item list [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>  Path to .brief.md interview brief
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
 ```
 
 ## knowledge inspect

@@ -76,6 +76,18 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             "packaged guidance must define the normal session refresh sequence"
         );
         assert!(
+            body.contains("knowledge-interview")
+                && body.contains(".wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md")
+                && body.contains("wikitool knowledge interview init")
+                && body.contains("knowledge interview open-item")
+                && body.contains("knowledge interview validate")
+                && body.contains("knowledge article-start --brief-path")
+                && body.contains("review --brief-path")
+                && body.contains("user assertions are research leads")
+                && body.contains("Respect explicit opt-outs"),
+            "packaged guidance must route human-in-loop article work through the interview faculty"
+        );
+        assert!(
             !body.contains("Docs bootstrap")
                 && !body.contains("WIKITOOL_CLAUDE.md")
                 && !body.contains("llm_instructions")
@@ -126,6 +138,12 @@ fn thin_wrappers_reference_help_and_keep_article_start_primary() {
         assert!(
             body.contains("knowledge article-start"),
             "thin wrappers must point to article-start"
+        );
+        assert!(
+            body.contains("knowledge-interview")
+                || body.contains("/knowledge-interview")
+                || body.contains("knowledge-interview guidance"),
+            "thin wrappers must route substantial authoring to the interview faculty"
         );
         assert!(
             body.contains("diff --format json")
@@ -182,6 +200,109 @@ fn packaged_extension_guidance_scopes_d3charts_to_local_contract() {
             && extensions.contains("Do not add raw `<script>` tags")
             && extensions.contains("bespoke extension"),
         "extension guidance must scope D3Charts as the current local contract, not universal MediaWiki syntax"
+    );
+}
+
+#[test]
+fn knowledge_interview_skill_and_playbook_are_packaged() {
+    let claude_skill = read_repo_file("ai-pack/.claude/skills/knowledge-interview.md");
+    let codex_skill = read_repo_file("ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md");
+    let playbook = read_repo_file("ai-pack/writing_context/interview_playbook.md");
+    let codex_readme = read_repo_file("ai-pack/codex_skills/README.md");
+    let writing_readme = read_repo_file("ai-pack/writing_context/README.md");
+
+    for body in [&claude_skill, &codex_skill] {
+        assert!(
+            body.contains("Thin wrapper")
+                && body.contains("wikitool --help")
+                && body.contains("docs/wikitool/reference.md")
+                && body.contains("writing_context/interview_playbook.md")
+                && body.contains("wikitool knowledge interview init")
+                && body.contains("open-item")
+                && body.contains("knowledge interview validate")
+                && body.contains("article-start")
+                && body.contains("--brief-path")
+                && body.contains(".wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md"),
+            "knowledge interview wrappers must stay thin, help-backed, and ledger-aware"
+        );
+    }
+
+    assert!(
+        playbook.contains("Scout first")
+            && playbook.contains("freeform dump")
+            && playbook.contains("evidence-gated")
+            && playbook.contains("explicit opt-out")
+            && playbook.contains("mechanical link checks")
+            && playbook.contains("wikitool knowledge interview init")
+            && playbook.contains("knowledge interview open-item add")
+            && playbook.contains("rejected-source")
+            && playbook.contains("inaccessible-source")
+            && playbook.contains("knowledge interview audit")
+            && playbook.contains("claim IDs only for interview-introduced or high-risk claims")
+            && playbook.contains("not article prose, citation evidence, or proof"),
+        "interview playbook must preserve the adaptive, evidence-bounded intake contract"
+    );
+    assert!(
+        !playbook.contains("There is not yet a Rust `knowledge interview` command")
+            && !claude_skill.contains("Do not invent a `knowledge interview` CLI command")
+            && !codex_skill.contains("Do not invent a `knowledge interview` CLI command"),
+        "guidance must not retain pre-CLI interview wording"
+    );
+    assert!(
+        codex_readme.contains("wikitool-knowledge-interview")
+            && writing_readme.contains("interview_playbook.md"),
+        "bundle indexes must expose the interview skill and playbook"
+    );
+}
+
+#[test]
+fn host_repo_routes_knowledge_interview_for_claude_and_codex() {
+    let host_claude = read_repo_file("../../CLAUDE.md");
+    let host_stub = read_repo_file("../../.claude/skills/knowledge-interview.md");
+    let packaged_claude = read_repo_file("ai-pack/.claude/skills/knowledge-interview.md");
+    let packaged_codex =
+        read_repo_file("ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md");
+
+    assert!(
+        host_claude.contains("| `/knowledge-interview` | `wikitool-knowledge-interview` |")
+            && host_claude.contains("interview_playbook.md"),
+        "host CLAUDE.md must route the Claude skill and name the Codex equivalent"
+    );
+    assert!(
+        host_stub.contains("tools/wikitool/ai-pack/.claude/skills/knowledge-interview.md")
+            && host_stub.contains("Frontmatter (permissions) is repo-level"),
+        "repo-root Claude skill must be a redirect stub to the canonical ai-pack skill"
+    );
+    assert!(
+        packaged_claude.contains("# /knowledge-interview - Thin wrapper")
+            && packaged_codex.contains("name: wikitool-knowledge-interview")
+            && packaged_codex.contains("writing_context/interview_playbook.md"),
+        "packaged Claude and Codex interview skills must both be present"
+    );
+}
+
+#[test]
+fn generated_reference_documents_knowledge_interview_commands() {
+    let reference = read_repo_file("docs/wikitool/reference.md");
+    for heading in [
+        "## knowledge interview init",
+        "## knowledge interview validate",
+        "## knowledge interview show",
+        "## knowledge interview audit",
+        "## knowledge interview open-item",
+        "## knowledge interview open-item add",
+        "## knowledge interview open-item list",
+    ] {
+        assert!(
+            reference.contains(heading),
+            "generated reference must document `{heading}`"
+        );
+    }
+    assert!(
+        reference.contains("--brief-path <PATH>")
+            && reference.contains("Optional knowledge interview brief")
+            && reference.contains("Validate and include a knowledge interview brief"),
+        "generated reference must document article-start/review brief-path integration"
     );
 }
 
@@ -262,6 +383,7 @@ fn codex_skill_wrappers_remain_help_backed_and_perf_free() {
     for path in [
         "ai-pack/codex_skills/wikitool-operator/SKILL.md",
         "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
+        "ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md",
     ] {
         let body = read_repo_file(path);
         assert!(
@@ -273,4 +395,40 @@ fn codex_skill_wrappers_remain_help_backed_and_perf_free() {
             "{path} must not mention removed perf surfaces"
         );
     }
+}
+
+#[test]
+fn article_quality_guidance_uses_review_state_semantics() {
+    let writing_guide = read_repo_file("ai-pack/writing_context/writing_guide.md");
+    let article_structure = read_repo_file("ai-pack/writing_context/article_structure.md");
+    let message_module = read_repo_file("../../templates/message/Module_Message.lua");
+    let template_docs = read_repo_file("../../templates/message/Template_Article_quality.wiki");
+    let structure_rule = read_repo_file("crates/wikitool_core/src/article_lint/rules/structure.rs");
+
+    for body in [
+        &writing_guide,
+        &article_structure,
+        &message_module,
+        &template_docs,
+    ] {
+        assert!(
+            !body.contains("Risk of hallucination")
+                && !body.contains("generated by AI")
+                && !body.contains("AI-generated article"),
+            "article quality guidance must not describe review states as AI authorship labels"
+        );
+    }
+    assert!(
+        writing_guide.contains("Preserve an existing `wip` or `verified` state")
+            && article_structure.contains("Preserve existing `wip` or `verified`")
+            && message_module.contains("reviewed for factual accuracy")
+            && template_docs.contains("Hidden marker"),
+        "article quality guidance and templates must describe editorial review states"
+    );
+    assert!(
+        !structure_rule.contains("structure.article_quality_state")
+            && structure_rule.contains("structure.require_article_quality_banner")
+            && structure_rule.contains("{{Article quality|unverified}}"),
+        "article lint must require the banner without normalizing intentional review states"
+    );
 }

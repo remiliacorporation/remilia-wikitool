@@ -5,11 +5,16 @@ use wikitool_core::authoring::model::{
     ArticleStartIntent, ContextSurfaceSource, EvidenceCoverageItem, LocalExistenceState,
     RequiredTemplate, SectionSkeleton, TemplateSurfaceEntry,
 };
+use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::knowledge::authoring::{
     AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringPayloadMode,
     build_authoring_knowledge_pack,
 };
 use wikitool_core::knowledge::status::knowledge_status;
+use wikitool_core::knowledge_interview::{
+    InterviewBriefSummary, InterviewValidationReport, InterviewValidationStatus,
+    validate_interview_brief,
+};
 use wikitool_core::profile::load_or_build_remilia_profile_overlay;
 
 use crate::briefs::{
@@ -53,6 +58,18 @@ pub(super) fn run_knowledge_article_start(
 
     let use_diversify = !args.no_diversify;
     let paths = resolve_runtime_paths(runtime)?;
+    let interview_brief = match args.brief_path.as_deref() {
+        Some(path) => {
+            let absolute = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                paths.project_root.join(path)
+            };
+            validate_scoped_path(&paths, &absolute)?;
+            Some(validate_interview_brief(&absolute, args.brief_stale_days)?)
+        }
+        None => None,
+    };
     let topic = normalize_option(args.topic.as_deref())
         .or_else(|| derive_topic_from_stub_path(args.stub_path.as_deref()));
     let stub_content = load_knowledge_stub_content(&paths, args.stub_path.as_deref())?;
@@ -82,6 +99,7 @@ pub(super) fn run_knowledge_article_start(
             readiness: status.readiness.clone(),
             degradations: status.degradations.clone(),
             knowledge_generation: status.knowledge_generation.clone(),
+            interview_brief: interview_brief.clone(),
             result: KnowledgeArticleStartPayload::IndexMissing,
         },
         AuthoringKnowledgePack::QueryMissing => KnowledgeArticleStartOutput {
@@ -89,6 +107,7 @@ pub(super) fn run_knowledge_article_start(
             readiness: status.readiness.clone(),
             degradations: status.degradations.clone(),
             knowledge_generation: status.knowledge_generation.clone(),
+            interview_brief: interview_brief.clone(),
             result: KnowledgeArticleStartPayload::QueryMissing,
         },
         AuthoringKnowledgePack::Found(report) => {
@@ -99,6 +118,7 @@ pub(super) fn run_knowledge_article_start(
                 readiness: status.readiness.clone(),
                 degradations: status.degradations.clone(),
                 knowledge_generation: status.knowledge_generation.clone(),
+                interview_brief,
                 result: KnowledgeArticleStartPayload::Found {
                     article_start: Box::new(article_start),
                 },
@@ -305,6 +325,7 @@ struct ArticleStartBrief<'a> {
     topic: Option<&'a str>,
     intent: Option<&'a ArticleStartIntent>,
     local_state: Option<&'a LocalExistenceState>,
+    interview_brief: Option<InterviewBriefCard<'a>>,
     evidence: Option<ArticleStartEvidenceCard<'a>>,
     local_integration: Option<ArticleStartIntegrationCard<'a>>,
     blocking: Vec<String>,
@@ -325,6 +346,15 @@ struct ArticleStartEvidenceCard<'a> {
     live_leads_status: &'a str,
     top_direct_evidence: Vec<EvidenceCoverageCard<'a>>,
     top_context_evidence: Vec<EvidenceCoverageCard<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct InterviewBriefCard<'a> {
+    status: &'a InterviewValidationStatus,
+    path: &'a std::path::Path,
+    summary: &'a InterviewBriefSummary,
+    errors: &'a [String],
+    warnings: &'a [String],
 }
 
 #[derive(Debug, Serialize)]
@@ -401,6 +431,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             topic: None,
             intent: None,
             local_state: None,
+            interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
             evidence: None,
             local_integration: None,
             blocking: vec![
@@ -428,6 +459,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             topic: None,
             intent: None,
             local_state: None,
+            interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
             evidence: None,
             local_integration: None,
             blocking: vec!["topic or stub-derived query is required for article-start".to_string()],
@@ -473,6 +505,36 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                         .contract_missing_query_terms
                         .join(", ")
                 ));
+            }
+            if let Some(brief) = &output.interview_brief {
+                if brief.status == InterviewValidationStatus::Invalid {
+                    blocking.push(format!(
+                        "interview brief is invalid: {}",
+                        brief.errors.join("; ")
+                    ));
+                }
+                if brief.summary.claim_counts.pending_corroboration > 0 {
+                    warnings.push(format!(
+                        "interview brief has {} pending corroboration claim(s)",
+                        brief.summary.claim_counts.pending_corroboration
+                    ));
+                }
+                if brief.summary.open_item_counts.open > 0 {
+                    warnings.push(format!(
+                        "interview brief has {} open research item(s)",
+                        brief.summary.open_item_counts.open
+                    ));
+                }
+                if brief.summary.open_item_counts.negative_evidence > 0 {
+                    warnings.push(format!(
+                        "interview brief records {} negative-evidence item(s)",
+                        brief.summary.open_item_counts.negative_evidence
+                    ));
+                }
+                if brief.summary.computed_freshness == "stale" {
+                    warnings.push("interview brief is stale".to_string());
+                }
+                warnings.extend(brief.warnings.iter().take(4).cloned());
             }
 
             let mut next_commands = Vec::new();
@@ -574,6 +636,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                 topic: Some(&article_start.topic),
                 intent: Some(&article_start.intent),
                 local_state: Some(&article_start.local_state),
+                interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
                 evidence: Some(ArticleStartEvidenceCard {
                     query: &article_start.evidence_profile.query,
                     direct_subject_evidence_count: article_start
@@ -713,6 +776,16 @@ fn evidence_card(evidence: &EvidenceCoverageItem) -> EvidenceCoverageCard<'_> {
         source_title: &evidence.source_title,
         locator: evidence.locator.as_deref(),
         evidence_id: evidence.evidence_id.as_deref(),
+    }
+}
+
+fn interview_brief_card(report: &InterviewValidationReport) -> InterviewBriefCard<'_> {
+    InterviewBriefCard {
+        status: &report.status,
+        path: &report.path,
+        summary: &report.summary,
+        errors: &report.errors,
+        warnings: &report.warnings,
     }
 }
 

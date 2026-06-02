@@ -36,7 +36,8 @@ Prefer packaged-root paths when working from an extracted release bundle.
 | `AGENTS.md` / `CLAUDE.md` | This compact agent routing brief |
 | `.claude/skills/wikitool.md` | Claude operator wrapper |
 | `.claude/skills/review.md` | Claude pre-push gate wrapper |
-| `codex_skills/` | Codex equivalents of the two wrappers |
+| `.claude/skills/knowledge-interview.md` | Claude human knowledge interview wrapper |
+| `codex_skills/` | Codex equivalents of the wrappers |
 | `writing_context/` | Writing rules and target-wiki editorial profile |
 | `docs/wikitool/guide.md` | Detailed operator manual |
 | `docs/wikitool/reference.md` | Generated CLI help reference |
@@ -51,12 +52,13 @@ For article work, read in this order:
 1. `writing_context/style_rules.md`
 2. `writing_context/article_structure.md`
 3. `writing_context/writing_guide.md`
-4. `writing_context/extensions.md`
-5. `.claude/rules/wiki-style.md`
-6. `.claude/rules/safety.md`
-7. `docs/wikitool/guide.md`
-8. `docs/wikitool/reference.md`
-9. CLI help
+4. `writing_context/interview_playbook.md` for article creation, substantial expansion, or non-mechanical review gaps
+5. `writing_context/extensions.md`
+6. `.claude/rules/wiki-style.md`
+7. `.claude/rules/safety.md`
+8. `docs/wikitool/guide.md`
+9. `docs/wikitool/reference.md`
+10. CLI help
 
 ## Session Start
 
@@ -86,6 +88,26 @@ wikitool knowledge article-start "Topic" --intent refresh --format json --view b
 wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief
 wikitool knowledge contracts search "contract terms" --format json
 ```
+
+For new articles and substantial expansions, scout first with `knowledge article-start`, then use
+the knowledge-interview faculty when human context can improve scope, chronology, terminology,
+relationships, or source leads. Skip interview rounds for mechanical lint, link, sync, source-fetch,
+or validation work unless a conflict requires user judgment. Respect explicit opt-outs such as
+"no interview".
+
+Reusable interview distillations belong under
+`.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat these briefs as working
+notes: user assertions are research leads, not citation evidence or article prose. Use claim IDs
+only for interview-introduced or high-risk claims that need to be tracked through sourcing and
+review.
+
+Use `wikitool knowledge interview init "Topic" --intent new|expand|audit|refresh --format json`
+to create the timestamped brief and sidecars. Use `knowledge interview open-item add/list` to
+record unresolved follow-up, source rejection, access failures, and negative evidence as structured
+ledger entries instead of article prose. Use `knowledge interview validate`, `show`, and `audit`
+for deterministic checks, compact handoff summaries, and ledger review. Pass a validated brief to
+`knowledge article-start --brief-path PATH` and `review --brief-path PATH` when it should shape
+research planning or gate review.
 
 ## Token Discipline
 

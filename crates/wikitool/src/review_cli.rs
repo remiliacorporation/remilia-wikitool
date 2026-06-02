@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::Args;
 use serde::Serialize;
 use wikitool_core::article_lint::ArticleLintReport;
+use wikitool_core::knowledge_interview::{InterviewBriefSummary, InterviewValidationStatus};
 use wikitool_core::sync::{PushReport, SyncPlanReport, SyncSelection};
 
 use crate::RuntimeOptions;
@@ -58,6 +59,19 @@ pub(crate) struct ReviewArgs {
     )]
     draft_paths: Vec<PathBuf>,
     #[arg(
+        long = "brief-path",
+        value_name = "PATH",
+        help = "Validate and include a knowledge interview brief in the review gate"
+    )]
+    brief_path: Option<PathBuf>,
+    #[arg(
+        long,
+        default_value_t = 45,
+        value_name = "DAYS",
+        help = "Age in days after which an interview brief is considered stale"
+    )]
+    brief_stale_days: u64,
+    #[arg(
         long,
         value_name = "PATH",
         help = "Read one canonical page title per line"
@@ -81,6 +95,7 @@ struct ReviewReport {
     status_plan: ReviewStatusPlan,
     changed_article_lint: ReviewArticleLint,
     validation: ReviewValidation,
+    interview_brief: Option<ReviewInterviewBrief>,
     dry_run_push: ReviewDryRunPush,
     next_steps: Vec<ReviewNextStep>,
 }
@@ -127,6 +142,15 @@ struct ReviewValidationSummary {
     double_redirects: usize,
     uncategorized_pages: usize,
     orphan_pages: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ReviewInterviewBrief {
+    path: String,
+    status: InterviewValidationStatus,
+    summary: InterviewBriefSummary,
+    errors: Vec<String>,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]

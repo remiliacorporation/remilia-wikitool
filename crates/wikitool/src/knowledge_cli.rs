@@ -19,6 +19,7 @@ use crate::knowledge_inspect_cli;
 mod article_start;
 mod build;
 mod contracts;
+mod interview;
 mod shared;
 mod status;
 mod warm;
@@ -42,6 +43,8 @@ enum KnowledgeSubcommand {
     ArticleStart(KnowledgeArticleStartArgs),
     #[command(about = "Plan and search token-budgeted authoring contracts")]
     Contracts(KnowledgeContractsArgs),
+    #[command(about = "Create, validate, show, and audit knowledge interview briefs")]
+    Interview(interview::KnowledgeInterviewArgs),
     #[command(about = "Inspect indexed knowledge structures directly")]
     Inspect(knowledge_inspect_cli::KnowledgeInspectArgs),
 }
@@ -124,6 +127,19 @@ pub(crate) struct KnowledgeArticleStartArgs {
         help = "Optional stub wikitext file used for link/template hint extraction"
     )]
     stub_path: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Optional knowledge interview brief to validate and include in the authoring brief"
+    )]
+    brief_path: Option<PathBuf>,
+    #[arg(
+        long,
+        default_value_t = 45,
+        value_name = "DAYS",
+        help = "Age in days after which an interview brief is considered stale"
+    )]
+    brief_stale_days: u64,
     #[arg(
         long,
         default_value_t = 18,
@@ -364,6 +380,7 @@ struct KnowledgeArticleStartOutput {
     readiness: KnowledgeReadinessLevel,
     degradations: Vec<String>,
     knowledge_generation: String,
+    interview_brief: Option<wikitool_core::knowledge_interview::InterviewValidationReport>,
     result: KnowledgeArticleStartPayload,
 }
 
@@ -386,6 +403,7 @@ pub(crate) fn run_knowledge(runtime: &RuntimeOptions, args: KnowledgeArgs) -> Re
             article_start::run_knowledge_article_start(runtime, args)
         }
         KnowledgeSubcommand::Contracts(args) => contracts::run_knowledge_contracts(runtime, args),
+        KnowledgeSubcommand::Interview(args) => interview::run_knowledge_interview(runtime, args),
         KnowledgeSubcommand::Inspect(args) => {
             knowledge_inspect_cli::run_knowledge_inspect(runtime, args)
         }

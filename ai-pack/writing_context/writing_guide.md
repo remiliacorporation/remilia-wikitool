@@ -1,4 +1,4 @@
-# Remilia Wiki â€” Writing Guide
+﻿# Remilia Wiki Ã¢â‚¬â€ Writing Guide
 
 You create encyclopedic articles for a MediaWiki wiki about Remilia Corporation, Milady Maker, and the network spirituality ecosystem.
 
@@ -14,7 +14,7 @@ MediaWiki behavior. Read `style_rules.md` before every article.
 
 ## 1. Output format
 
-All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Never output Markdown. Never wrap output in code blocks. Never include commentary or meta-text â€” only article wikitext.
+All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Never output Markdown. Never wrap output in code blocks. Never include commentary or meta-text Ã¢â‚¬â€ only article wikitext.
 
 ---
 
@@ -22,15 +22,16 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 
 ### Writing a new article
 
-1. **Read `style_rules.md`** â€” internalize the antipatterns before writing.
+1. **Read `style_rules.md`** Ã¢â‚¬â€ internalize the antipatterns before writing.
 2. **Refresh local authoring state** - run `wikitool status --modified --format json`, `wikitool diff --format json`, `wikitool workflow session-refresh`, and `wikitool knowledge status --docs-profile remilia-wiki --format json` so local changes, content, templates, docs readiness, and capability signals are current. Use `wikitool workflow full-refresh` only for a deliberate rebuild or missing sync state, and do not use `pull --overwrite-local` unless the user explicitly approves discarding local edits.
 3. **Build the interpreted authoring brief** - run `wikitool knowledge article-start "<Topic>" --intent new --format json --view brief`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks --view brief` to fetch targeted content before writing. When your own subject knowledge suggests a different wiki-contract lookup than the title itself, make that visible with `--contract-query`, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief`.
-4. **Fetch external evidence selectively** - use normal agent web search to choose source URLs, then run `wikitool research fetch "<URL>" --output json` only for sources you expect to cite. Use `wikitool research wiki-search "<Topic>" --format json` only when you need configured target-wiki API results, not open-web search. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.challenge_handoffs`, `error.discovery`, or run `wikitool research discover "<URL>" --format json` for public robots, sitemap, feed, and structured-data leads. When `error.challenge_handoffs` is present, relay the handoff to the user; if they have lawful browser access, they can solve the challenge and import source-issued cookies with `wikitool research session import "<URL>" --cookies -`, then you can retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. For source MediaWiki pages whose template contract matters, use `wikitool research mediawiki-templates "<URL>" --format json`; this describes the source wiki, not which templates are valid on the target wiki. Add `--refresh` when live freshness matters. Use `wikitool wiki profile remote "<URL>" --format json` only when you need a remote target wiki capability probe and local target profile/import data is unavailable. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
-5. **Look up templates and profile rules** â€” use `wikitool templates show "Template:Template Name" --format json --view brief`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
-6. **Write the article** following the structure in `article_structure.md`.
-7. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
-8. **Run article-aware lint** â€” `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`. For large reference cleanups, use `wikitool knowledge inspect references summary --title "{Article_Title}" --format json` and `wikitool knowledge inspect references duplicates --title "{Article_Title}" --format json`.
-9. **Review** â€” run `wikitool review --format json --view brief --summary "Summary"` before push. Use `wikitool validate --summary` for the lower-level global integrity signal and scoped validation flags when investigating a specific issue.
+4. **Interview for human context when useful** - for new articles and substantial expansions, use `interview_playbook.md` after the scout unless the user explicitly opts out. Start with a freeform knowledge dump, reflect the emerging article scope in neutral wiki language, and ask adaptive follow-ups only where the answer changes structure, research targets, or risk. Save reusable distillations under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Interview briefs are working notes, not article prose or citation evidence; user assertions must be corroborated before publication.
+5. **Fetch external evidence selectively** - use normal agent web search to choose source URLs, then run `wikitool research fetch "<URL>" --output json` only for sources you expect to cite. Use `wikitool research wiki-search "<Topic>" --format json` only when you need configured target-wiki API results, not open-web search. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.challenge_handoffs`, `error.discovery`, or run `wikitool research discover "<URL>" --format json` for public robots, sitemap, feed, and structured-data leads. When `error.challenge_handoffs` is present, relay the handoff to the user; if they have lawful browser access, they can solve the challenge and import source-issued cookies with `wikitool research session import "<URL>" --cookies -`, then you can retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. For source MediaWiki pages whose template contract matters, use `wikitool research mediawiki-templates "<URL>" --format json`; this describes the source wiki, not which templates are valid on the target wiki. Add `--refresh` when live freshness matters. Use `wikitool wiki profile remote "<URL>" --format json` only when you need a remote target wiki capability probe and local target profile/import data is unavailable. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
+6. **Look up templates and profile rules** Ã¢â‚¬â€ use `wikitool templates show "Template:Template Name" --format json --view brief`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
+7. **Write the article** following the structure in `article_structure.md`.
+8. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
+9. **Run article-aware lint** Ã¢â‚¬â€ `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`. For large reference cleanups, use `wikitool knowledge inspect references summary --title "{Article_Title}" --format json` and `wikitool knowledge inspect references duplicates --title "{Article_Title}" --format json`.
+10. **Review** Ã¢â‚¬â€ run `wikitool review --format json --view brief --summary "Summary"` before push. Use `wikitool validate --summary` for the lower-level global integrity signal and scoped validation flags when investigating a specific issue.
 
 Use `wikitool knowledge contracts search "contract terms" --format json` for a direct token-budgeted search of the template/module graph before deciding which template or module to expand.
 
@@ -49,7 +50,7 @@ Keep retrieval token-tight. Prefer wikitool brief views and targeted `knowledge 
 
 ### Article length
 
-Let content dictate length â€” don't pad thin topics or compress rich ones.
+Let content dictate length Ã¢â‚¬â€ don't pad thin topics or compress rich ones.
 
 - **Stub** (1-2 paragraphs): acceptable for minor topics with limited sources
 - **Short** (3-5 paragraphs + infobox): most articles
@@ -78,14 +79,14 @@ This is the most important sourcing principle. Excessive academic citations are 
 - Paywalled content you can't verify
 
 **Never cite:**
-- IQ.wiki â€” unreliable, user-generated
-- Know Your Meme â€” tertiary source, quality issues
-- NFT Price Floor â€” inaccurate details
-- Urban Dictionary â€” unmoderated, unverifiable
+- IQ.wiki Ã¢â‚¬â€ unreliable, user-generated
+- Know Your Meme Ã¢â‚¬â€ tertiary source, quality issues
+- NFT Price Floor Ã¢â‚¬â€ inaccurate details
+- Urban Dictionary Ã¢â‚¬â€ unmoderated, unverifiable
 
 ### Tone calibration
 
-This is a subcultural wiki, not an academic journal. The tone should be encyclopedic but not dry or clinical. Match the register of good Wikipedia articles about internet culture â€” factual, clear, and willing to engage with cultural context without editorializing. Humor and irreverence are fine when sourced; promotional enthusiasm and clinical detachment are both wrong.
+This is a subcultural wiki, not an academic journal. The tone should be encyclopedic but not dry or clinical. Match the register of good Wikipedia articles about internet culture Ã¢â‚¬â€ factual, clear, and willing to engage with cultural context without editorializing. Humor and irreverence are fine when sourced; promotional enthusiasm and clinical detachment are both wrong.
 
 ### Never fabricate
 
@@ -93,7 +94,7 @@ Never fabricate facts, dates, quotes, or source URLs. If a specific detail canno
 
 ### Verified wiki articles
 
-Articles marked `{{Article quality|verified}}` represent editor-approved content. Use them to:
+Articles marked `{{Article quality|verified}}` represent editor-reviewed content. Use them to:
 - Define project-specific terminology consistently
 - Ensure consistent internal linking (`[[Remilia Corporation]]`, `[[Milady Maker]]`)
 - Follow established formatting patterns
@@ -112,6 +113,14 @@ Articles marked `{{Article quality|verified}}` represent editor-approved content
 - General background: "online communities often develop distinctive aesthetics"
 - Technical context: "smart contracts execute automatically"
 - Historical context: "the early internet fostered pseudonymous communities"
+
+### Interview briefs and user knowledge
+
+Interview briefs under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md` preserve
+human context from authoring sessions. They can widen research and improve article structure, but
+they are not article prose and they are not citation evidence. Treat user assertions as source
+leads until corroborated. Use claim IDs only for interview-introduced or high-risk claims that need
+to be tracked through research and review.
 
 ---
 
@@ -136,7 +145,7 @@ Focus citations on the claims that matter most. Let general context breathe with
 ```
 
 - Fill in all available fields. Leave unknown fields empty (omit them).
-- **Always leave archive fields blank** (`archive-url`, `archive-is`, `archive-date`, `screenshot`) â€” human editors complete these.
+- **Always leave archive fields blank** (`archive-url`, `archive-is`, `archive-date`, `screenshot`) Ã¢â‚¬â€ human editors complete these.
 - Use `access-date` of today's date.
 
 ### Named references
@@ -165,14 +174,17 @@ Never duplicate full citations. Never declare named refs inside `{{Reflist}}`.
 ### Internal linking
 
 - Link to existing wiki articles on first mention in the body: `[[Remilia Corporation]]`, `[[Milady Maker]]`
-- Link each article once â€” first occurrence only, don't re-link in later paragraphs
+- Link each article once Ã¢â‚¬â€ first occurrence only, don't re-link in later paragraphs
 - Check if target exists: `wikitool research wiki-search "Article Name" --what title --format json`
 - Never place red links in See also sections
 - Use piped links when display text differs: `[[Remilia Corporation|Remilia]]`
 
 ### Quality marking
 
-Every AI-generated article must include `{{Article quality|unverified}}` on line 2. Only human editors may change this to `wip` or `verified`. Never output `{{Article quality|wip}}` or `{{Article quality|verified}}`.
+Every new agent-authored main-namespace draft should include `{{Article quality|unverified}}` on
+line 2 as the default editorial review state. Preserve an existing `wip` or `verified` state unless
+the user explicitly asks to change it. Agents should not promote an article to `verified` on their
+own; that state means the article has been accepted through the wiki's editorial review process.
 
 ### Categories
 
@@ -187,7 +199,7 @@ General rules:
 - Use 2-4 categories per article
 - `[[Category:Remilia]]` goes on all Remilia-related content
 - Choose the most specific applicable category
-- Never invent categories â€” use only those that exist on the wiki
+- Never invent categories Ã¢â‚¬â€ use only those that exist on the wiki
 
 ---
 
@@ -232,7 +244,7 @@ wikitool wiki profile show --format json
 wikitool knowledge inspect chunks --across-pages --query "infobox" --limit 10 --token-budget 1200 --format json
 ```
 
-This is always authoritative â€” it reflects what's actually deployed on the wiki.
+This is always authoritative Ã¢â‚¬â€ it reflects what's actually deployed on the wiki.
 
 ### Extension documentation
 

@@ -12,14 +12,14 @@ The packaged release root is intentionally flat and ready to use: `AGENTS.md`, `
 | `AGENTS.md` | `AGENTS.md` | Agent routing brief |
 | `CLAUDE.md` | `CLAUDE.md` | Same body as `AGENTS.md` |
 | `.claude/rules/*` | `.claude/rules/*` | Claude always-on editing rules |
-| `.claude/skills/*` | `.claude/skills/*` | Claude operator/review wrappers |
+| `.claude/skills/*` | `.claude/skills/*` | Claude operator/review/interview wrappers |
 | `codex_skills/*` | `codex_skills/*` | Codex equivalents |
 | `writing_context/*.md` | `writing_context/*.md` | Article-writing profile |
 | `docs-bundle-v1.json` | `ai/docs-bundle-v1.json` | Optional offline docs preload |
 
 `writing_context/` is deliberately not named after a model family. It is the target-wiki writing
-profile: style, article structure, sourcing rules, and content-extension notes. Global agent
-behavior belongs in `AGENTS.md` / `CLAUDE.md` and the skill wrappers.
+profile: style, article structure, sourcing rules, knowledge-interview notes, and content-extension
+notes. Global agent behavior belongs in `AGENTS.md` / `CLAUDE.md` and the skill wrappers.
 
 ## Host Overlay
 

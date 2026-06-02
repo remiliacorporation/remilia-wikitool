@@ -42,6 +42,7 @@ Use `wikitool workflow full-refresh` for deliberate rebuilds or missing sync sta
 
 ```bash
 wikitool knowledge article-start "Topic" --intent new --format json --view brief
+wikitool knowledge article-start "Topic" --intent new --brief-path .wikitool/interviews/Title/20260601T172430Z.brief.md --format json --view brief
 wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief
 wikitool knowledge contracts search "species infobox taxonomy" --format json
 wikitool research wiki-search "Topic" --format json
@@ -56,12 +57,54 @@ wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
 wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"
+wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --brief-path .wikitool/interviews/Title/20260601T172430Z.brief.md --format json --summary "Draft review"
 wikitool article fix wiki_content/Main/Title.wiki --apply safe
 wikitool knowledge inspect references summary --title "Title" --format json
 wikitool knowledge inspect references duplicates --title "Title" --format json
 wikitool validate --summary
 wikitool review --format json --view brief --summary "Summary"
 ```
+
+## Human-in-loop authoring
+
+For new articles and substantial expansions, the recommended agent flow is scout first, then
+interview when human context can improve the article. Start with
+`knowledge article-start --view brief` and a cursory wiki/source search so questions are grounded in
+what wikitool already knows. Then use the packaged knowledge-interview skill and
+`writing_context/interview_playbook.md` to collect the user's freeform knowledge, reflect the
+emerging article scope, and ask adaptive follow-ups where the answer changes structure, research
+targets, terminology, chronology, or risk.
+
+Reusable interview distillations should be saved as:
+
+```text
+.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md
+```
+
+The brief is a research artifact, not article prose and not citation evidence. User assertions
+should be treated as leads until corroborated. Use stable claim IDs only for
+interview-introduced or high-risk claims that need tracking through research and review.
+
+Use the Rust interview ledger commands for deterministic paths, starter files, validation, compact
+handoff summaries, and ledger audits:
+
+```bash
+wikitool knowledge interview init "Topic" --intent new --format json
+wikitool knowledge interview validate .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
+wikitool knowledge interview show .wikitool/interviews/Title/20260601T172430Z.brief.md --view brief --format json
+wikitool knowledge interview open-item add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind rejected-source --text "Candidate source did not support the claimed date."
+wikitool knowledge interview open-item list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
+wikitool knowledge interview audit --view brief --format json
+```
+
+The conversational interview loop still belongs in the agent skill. The CLI does not infer source
+support from user prose; it validates structured metadata, required sections, sidecars, claim ID
+uniqueness, typed open-items JSONL records, negative-evidence counts, and freshness.
+
+Pass the validated brief to `knowledge article-start --brief-path` or `review --brief-path` when
+the interview should shape research planning or gate review. These integrations surface explicit
+brief metadata, pending claims, open research items, and negative-evidence counts; they do not
+treat user assertions as evidence.
 
 For local custom content features, use the deployed target contract rather than raw HTML/JavaScript.
 Remilia's current D3Charts surface is `Module:D3Chart` plus ResourceLoader, so agents should inspect
@@ -82,6 +125,7 @@ wikitool diff                          # review change set
 wikitool diff --content --title "Title"
 wikitool review --format json --view brief --summary "x"
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "x"
+wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --brief-path .wikitool/interviews/Title/20260601T172430Z.brief.md --format json --summary "x"
 wikitool push --dry-run --summary "x"  # remote-safe preflight
 wikitool push --dry-run --title "Title" --summary "x"
 wikitool push --summary "x"            # actual push
@@ -95,6 +139,13 @@ wikitool knowledge build                # content index only
 wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing  # index + docs readiness
 wikitool knowledge status --docs-profile remilia-wiki --format json
 wikitool knowledge article-start "Topic" --intent new --format json --view brief
+wikitool knowledge interview init "Topic" --intent new --format json
+wikitool knowledge interview validate .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
+wikitool knowledge interview show .wikitool/interviews/Title/20260601T172430Z.brief.md --view brief --format json
+wikitool knowledge interview open-item add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind missing-source --text "Need a citable source for the launch date."
+wikitool knowledge interview open-item list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
+wikitool knowledge interview audit --view brief --format json
+wikitool knowledge article-start "Topic" --brief-path .wikitool/interviews/Title/20260601T172430Z.brief.md --format json --view brief
 wikitool knowledge contracts plan "Topic" --contract-query "subject type infobox" --format json
 wikitool knowledge inspect stats
 wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480

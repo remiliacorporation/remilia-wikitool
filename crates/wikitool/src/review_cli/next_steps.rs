@@ -11,6 +11,7 @@ pub(super) fn build_review_next_steps(
     paths: &ResolvedPaths,
     draft_selection: Option<&DraftReviewSelection>,
     summary: &str,
+    brief_path: Option<&str>,
 ) -> Result<Vec<ReviewNextStep>> {
     let Some(draft_selection) = draft_selection else {
         return Ok(Vec::new());
@@ -19,6 +20,24 @@ pub(super) fn build_review_next_steps(
     let draft_path = normalize_path(&draft_selection.path);
     let title = draft_selection.title.clone();
     let promote_path = title_to_relative_path(paths, &title, false)?;
+    let mut review_draft_argv = vec![
+        "wikitool",
+        "review",
+        "--draft-path",
+        &draft_path,
+        "--title",
+        &title,
+    ];
+    if let Some(brief_path) = brief_path {
+        review_draft_argv.extend(["--brief-path", brief_path]);
+    }
+    review_draft_argv.extend(["--format", "json", "--summary", summary]);
+
+    let mut review_promoted_argv = vec!["wikitool", "review", "--path", &promote_path];
+    if let Some(brief_path) = brief_path {
+        review_promoted_argv.extend(["--brief-path", brief_path]);
+    }
+    review_promoted_argv.extend(["--format", "json", "--summary", summary]);
 
     Ok(vec![
         command_next_step(
@@ -52,18 +71,7 @@ pub(super) fn build_review_next_steps(
         command_next_step(
             "review_draft",
             "Rerun the draft review gate after edits or safe fixes.",
-            vec![
-                "wikitool",
-                "review",
-                "--draft-path",
-                &draft_path,
-                "--title",
-                &title,
-                "--format",
-                "json",
-                "--summary",
-                summary,
-            ],
+            review_draft_argv,
         ),
         ReviewNextStep {
             kind: "promote_draft",
@@ -83,16 +91,7 @@ pub(super) fn build_review_next_steps(
         command_next_step(
             "review_promoted_page",
             "Run the normal pre-push gate after the draft is under wiki_content/.",
-            vec![
-                "wikitool",
-                "review",
-                "--path",
-                &promote_path,
-                "--format",
-                "json",
-                "--summary",
-                summary,
-            ],
+            review_promoted_argv,
         ),
         command_next_step(
             "push_dry_run",

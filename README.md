@@ -95,6 +95,10 @@ project-root/
   templates/                    template and module sources
 ```
 
+Copy the bundled `.env.template` to `.env` and set `WIKITOOL_BOT_USER` / `WIKITOOL_BOT_PASS`
+(from `Special:BotPasswords`) before `push` or `delete`. The project-root `.env` is loaded
+automatically.
+
 If the local database is stale or incompatible, reset and rebuild:
 
 ```bash

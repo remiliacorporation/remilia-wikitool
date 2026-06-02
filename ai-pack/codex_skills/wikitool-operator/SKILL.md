@@ -17,6 +17,10 @@ At the start of an editing session, inspect local edits and refresh local wiki s
 only for deliberate rebuilds or missing sync state; do not use `pull --overwrite-local` without explicit approval.
 
 Use `knowledge article-start --intent new|expand|audit|refresh --view brief` as the authoring front door.
+For new articles and substantial expansions, route to `wikitool-knowledge-interview` when human
+context can improve scope, terminology, chronology, relationships, or source leads, unless the user
+explicitly opts out. Skip interview rounds for mechanical lint, link, sync, source-fetch, or
+validation work unless a conflict requires user judgment.
 Keep agent context compact: prefer wikitool briefs (`article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, `review --view brief`) before using `--view full`, broad reference selections, or high token budgets.
 Use normal agent web search to choose arbitrary external sources, then use `research fetch`, `research discover`, and `export` for extraction and provenance. Use `research wiki-search` only for the configured target wiki API.
 When `research fetch --output json` returns `error.challenge_handoffs`, relay the exact handoff to the user and ask them to solve the source challenge in a browser, then import source-issued cookies with `research session import ... --cookies -` and retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. Use `research session list|show|clear|prune` to manage local sessions; cookie values are stored locally and not printed by CLI output.

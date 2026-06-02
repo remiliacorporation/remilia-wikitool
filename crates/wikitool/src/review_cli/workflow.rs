@@ -1,4 +1,6 @@
 use anyhow::{Result, bail};
+use wikitool_core::filesystem::validate_scoped_path;
+use wikitool_core::knowledge_interview::{InterviewValidationStatus, validate_interview_brief};
 use wikitool_core::runtime::{ensure_runtime_ready_for_sync, inspect_runtime};
 use wikitool_core::sync::{SyncPlanOptions, SyncSelection, plan_sync_changes_with_config};
 
@@ -12,7 +14,10 @@ use super::draft::{
 use super::next_steps::build_review_next_steps;
 use super::output::{build_review_brief, print_review_report};
 use super::selection::review_selection_from_args;
-use super::{ReviewArgs, ReviewDryRunPush, ReviewFilters, ReviewReport, ReviewStatusPlan};
+use super::{
+    ReviewArgs, ReviewDryRunPush, ReviewFilters, ReviewInterviewBrief, ReviewReport,
+    ReviewStatusPlan,
+};
 
 pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<()> {
     if args.summary.trim().is_empty() {
@@ -22,6 +27,25 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let runtime_status = inspect_runtime(&paths)?;
     ensure_runtime_ready_for_sync(&paths, &runtime_status)?;
+    let interview_brief = match args.brief_path.as_deref() {
+        Some(path) => {
+            let absolute = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                paths.project_root.join(path)
+            };
+            validate_scoped_path(&paths, &absolute)?;
+            let report = validate_interview_brief(&absolute, args.brief_stale_days)?;
+            Some(ReviewInterviewBrief {
+                path: normalize_path(&report.path),
+                status: report.status,
+                summary: report.summary,
+                errors: report.errors,
+                warnings: report.warnings,
+            })
+        }
+        None => None,
+    };
     let draft_selection = review_draft_selection_from_args(&args)?;
     if let Some(selection) = &draft_selection {
         validate_draft_review_path(&paths, &selection.path)?;
@@ -108,8 +132,12 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
             args.categories,
         )
     };
-    let next_steps =
-        build_review_next_steps(&paths, draft_selection.as_ref(), args.summary.trim())?;
+    let next_steps = build_review_next_steps(
+        &paths,
+        draft_selection.as_ref(),
+        args.summary.trim(),
+        interview_brief.as_ref().map(|brief| brief.path.as_str()),
+    )?;
 
     let mut hard_failures = Vec::new();
     if !status_plan.sync_ledger_ready {
@@ -142,6 +170,14 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
                 .unwrap_or_else(|| "push dry-run reported conflicts or errors".to_string()),
         );
     }
+    if let Some(brief) = &interview_brief {
+        if brief.status == InterviewValidationStatus::Invalid {
+            hard_failures.push(format!(
+                "interview brief is invalid: {}",
+                brief.errors.join("; ")
+            ));
+        }
+    }
 
     let report = ReviewReport {
         project_root: normalize_path(&paths.project_root),
@@ -155,6 +191,7 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
         status_plan,
         changed_article_lint,
         validation,
+        interview_brief,
         dry_run_push,
         next_steps,
     };

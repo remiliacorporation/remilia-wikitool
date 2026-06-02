@@ -138,7 +138,13 @@ pub(super) fn build_ai_pack(
 }
 
 fn copy_required_ai_pack_top_level_files(repo_root: &Path, output_dir: &Path) -> Result<()> {
-    for file in ["README.md", "LICENSE", "LICENSE-SSL", "LICENSE-VPL"] {
+    for file in [
+        ".env.template",
+        "README.md",
+        "LICENSE",
+        "LICENSE-SSL",
+        "LICENSE-VPL",
+    ] {
         let source = repo_root.join(file);
         require_file(&source, "missing required AI pack file")?;
         copy_file(&source, &output_dir.join(file))?;
@@ -349,6 +355,10 @@ mod tests {
         for file in ["README.md", "LICENSE", "LICENSE-SSL", "LICENSE-VPL"] {
             write_file(&root.join(file), file);
         }
+        write_file(
+            &root.join(".env.template"),
+            "WIKITOOL_BOT_USER=example@bot\nWIKITOOL_BOT_PASS=secret\n",
+        );
         write_file(&root.join("ai-pack/CLAUDE.md"), "# Packaged CLAUDE\n");
         write_file(&root.join("ai-pack/AGENTS.md"), "# Packaged AGENTS\n");
         write_file(
@@ -453,6 +463,26 @@ mod tests {
         assert!(
             manifest.contains("\"host_writing_context_included\": true"),
             "manifest must record host writing context overlay"
+        );
+    }
+
+    #[test]
+    fn build_ai_pack_ships_corrected_env_template() {
+        let temp = TestDir::new("env-template");
+        let repo_root = temp.path.join("repo");
+        let host_root = temp.path.join("host");
+        let output_dir = temp.path.join("out");
+        create_repo(&repo_root);
+        create_host(&host_root, "# Host CLAUDE\n", None);
+
+        build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
+
+        let staged = output_dir.join(".env.template");
+        assert!(staged.is_file(), "bundle must include .env.template");
+        let contents = fs::read_to_string(&staged).expect("read staged env template");
+        assert!(
+            contents.contains("WIKITOOL_BOT_USER"),
+            "env template must use WIKITOOL_* variable names"
         );
     }
 }

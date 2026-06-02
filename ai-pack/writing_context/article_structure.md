@@ -27,7 +27,7 @@ Content...
 | Line | Content | Notes |
 |---|---|---|
 | 1 | `{{SHORTDESC:...}}` | Under 160 chars. Describes the subject, not the article. No wikitext inside. |
-| 2 | `{{Article quality\|unverified}}` | Mandatory for AI-generated content. Never use `wip` or `verified`. |
+| 2 | `{{Article quality\|unverified}}` | Default review state for new agent drafts. Preserve existing `wip` or `verified` unless explicitly changed. |
 | 3 | *(blank)* | |
 | 4+ | `'''Bold Title'''` opening paragraph | First sentence defines the subject. Bold only the title, first occurrence. |
 
@@ -75,6 +75,10 @@ For Remilia projects: use `parent_group = Remilia` instead of `creator` or `arti
 2. **Add** sections the skeleton missed if your evidence supports them. The skeleton reflects structural consensus among comparables; unique aspects of your subject won't appear.
 3. **Investigate** sections marked `content_backed: false` â€" these exist on comparables but weren't in the retrieved evidence. Use `wikitool knowledge inspect chunks "<Page>" --query "<heading>" --limit 4 --token-budget 400` to fetch targeted content before writing those sections.
 4. **Sparse skeletons are normal** when comparables are structurally diverse (e.g., an organization compared against artworks, events, and people). Fall back on the subject-type patterns below.
+
+When a knowledge interview exists, combine the `section_skeleton` with the interview brief before
+drafting. The brief can suggest missing sections, source leads, and terminology, but it is not
+article prose or citation evidence. Corroborate user assertions before publishing factual claims.
 
 ### Common section patterns by subject type
 

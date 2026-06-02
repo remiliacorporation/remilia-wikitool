@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::briefs::{BriefCommand, brief_command};
 
-use super::{ReviewNextStep, ReviewReport};
+use super::{ReviewInterviewBrief, ReviewNextStep, ReviewReport};
 
 #[derive(Debug, Serialize)]
 pub(super) struct ReviewBrief<'a> {
@@ -14,6 +14,7 @@ pub(super) struct ReviewBrief<'a> {
     strict: bool,
     selection: ReviewSelectionBrief<'a>,
     counts: ReviewCountsBrief,
+    interview_brief: Option<ReviewInterviewBriefCard<'a>>,
     dry_run_push: ReviewDryRunBrief<'a>,
     hard_failures: &'a [String],
     next_steps: &'a [ReviewNextStep],
@@ -38,6 +39,21 @@ struct ReviewCountsBrief {
     validation_index_ready: bool,
     validation_issues: usize,
     sync_conflicts: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewInterviewBriefCard<'a> {
+    status: &'a wikitool_core::knowledge_interview::InterviewValidationStatus,
+    path: &'a str,
+    title: Option<&'a str>,
+    intent: Option<&'a str>,
+    computed_freshness: &'a str,
+    pending_claims: usize,
+    source_leads: usize,
+    open_items: usize,
+    negative_evidence: usize,
+    errors: &'a [String],
+    warnings: &'a [String],
 }
 
 #[derive(Debug, Serialize)]
@@ -80,6 +96,7 @@ pub(super) fn build_review_brief(report: &ReviewReport) -> ReviewBrief<'_> {
                 .map(|plan| plan.conflict_count)
                 .unwrap_or_default(),
         },
+        interview_brief: report.interview_brief.as_ref().map(interview_brief_card),
         dry_run_push: ReviewDryRunBrief {
             attempted: report.dry_run_push.attempted,
             success: report.dry_run_push.success,
@@ -116,6 +133,22 @@ pub(super) fn build_review_brief(report: &ReviewReport) -> ReviewBrief<'_> {
             "--summary",
             "<summary>",
         ]),
+    }
+}
+
+fn interview_brief_card(brief: &ReviewInterviewBrief) -> ReviewInterviewBriefCard<'_> {
+    ReviewInterviewBriefCard {
+        status: &brief.status,
+        path: &brief.path,
+        title: brief.summary.title.as_deref(),
+        intent: brief.summary.intent.as_deref(),
+        computed_freshness: &brief.summary.computed_freshness,
+        pending_claims: brief.summary.claim_counts.pending_corroboration,
+        source_leads: brief.summary.source_lead_count,
+        open_items: brief.summary.open_item_count,
+        negative_evidence: brief.summary.open_item_counts.negative_evidence,
+        errors: &brief.errors,
+        warnings: &brief.warnings,
     }
 }
 
@@ -194,6 +227,46 @@ pub(super) fn print_review_report(report: &ReviewReport) {
             summary.uncategorized_pages
         );
         println!("validation.orphan_pages.count: {}", summary.orphan_pages);
+    }
+    if let Some(brief) = &report.interview_brief {
+        println!("interview_brief.path: {}", brief.path);
+        println!(
+            "interview_brief.status: {}",
+            match brief.status {
+                wikitool_core::knowledge_interview::InterviewValidationStatus::Valid => "valid",
+                wikitool_core::knowledge_interview::InterviewValidationStatus::Warning => "warning",
+                wikitool_core::knowledge_interview::InterviewValidationStatus::Invalid => "invalid",
+            }
+        );
+        if let Some(title) = &brief.summary.title {
+            println!("interview_brief.title: {title}");
+        }
+        println!(
+            "interview_brief.computed_freshness: {}",
+            brief.summary.computed_freshness
+        );
+        println!(
+            "interview_brief.claims.pending_corroboration: {}",
+            brief.summary.claim_counts.pending_corroboration
+        );
+        println!(
+            "interview_brief.source_leads: {}",
+            brief.summary.source_lead_count
+        );
+        println!(
+            "interview_brief.open_items: {}",
+            brief.summary.open_item_count
+        );
+        println!(
+            "interview_brief.negative_evidence: {}",
+            brief.summary.open_item_counts.negative_evidence
+        );
+        for error in &brief.errors {
+            println!("interview_brief.error: {error}");
+        }
+        for warning in &brief.warnings {
+            println!("interview_brief.warning: {warning}");
+        }
     }
     println!("push_dry_run.attempted: {}", report.dry_run_push.attempted);
     println!("push_dry_run.success: {}", report.dry_run_push.success);

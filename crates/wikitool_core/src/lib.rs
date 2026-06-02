@@ -9,6 +9,7 @@ pub mod filesystem;
 pub mod graph;
 pub mod import_cargo;
 pub mod knowledge;
+pub mod knowledge_interview;
 pub mod lint;
 pub mod mw;
 pub mod profile;
