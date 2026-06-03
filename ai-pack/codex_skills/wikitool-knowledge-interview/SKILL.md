@@ -11,7 +11,7 @@ Use normal reasoning, ordinary shell/file tools, and direct editing by default. 
 commands against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
 The conversational loop belongs to the agent; the Rust CLI owns deterministic ledger creation,
 validation, summaries, audits, and structured open-item logging through
-`wikitool knowledge interview init|validate|show|audit|open-item`.
+`wikitool knowledge interview init|validate|show|audit|open-item|claim`.
 
 Read `writing_context/interview_playbook.md` before using this skill. Start with a compact scout:
 `wikitool knowledge article-start "<Topic>" --intent new|expand|audit|refresh --format json --view brief`,
@@ -46,7 +46,11 @@ drafting from it, run `wikitool knowledge interview validate PATH --format json`
 `wikitool knowledge interview show PATH --view brief --format json` and
 `wikitool knowledge interview audit --view brief --format json` for handoff and ledger checks.
 Use `wikitool knowledge interview open-item add PATH --kind rejected-source|inaccessible-source|missing-source|scope-unresolved --text "..."`
-to record unresolved research work or negative evidence without turning it into article prose.
+to record unresolved research work or negative evidence without turning it into article prose, and
+`open-item update PATH --item-id ID --status resolved` to transition a logged item. Use
+`wikitool knowledge interview claim add PATH --kind <kind> --status <status> --text "..." --provenance "..."`
+(then `claim list`) to record interview-introduced or high-risk claims; provenance is free text such
+as a source URL, `editor-attested`, or `primary-artifact: File:X`, so a primary tether is first class.
 Pass validated briefs to `wikitool knowledge article-start "<Topic>" --brief-path PATH --format json --view brief`
 and `wikitool review --brief-path PATH --format json --view brief --summary "..."` when the
 interview should inform research planning or review.

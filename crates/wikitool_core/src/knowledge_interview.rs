@@ -38,6 +38,13 @@ const ALLOWED_CLAIM_KINDS: &[&str] = &[
     "disputed",
     "excluded",
 ];
+const ALLOWED_CLAIM_STATUSES: &[&str] = &[
+    "pending_corroboration",
+    "corroborated",
+    "rejected",
+    "excluded",
+    "needs_review",
+];
 const ALLOWED_OPEN_ITEM_KINDS: &[&str] = &[
     "pending_corroboration",
     "rejected_source",
@@ -257,11 +264,18 @@ struct ClaimsSidecar {
     do_not_assert: Option<Vec<JsonValue>>,
 }
 
-#[derive(Debug, Deserialize)]
-struct InterviewClaim {
-    claim_id: Option<String>,
-    kind: Option<String>,
-    status: Option<String>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterviewClaim {
+    #[serde(default)]
+    pub claim_id: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<String>,
 }
 
 struct OpenItemsValidationResult {
@@ -623,6 +637,303 @@ pub fn list_interview_open_items(brief_path: &Path) -> Result<InterviewOpenItemL
         errors,
         warnings,
     })
+}
+
+#[derive(Debug, Clone)]
+pub struct InterviewClaimAddOptions {
+    pub claim_id: Option<String>,
+    pub kind: String,
+    pub status: String,
+    pub text: Option<String>,
+    pub provenance: Option<String>,
+    pub timestamp: Option<String>,
+    pub touch_brief: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InterviewClaimAppendReport {
+    pub schema_version: &'static str,
+    pub brief_path: PathBuf,
+    pub claims_path: PathBuf,
+    pub claim: InterviewClaim,
+    pub touched_brief: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InterviewClaimListReport {
+    pub schema_version: &'static str,
+    pub brief_path: PathBuf,
+    pub claims_path: PathBuf,
+    pub status: InterviewValidationStatus,
+    pub counts: InterviewClaimCounts,
+    pub source_lead_count: usize,
+    pub do_not_assert_count: usize,
+    pub claims: Vec<InterviewClaim>,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// Append a structured claim to the brief's claims sidecar via read-modify-write
+/// of the JSON document, preserving `do_not_assert`, `source_leads`, and any
+/// extra keys. Provenance is free text so the wiki's primary-tether model (for
+/// example `editor-attested` or `primary-artifact: File:X`) is first class.
+pub fn append_interview_claim(
+    brief_path: &Path,
+    options: &InterviewClaimAddOptions,
+) -> Result<InterviewClaimAppendReport> {
+    validate_claim_kind(&options.kind)?;
+    validate_claim_status(&options.status)?;
+    let content = fs::read_to_string(brief_path)
+        .with_context(|| format!("failed to read interview brief {}", brief_path.display()))?;
+    let parsed = parse_brief(&content)?;
+    let sidecar_path = claims_sidecar_path(brief_path, &parsed.metadata)?;
+    if !sidecar_path.is_file() {
+        bail!("claims sidecar missing: {}", sidecar_path.display());
+    }
+    let raw = fs::read_to_string(&sidecar_path)
+        .with_context(|| format!("failed to read claims sidecar {}", sidecar_path.display()))?;
+    let mut doc: serde_json::Value = serde_json::from_str(&raw)
+        .with_context(|| format!("claims sidecar {} is not valid JSON", sidecar_path.display()))?;
+    let Some(obj) = doc.as_object_mut() else {
+        bail!("claims sidecar {} is not a JSON object", sidecar_path.display());
+    };
+    let claims_value = obj
+        .entry("claims")
+        .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+    let Some(claims_arr) = claims_value.as_array_mut() else {
+        bail!("claims sidecar `claims` field is not an array");
+    };
+    let existing_ids: Vec<String> = claims_arr
+        .iter()
+        .filter_map(|claim| {
+            claim
+                .get("claim_id")
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+        .collect();
+    let claim_id = match options.claim_id.as_deref() {
+        Some(id) => normalize_required_text("claim id", id)?,
+        None => next_claim_id(&existing_ids),
+    };
+    if existing_ids.iter().any(|existing| existing == &claim_id) {
+        bail!("duplicate claim_id `{claim_id}`");
+    }
+    let claim = InterviewClaim {
+        claim_id: Some(claim_id),
+        kind: Some(options.kind.clone()),
+        status: Some(options.status.clone()),
+        text: normalize_optional(options.text.as_deref()),
+        provenance: normalize_optional(options.provenance.as_deref()),
+    };
+    claims_arr.push(serde_json::to_value(&claim)?);
+    let serialized = serde_json::to_string_pretty(&doc)?;
+    fs::write(&sidecar_path, format!("{serialized}\n"))
+        .with_context(|| format!("failed to write claims sidecar {}", sidecar_path.display()))?;
+    let timestamp = match options.timestamp.as_deref() {
+        Some(timestamp) => validate_compact_timestamp(timestamp)?.to_string(),
+        None => current_compact_timestamp()?,
+    };
+    let now = compact_to_rfc3339(&timestamp)?;
+    let touched_brief = if options.touch_brief {
+        touch_brief_freshness(brief_path, &content, &now)?
+    } else {
+        false
+    };
+    Ok(InterviewClaimAppendReport {
+        schema_version: "knowledge_interview_claim_append_v1",
+        brief_path: brief_path.to_path_buf(),
+        claims_path: sidecar_path,
+        claim,
+        touched_brief,
+    })
+}
+
+pub fn list_interview_claims(brief_path: &Path) -> Result<InterviewClaimListReport> {
+    let content = fs::read_to_string(brief_path)
+        .with_context(|| format!("failed to read interview brief {}", brief_path.display()))?;
+    let parsed = parse_brief(&content)?;
+    let sidecar_path = claims_sidecar_path(brief_path, &parsed.metadata)?;
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    let result = validate_claims_sidecar(brief_path, &parsed.metadata, &mut errors, &mut warnings)?;
+    let claims = if sidecar_path.is_file() {
+        let raw = fs::read_to_string(&sidecar_path).with_context(|| {
+            format!("failed to read claims sidecar {}", sidecar_path.display())
+        })?;
+        serde_json::from_str::<ClaimsSidecar>(&raw)
+            .ok()
+            .and_then(|parsed_claims| parsed_claims.claims)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let status = if !errors.is_empty() {
+        InterviewValidationStatus::Invalid
+    } else if !warnings.is_empty() {
+        InterviewValidationStatus::Warning
+    } else {
+        InterviewValidationStatus::Valid
+    };
+    Ok(InterviewClaimListReport {
+        schema_version: "knowledge_interview_claim_list_v1",
+        brief_path: brief_path.to_path_buf(),
+        claims_path: sidecar_path,
+        status,
+        counts: result.claim_counts,
+        source_lead_count: result.source_lead_count,
+        do_not_assert_count: result.do_not_assert_count,
+        claims,
+        errors,
+        warnings,
+    })
+}
+
+#[derive(Debug, Clone)]
+pub struct InterviewOpenItemUpdateOptions {
+    pub item_id: String,
+    pub status: Option<String>,
+    pub notes: Option<String>,
+    pub text: Option<String>,
+    pub timestamp: Option<String>,
+    pub touch_brief: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InterviewOpenItemUpdateReport {
+    pub schema_version: &'static str,
+    pub brief_path: PathBuf,
+    pub open_items_path: PathBuf,
+    pub item: InterviewOpenItemRecord,
+    pub touched_brief: bool,
+}
+
+/// Transition an existing open item's status (and optionally its note or text)
+/// in place, rewriting the JSONL sidecar. This is the resolve/defer lane so a
+/// later session does not have to hand-edit the ledger.
+pub fn update_interview_open_item(
+    brief_path: &Path,
+    options: &InterviewOpenItemUpdateOptions,
+) -> Result<InterviewOpenItemUpdateReport> {
+    let item_id = normalize_required_text("open item id", &options.item_id)?;
+    if let Some(status) = options.status.as_deref() {
+        validate_open_item_status(status)?;
+    }
+    if options.status.is_none() && options.notes.is_none() && options.text.is_none() {
+        bail!("open-item update requires at least one of --status, --notes, or --text");
+    }
+    let content = fs::read_to_string(brief_path)
+        .with_context(|| format!("failed to read interview brief {}", brief_path.display()))?;
+    let parsed = parse_brief(&content)?;
+    let sidecar_path = open_items_sidecar_path(brief_path, &parsed.metadata)?;
+    if !sidecar_path.is_file() {
+        bail!("open items sidecar missing: {}", sidecar_path.display());
+    }
+    let existing = read_open_items_sidecar(&sidecar_path)?;
+    let timestamp = match options.timestamp.as_deref() {
+        Some(timestamp) => validate_compact_timestamp(timestamp)?.to_string(),
+        None => current_compact_timestamp()?,
+    };
+    let now = compact_to_rfc3339(&timestamp)?;
+    let mut items = existing.items;
+    let mut updated: Option<InterviewOpenItemRecord> = None;
+    for item in &mut items {
+        if item.item_id.as_deref() == Some(item_id.as_str()) {
+            if let Some(status) = options.status.as_deref() {
+                item.status = Some(status.to_string());
+            }
+            if let Some(notes) = normalize_optional(options.notes.as_deref()) {
+                item.notes = Some(notes);
+            }
+            if let Some(text) = normalize_optional(options.text.as_deref()) {
+                item.text = Some(text);
+            }
+            item.updated_at = Some(now.clone());
+            updated = Some(item.clone());
+            break;
+        }
+    }
+    let Some(item) = updated else {
+        bail!(
+            "open item `{item_id}` not found in {}",
+            sidecar_path.display()
+        );
+    };
+    let mut serialized = String::new();
+    for item in &items {
+        serialized.push_str(&serde_json::to_string(item)?);
+        serialized.push('\n');
+    }
+    fs::write(&sidecar_path, serialized).with_context(|| {
+        format!(
+            "failed to write open items sidecar {}",
+            sidecar_path.display()
+        )
+    })?;
+    let touched_brief = if options.touch_brief {
+        touch_brief_freshness(brief_path, &content, &now)?
+    } else {
+        false
+    };
+    Ok(InterviewOpenItemUpdateReport {
+        schema_version: "knowledge_interview_open_item_update_v1",
+        brief_path: brief_path.to_path_buf(),
+        open_items_path: sidecar_path,
+        item,
+        touched_brief,
+    })
+}
+
+fn claims_sidecar_path(brief_path: &Path, metadata: &BriefFrontmatter) -> Result<PathBuf> {
+    let Some(sidecar) = metadata.claims_sidecar.as_deref() else {
+        bail!("missing claims_sidecar");
+    };
+    Ok(brief_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(sidecar))
+}
+
+fn validate_claim_kind(value: &str) -> Result<()> {
+    if ALLOWED_CLAIM_KINDS.contains(&value) {
+        Ok(())
+    } else {
+        bail!(
+            "unsupported claim kind `{value}`; expected one of: {}",
+            ALLOWED_CLAIM_KINDS.join(", ")
+        );
+    }
+}
+
+fn validate_claim_status(value: &str) -> Result<()> {
+    if ALLOWED_CLAIM_STATUSES.contains(&value) {
+        Ok(())
+    } else {
+        bail!(
+            "unsupported claim status `{value}`; expected one of: {}",
+            ALLOWED_CLAIM_STATUSES.join(", ")
+        );
+    }
+}
+
+fn next_claim_id(existing: &[String]) -> String {
+    let mut max = 0u32;
+    for id in existing {
+        if let Some(num) = id
+            .trim()
+            .strip_prefix("IK-")
+            .and_then(|digits| digits.parse::<u32>().ok())
+        {
+            max = max.max(num);
+        }
+    }
+    format!("IK-{:03}", max + 1)
+}
+
+fn normalize_optional(value: Option<&str>) -> Option<String> {
+    value
+        .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|value| !value.is_empty())
 }
 
 fn normalize_title(value: &str) -> Result<String> {
@@ -1681,6 +1992,171 @@ mod tests {
 
         let brief = fs::read_to_string(&report.brief_path).expect("read brief");
         assert!(brief.contains("last_updated: 2026-06-01T18:00:00Z"));
+    }
+
+    #[test]
+    fn claim_add_list_and_open_item_update_roundtrip() {
+        let temp = tempdir().expect("tempdir");
+        let paths = paths(temp.path());
+        let report = create_interview_brief(
+            &paths,
+            &InterviewInitOptions {
+                title: "Claim Ledger".to_string(),
+                intent: "new".to_string(),
+                agent: None,
+                source_article: None,
+                related_draft: None,
+                timestamp: Some("20260601T172430Z".to_string()),
+                force: false,
+            },
+        )
+        .expect("init");
+
+        let first = append_interview_claim(
+            &report.brief_path,
+            &InterviewClaimAddOptions {
+                claim_id: None,
+                kind: "source_backed".to_string(),
+                status: "corroborated".to_string(),
+                text: Some("Beetle girls reference Milady character design.".to_string()),
+                provenance: Some("editor-attested".to_string()),
+                timestamp: Some("20260601T180000Z".to_string()),
+                touch_brief: true,
+            },
+        )
+        .expect("claim add");
+        assert_eq!(first.claim.claim_id.as_deref(), Some("IK-001"));
+        assert_eq!(first.claim.provenance.as_deref(), Some("editor-attested"));
+
+        let second = append_interview_claim(
+            &report.brief_path,
+            &InterviewClaimAddOptions {
+                claim_id: None,
+                kind: "user_asserted_needs_corroboration".to_string(),
+                status: "pending_corroboration".to_string(),
+                text: Some("Touhou is an influence.".to_string()),
+                provenance: Some("interview".to_string()),
+                timestamp: Some("20260601T180500Z".to_string()),
+                touch_brief: true,
+            },
+        )
+        .expect("claim add 2");
+        assert_eq!(second.claim.claim_id.as_deref(), Some("IK-002"));
+
+        let claims = list_interview_claims(&report.brief_path).expect("claim list");
+        assert_eq!(claims.status, InterviewValidationStatus::Valid);
+        assert_eq!(claims.counts.total, 2);
+        assert_eq!(claims.counts.corroborated, 1);
+        assert_eq!(claims.counts.pending_corroboration, 1);
+        assert_eq!(claims.claims.len(), 2);
+
+        let validation = validate_interview_brief(&report.brief_path, 45).expect("validate");
+        assert_eq!(validation.status, InterviewValidationStatus::Valid);
+        assert_eq!(validation.summary.claim_counts.total, 2);
+
+        append_interview_open_item(
+            &report.brief_path,
+            &InterviewOpenItemAppendOptions {
+                kind: "missing_source".to_string(),
+                status: "open".to_string(),
+                text: "Need a collections page.".to_string(),
+                item_id: Some("OI-001".to_string()),
+                claim_ids: Vec::new(),
+                source_leads: Vec::new(),
+                notes: None,
+                timestamp: Some("20260601T181000Z".to_string()),
+                touch_brief: true,
+            },
+        )
+        .expect("open item add");
+
+        let updated = update_interview_open_item(
+            &report.brief_path,
+            &InterviewOpenItemUpdateOptions {
+                item_id: "OI-001".to_string(),
+                status: Some("resolved".to_string()),
+                notes: Some("Collections page shipped.".to_string()),
+                text: None,
+                timestamp: Some("20260601T182000Z".to_string()),
+                touch_brief: true,
+            },
+        )
+        .expect("open item update");
+        assert_eq!(updated.item.status.as_deref(), Some("resolved"));
+        assert_eq!(
+            updated.item.notes.as_deref(),
+            Some("Collections page shipped.")
+        );
+
+        let list = list_interview_open_items(&report.brief_path).expect("list");
+        assert_eq!(list.counts.total, 1);
+        assert_eq!(list.counts.resolved, 1);
+        assert_eq!(list.counts.open, 0);
+    }
+
+    #[test]
+    fn claim_add_rejects_unsupported_kind_and_duplicate_id() {
+        let temp = tempdir().expect("tempdir");
+        let paths = paths(temp.path());
+        let report = create_interview_brief(
+            &paths,
+            &InterviewInitOptions {
+                title: "Claim Guards".to_string(),
+                intent: "new".to_string(),
+                agent: None,
+                source_article: None,
+                related_draft: None,
+                timestamp: Some("20260601T172430Z".to_string()),
+                force: false,
+            },
+        )
+        .expect("init");
+
+        assert!(
+            append_interview_claim(
+                &report.brief_path,
+                &InterviewClaimAddOptions {
+                    claim_id: None,
+                    kind: "made_up".to_string(),
+                    status: "corroborated".to_string(),
+                    text: None,
+                    provenance: None,
+                    timestamp: Some("20260601T180000Z".to_string()),
+                    touch_brief: false,
+                },
+            )
+            .is_err()
+        );
+
+        append_interview_claim(
+            &report.brief_path,
+            &InterviewClaimAddOptions {
+                claim_id: Some("IK-007".to_string()),
+                kind: "source_backed".to_string(),
+                status: "corroborated".to_string(),
+                text: None,
+                provenance: None,
+                timestamp: Some("20260601T180000Z".to_string()),
+                touch_brief: false,
+            },
+        )
+        .expect("claim add");
+
+        assert!(
+            append_interview_claim(
+                &report.brief_path,
+                &InterviewClaimAddOptions {
+                    claim_id: Some("IK-007".to_string()),
+                    kind: "source_backed".to_string(),
+                    status: "corroborated".to_string(),
+                    text: None,
+                    provenance: None,
+                    timestamp: Some("20260601T180000Z".to_string()),
+                    touch_brief: false,
+                },
+            )
+            .is_err()
+        );
     }
 
     #[test]

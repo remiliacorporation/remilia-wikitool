@@ -68,9 +68,10 @@ surface should elicit editorial vantage, adjacency, and canon purpose, then let 
 subjects as themselves unless a direct Remilia/Milady/community relationship is real and
 article-shaping.
 
-`knowledge interview init|validate|show|audit|open-item` owns deterministic path creation, starter
-sidecars, frontmatter/section validation, claim ID uniqueness checks, typed open-items JSONL
-records, negative-evidence counts, freshness classification, compact summaries, and ledger audits.
+`knowledge interview init|validate|show|audit|open-item|claim` owns deterministic path creation,
+starter sidecars, frontmatter/section validation, claim ID uniqueness checks, claim add/list with
+provenance, typed open-items JSONL records with status transitions, negative-evidence counts,
+freshness classification, compact summaries, and ledger audits.
 The conversational interview loop stays in the agent skill. It is open-ended and critic-driven:
 agents should ask broad initial questions, inspect supplied materials, reflect the emerging article
 shape, and continue follow-up rounds while answers materially improve the article. `knowledge

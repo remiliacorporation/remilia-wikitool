@@ -295,6 +295,10 @@ fn generated_reference_documents_knowledge_interview_commands() {
         "## knowledge interview open-item",
         "## knowledge interview open-item add",
         "## knowledge interview open-item list",
+        "## knowledge interview open-item update",
+        "## knowledge interview claim",
+        "## knowledge interview claim add",
+        "## knowledge interview claim list",
     ] {
         assert!(
             reference.contains(heading),

@@ -841,6 +841,7 @@ Commands:
   show       Show a knowledge interview brief summary
   audit      Audit all knowledge interview briefs in the local ledger
   open-item  Append or list structured interview open items
+  claim      Add or list structured interview claims
   help       Print this message or the help of the given subcommand(s)
 
 Options:
@@ -943,9 +944,10 @@ Append or list structured interview open items
 Usage: wikitool knowledge interview open-item [OPTIONS] <COMMAND>
 
 Commands:
-  add   Append a structured open item to an interview brief sidecar
-  list  List structured open items for an interview brief
-  help  Print this message or the help of the given subcommand(s)
+  add     Append a structured open item to an interview brief sidecar
+  list    List structured open items for an interview brief
+  update  Update an existing open item's status, note, or text
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -989,6 +991,96 @@ Options:
 List structured open items for an interview brief
 
 Usage: wikitool knowledge interview open-item list [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>  Path to .brief.md interview brief
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge interview open-item update
+
+```text
+Update an existing open item's status, note, or text
+
+Usage: wikitool knowledge interview open-item update [OPTIONS] --item-id <ID> <PATH>
+
+Arguments:
+  <PATH>  Path to .brief.md interview brief
+
+Options:
+      --item-id <ID>                  Open item id to update
+      --project-root <PATH>
+      --data-dir <PATH>
+      --status <STATUS>               New status: open|resolved|rejected|deferred [possible values: open, resolved, rejected, deferred]
+      --config <PATH>
+      --text <TEXT>                   Replace the open item text
+      --diagnostics                   Print resolved runtime diagnostics
+      --notes <TEXT>                  Replace the optional note
+      --timestamp <YYYYMMDDTHHMMSSZ>  UTC timestamp; defaults to current time
+      --no-touch-brief                Do not update brief last_updated/freshness metadata
+      --format <FORMAT>               Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                          Print help
+```
+
+## knowledge interview claim
+
+```text
+Add or list structured interview claims
+
+Usage: wikitool knowledge interview claim [OPTIONS] <COMMAND>
+
+Commands:
+  add   Append a structured claim to an interview brief sidecar
+  list  List structured claims for an interview brief
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## knowledge interview claim add
+
+```text
+Append a structured claim to an interview brief sidecar
+
+Usage: wikitool knowledge interview claim add [OPTIONS] --kind <KIND> <PATH>
+
+Arguments:
+  <PATH>  Path to .brief.md interview brief
+
+Options:
+      --kind <KIND>                   Claim kind [possible values: user-asserted-needs-corroboration, source-backed, disputed, excluded]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --status <STATUS>               Claim status [default: pending-corroboration] [possible values: pending-corroboration, corroborated, rejected, excluded, needs-review]
+      --config <PATH>
+      --text <TEXT>                   Claim text
+      --diagnostics                   Print resolved runtime diagnostics
+      --provenance <VALUE>            Provenance for the claim (e.g. source URL, `editor-attested`, `primary-artifact: File:X`)
+      --claim-id <ID>                 Explicit claim id; defaults to next IK-NNN
+      --timestamp <YYYYMMDDTHHMMSSZ>  UTC timestamp; defaults to current time
+      --no-touch-brief                Do not update brief last_updated/freshness metadata
+      --format <FORMAT>               Output format: text|json [default: json] [possible values: text, json]
+  -h, --help                          Print help
+```
+
+## knowledge interview claim list
+
+```text
+List structured claims for an interview brief
+
+Usage: wikitool knowledge interview claim list [OPTIONS] <PATH>
 
 Arguments:
   <PATH>  Path to .brief.md interview brief

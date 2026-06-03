@@ -103,7 +103,10 @@ Use the Rust ledger commands for deterministic files and validation:
 wikitool knowledge interview init "Topic" --intent new --format json
 wikitool knowledge interview validate .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview show .wikitool/interviews/Title/20260601T172430Z.brief.md --view brief --format json
+wikitool knowledge interview claim add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind source_backed --status corroborated --text "..." --provenance "editor-attested"
+wikitool knowledge interview claim list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview open-item add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind rejected-source --text "Candidate source did not support the claimed date."
+wikitool knowledge interview open-item update .wikitool/interviews/Title/20260601T172430Z.brief.md --item-id OI-20260601T172430Z --status resolved
 wikitool knowledge interview open-item list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview audit --view brief --format json
 ```

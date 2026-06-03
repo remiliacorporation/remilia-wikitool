@@ -111,8 +111,10 @@ secondary coverage. Use claim IDs only for interview-introduced or high-risk cla
 tracked through sourcing and review.
 
 Use `wikitool knowledge interview init "Topic" --intent new|expand|audit|refresh --format json`
-to create the timestamped brief and sidecars. Use `knowledge interview open-item add/list` to
-record unresolved follow-up, source rejection, access failures, and negative evidence as structured
+to create the timestamped brief and sidecars. Use `knowledge interview claim add/list` to record
+interview-introduced or high-risk claims with provenance (a source URL, `editor-attested`, or
+`primary-artifact: File:X`), and `knowledge interview open-item add/list/update` to record and
+resolve unresolved follow-up, source rejection, access failures, and negative evidence as structured
 ledger entries instead of article prose. Use `knowledge interview validate`, `show`, and `audit`
 for deterministic checks, compact handoff summaries, and ledger review. Mechanical validation only
 proves the ledger is parseable; it does not prove the interview is complete or the draft is good.
