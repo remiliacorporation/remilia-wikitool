@@ -18,7 +18,7 @@ only for deliberate rebuilds or missing sync state; do not use `pull --overwrite
 
 Use `knowledge article-start --intent new|expand|audit|refresh --view brief` as the authoring front door.
 For new articles and substantial expansions, route to `wikitool-knowledge-interview` when human
-context can improve scope, terminology, chronology, relationships, or source leads, unless the user
+context can improve scope, terminology, relationships, date/order disambiguation, or source leads, unless the user
 explicitly opts out. Skip interview rounds for mechanical lint, link, sync, source-fetch, or
 validation work unless a conflict requires user judgment.
 Keep agent context compact: prefer wikitool briefs (`article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, `review --view brief`) before using `--view full`, broad reference selections, or high token budgets.

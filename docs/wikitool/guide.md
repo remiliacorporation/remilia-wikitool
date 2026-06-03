@@ -74,7 +74,7 @@ what wikitool already knows. Then use the packaged knowledge-interview skill and
 `writing_context/interview_playbook.md` to collect the user's freeform knowledge. Read any supplied
 documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the
 interview. Reflect the emerging article scope and ask adaptive follow-ups where the answer changes
-structure, research targets, terminology, chronology, source/provenance strategy, or risk. There is
+structure, research targets, terminology, date/order disambiguation, source strategy, or risk. There is
 no fixed round count; continue while new answers materially improve the article.
 
 Reusable interview distillations should be saved as:
@@ -84,14 +84,15 @@ Reusable interview distillations should be saved as:
 ```
 
 The brief is a research artifact, not article prose, not citation evidence, and not proof that the
-interview is complete. User assertions should be treated as leads until corroborated by durable
-provenance. For Remilia Wiki, that provenance may be a target-wiki record, hosted artifact,
-first-party source, archived primary record, or creator/editor-published statement; it does not have
-to be outside secondary coverage. Adjacent subjects should not be forced into a "relationship to
+interview is complete. Quality-gated human statements can become article prose as reasonable truth;
+cite when research surfaces a source, when a claim is external or contested, or when a primary
+record exists. For Remilia Wiki, source paths may include target-wiki records, hosted artifacts,
+first-party sources, archived primary records, creator-published statements, or target-wiki source
+notes; they do not have to be outside secondary coverage. Adjacent subjects should not be forced into a "relationship to
 Remilia" frame; ask for the editorial vantage, adjacency, or canon purpose, then write the subject as
 itself unless a direct Remilia/Milady/community relationship is real and article-shaping. Use stable
-claim IDs only for interview-introduced or high-risk claims that need tracking through research and
-review.
+open-item IDs for unresolved source work, do-not-assert holds, and negative evidence that need
+tracking through research and review.
 
 Use the Rust interview ledger commands for deterministic paths, starter files, validation, compact
 handoff summaries, and ledger audits:
@@ -100,8 +101,6 @@ handoff summaries, and ledger audits:
 wikitool knowledge interview init "Topic" --intent new --format json
 wikitool knowledge interview validate .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview show .wikitool/interviews/Title/20260601T172430Z.brief.md --view brief --format json
-wikitool knowledge interview claim add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind source_backed --status corroborated --text "..." --provenance "editor-attested"
-wikitool knowledge interview claim list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview open-item add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind rejected-source --text "Candidate source did not support the claimed date."
 wikitool knowledge interview open-item update .wikitool/interviews/Title/20260601T172430Z.brief.md --item-id OI-20260601T172430Z --status resolved
 wikitool knowledge interview open-item list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
@@ -110,13 +109,13 @@ wikitool knowledge interview audit --view brief --format json
 
 The conversational interview loop still belongs in the agent skill. The CLI does not infer source
 support from user prose and does not decide that an interview is editorially sufficient; it
-validates structured metadata, required sections, sidecars, claim ID uniqueness, typed open-items
-JSONL records, negative-evidence counts, and freshness.
+validates structured metadata, required sections, sidecars, typed open-items JSONL records,
+negative-evidence counts, and freshness.
 
 Pass the validated brief to `knowledge article-start --brief-path` or `review --brief-path` when
 the interview should shape research planning or gate review. These integrations surface explicit
-brief metadata, pending claims, open research items, and negative-evidence counts; they do not
-treat user assertions as evidence.
+brief metadata, do-not-assert holds, open research items, and negative-evidence counts; they do not
+treat mechanical validation as editorial acceptance.
 
 For local custom content features, use the deployed target contract rather than raw HTML/JavaScript.
 Remilia's current D3Charts surface is `Module:D3Chart` plus ResourceLoader, so agents should inspect
@@ -154,8 +153,6 @@ wikitool knowledge article-start "Topic" --intent new --format json --view brief
 wikitool knowledge interview init "Topic" --intent new --format json
 wikitool knowledge interview validate .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview show .wikitool/interviews/Title/20260601T172430Z.brief.md --view brief --format json
-wikitool knowledge interview claim add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind source_backed --status corroborated --text "..." --provenance "editor-attested"
-wikitool knowledge interview claim list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview open-item add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind missing-source --text "Need a citable source for the launch date."
 wikitool knowledge interview open-item update .wikitool/interviews/Title/20260601T172430Z.brief.md --item-id OI-20260601T172430Z --status resolved
 wikitool knowledge interview open-item list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json

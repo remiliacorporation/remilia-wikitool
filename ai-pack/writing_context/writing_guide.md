@@ -25,7 +25,7 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 1. **Read `style_rules.md`** — internalize the antipatterns before writing.
 2. **Refresh local authoring state** - run `wikitool status --modified --format json`, `wikitool diff --format json`, `wikitool workflow session-refresh`, and `wikitool knowledge status --docs-profile remilia-wiki --format json` so local changes, content, templates, docs readiness, and capability signals are current. Use `wikitool workflow full-refresh` only for a deliberate rebuild or missing sync state, and do not use `pull --overwrite-local` unless the user explicitly approves discarding local edits.
 3. **Build the interpreted authoring brief** - run `wikitool knowledge article-start "<Topic>" --intent new --format json --view brief`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks --view brief` to fetch targeted content before writing. When your own subject knowledge suggests a different wiki-contract lookup than the title itself, make that visible with `--contract-query`, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief`.
-4. **Interview for human context when useful** - interviewing is an optional, conversational lane, not a required step. For new articles and substantial expansions, reach for `interview_playbook.md` after the scout when the user's own knowledge would improve scope, chronology, terminology, or sourcing; skip it freely and draft from sources when the subject is well-covered or the user prefers. Read any supplied documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the questions. Start with a broad freeform prompt about what the subject is, why it matters, what sources or artifacts matter, what outsiders misunderstand, and what should not be overstated. Reflect the emerging article scope in neutral wiki language and ask adaptive follow-ups while the answers improve structure, research targets, terminology, chronology, source strategy, or risk. Before drafting, critique the emerging article plan and ask another round if it would otherwise be thin, duplicative, unprovenanced, wrongly framed, or missing the user's actual knowledge. Save reusable distillations under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Briefs are working notes, not article prose or finished citation evidence; treat a quality-gated human statement as reasonable encyclopedic truth, and cite when research surfaces a real source or the claim is the kind that needs one.
+4. **Interview for human context when useful** - interviewing is an optional, conversational lane, not a required step. For new articles and substantial expansions, reach for `interview_playbook.md` after the scout when the user's own knowledge would improve scope, terminology, sourcing, or date/order disambiguation; skip it freely and draft from sources when the subject is well-covered or the user prefers. Read any supplied documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the questions. Start with a broad freeform prompt about what the subject is, why it matters, what sources or artifacts matter, what outsiders misunderstand, and what should not be overstated. Reflect the emerging article scope in neutral wiki language and ask adaptive follow-ups while the answers improve structure, research targets, terminology, date/order disambiguation, source strategy, or risk. Before drafting, critique the emerging article plan and ask another round if it would otherwise be thin, duplicative, lacking a clear source path, wrongly framed, or missing the user's actual knowledge. Save reusable distillations under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Briefs are working notes, not article prose or finished citation evidence; treat a quality-gated human statement as reasonable encyclopedic truth, and cite when research surfaces a real source or the claim is the kind that needs one.
 5. **Fetch external evidence selectively** - use normal agent web search to choose source URLs, then run `wikitool research fetch "<URL>" --output json` only for sources you expect to cite. Use `wikitool research wiki-search "<Topic>" --format json` only when you need configured target-wiki API results, not open-web search. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.challenge_handoffs`, `error.discovery`, or run `wikitool research discover "<URL>" --format json` for public robots, sitemap, feed, and structured-data leads. When `error.challenge_handoffs` is present, relay the handoff to the user; if they have lawful browser access, they can solve the challenge and import source-issued cookies with `wikitool research session import "<URL>" --cookies -`, then you can retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. For source MediaWiki pages whose template contract matters, use `wikitool research mediawiki-templates "<URL>" --format json`; this describes the source wiki, not which templates are valid on the target wiki. Add `--refresh` when live freshness matters. Use `wikitool wiki profile remote "<URL>" --format json` only when you need a remote target wiki capability probe and local target profile/import data is unavailable. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
 6. **Look up templates and profile rules** — use `wikitool templates show "Template:Template Name" --format json --view brief`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
 7. **Write the article** following the structure in `article_structure.md`.
@@ -65,22 +65,22 @@ Let content dictate length — don't pad thin topics or compress rich ones.
 
 This is the most important sourcing principle. Excessive academic citations are a telltale sign of AI writing. Prefer primary sources over academic papers.
 For many Remilia subjects, the wiki may be the first durable record of niche internet history. Do
-not discard important creator/editor knowledge merely because no outside publication exists. Do
-make the provenance inspectable: cite or anchor claims to first-party posts, target-wiki records,
-hosted artifacts, archived primary records, or creator/editor-published statements, and attribute
+not discard important human-provided knowledge merely because no outside publication exists. Do
+make the source path inspectable where one exists: cite or anchor claims to first-party posts, target-wiki records,
+hosted artifacts, archived primary records, creator-published statements, or target-wiki source notes, and attribute
 interpretive claims when they come from a creator rather than from the artifact itself.
 
 Remilia Wiki is not only a catalog of things directly about Remilia. Treat it as the online world
 viewed from Remilia's perspective. Adjacent artists, games, scenes, objects, and artifacts should be
 written as themselves when they are worth canonicalizing in that field of view. Do not force a
-"relationship to Remilia" section or lead frame unless the relationship is real, sourceable or
-editor-attested, and article-shaping. Do not create generic article sections such as "Editorial
+"relationship to Remilia" section or lead frame unless the relationship is real, quality-gated or
+sourceable, and article-shaping. Do not create generic article sections such as "Editorial
 vantage" or "Why this belongs here"; use that reasoning to choose article boundaries, not as prose.
 
 **Good sources:**
 - Official announcements, blog posts, project websites
 - Target-wiki pages, hosted files, galleries, and source notes when they are the durable primary record
-- Creator/editor-published statements, clearly attributed
+- Creator-published statements and target-wiki source notes, clearly attributed where attribution matters
 - Tweets and social media posts (primary sources)
 - News articles from established outlets
 - Interviews and podcasts
@@ -147,7 +147,7 @@ they are not article prose, citation evidence, or proof that the interview is co
 quality-gated human statement can become article prose as reasonable truth; cite it when research
 surfaces a source or when the claim is external, contested, or the kind that needs one, and anchor it
 to a primary record (first-party post, target-wiki record, hosted artifact, archived primary record,
-or creator/editor-published statement) when one exists. Record what you deliberately could not
+creator-published statement, or target-wiki source note) when one exists. Record what you deliberately could not
 source, or should not assert yet, as an open item so a later session does not rediscover or silently
 assert it. Mechanical validation of a brief means the ledger can be used; it does not mean the
 article is ready.

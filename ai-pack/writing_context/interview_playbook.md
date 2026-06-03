@@ -9,17 +9,17 @@ claim is true, or proof that the interview is complete. Treat user assertions as
 them as reasonable encyclopedic truth once they survive editorial quality-gating. Cite when research
 surfaces a real source, when a claim is external, contested, or surprising, or when a primary record
 exists, and anchor to comparable wiki pages, target-wiki records, hosted artifacts, first-party
-posts, archived primary records, or creator/editor-published statements when you can. For Remilia
-Wiki, provenance does not have to be external or secondary; the wiki often exists because no broader
-source has preserved the subcultural record. Never route a primary or first-party fact through a
-weaker third party just to manufacture an external citation.
+posts, archived primary records, creator-published statements, or target-wiki source notes when you can. For Remilia
+Wiki, a useful source path does not have to be external or secondary; the wiki often exists because
+no broader source has preserved the subcultural record. Never route a primary or first-party fact
+through a weaker third party just to manufacture an external citation.
 
 ## When To Interview
 
 Interviewing is an optional, conversational lane, not a required step before drafting. Reach for it
 when human context would improve the article:
 
-- New articles where the user likely knows context, names, chronology, relationships, terminology,
+- New articles where the user likely knows context, names, date/order details that disambiguate the subject, relationships, terminology,
   or subcultural importance that public search may miss.
 - Substantial expansions or rewrites where the user's taste and domain model should shape the
   scope before drafting.
@@ -42,17 +42,17 @@ Skip or keep it minimal for:
    Start the interview by asking the user to explain what the subject is, why it matters, and what
    the supplied materials should make legible.
 3. Start with a freeform dump. Invite the user to speak broadly, as if recording a monologue for a
-   future editor: what the subject is, origin and chronology, names and terminology, relationships,
+   future editor: what the subject is, origin, date/order details where they disambiguate versions or records, names and terminology, relationships,
    aesthetics or mechanics, what makes it worth canonicalizing from the wiki's perspective, what
    outsiders miss, what is uncertain, and what the article must not overstate.
 4. Reflect the shape back. Summarize the emerging scope in neutral wiki language, separating
    source-backed facts, user-provided leads, source leads from supplied materials, open questions,
-   and editorial constraints. Do not collapse unprovenanced but important context into thin prose;
+   and editorial constraints. Do not collapse important context without a clear source path into thin prose;
    turn it into follow-up questions, source requests, artifact-description decisions, or a durable
    primary-record publishing path.
 5. Ask adaptive follow-ups. Focus questions on gaps that change article structure, not on trivia the
    agent can find mechanically. There is no fixed number of rounds and no hard cap. Continue as long
-   as new answers materially improve the article's scope, chronology, terminology, source strategy,
+   as new answers materially improve the article's scope, date/order disambiguation, terminology, source strategy,
    section plan, or risk profile.
 6. Run an interviewer/critic loop before drafting. The same agent should briefly critique the
    emerging article plan: what would make this article thin, duplicative, unsourced, wrongly framed,
@@ -89,7 +89,7 @@ For Remilia Wiki, do not force every adjacent subject into a "relationship to Re
 wiki is the online world viewed from Remilia's perspective; a visual artist, game, scene, or artifact
 may belong because it is part of the field of view, adjacent canon, or subcultural record. Write the
 subject as itself. Add explicit Remilia/Milady/community relationship framing only when that
-relationship is real, sourceable or editor-attested, and central enough to improve the article.
+relationship is real, sourceable or quality-gated, and central enough to improve the article.
 
 ## Interview Brief Ledger
 
@@ -123,7 +123,7 @@ that go missing, so keep these headings:
 - User-Framed Summary: the user's high-level framing in neutral wiki language.
 - Interview Transcript and Context: distilled freeform knowledge from the user's monologue and
   follow-up rounds, including important nuance that may not yet be publishable.
-- Chronology: known dates, approximate periods, and open timeline gaps.
+- Chronology: dates or order details only when they disambiguate versions, source records, release order, or handoff state; do not force a timeline when it does not improve the article.
 - Entities and Relationships: people, projects, groups, terms, and related wiki pages.
 - Editorial Framing: recommended angle, tone risks, likely misconceptions, and terminology notes.
 - Research Plan: primary-source leads, search queries, archive targets, pages to inspect, and
@@ -159,13 +159,13 @@ Before drafting, convert the brief into a research plan and an editorial suffici
 - Treat quality-gated human statements as reasonable truth; cite when research surfaces a real
   source, when a claim is external, contested, or surprising, or when a primary record exists, and
   anchor to target-wiki pages, hosted artifacts, first-party sources, archived primary records, or
-  creator/editor-published statements when you can. Do not launder a primary fact through a weaker
+  creator-published statements or target-wiki source notes when you can. Do not launder a primary fact through a weaker
   third party for the sake of an external citation.
 - Preserve the user's thematic framing only when it survives neutral article language.
 - Attribute disputed or source-specific claims rather than presenting them as settled facts.
 - Omit or defer material that is contested but unverifiable, or too thin for the target wiki, but do
   not let omission silently produce a poor article. If the omitted material is central, ask more
-  questions, request a primary record, propose a creator/editor-statement lane, or recommend
+  questions, request a primary record, propose a source-note or creator-statement lane, or recommend
   redirect/merge until the article has enough shape. Log a `do-not-assert` open item for anything
   held back so a later session can revisit it.
 - Run `wikitool knowledge interview validate PATH --format json` and resolve invalid metadata,

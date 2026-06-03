@@ -91,7 +91,7 @@ wikitool knowledge contracts search "contract terms" --format json
 
 For new articles and substantial expansions, scout first with `knowledge article-start`. The
 knowledge-interview faculty is an optional, conversational lane: reach for it when human context can
-improve scope, chronology, terminology, relationships, or source/provenance leads, and skip it
+improve scope, terminology, relationships, date/order disambiguation, or source leads, and skip it
 freely for mechanical lint, link, sync, source-fetch, or validation work, for well-covered subjects,
 or on explicit opt-outs such as "no interview".
 
@@ -100,14 +100,14 @@ screenshots, transcripts, notes, or source excerpts before narrowing the questio
 broad freeform prompt about what the subject is, why it matters, what sources or artifacts matter,
 what outsiders misunderstand, and what should not be overstated. Reflect the shape back, ask
 adaptive follow-ups, and continue without a hard round limit while answers improve the article's
-scope, chronology, terminology, source strategy, section plan, or risk profile.
+scope, terminology, date/order disambiguation, source strategy, section plan, or risk profile.
 
 Reusable interview distillations belong under
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat these briefs as working
 notes: user assertions are research leads that become article prose as reasonable truth once they
 pass editorial quality-gating. For this niche subcultural wiki, a primary record may be a target-wiki
-record, hosted artifact, first-party source, archived primary record, or creator/editor-published
-statement; corroboration does not have to be outside secondary coverage. Cite when research surfaces
+record, hosted artifact, first-party source, archived primary record, creator-published statement,
+or target-wiki source note; corroboration does not have to be outside secondary coverage. Cite when research surfaces
 a source or a claim is external or contested, and never launder a primary fact through a weaker third
 party to manufacture an external citation.
 

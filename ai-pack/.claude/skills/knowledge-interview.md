@@ -22,7 +22,7 @@ subjects, or whenever the user opts out. When you do interview, begin with a bro
 that asks the user what the subject is, why it matters, what sources or artifacts matter, what
 outsiders misunderstand, and what should not be overstated. Reflect the scope back in neutral wiki
 language, ask adaptive follow-ups based on article-shaping gaps, and continue while new answers
-materially improve scope, chronology, terminology, source strategy, section planning, or risk.
+materially improve scope, terminology, date/order disambiguation, source strategy, section planning, or risk.
 
 When the interview yields reusable knowledge, write a brief under
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat the brief as working notes,
@@ -31,7 +31,7 @@ reasonable truth; cite when research surfaces a source or the claim is external,
 kind that needs one. A mechanically valid brief is not proof that the interview is complete or that
 the draft is acceptable.
 For Remilia Wiki, corroboration may be a target-wiki record, hosted artifact, first-party source,
-archived primary record, or creator/editor-published statement; do not require outside secondary
+archived primary record, creator-published statement, or target-wiki source note; do not require outside secondary
 coverage when the wiki is preserving niche subcultural history for the first time.
 Do not force adjacent subjects into a "relationship to Remilia" frame. Ask for the editorial
 vantage, adjacency, or canon purpose, then write the subject as itself unless a direct
