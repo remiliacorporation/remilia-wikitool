@@ -48,8 +48,6 @@ struct ReviewInterviewBriefCard<'a> {
     title: Option<&'a str>,
     intent: Option<&'a str>,
     computed_freshness: &'a str,
-    pending_claims: usize,
-    source_leads: usize,
     open_items: usize,
     negative_evidence: usize,
     errors: &'a [String],
@@ -143,8 +141,6 @@ fn interview_brief_card(brief: &ReviewInterviewBrief) -> ReviewInterviewBriefCar
         title: brief.summary.title.as_deref(),
         intent: brief.summary.intent.as_deref(),
         computed_freshness: &brief.summary.computed_freshness,
-        pending_claims: brief.summary.claim_counts.pending_corroboration,
-        source_leads: brief.summary.source_lead_count,
         open_items: brief.summary.open_item_count,
         negative_evidence: brief.summary.open_item_counts.negative_evidence,
         errors: &brief.errors,
@@ -244,14 +240,6 @@ pub(super) fn print_review_report(report: &ReviewReport) {
         println!(
             "interview_brief.computed_freshness: {}",
             brief.summary.computed_freshness
-        );
-        println!(
-            "interview_brief.claims.pending_corroboration: {}",
-            brief.summary.claim_counts.pending_corroboration
-        );
-        println!(
-            "interview_brief.source_leads: {}",
-            brief.summary.source_lead_count
         );
         println!(
             "interview_brief.open_items: {}",

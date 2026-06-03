@@ -240,7 +240,6 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
             && playbook.contains("rejected-source")
             && playbook.contains("inaccessible-source")
             && playbook.contains("knowledge interview audit")
-            && playbook.contains("claim IDs only for interview-introduced or high-risk claims")
             && playbook.contains("not article prose, citation evidence, proof")
             && playbook.contains("Mechanical validation does not imply editorial"),
         "interview playbook must preserve the adaptive, evidence-bounded intake contract"
@@ -296,9 +295,6 @@ fn generated_reference_documents_knowledge_interview_commands() {
         "## knowledge interview open-item add",
         "## knowledge interview open-item list",
         "## knowledge interview open-item update",
-        "## knowledge interview claim",
-        "## knowledge interview claim add",
-        "## knowledge interview claim list",
     ] {
         assert!(
             reference.contains(heading),

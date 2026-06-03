@@ -89,11 +89,11 @@ wikitool knowledge article-start "Cheetah" --contract-query "species infobox tax
 wikitool knowledge contracts search "contract terms" --format json
 ```
 
-For new articles and substantial expansions, scout first with `knowledge article-start`, then use
-the knowledge-interview faculty when human context can improve scope, chronology, terminology,
-relationships, or source/provenance leads. Skip interview rounds for mechanical lint, link, sync,
-source-fetch, or validation work unless a conflict requires user judgment. Respect explicit
-opt-outs such as "no interview".
+For new articles and substantial expansions, scout first with `knowledge article-start`. The
+knowledge-interview faculty is an optional, conversational lane: reach for it when human context can
+improve scope, chronology, terminology, relationships, or source/provenance leads, and skip it
+freely for mechanical lint, link, sync, source-fetch, or validation work, for well-covered subjects,
+or on explicit opt-outs such as "no interview".
 
 The interview is an elicitation loop, not a checklist. Read any user-supplied documents, links,
 screenshots, transcripts, notes, or source excerpts before narrowing the questions. Start with a
@@ -104,22 +104,21 @@ scope, chronology, terminology, source strategy, section plan, or risk profile.
 
 Reusable interview distillations belong under
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat these briefs as working
-notes: user assertions are research leads, not citation evidence or article prose. For this niche
-subcultural wiki, corroboration may be a target-wiki record, hosted artifact, first-party source,
-archived primary record, or creator/editor-published statement; it does not have to be outside
-secondary coverage. Use claim IDs only for interview-introduced or high-risk claims that need to be
-tracked through sourcing and review.
+notes: user assertions are research leads that become article prose as reasonable truth once they
+pass editorial quality-gating. For this niche subcultural wiki, a primary record may be a target-wiki
+record, hosted artifact, first-party source, archived primary record, or creator/editor-published
+statement; corroboration does not have to be outside secondary coverage. Cite when research surfaces
+a source or a claim is external or contested, and never launder a primary fact through a weaker third
+party to manufacture an external citation.
 
 Use `wikitool knowledge interview init "Topic" --intent new|expand|audit|refresh --format json`
-to create the timestamped brief and sidecars. Use `knowledge interview claim add/list` to record
-interview-introduced or high-risk claims with provenance (a source URL, `editor-attested`, or
-`primary-artifact: File:X`), and `knowledge interview open-item add/list/update` to record and
-resolve unresolved follow-up, source rejection, access failures, and negative evidence as structured
-ledger entries instead of article prose. Use `knowledge interview validate`, `show`, and `audit`
-for deterministic checks, compact handoff summaries, and ledger review. Mechanical validation only
-proves the ledger is parseable; it does not prove the interview is complete or the draft is good.
-Pass a validated brief to `knowledge article-start --brief-path PATH` and `review --brief-path PATH`
-when it should shape research planning or gate review.
+to create the timestamped brief and sidecars. Use `knowledge interview open-item add/list/update` to
+record and resolve unresolved follow-up, source rejection, access failures, do-not-assert holds, and
+negative evidence as structured ledger entries instead of article prose. Use
+`knowledge interview validate`, `show`, and `audit` for deterministic checks, compact handoff
+summaries, and ledger review. Mechanical validation only proves the ledger is parseable; it does not prove the interview is
+complete or the draft is good. Pass a validated brief to `knowledge article-start --brief-path PATH`
+and `review --brief-path PATH` when it should shape research planning or gate review.
 
 ## Token Discipline
 

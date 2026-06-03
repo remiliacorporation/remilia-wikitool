@@ -368,8 +368,6 @@ mod tests {
                 "open",
                 "--text",
                 "Mirror did not support the claimed date.",
-                "--claim-id",
-                "IK-001",
                 "--source-lead",
                 "https://example.org/archive",
             ],

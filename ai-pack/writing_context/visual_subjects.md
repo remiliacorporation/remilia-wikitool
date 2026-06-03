@@ -74,9 +74,10 @@ interview is where that knowledge is captured, but capture is not publication.
 
 - Elicit the visual lexicon: how the line is made, the stated influences, the design rationale, the
   recurring motifs, what a viewer is meant to notice. Record it in the brief's Interview Transcript
-  and Context and as claims with `pending_corroboration`.
+  and Context.
 - Separate the seen from the said. "The cards show pointed ears" is corroborated by the artifact.
-  "The ears reference Milady" is the creator's reading; it goes to `do_not_assert` until sourced.
+  "The ears reference Milady" is the creator's reading; log it as a `do_not_assert` open item until
+  sourced.
 - Offer the durable-primary-record lane. The richest material is often uncitable only because it was
   never made publicly inspectable. The correct fix is not to assert it anyway, and not to silently
   drop it, but to create or locate a durable record: a collection page, a post, a design note, a
@@ -140,7 +141,8 @@ The beetle girl cards in Beetleboy illustrate the boundary:
   framing, the oekaki marker style.
 - Leads only, not assertable without a source: the gijinka and mecha-musume design rationale, the
   Touhou influence, the intended Milady resemblance, the total roster size. These belong in the brief
-  and `do_not_assert`, with a `missing-source` open item proposing a published collection page.
+  as `do_not_assert` open items, with a `missing-source` open item proposing a published collection
+  page.
 
 The result is a shorter article than the creator's full knowledge would suggest, and that is correct
 until the leads are published somewhere citable.
@@ -151,6 +153,6 @@ until the leads are published somewhere citable.
 2. Is every visual claim verifiable from an image shown in the article?
 3. Did any influence, intent, resemblance, or meaning claim slip in without a source?
 4. Are captions descriptive rather than interpretive?
-5. Did you route uncitable creator knowledge to leads, `do_not_assert`, and a creator-statement path,
-   rather than asserting or silently dropping it?
+5. Did you route uncitable creator knowledge to leads, `do_not_assert` open items, and a
+   creator-statement path, rather than asserting or silently dropping it?
 6. If "Design and aesthetic" is one sentence, should this be a redirect plus a parent section instead?

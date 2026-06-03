@@ -5,15 +5,19 @@ or a review where human context can materially improve the article. It is a gene
 elicitation workflow, not a script for one article type and not a checklist to rush through.
 
 Interview briefs are working notes. They are not article prose, citation evidence, proof that a
-claim is true, or proof that the interview is complete. Treat user assertions as leads to
-corroborate with durable provenance before publishing them as facts: comparable wiki pages,
-target-wiki records, hosted artifacts, first-party posts, archived primary records, or later
-creator/editor-published statements. For Remilia Wiki, provenance does not have to be external or
-secondary; the wiki often exists because no broader source has preserved the subcultural record.
+claim is true, or proof that the interview is complete. Treat user assertions as leads, then write
+them as reasonable encyclopedic truth once they survive editorial quality-gating. Cite when research
+surfaces a real source, when a claim is external, contested, or surprising, or when a primary record
+exists, and anchor to comparable wiki pages, target-wiki records, hosted artifacts, first-party
+posts, archived primary records, or creator/editor-published statements when you can. For Remilia
+Wiki, provenance does not have to be external or secondary; the wiki often exists because no broader
+source has preserved the subcultural record. Never route a primary or first-party fact through a
+weaker third party just to manufacture an external citation.
 
 ## When To Interview
 
-Default to an interview for:
+Interviewing is an optional, conversational lane, not a required step before drafting. Reach for it
+when human context would improve the article:
 
 - New articles where the user likely knows context, names, chronology, relationships, terminology,
   or subcultural importance that public search may miss.
@@ -103,8 +107,6 @@ Use the Rust ledger commands for deterministic files and validation:
 wikitool knowledge interview init "Topic" --intent new --format json
 wikitool knowledge interview validate .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview show .wikitool/interviews/Title/20260601T172430Z.brief.md --view brief --format json
-wikitool knowledge interview claim add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind source_backed --status corroborated --text "..." --provenance "editor-attested"
-wikitool knowledge interview claim list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
 wikitool knowledge interview open-item add .wikitool/interviews/Title/20260601T172430Z.brief.md --kind rejected-source --text "Candidate source did not support the claimed date."
 wikitool knowledge interview open-item update .wikitool/interviews/Title/20260601T172430Z.brief.md --item-id OI-20260601T172430Z --status resolved
 wikitool knowledge interview open-item list .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
@@ -121,8 +123,6 @@ that go missing, so keep these headings:
 - User-Framed Summary: the user's high-level framing in neutral wiki language.
 - Interview Transcript and Context: distilled freeform knowledge from the user's monologue and
   follow-up rounds, including important nuance that may not yet be publishable.
-- Claim Map Summary: a short read of the interview claims; the claims themselves live in the
-  `.claims.json` sidecar with provenance and status, not in the brief prose.
 - Chronology: known dates, approximate periods, and open timeline gaps.
 - Entities and Relationships: people, projects, groups, terms, and related wiki pages.
 - Editorial Framing: recommended angle, tone risks, likely misconceptions, and terminology notes.
@@ -130,7 +130,7 @@ that go missing, so keep these headings:
   blocking evidence gaps.
 - Interviewer Critic Notes: the agent's critique of the emerging article plan, including thinness,
   duplication, source, framing, and missing-context risks that should trigger more questions.
-- Draft Plan: likely sections, infobox/template candidates, categories to verify, claims that
+- Draft Plan: likely sections, infobox/template candidates, categories to verify, statements that
   require citations, and open questions before drafting.
 
 For machine-readable Draft Plan extraction, write `Likely sections` and `Open questions before
@@ -144,32 +144,32 @@ those as open questions or framing notes. The article sections should describe t
 Record source leads and unresolved follow-up as structured open items in the `.open_items.jsonl`
 sidecar rather than only as prose, so future sessions do not rediscover them.
 
-Use claim IDs only for interview-introduced or high-risk claims that must be tracked through
-research, drafting, and review. Do not assign IDs to ordinary prose or every sentence. A practical
-format is `IK-001`, `IK-002`, and so on inside the brief.
-
 Use structured open items for unresolved research work and negative evidence that future agents
 should not rediscover from scratch. Prefer specific kinds such as `missing-source`,
-`pending-corroboration`, `rejected-source`, `inaccessible-source`, `disproven-link`,
+`do-not-assert`, `rejected-source`, `inaccessible-source`, `disproven-link`,
 `source-wiki-only-template`, `rejected-category`, `scope-unresolved`, and `privacy-exclusion`.
-Open items are not article content; they are ledger entries for follow-up, source rejection, access
-failure, or editorial uncertainty.
+Use `do-not-assert` for a creator's reading or an unsourced claim that should not enter article prose
+until a source exists. Open items are not article content; they are ledger entries for follow-up,
+source rejection, access failure, do-not-assert holds, or editorial uncertainty.
 
 ## Drafting Boundary
 
 Before drafting, convert the brief into a research plan and an editorial sufficiency check:
 
-- Corroborate factual claims with durable provenance: target-wiki pages, hosted artifacts,
-  first-party sources, archived primary records, or creator/editor-published statements.
+- Treat quality-gated human statements as reasonable truth; cite when research surfaces a real
+  source, when a claim is external, contested, or surprising, or when a primary record exists, and
+  anchor to target-wiki pages, hosted artifacts, first-party sources, archived primary records, or
+  creator/editor-published statements when you can. Do not launder a primary fact through a weaker
+  third party for the sake of an external citation.
 - Preserve the user's thematic framing only when it survives neutral article language.
 - Attribute disputed or source-specific claims rather than presenting them as settled facts.
-- Omit or defer claims that remain uncited, unverifiable, or too thin for the target wiki, but do not
-  let omission silently produce a poor article. If the omitted material is central, ask more
-  questions, request durable provenance, propose a creator/editor-statement lane, or recommend
-  redirect/merge until the article has enough sourceable shape.
+- Omit or defer material that is contested but unverifiable, or too thin for the target wiki, but do
+  not let omission silently produce a poor article. If the omitted material is central, ask more
+  questions, request a primary record, propose a creator/editor-statement lane, or recommend
+  redirect/merge until the article has enough shape. Log a `do-not-assert` open item for anything
+  held back so a later session can revisit it.
 - Run `wikitool knowledge interview validate PATH --format json` and resolve invalid metadata,
-  duplicate claim IDs, missing sidecars, unsupported claim statuses, and invalid open-item records
-  before relying on the brief.
+  missing sidecars, and invalid open-item records before relying on the brief.
 - Confirm that open questions before drafting are either answered, intentionally deferred, or
   escalated into a clear editorial decision. Mechanical validation does not imply editorial
   acceptance.

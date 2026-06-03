@@ -626,16 +626,16 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
 
             let blocking = article_start_blocking(article_start, output.interview_brief.as_ref());
             if let Some(brief) = &output.interview_brief {
-                if brief.summary.claim_counts.pending_corroboration > 0 {
+                let dna = brief
+                    .summary
+                    .open_item_counts
+                    .by_kind
+                    .get("do_not_assert")
+                    .copied()
+                    .unwrap_or(0);
+                if dna > 0 {
                     warnings.push(format!(
-                        "interview brief has {} pending corroboration claim(s)",
-                        brief.summary.claim_counts.pending_corroboration
-                    ));
-                }
-                if brief.summary.do_not_assert_count > 0 {
-                    warnings.push(format!(
-                        "interview brief marks {} do-not-assert item(s); do not state these as fact without a source",
-                        brief.summary.do_not_assert_count
+                        "interview brief marks {dna} do-not-assert item(s); do not state these as fact without a source"
                     ));
                 }
                 if brief.summary.open_item_counts.open > 0 {
@@ -935,11 +935,9 @@ fn article_start_brief_readiness(
         return KnowledgeReadinessLevel::NotReady;
     }
     // Open interview items are normal for high-context subjects and are already
-    // surfaced as warnings. Only unresolved factual claims or negative evidence
-    // should cap an otherwise authoring-ready brief.
-    if brief.summary.claim_counts.pending_corroboration > 0
-        || brief.summary.open_item_counts.negative_evidence > 0
-    {
+    // surfaced as warnings. Only negative evidence should cap an otherwise
+    // authoring-ready brief.
+    if brief.summary.open_item_counts.negative_evidence > 0 {
         return KnowledgeReadinessLevel::ContentReady;
     }
 
@@ -1039,7 +1037,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
-    use wikitool_core::knowledge_interview::{InterviewClaimCounts, InterviewOpenItemCounts};
+    use wikitool_core::knowledge_interview::InterviewOpenItemCounts;
 
     fn section(heading: &str, rationale: &str, required: bool) -> SectionSkeleton {
         SectionSkeleton {
@@ -1066,13 +1064,9 @@ mod tests {
                 freshness_state: Some("fresh".to_string()),
                 computed_freshness: "fresh".to_string(),
                 agent: None,
-                claims_sidecar: None,
                 open_items_sidecar: None,
                 sections_present: Vec::new(),
                 sections_missing: Vec::new(),
-                claim_counts: InterviewClaimCounts::default(),
-                source_lead_count: 0,
-                do_not_assert_count: 0,
                 open_item_count: 0,
                 open_item_counts: InterviewOpenItemCounts {
                     by_kind: BTreeMap::new(),
@@ -1174,9 +1168,9 @@ mod tests {
     }
 
     #[test]
-    fn brief_readiness_downgrades_pending_claims() {
+    fn brief_readiness_downgrades_negative_evidence() {
         let mut brief = valid_interview_report();
-        brief.summary.claim_counts.pending_corroboration = 1;
+        brief.summary.open_item_counts.negative_evidence = 1;
 
         let readiness = article_start_brief_readiness(
             &KnowledgeReadinessLevel::AuthoringReady,

@@ -25,7 +25,7 @@ All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Nev
 1. **Read `style_rules.md`** — internalize the antipatterns before writing.
 2. **Refresh local authoring state** - run `wikitool status --modified --format json`, `wikitool diff --format json`, `wikitool workflow session-refresh`, and `wikitool knowledge status --docs-profile remilia-wiki --format json` so local changes, content, templates, docs readiness, and capability signals are current. Use `wikitool workflow full-refresh` only for a deliberate rebuild or missing sync state, and do not use `pull --overwrite-local` unless the user explicitly approves discarding local edits.
 3. **Build the interpreted authoring brief** - run `wikitool knowledge article-start "<Topic>" --intent new --format json --view brief`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks --view brief` to fetch targeted content before writing. When your own subject knowledge suggests a different wiki-contract lookup than the title itself, make that visible with `--contract-query`, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief`.
-4. **Interview for human context when useful** - for new articles and substantial expansions, use `interview_playbook.md` after the scout unless the user explicitly opts out. Read any supplied documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the questions. Start with a broad freeform prompt about what the subject is, why it matters, what sources or artifacts matter, what outsiders misunderstand, and what should not be overstated. Reflect the emerging article scope in neutral wiki language and ask adaptive follow-ups while the answers improve structure, research targets, terminology, chronology, source strategy, or risk. Before drafting, critique the emerging article plan and ask another round if it would otherwise be thin, duplicative, unprovenanced, wrongly framed, or missing the user's actual knowledge. Save reusable distillations under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Interview briefs are working notes, not article prose or citation evidence; user assertions must be corroborated by durable provenance before publication.
+4. **Interview for human context when useful** - interviewing is an optional, conversational lane, not a required step. For new articles and substantial expansions, reach for `interview_playbook.md` after the scout when the user's own knowledge would improve scope, chronology, terminology, or sourcing; skip it freely and draft from sources when the subject is well-covered or the user prefers. Read any supplied documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the questions. Start with a broad freeform prompt about what the subject is, why it matters, what sources or artifacts matter, what outsiders misunderstand, and what should not be overstated. Reflect the emerging article scope in neutral wiki language and ask adaptive follow-ups while the answers improve structure, research targets, terminology, chronology, source strategy, or risk. Before drafting, critique the emerging article plan and ask another round if it would otherwise be thin, duplicative, unprovenanced, wrongly framed, or missing the user's actual knowledge. Save reusable distillations under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Briefs are working notes, not article prose or finished citation evidence; treat a quality-gated human statement as reasonable encyclopedic truth, and cite when research surfaces a real source or the claim is the kind that needs one.
 5. **Fetch external evidence selectively** - use normal agent web search to choose source URLs, then run `wikitool research fetch "<URL>" --output json` only for sources you expect to cite. Use `wikitool research wiki-search "<Topic>" --format json` only when you need configured target-wiki API results, not open-web search. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.challenge_handoffs`, `error.discovery`, or run `wikitool research discover "<URL>" --format json` for public robots, sitemap, feed, and structured-data leads. When `error.challenge_handoffs` is present, relay the handoff to the user; if they have lawful browser access, they can solve the challenge and import source-issued cookies with `wikitool research session import "<URL>" --cookies -`, then you can retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. For source MediaWiki pages whose template contract matters, use `wikitool research mediawiki-templates "<URL>" --format json`; this describes the source wiki, not which templates are valid on the target wiki. Add `--refresh` when live freshness matters. Use `wikitool wiki profile remote "<URL>" --format json` only when you need a remote target wiki capability probe and local target profile/import data is unavailable. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
 6. **Look up templates and profile rules** — use `wikitool templates show "Template:Template Name" --format json --view brief`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
 7. **Write the article** following the structure in `article_structure.md`.
@@ -128,16 +128,29 @@ Articles marked `{{Article quality|verified}}` represent editor-reviewed content
 - Technical context: "smart contracts execute automatically"
 - Historical context: "the early internet fostered pseudonymous communities"
 
+### Citation integrity and first-party facts
+
+This is a subcultural wiki: treat a quality-gated statement from the creator or a knowledgeable
+editor as reasonable encyclopedic truth, the same way a game or fandom wiki records its own subject.
+Do not demand outside secondary coverage for first-party or subcultural facts the editor knows. Cite
+when research surfaces a real source, when a claim is external, contested, or surprising, or when a
+primary record exists (an on-chain value, a dated post, a hosted artifact) - and when you cite, cite
+that actual source, not a third party that merely restated it. Reserve attribution ("According to
+...") for disputed or interpretive claims. See "Source laundering" in `style_rules.md`: never route a
+primary fact through a weaker aggregator to manufacture an external citation.
+
 ### Interview briefs and user knowledge
 
 Interview briefs under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md` preserve
 human context from authoring sessions. They can widen research and improve article structure, but
-they are not article prose, citation evidence, or proof that the interview is complete. Treat user
-assertions as provenance leads until corroborated by target-wiki records, hosted artifacts,
-first-party sources, archived primary records, or creator/editor-published statements. Use claim IDs
-only for interview-introduced or high-risk claims that need to be tracked through research and
-review. Mechanical validation of a brief means the ledger can be used; it does not mean the article
-is ready.
+they are not article prose, citation evidence, or proof that the interview is complete. A
+quality-gated human statement can become article prose as reasonable truth; cite it when research
+surfaces a source or when the claim is external, contested, or the kind that needs one, and anchor it
+to a primary record (first-party post, target-wiki record, hosted artifact, archived primary record,
+or creator/editor-published statement) when one exists. Record what you deliberately could not
+source, or should not assert yet, as an open item so a later session does not rediscover or silently
+assert it. Mechanical validation of a brief means the ledger can be used; it does not mean the
+article is ready.
 
 ---
 

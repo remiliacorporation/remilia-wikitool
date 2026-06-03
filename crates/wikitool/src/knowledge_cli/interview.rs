@@ -4,13 +4,12 @@ use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
 use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::knowledge_interview::{
-    InterviewAuditReport, InterviewClaimAddOptions, InterviewClaimAppendReport,
-    InterviewClaimListReport, InterviewInitOptions, InterviewInitReport,
+    InterviewAuditReport, InterviewInitOptions, InterviewInitReport,
     InterviewOpenItemAppendOptions, InterviewOpenItemAppendReport, InterviewOpenItemListReport,
     InterviewOpenItemUpdateOptions, InterviewOpenItemUpdateReport, InterviewValidationReport,
-    InterviewValidationStatus, append_interview_claim, append_interview_open_item,
-    audit_interview_briefs, create_interview_brief, list_interview_claims,
-    list_interview_open_items, update_interview_open_item, validate_interview_brief,
+    InterviewValidationStatus, append_interview_open_item, audit_interview_briefs,
+    create_interview_brief, list_interview_open_items, update_interview_open_item,
+    validate_interview_brief,
 };
 
 use crate::RuntimeOptions;
@@ -35,8 +34,6 @@ enum KnowledgeInterviewSubcommand {
     Audit(KnowledgeInterviewAuditArgs),
     #[command(about = "Append or list structured interview open items")]
     OpenItem(KnowledgeInterviewOpenItemArgs),
-    #[command(about = "Add or list structured interview claims")]
-    Claim(KnowledgeInterviewClaimArgs),
 }
 
 #[derive(Debug, Args)]
@@ -198,12 +195,6 @@ struct KnowledgeInterviewOpenItemAddArgs {
     #[arg(long, value_name = "ID", help = "Explicit open item id")]
     item_id: Option<String>,
     #[arg(
-        long = "claim-id",
-        value_name = "ID",
-        help = "Claim id associated with this open item; repeatable"
-    )]
-    claim_ids: Vec<String>,
-    #[arg(
         long = "source-lead",
         value_name = "VALUE",
         help = "Source lead associated with this open item; repeatable"
@@ -267,8 +258,6 @@ impl KnowledgeInterviewIntentArg {
 // agent can feed a value read from `open-item list --format json` straight back in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum KnowledgeInterviewOpenItemKindArg {
-    #[value(alias = "pending_corroboration")]
-    PendingCorroboration,
     #[value(alias = "rejected_source")]
     RejectedSource,
     #[value(alias = "inaccessible_source")]
@@ -289,13 +278,14 @@ enum KnowledgeInterviewOpenItemKindArg {
     MissingSource,
     #[value(alias = "user_followup_needed")]
     UserFollowupNeeded,
+    #[value(alias = "do_not_assert")]
+    DoNotAssert,
     Other,
 }
 
 impl KnowledgeInterviewOpenItemKindArg {
     fn as_str(self) -> &'static str {
         match self {
-            Self::PendingCorroboration => "pending_corroboration",
             Self::RejectedSource => "rejected_source",
             Self::InaccessibleSource => "inaccessible_source",
             Self::DisprovenLink => "disproven_link",
@@ -306,6 +296,7 @@ impl KnowledgeInterviewOpenItemKindArg {
             Self::PrivacyExclusion => "privacy_exclusion",
             Self::MissingSource => "missing_source",
             Self::UserFollowupNeeded => "user_followup_needed",
+            Self::DoNotAssert => "do_not_assert",
             Self::Other => "other",
         }
     }
@@ -365,122 +356,6 @@ struct KnowledgeInterviewOpenItemUpdateArgs {
     format: OutputFormat,
 }
 
-#[derive(Debug, Args)]
-struct KnowledgeInterviewClaimArgs {
-    #[command(subcommand)]
-    command: KnowledgeInterviewClaimSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum KnowledgeInterviewClaimSubcommand {
-    #[command(about = "Append a structured claim to an interview brief sidecar")]
-    Add(KnowledgeInterviewClaimAddArgs),
-    #[command(about = "List structured claims for an interview brief")]
-    List(KnowledgeInterviewClaimListArgs),
-}
-
-#[derive(Debug, Args)]
-struct KnowledgeInterviewClaimAddArgs {
-    #[arg(value_name = "PATH", help = "Path to .brief.md interview brief")]
-    path: PathBuf,
-    #[arg(long, value_enum, value_name = "KIND", help = "Claim kind")]
-    kind: KnowledgeInterviewClaimKindArg,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = KnowledgeInterviewClaimStatusArg::PendingCorroboration,
-        value_name = "STATUS",
-        help = "Claim status"
-    )]
-    status: KnowledgeInterviewClaimStatusArg,
-    #[arg(long, value_name = "TEXT", help = "Claim text")]
-    text: Option<String>,
-    #[arg(
-        long,
-        value_name = "VALUE",
-        help = "Provenance for the claim (e.g. source URL, `editor-attested`, `primary-artifact: File:X`)"
-    )]
-    provenance: Option<String>,
-    #[arg(long, value_name = "ID", help = "Explicit claim id; defaults to next IK-NNN")]
-    claim_id: Option<String>,
-    #[arg(
-        long,
-        value_name = "YYYYMMDDTHHMMSSZ",
-        help = "UTC timestamp; defaults to current time"
-    )]
-    timestamp: Option<String>,
-    #[arg(long, help = "Do not update brief last_updated/freshness metadata")]
-    no_touch_brief: bool,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = OutputFormat::Json,
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: OutputFormat,
-}
-
-#[derive(Debug, Args)]
-struct KnowledgeInterviewClaimListArgs {
-    #[arg(value_name = "PATH", help = "Path to .brief.md interview brief")]
-    path: PathBuf,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = OutputFormat::Json,
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: OutputFormat,
-}
-
-// Stored records and JSON output use snake_case kinds/statuses; clap renders
-// variants in kebab-case, so accept the snake_case form as an alias too.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-enum KnowledgeInterviewClaimKindArg {
-    #[value(alias = "user_asserted_needs_corroboration")]
-    UserAssertedNeedsCorroboration,
-    #[value(alias = "source_backed")]
-    SourceBacked,
-    Disputed,
-    Excluded,
-}
-
-impl KnowledgeInterviewClaimKindArg {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::UserAssertedNeedsCorroboration => "user_asserted_needs_corroboration",
-            Self::SourceBacked => "source_backed",
-            Self::Disputed => "disputed",
-            Self::Excluded => "excluded",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-enum KnowledgeInterviewClaimStatusArg {
-    #[value(alias = "pending_corroboration")]
-    PendingCorroboration,
-    Corroborated,
-    Rejected,
-    Excluded,
-    #[value(alias = "needs_review")]
-    NeedsReview,
-}
-
-impl KnowledgeInterviewClaimStatusArg {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::PendingCorroboration => "pending_corroboration",
-            Self::Corroborated => "corroborated",
-            Self::Rejected => "rejected",
-            Self::Excluded => "excluded",
-            Self::NeedsReview => "needs_review",
-        }
-    }
-}
-
 pub(crate) fn run_knowledge_interview(
     runtime: &RuntimeOptions,
     args: KnowledgeInterviewArgs,
@@ -491,7 +366,6 @@ pub(crate) fn run_knowledge_interview(
         KnowledgeInterviewSubcommand::Show(args) => run_show(runtime, args),
         KnowledgeInterviewSubcommand::Audit(args) => run_audit(runtime, args),
         KnowledgeInterviewSubcommand::OpenItem(args) => run_open_item(runtime, args),
-        KnowledgeInterviewSubcommand::Claim(args) => run_claim(runtime, args),
     }
 }
 
@@ -582,7 +456,6 @@ fn run_open_item_add(
             status: args.status.as_str().to_string(),
             text: args.text,
             item_id: args.item_id,
-            claim_ids: args.claim_ids,
             source_leads: args.source_leads,
             notes: args.notes,
             timestamp: args.timestamp,
@@ -637,95 +510,6 @@ fn run_open_item_update(
     Ok(())
 }
 
-fn run_claim(runtime: &RuntimeOptions, args: KnowledgeInterviewClaimArgs) -> Result<()> {
-    match args.command {
-        KnowledgeInterviewClaimSubcommand::Add(args) => run_claim_add(runtime, args),
-        KnowledgeInterviewClaimSubcommand::List(args) => run_claim_list(runtime, args),
-    }
-}
-
-fn run_claim_add(runtime: &RuntimeOptions, args: KnowledgeInterviewClaimAddArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let path = resolve_scoped_input_path(&paths, &args.path)?;
-    let report = append_interview_claim(
-        &path,
-        &InterviewClaimAddOptions {
-            claim_id: args.claim_id,
-            kind: args.kind.as_str().to_string(),
-            status: args.status.as_str().to_string(),
-            text: args.text,
-            provenance: args.provenance,
-            timestamp: args.timestamp,
-            touch_brief: !args.no_touch_brief,
-        },
-    )?;
-    if args.format.is_json() {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        print_claim_append_report(&report);
-    }
-    Ok(())
-}
-
-fn run_claim_list(runtime: &RuntimeOptions, args: KnowledgeInterviewClaimListArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
-    let path = resolve_scoped_input_path(&paths, &args.path)?;
-    let report = list_interview_claims(&path)?;
-    if args.format.is_json() {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        print_claim_list_report(&report);
-    }
-    Ok(())
-}
-
-fn print_claim_append_report(report: &InterviewClaimAppendReport) {
-    println!("knowledge interview claim add");
-    println!("brief_path: {}", normalize_path(&report.brief_path));
-    println!("claims_path: {}", normalize_path(&report.claims_path));
-    println!(
-        "claim_id: {}",
-        report.claim.claim_id.as_deref().unwrap_or("<missing>")
-    );
-    println!(
-        "kind: {}",
-        report.claim.kind.as_deref().unwrap_or("<missing>")
-    );
-    println!(
-        "status: {}",
-        report.claim.status.as_deref().unwrap_or("<missing>")
-    );
-    println!("touched_brief: {}", yes_no(report.touched_brief));
-}
-
-fn print_claim_list_report(report: &InterviewClaimListReport) {
-    println!("knowledge interview claim list");
-    println!("brief_path: {}", normalize_path(&report.brief_path));
-    println!("claims_path: {}", normalize_path(&report.claims_path));
-    println!("status: {}", validation_status(report.status.clone()));
-    println!("claims.total: {}", report.counts.total);
-    println!(
-        "claims.pending_corroboration: {}",
-        report.counts.pending_corroboration
-    );
-    println!("do_not_assert: {}", report.do_not_assert_count);
-    for claim in &report.claims {
-        println!(
-            "claim: id={} kind={} status={} text={}",
-            claim.claim_id.as_deref().unwrap_or("<missing>"),
-            claim.kind.as_deref().unwrap_or("<missing>"),
-            claim.status.as_deref().unwrap_or("<missing>"),
-            claim.text.as_deref().unwrap_or("")
-        );
-    }
-    for error in &report.errors {
-        println!("error: {error}");
-    }
-    for warning in &report.warnings {
-        println!("warning: {warning}");
-    }
-}
-
 fn print_open_item_update_report(report: &InterviewOpenItemUpdateReport) {
     println!("knowledge interview open-item update");
     println!("brief_path: {}", normalize_path(&report.brief_path));
@@ -764,13 +548,11 @@ fn print_init_report(report: &InterviewInitReport) {
     println!("intent: {}", report.intent);
     println!("timestamp: {}", report.timestamp);
     println!("brief_path: {}", normalize_path(&report.brief_path));
-    println!("claims_path: {}", normalize_path(&report.claims_path));
     println!(
         "open_items_path: {}",
         normalize_path(&report.open_items_path)
     );
     println!("wrote_brief: {}", yes_no(report.wrote_brief));
-    println!("wrote_claims: {}", yes_no(report.wrote_claims));
     println!("wrote_open_items: {}", yes_no(report.wrote_open_items));
     for step in &report.next_steps {
         println!("next_step: {step}");
@@ -796,13 +578,6 @@ fn print_validation_report(label: &str, report: &InterviewValidationReport) {
         "sections_missing: {}",
         report.summary.sections_missing.join(", ")
     );
-    println!("claims.total: {}", report.summary.claim_counts.total);
-    println!(
-        "claims.pending_corroboration: {}",
-        report.summary.claim_counts.pending_corroboration
-    );
-    println!("source_leads: {}", report.summary.source_lead_count);
-    println!("do_not_assert: {}", report.summary.do_not_assert_count);
     println!("open_items: {}", report.summary.open_item_count);
     for error in &report.errors {
         println!("error: {error}");
@@ -823,7 +598,6 @@ fn print_audit_report(report: &InterviewAuditReport) {
     println!("warning: {}", report.warning);
     println!("invalid: {}", report.invalid);
     println!("stale: {}", report.stale);
-    println!("pending_claims: {}", report.pending_claims);
     println!("open_items: {}", report.open_items);
     println!("negative_evidence: {}", report.negative_evidence);
     for brief in &report.briefs {
@@ -893,7 +667,6 @@ struct AuditBrief<'a> {
     warning: usize,
     invalid: usize,
     stale: usize,
-    pending_claims: usize,
     open_items: usize,
     negative_evidence: usize,
     briefs: Vec<AuditBriefEntry<'a>>,
@@ -906,7 +679,6 @@ struct AuditBriefEntry<'a> {
     title: Option<&'a str>,
     intent: Option<&'a str>,
     computed_freshness: &'a str,
-    pending_claims: usize,
     open_items: usize,
     negative_evidence: usize,
     errors: &'a [String],
@@ -921,7 +693,6 @@ fn audit_brief(report: &InterviewAuditReport) -> AuditBrief<'_> {
         warning: report.warning,
         invalid: report.invalid,
         stale: report.stale,
-        pending_claims: report.pending_claims,
         open_items: report.open_items,
         negative_evidence: report.negative_evidence,
         briefs: report
@@ -933,7 +704,6 @@ fn audit_brief(report: &InterviewAuditReport) -> AuditBrief<'_> {
                 title: brief.summary.title.as_deref(),
                 intent: brief.summary.intent.as_deref(),
                 computed_freshness: &brief.summary.computed_freshness,
-                pending_claims: brief.summary.claim_counts.pending_corroboration,
                 open_items: brief.summary.open_item_counts.total,
                 negative_evidence: brief.summary.open_item_counts.negative_evidence,
                 errors: &brief.errors,

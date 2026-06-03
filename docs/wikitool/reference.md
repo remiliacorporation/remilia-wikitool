@@ -841,7 +841,6 @@ Commands:
   show       Show a knowledge interview brief summary
   audit      Audit all knowledge interview briefs in the local ledger
   open-item  Append or list structured interview open items
-  claim      Add or list structured interview claims
   help       Print this message or the help of the given subcommand(s)
 
 Options:
@@ -968,7 +967,7 @@ Arguments:
   <PATH>  Path to .brief.md interview brief
 
 Options:
-      --kind <KIND>                   Open item kind [possible values: pending-corroboration, rejected-source, inaccessible-source, disproven-link, source-wiki-only-template, rejected-category, scope-unresolved, stale-interview, privacy-exclusion, missing-source, user-followup-needed, other]
+      --kind <KIND>                   Open item kind [possible values: rejected-source, inaccessible-source, disproven-link, source-wiki-only-template, rejected-category, scope-unresolved, stale-interview, privacy-exclusion, missing-source, user-followup-needed, do-not-assert, other]
       --project-root <PATH>
       --data-dir <PATH>
       --status <STATUS>               Open item status: open|resolved|rejected|deferred [default: open] [possible values: open, resolved, rejected, deferred]
@@ -976,7 +975,6 @@ Options:
       --text <TEXT>                   Open item text
       --diagnostics                   Print resolved runtime diagnostics
       --item-id <ID>                  Explicit open item id
-      --claim-id <ID>                 Claim id associated with this open item; repeatable
       --source-lead <VALUE>           Source lead associated with this open item; repeatable
       --notes <TEXT>                  Optional note
       --timestamp <YYYYMMDDTHHMMSSZ>  UTC item timestamp; defaults to current time
@@ -1027,71 +1025,6 @@ Options:
       --no-touch-brief                Do not update brief last_updated/freshness metadata
       --format <FORMAT>               Output format: text|json [default: json] [possible values: text, json]
   -h, --help                          Print help
-```
-
-## knowledge interview claim
-
-```text
-Add or list structured interview claims
-
-Usage: wikitool knowledge interview claim [OPTIONS] <COMMAND>
-
-Commands:
-  add   Append a structured claim to an interview brief sidecar
-  list  List structured claims for an interview brief
-  help  Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>
-      --data-dir <PATH>
-      --config <PATH>
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## knowledge interview claim add
-
-```text
-Append a structured claim to an interview brief sidecar
-
-Usage: wikitool knowledge interview claim add [OPTIONS] --kind <KIND> <PATH>
-
-Arguments:
-  <PATH>  Path to .brief.md interview brief
-
-Options:
-      --kind <KIND>                   Claim kind [possible values: user-asserted-needs-corroboration, source-backed, disputed, excluded]
-      --project-root <PATH>
-      --data-dir <PATH>
-      --status <STATUS>               Claim status [default: pending-corroboration] [possible values: pending-corroboration, corroborated, rejected, excluded, needs-review]
-      --config <PATH>
-      --text <TEXT>                   Claim text
-      --diagnostics                   Print resolved runtime diagnostics
-      --provenance <VALUE>            Provenance for the claim (e.g. source URL, `editor-attested`, `primary-artifact: File:X`)
-      --claim-id <ID>                 Explicit claim id; defaults to next IK-NNN
-      --timestamp <YYYYMMDDTHHMMSSZ>  UTC timestamp; defaults to current time
-      --no-touch-brief                Do not update brief last_updated/freshness metadata
-      --format <FORMAT>               Output format: text|json [default: json] [possible values: text, json]
-  -h, --help                          Print help
-```
-
-## knowledge interview claim list
-
-```text
-List structured claims for an interview brief
-
-Usage: wikitool knowledge interview claim list [OPTIONS] <PATH>
-
-Arguments:
-  <PATH>  Path to .brief.md interview brief
-
-Options:
-      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
-      --project-root <PATH>
-      --data-dir <PATH>
-      --config <PATH>
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
 ```
 
 ## knowledge inspect
