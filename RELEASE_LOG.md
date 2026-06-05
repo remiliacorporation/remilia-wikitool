@@ -2,6 +2,40 @@
 
 Chronological release notes for tagged wikitool versions.
 
+## 0.4.0
+
+Date: 2026-06-05
+
+This release is about how the tool handles a human's own knowledge. The interview faculty is now a
+real `/knowledge-interview` skill and playbook for drawing out what an editor knows before drafting,
+backed by a single ledger for whatever still needs a source. The per-claim bookkeeping that used to
+sit behind it is gone: it treated an editor's knowledge as suspect until proven, which is the wrong
+stance for a wiki that is often the first place a subject gets written down at all.
+
+### Breaking changes
+
+- The `knowledge interview claim` commands, the `--claim-id` open-item flag, and the `.claims.json`
+  sidecar are removed. Track unresolved sources and follow-ups as open items; a new `do-not-assert`
+  kind holds a claim that should stay out of an article until it has a source.
+- `knowledge interview show` and `validate` no longer report claim counts. Their JSON now carries the
+  brief's draft plan instead.
+
+### Improvements
+
+- Interviewing is optional, not a gate. Reach for it when an editor knows more than the sources do,
+  and skip it when they do not.
+- Sourcing guidance matches how the wiki actually works. A quality-gated statement from a creator or a
+  knowledgeable editor can stand on its own, and you cite the real source when there is one. It also
+  names a habit to avoid: routing a fact you can already verify on-chain or first-hand through a
+  weaker outside site just to have a link.
+- Headings stop tripping over names. "Place in the Radbro Webring" is left alone because the tool
+  recognizes Radbro and Webring as proper nouns, not Title Case slips.
+- Template checks stop flagging parameters a template is visibly used with on real pages.
+
+### Fixes
+
+- Sentence-case heading suggestions keep proper nouns capitalized instead of lowercasing them.
+
 ## 0.3.1
 
 Date: 2026-05-29
