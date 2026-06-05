@@ -310,13 +310,12 @@ If these are the only sources available, note the lack of reliable sourcing rath
 
 ### Source laundering
 
-Do not reach for a weaker third party to "back up" a fact you can already establish from a primary,
-on-chain, or first-party source. The citation target is the actual source of the fact, not a
-middleman that restated it. If an on-chain mint count is verifiable from the contract or a block
-explorer, cite that; do not cite an NFT aggregator that merely republished the number. If a creator
-stated something in a post, cite the post, not a site that summarized it. When the primary source is
-inaccessible, note the gap or omit the claim rather than downgrading to a weaker secondary source
-purely to manufacture an external citation.
+Do not reach for a weaker third party to "back up" a fact you can already establish from a primary or
+first-party source. The citation target is the actual source of the fact, not a middleman that
+restated it. If a creator stated something in a post, cite the post, not a site that summarized it;
+if a primary record establishes a detail, cite that record, not an outlet that merely republished it.
+When the primary source is inaccessible, note the gap or omit the claim rather than downgrading to a
+weaker secondary source purely to manufacture an external citation.
 
 ---
 

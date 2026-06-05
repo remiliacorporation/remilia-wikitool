@@ -134,10 +134,10 @@ This is a subcultural wiki: treat a quality-gated statement from the creator or 
 editor as reasonable encyclopedic truth, the same way a game or fandom wiki records its own subject.
 Do not demand outside secondary coverage for first-party or subcultural facts the editor knows. Cite
 when research surfaces a real source, when a claim is external, contested, or surprising, or when a
-primary record exists (an on-chain value, a dated post, a hosted artifact) - and when you cite, cite
+primary record exists (a dated post, a hosted artifact, an archived record) - and when you cite, cite
 that actual source, not a third party that merely restated it. Reserve attribution ("According to
 ...") for disputed or interpretive claims. See "Source laundering" in `style_rules.md`: never route a
-primary fact through a weaker aggregator to manufacture an external citation.
+primary fact through a weaker third party to manufacture an external citation.
 
 ### Interview briefs and user knowledge
 
