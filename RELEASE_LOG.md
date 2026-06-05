@@ -8,7 +8,13 @@ Date: 2026-06-05
 
 This release adds a structured human-in-loop authoring lane. Wikitool now bundles a `/knowledge-interview` agent skill (for both Claude and Codex; other agents may need to adapt the packaged guidance) and a playbook for shaping an article's intent, scope, and angle before drafting, plus a `knowledge interview` command family that keeps a small ledger of what the interview turned up and what still needs explication or sourcing.
 
-The interview is optional and conversational, not a step you clear before writing, but for real article work it is the normal move after the article-start scout unless the user opts out or the task is mechanical. Its purpose is direction as much as fact intake: even a well-documented subject can need the editor's sense of what belongs on Remilia Wiki, what should be foregrounded, which sources or artifacts matter, and what should not be overstated. What the editor says is treated as reasonable truth once it passes a normal editorial check, rather than something that must be laundered through outside secondary coverage before it can be trusted at all. Cite a real source when one exists, especially for external, contested, or primary-record claims.
+The interview is optional and conversational, not a step you clear before writing, but for real article work it is the normal move after the article-start scout, unless the user opts out or the task is mechanical. 
+Its purpose is direction as much as fact intake: even a well-documented subject can need the editor's sense of what belongs on Remilia Wiki, what should be foregrounded, which sources or artifacts matter, and what should not be overstated. 
+What the editor says is treated as reasonable truth once it passes a normal editorial check, rather than something that must be laundered through outside secondary coverage before it can be trusted at all. 
+Cite a real source when one exists, especially for external, contested, or primary-record claims. 
+
+Unlike the citation standards upheld by e.g. Wikipedia, for Remilia Wiki it is regularly the case that article content is rightfully its own primary source.
+While this is not uncommon for subcultural and gaming-related MediaWikis either, it does mean that agent assistance is still beholden to the knowledge you personally provide it with; the interview skill exists to nudge you towards productive knowledge transfer upon the agent, but an article cannot write itself. Don't be lazy!
 
 ### New
 
