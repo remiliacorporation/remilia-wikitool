@@ -157,6 +157,7 @@ pub fn build_remilia_profile_overlay(paths: &ResolvedPaths) -> Result<ProfileOve
             watchlist_terms,
             forbid_curly_quotes: style_rules.contains("any curly quotes"),
             forbid_placeholder_fragments: placeholder_fragments,
+            proper_nouns: default_proper_nouns(),
         },
         golden_set: GoldenSetRules {
             article_corpus_available: false,
@@ -168,6 +169,19 @@ pub fn build_remilia_profile_overlay(paths: &ResolvedPaths) -> Result<ProfileOve
         },
         refreshed_at: unix_timestamp()?.to_string(),
     })
+}
+
+/// Recurring Remilia-ecosystem proper nouns that may not exist as standalone local
+/// page titles (so title-derivation alone would not exempt them). Page titles are
+/// folded in separately at lint time; this seed covers the gaps. Including terms that
+/// are also titles is harmless and keeps the rule correct even before content is pulled.
+fn default_proper_nouns() -> Vec<String> {
+    [
+        "Webring", "Milady", "Remilia", "Remilio", "Radbro", "Bonkler", "Pixelady", "Schizo",
+    ]
+    .iter()
+    .map(|term| (*term).to_string())
+    .collect()
 }
 
 pub fn sync_remilia_profile_overlay(paths: &ResolvedPaths) -> Result<ProfileOverlay> {

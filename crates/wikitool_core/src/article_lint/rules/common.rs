@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crate::article_lint::document::{ArticleSection, ParsedArticleDocument, TemplateOccurrence};
 use crate::article_lint::fix::TextEdit;
 use crate::article_lint::model::{SuggestedFix, SuggestedFixKind};
@@ -60,7 +62,10 @@ pub(super) fn section_body_contains_template(
     })
 }
 
-pub(super) fn canonical_sentence_case_heading(heading: &str) -> Option<String> {
+pub(super) fn canonical_sentence_case_heading(
+    heading: &str,
+    proper_nouns: &BTreeSet<String>,
+) -> Option<String> {
     let normalized = normalize_spaces(heading);
     if normalized.is_empty() {
         return None;
@@ -78,23 +83,43 @@ pub(super) fn canonical_sentence_case_heading(heading: &str) -> Option<String> {
     if words.len() < 3 {
         return None;
     }
+    // A title-case stopword (e.g. "In"/"The") is always a violation; proper nouns never
+    // license a stopword to stay capitalized mid-heading.
     if words
         .iter()
         .skip(1)
         .any(|word| is_stopword(word) && is_title_case_word(word))
     {
-        return Some(lowercase_heading_tail(&normalized));
+        return Some(lowercase_heading_tail(&normalized, proper_nouns));
     }
+    // Count only title-case words that are not recognized proper nouns. "Place in the
+    // Radbro Webring" should not be flagged: "Radbro" is a page title, leaving "Webring"
+    // alone, which is below the two-word threshold.
     if words
         .iter()
         .skip(1)
-        .filter(|word| is_title_case_word(word))
+        .filter(|word| is_title_case_word(word) && !is_known_proper_noun(word, proper_nouns))
         .count()
         >= 2
     {
-        return Some(lowercase_heading_tail(&normalized));
+        return Some(lowercase_heading_tail(&normalized, proper_nouns));
     }
     None
+}
+
+/// True when a heading word matches the proper-noun vocabulary (page titles + the
+/// profile's configured proper nouns). Cleaned to alphanumerics and lowercased to match
+/// how the vocabulary is stored.
+pub(super) fn is_known_proper_noun(word: &str, proper_nouns: &BTreeSet<String>) -> bool {
+    let cleaned: String = word
+        .chars()
+        .filter(|ch| ch.is_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if cleaned.is_empty() {
+        return false;
+    }
+    proper_nouns.contains(&cleaned)
 }
 
 pub(super) fn safe_heading_rewrite_available(original: &str, canonical: &str) -> bool {
@@ -103,13 +128,14 @@ pub(super) fn safe_heading_rewrite_available(original: &str, canonical: &str) ->
     })
 }
 
-fn lowercase_heading_tail(value: &str) -> String {
+fn lowercase_heading_tail(value: &str, proper_nouns: &BTreeSet<String>) -> String {
     let mut out = Vec::new();
     for (index, word) in value.split_whitespace().enumerate() {
         if index == 0
             || word
                 .chars()
                 .all(|ch| !ch.is_ascii_alphabetic() || ch.is_ascii_uppercase())
+            || is_known_proper_noun(word, proper_nouns)
         {
             out.push(word.to_string());
         } else {

@@ -116,7 +116,6 @@ pub(super) fn lint_article_quality_banner(
                 edit,
             }],
         });
-        return;
     }
 }
 
@@ -237,13 +236,16 @@ pub(super) fn lint_duplicate_headings(
 
 pub(super) fn lint_sentence_case_headings(
     document: &ParsedArticleDocument,
+    resources: &LoadedResources,
     matches: &mut Vec<IssueMatch>,
 ) {
     for section in &document.sections {
         let Some(heading) = &section.heading else {
             continue;
         };
-        let Some(canonical) = canonical_sentence_case_heading(&heading.text) else {
+        let Some(canonical) =
+            canonical_sentence_case_heading(&heading.text, &resources.proper_noun_words)
+        else {
             continue;
         };
         if canonical == heading.text {

@@ -124,6 +124,7 @@ fn test_profile_overlay() -> ProfileOverlay {
             watchlist_terms: Vec::new(),
             forbid_curly_quotes: true,
             forbid_placeholder_fragments: Vec::new(),
+            proper_nouns: Vec::new(),
         },
         golden_set: GoldenSetRules {
             article_corpus_available: false,

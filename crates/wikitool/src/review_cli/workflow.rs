@@ -170,13 +170,13 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
                 .unwrap_or_else(|| "push dry-run reported conflicts or errors".to_string()),
         );
     }
-    if let Some(brief) = &interview_brief {
-        if brief.status == InterviewValidationStatus::Invalid {
-            hard_failures.push(format!(
-                "interview brief is invalid: {}",
-                brief.errors.join("; ")
-            ));
-        }
+    if let Some(brief) = &interview_brief
+        && brief.status == InterviewValidationStatus::Invalid
+    {
+        hard_failures.push(format!(
+            "interview brief is invalid: {}",
+            brief.errors.join("; ")
+        ));
     }
 
     let report = ReviewReport {

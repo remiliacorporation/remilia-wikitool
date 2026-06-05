@@ -206,6 +206,109 @@ fn detects_sentence_case_heading() {
 }
 
 #[test]
+fn sentence_case_heading_exempts_proper_nouns() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    // A local page title supplies the unseeded proper noun. The heading is correct
+    // sentence case and must not be flagged.
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Example_Person.wiki"),
+        "{{SHORTDESC:Example Person}}\n{{Article quality|unverified}}\n\n'''Example Person''' is a page.\n\n== References ==\n{{Reflist}}\n",
+    );
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n== Influence on Example Person ==\nText.\n\n== References ==\n{{Reflist}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    assert!(!has_rule(&report, "style.sentence_case_heading"));
+}
+
+#[test]
+fn sentence_case_heading_preserves_proper_nouns_in_suggestion() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Example_Person.wiki"),
+        "{{SHORTDESC:Example Person}}\n{{Article quality|unverified}}\n\n'''Example Person''' is a page.\n\n== References ==\n{{Reflist}}\n",
+    );
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n== Influence Of Example Person ==\nText.\n\n== References ==\n{{Reflist}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    let issue = report
+        .issues
+        .iter()
+        .find(|issue| issue.rule_id == "style.sentence_case_heading")
+        .expect("sentence-case issue");
+    assert!(
+        issue
+            .suggested_fixes
+            .iter()
+            .any(|fix| fix.replacement_preview.as_deref() == Some("Influence of Example Person"))
+    );
+}
+
+#[test]
+fn sentence_case_heading_still_flags_non_proper_nouns() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    // "Battle" and "Strategies" are ordinary capitalized words, not proper nouns, so the
+    // title-cased heading is still a real violation.
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n== Notable Battle Strategies ==\nText.\n\n== References ==\n{{Reflist}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    assert!(has_rule(&report, "style.sentence_case_heading"));
+}
+
+#[test]
+fn sentence_case_heading_does_not_promote_lowercase_title_words() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Network_spirituality.wiki"),
+        "{{SHORTDESC:Network spirituality}}\n{{Article quality|unverified}}\n\n'''Network spirituality''' is a page.\n\n== References ==\n{{Reflist}}\n",
+    );
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a page.\n\n== Influence of Network Spirituality ==\nText.\n\n== References ==\n{{Reflist}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    assert!(has_rule(&report, "style.sentence_case_heading"));
+}
+
+#[test]
 fn accepts_tabber_separator_lines_as_extension_markup() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");

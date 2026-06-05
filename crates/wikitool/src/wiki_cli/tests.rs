@@ -97,6 +97,7 @@ fn sample_snapshot() -> WikiProfileSnapshot {
                 watchlist_terms: vec!["bar".to_string()],
                 forbid_curly_quotes: true,
                 forbid_placeholder_fragments: vec!["todo".to_string()],
+                proper_nouns: vec!["Webring".to_string()],
             },
             golden_set: GoldenSetRules {
                 article_corpus_available: true,

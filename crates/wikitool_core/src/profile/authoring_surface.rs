@@ -390,6 +390,22 @@ pub fn template_has_parameter_contract(entry: &TemplateCatalogEntry) -> bool {
     entry.templatedata.is_some() && !entry.parameters.is_empty()
 }
 
+/// Parameter keys this template is directly evidenced to accept in real, published
+/// usage, drawn from the catalog's recorded example invocations. Some templates ship
+/// incomplete TemplateData (a documented subset of the parameters they actually take),
+/// so a key observed on live pages is real-usage evidence, not a typo. Treating these
+/// as known keeps `template.unknown_parameter` from false-flagging parameters the wiki
+/// demonstrably uses.
+fn observed_template_parameter_keys(entry: &TemplateCatalogEntry) -> BTreeSet<String> {
+    let mut observed = BTreeSet::new();
+    for example in &entry.examples {
+        for key in &example.parameter_keys {
+            insert_template_parameter_key(&mut observed, key);
+        }
+    }
+    observed
+}
+
 pub fn unknown_template_parameter_keys(
     entry: &TemplateCatalogEntry,
     parameter_keys: &[String],
@@ -398,6 +414,7 @@ pub fn unknown_template_parameter_keys(
         return Vec::new();
     }
     let known = known_template_parameter_keys(entry);
+    let observed = observed_template_parameter_keys(entry);
     let mut unknown = Vec::new();
     for key in parameter_keys {
         if key.starts_with('$') {
@@ -407,7 +424,7 @@ pub fn unknown_template_parameter_keys(
         if normalized.is_empty() || normalized.chars().all(|ch| ch.is_ascii_digit()) {
             continue;
         }
-        if !known.contains(&normalized) {
+        if !known.contains(&normalized) && !observed.contains(&normalized) {
             unknown.push(normalized);
         }
     }
@@ -586,6 +603,26 @@ mod tests {
                 "made_up".to_string(),
                 "$1".to_string(),
             ],
+        );
+
+        assert_eq!(unknown, vec!["made up"]);
+    }
+
+    #[test]
+    fn unknown_template_parameters_accept_observed_example_keys() {
+        let mut entry = sample_entry();
+        entry.examples.push(TemplateCatalogExample {
+            source_kind: "indexed_usage".to_string(),
+            source_title: Some("Radbro".to_string()),
+            source_relative_path: Some("wiki_content/Main/Radbro.wiki".to_string()),
+            invocation_text: "{{Infobox person|name=Radbro|image_caption=Example}}".to_string(),
+            parameter_keys: vec!["name".to_string(), "image_caption".to_string()],
+            token_estimate: 10,
+        });
+
+        let unknown = unknown_template_parameter_keys(
+            &entry,
+            &["image_caption".to_string(), "made_up".to_string()],
         );
 
         assert_eq!(unknown, vec!["made up"]);

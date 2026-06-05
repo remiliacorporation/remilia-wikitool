@@ -45,7 +45,7 @@ pub(super) fn collect_issue_matches(
     extension::lint_extension_contracts(document, &mut matches);
     structure::lint_malformed_headings(document, &mut matches);
     structure::lint_duplicate_headings(document, &mut matches);
-    structure::lint_sentence_case_headings(document, &mut matches);
+    structure::lint_sentence_case_headings(document, resources, &mut matches);
     structure::lint_missing_references_section(document, resources, &mut matches);
     structure::lint_missing_reflist(document, resources, &mut matches);
     citation::lint_citation_after_punctuation(document, &mut matches);

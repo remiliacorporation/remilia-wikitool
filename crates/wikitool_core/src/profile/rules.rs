@@ -72,6 +72,12 @@ pub struct LintRules {
     pub watchlist_terms: Vec<String>,
     pub forbid_curly_quotes: bool,
     pub forbid_placeholder_fragments: Vec<String>,
+    /// Proper nouns that may stay capitalized mid-heading without tripping the
+    /// sentence-case rule. Local page titles are folded in automatically; this list
+    /// covers recurring proper nouns that are not standalone page titles (e.g. the
+    /// non-leading word of a multi-word brand). Defaulted for older cached overlays.
+    #[serde(default)]
+    pub proper_nouns: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

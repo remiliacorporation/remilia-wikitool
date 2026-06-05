@@ -112,6 +112,7 @@ pub struct InterviewBriefSummary {
     pub sections_missing: Vec<String>,
     pub open_item_count: usize,
     pub open_item_counts: InterviewOpenItemCounts,
+    pub draft_plan: BriefDraftPlan,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -236,11 +237,9 @@ pub fn title_key_for_interview(title: &str) -> String {
         if ch.is_ascii_alphanumeric() {
             output.push(ch);
             last_was_separator = false;
-        } else {
-            if !last_was_separator && !output.is_empty() {
-                output.push('_');
-                last_was_separator = true;
-            }
+        } else if !last_was_separator && !output.is_empty() {
+            output.push('_');
+            last_was_separator = true;
         }
     }
     while output.ends_with('_') {
@@ -272,17 +271,17 @@ pub fn create_interview_brief(
     let open_items_path = dir.join(&open_items_name);
 
     fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
-    let brief = render_brief_template(
-        &doc_id,
-        &title,
-        &title_key,
-        &options.intent,
-        &created_at,
-        options.agent.as_deref().unwrap_or("other"),
-        options.source_article.as_deref(),
-        options.related_draft.as_deref(),
-        &open_items_name,
-    );
+    let brief = render_brief_template(&BriefTemplateInput {
+        doc_id: &doc_id,
+        title: &title,
+        title_key: &title_key,
+        intent: &options.intent,
+        created_at: &created_at,
+        agent: options.agent.as_deref().unwrap_or("other"),
+        source_article: options.source_article.as_deref(),
+        related_draft: options.related_draft.as_deref(),
+        open_items_name: &open_items_name,
+    });
 
     let wrote_brief = write_if_allowed(&brief_path, &brief, options.force)?;
     let wrote_open_items = write_if_allowed(&open_items_path, "", options.force)?;
@@ -343,6 +342,7 @@ pub fn validate_interview_brief(path: &Path, stale_days: u64) -> Result<Intervie
         sections_missing: parsed.sections_missing,
         open_item_count: open_items_report.counts.total,
         open_item_counts: open_items_report.counts,
+        draft_plan: parse_brief_draft_plan(&content),
     };
 
     let status = if !errors.is_empty() {
@@ -453,6 +453,7 @@ fn unreadable_brief_report(path: &Path, error: &anyhow::Error) -> InterviewValid
             sections_missing: Vec::new(),
             open_item_count: 0,
             open_item_counts: InterviewOpenItemCounts::default(),
+            draft_plan: BriefDraftPlan::default(),
         },
         errors: vec![format!("brief could not be parsed: {error}")],
         warnings: Vec::new(),
@@ -692,19 +693,28 @@ fn validate_intent(value: &str) -> Result<()> {
     }
 }
 
-fn render_brief_template(
-    doc_id: &str,
-    title: &str,
-    title_key: &str,
-    intent: &str,
-    created_at: &str,
-    agent: &str,
-    source_article: Option<&str>,
-    related_draft: Option<&str>,
-    open_items_name: &str,
-) -> String {
-    let source_article = source_article.unwrap_or("null");
-    let related_draft = related_draft.unwrap_or("null");
+struct BriefTemplateInput<'a> {
+    doc_id: &'a str,
+    title: &'a str,
+    title_key: &'a str,
+    intent: &'a str,
+    created_at: &'a str,
+    agent: &'a str,
+    source_article: Option<&'a str>,
+    related_draft: Option<&'a str>,
+    open_items_name: &'a str,
+}
+
+fn render_brief_template(input: &BriefTemplateInput<'_>) -> String {
+    let doc_id = input.doc_id;
+    let title = input.title;
+    let title_key = input.title_key;
+    let intent = input.intent;
+    let created_at = input.created_at;
+    let agent = input.agent;
+    let source_article = input.source_article.unwrap_or("null");
+    let related_draft = input.related_draft.unwrap_or("null");
+    let open_items_name = input.open_items_name;
     format!(
         "---\nschema_version: {INTERVIEW_SCHEMA_VERSION}\ndoc_kind: {INTERVIEW_DOC_KIND}\ndoc_id: {doc_id}\ntitle: {title}\ntitle_key: {title_key}\nintent: {intent}\ncreated_at: {created_at}\nlast_updated: {created_at}\nfreshness_state: fresh\nagent: {agent}\nsource_article: {source_article}\nrelated_draft: {related_draft}\nopen_items_sidecar: {open_items_name}\n---\n\n# Knowledge Interview Brief: {title}\n\n## Article Object\n\nTBD.\n\n## Scope\n\nIncluded:\n\nExcluded:\n\nPossible redirects:\n\nPossible merge/split targets:\n\n## Initial Materials\n\nSupplied documents, links, transcripts, screenshots, source excerpts, or notes:\n\nHow the materials should steer interview questions or research:\n\n## User-Framed Summary\n\nTBD.\n\n## Interview Transcript and Context\n\nFreeform knowledge from the user's initial monologue:\n\nFollow-up rounds and answers:\n\nNuance that may not yet be publishable:\n\n## Chronology\n\nDates or order details that disambiguate versions, source records, or handoff state:\n\nApproximate periods only when they matter:\n\nOpen date/order conflicts:\n\n## Entities and Relationships\n\nPeople:\n\nProjects:\n\nGroups:\n\nTerms:\n\nRelated wiki pages:\n\n## Editorial Framing\n\nRecommended angle:\n\nTone risks:\n\nLikely misconceptions:\n\nTerminology notes:\n\n## Research Plan\n\nPrimary-source leads:\n\nSearch queries:\n\nArchive targets:\n\nExisting wiki pages to inspect:\n\nBlocking evidence gaps:\n\n## Interviewer Critic Notes\n\nWhat would make the article thin, duplicative, unsourced, wrongly framed, or missing the user's actual knowledge:\n\nFollow-up questions triggered by this critique:\n\nDeferred gaps and why they are acceptable:\n\n## Draft Plan\n\nLikely sections:\n\nInfobox/template candidates:\n\nCategories to verify:\n\nStatements that require citations:\n\nOpen questions before drafting:\n"
     )
@@ -788,8 +798,9 @@ fn parse_second_level_headings(body: &str) -> Vec<String> {
 }
 
 /// Draft-plan signals extracted from a knowledge interview brief body, used by
-/// `article-start` to fold human planning into its section skeleton and warnings.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// `article-start` to fold human planning into its section skeleton and warnings,
+/// and surfaced by `interview show` as the machine-readable handoff plan.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct BriefDraftPlan {
     pub likely_sections: Vec<String>,
     pub open_questions: Vec<String>,
@@ -875,7 +886,7 @@ pub fn parse_brief_draft_plan(body: &str) -> BriefDraftPlan {
 
 fn strip_list_bullet(line: &str) -> &str {
     line.trim()
-        .trim_start_matches(|c: char| c == '-' || c == '*' || c == '+' || c == '\u{2022}')
+        .trim_start_matches(['-', '*', '+', '\u{2022}'])
         .trim()
 }
 
@@ -1024,7 +1035,7 @@ fn collect_open_items(
             counts: InterviewOpenItemCounts::default(),
         });
     }
-    let raw = fs::read_to_string(&path)
+    let raw = fs::read_to_string(path)
         .with_context(|| format!("failed to read open items sidecar {}", path.display()))?;
     let mut items = Vec::new();
     let mut counts = InterviewOpenItemCounts::default();

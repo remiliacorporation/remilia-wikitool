@@ -1037,7 +1037,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
-    use wikitool_core::knowledge_interview::InterviewOpenItemCounts;
+    use wikitool_core::knowledge_interview::{BriefDraftPlan, InterviewOpenItemCounts};
 
     fn section(heading: &str, rationale: &str, required: bool) -> SectionSkeleton {
         SectionSkeleton {
@@ -1073,6 +1073,7 @@ mod tests {
                     by_status: BTreeMap::new(),
                     ..InterviewOpenItemCounts::default()
                 },
+                draft_plan: BriefDraftPlan::default(),
             },
             errors: Vec::new(),
             warnings: Vec::new(),
