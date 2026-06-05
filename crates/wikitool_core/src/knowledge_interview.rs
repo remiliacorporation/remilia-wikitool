@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
@@ -706,18 +706,39 @@ struct BriefTemplateInput<'a> {
 }
 
 fn render_brief_template(input: &BriefTemplateInput<'_>) -> String {
-    let doc_id = input.doc_id;
-    let title = input.title;
-    let title_key = input.title_key;
-    let intent = input.intent;
-    let created_at = input.created_at;
-    let agent = input.agent;
-    let source_article = input.source_article.unwrap_or("null");
-    let related_draft = input.related_draft.unwrap_or("null");
-    let open_items_name = input.open_items_name;
+    let doc_id = yaml_string(input.doc_id);
+    let title = yaml_string(input.title);
+    let title_key = yaml_string(input.title_key);
+    let intent = yaml_string(input.intent);
+    let created_at = yaml_string(input.created_at);
+    let agent = yaml_string(input.agent);
+    let source_article = yaml_optional_string(input.source_article);
+    let related_draft = yaml_optional_string(input.related_draft);
+    let open_items_name = yaml_string(input.open_items_name);
     format!(
-        "---\nschema_version: {INTERVIEW_SCHEMA_VERSION}\ndoc_kind: {INTERVIEW_DOC_KIND}\ndoc_id: {doc_id}\ntitle: {title}\ntitle_key: {title_key}\nintent: {intent}\ncreated_at: {created_at}\nlast_updated: {created_at}\nfreshness_state: fresh\nagent: {agent}\nsource_article: {source_article}\nrelated_draft: {related_draft}\nopen_items_sidecar: {open_items_name}\n---\n\n# Knowledge Interview Brief: {title}\n\n## Article Object\n\nTBD.\n\n## Scope\n\nIncluded:\n\nExcluded:\n\nPossible redirects:\n\nPossible merge/split targets:\n\n## Initial Materials\n\nSupplied documents, links, transcripts, screenshots, source excerpts, or notes:\n\nHow the materials should steer interview questions or research:\n\n## User-Framed Summary\n\nTBD.\n\n## Interview Transcript and Context\n\nFreeform knowledge from the user's initial monologue:\n\nFollow-up rounds and answers:\n\nNuance that may not yet be publishable:\n\n## Chronology\n\nDates or order details that disambiguate versions, source records, or handoff state:\n\nApproximate periods only when they matter:\n\nOpen date/order conflicts:\n\n## Entities and Relationships\n\nPeople:\n\nProjects:\n\nGroups:\n\nTerms:\n\nRelated wiki pages:\n\n## Editorial Framing\n\nRecommended angle:\n\nTone risks:\n\nLikely misconceptions:\n\nTerminology notes:\n\n## Research Plan\n\nPrimary-source leads:\n\nSearch queries:\n\nArchive targets:\n\nExisting wiki pages to inspect:\n\nBlocking evidence gaps:\n\n## Interviewer Critic Notes\n\nWhat would make the article thin, duplicative, unsourced, wrongly framed, or missing the user's actual knowledge:\n\nFollow-up questions triggered by this critique:\n\nDeferred gaps and why they are acceptable:\n\n## Draft Plan\n\nLikely sections:\n\nInfobox/template candidates:\n\nCategories to verify:\n\nStatements that require citations:\n\nOpen questions before drafting:\n"
+        "---\nschema_version: {INTERVIEW_SCHEMA_VERSION}\ndoc_kind: \"{INTERVIEW_DOC_KIND}\"\ndoc_id: {doc_id}\ntitle: {title}\ntitle_key: {title_key}\nintent: {intent}\ncreated_at: {created_at}\nlast_updated: {created_at}\nfreshness_state: \"fresh\"\nagent: {agent}\nsource_article: {source_article}\nrelated_draft: {related_draft}\nopen_items_sidecar: {open_items_name}\n---\n\n# Knowledge Interview Brief: {}\n\n## Article Object\n\nTBD.\n\n## Scope\n\nIncluded:\n\nExcluded:\n\nPossible redirects:\n\nPossible merge/split targets:\n\n## Initial Materials\n\nSupplied documents, links, transcripts, screenshots, source excerpts, or notes:\n\nHow the materials should steer interview questions or research:\n\n## User-Framed Summary\n\nTBD.\n\n## Interview Transcript and Context\n\nFreeform knowledge from the user's initial monologue:\n\nFollow-up rounds and answers:\n\nNuance that may not yet be publishable:\n\n## Chronology\n\nDates or order details that disambiguate versions, source records, or handoff state:\n\nApproximate periods only when they matter:\n\nOpen date/order conflicts:\n\n## Entities and Relationships\n\nPeople:\n\nProjects:\n\nGroups:\n\nTerms:\n\nRelated wiki pages:\n\n## Editorial Framing\n\nRecommended angle:\n\nTone risks:\n\nLikely misconceptions:\n\nTerminology notes:\n\n## Research Plan\n\nPrimary-source leads:\n\nSearch queries:\n\nArchive targets:\n\nExisting wiki pages to inspect:\n\nBlocking evidence gaps:\n\n## Interviewer Critic Notes\n\nWhat would make the article thin, duplicative, unsourced, wrongly framed, or missing the user's actual knowledge:\n\nFollow-up questions triggered by this critique:\n\nDeferred gaps and why they are acceptable:\n\n## Draft Plan\n\nLikely sections:\n\nInfobox/template candidates:\n\nCategories to verify:\n\nStatements that require citations:\n\nOpen questions before drafting:\n",
+        input.title
     )
+}
+
+fn yaml_optional_string(value: Option<&str>) -> String {
+    value.map(yaml_string).unwrap_or_else(|| "null".to_string())
+}
+
+fn yaml_string(value: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn write_if_allowed(path: &Path, content: &str, force: bool) -> Result<bool> {
@@ -974,6 +995,8 @@ fn validate_frontmatter(
         metadata.open_items_sidecar.as_deref(),
         errors,
     );
+    validate_rfc3339_field("created_at", metadata.created_at.as_deref(), errors);
+    validate_rfc3339_field("last_updated", metadata.last_updated.as_deref(), errors);
 
     match metadata.intent.as_deref() {
         Some(intent) if ALLOWED_INTENTS.contains(&intent) => {}
@@ -993,6 +1016,17 @@ fn require_nonempty(name: &str, value: Option<&str>, errors: &mut Vec<String>) {
     }
 }
 
+fn validate_rfc3339_field(name: &str, value: Option<&str>, errors: &mut Vec<String>) {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    if let Err(error) = rfc3339_to_unix(value) {
+        errors.push(format!(
+            "frontmatter field `{name}` must be a UTC RFC3339 timestamp: {error}"
+        ));
+    }
+}
+
 fn validate_open_items_sidecar(
     brief_path: &Path,
     metadata: &BriefFrontmatter,
@@ -1001,7 +1035,8 @@ fn validate_open_items_sidecar(
 ) -> Result<OpenItemsValidationResult> {
     let path = match open_items_sidecar_path(brief_path, metadata) {
         Ok(path) => path,
-        Err(_) => {
+        Err(error) => {
+            errors.push(format!("open items sidecar path is invalid: {error}"));
             return Ok(OpenItemsValidationResult {
                 path: brief_path.to_path_buf(),
                 items: Vec::new(),
@@ -1016,10 +1051,47 @@ fn open_items_sidecar_path(brief_path: &Path, metadata: &BriefFrontmatter) -> Re
     let Some(sidecar) = metadata.open_items_sidecar.as_deref() else {
         bail!("missing open_items_sidecar");
     };
-    Ok(brief_path
+    validate_sidecar_filename(sidecar)?;
+    let path = brief_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
-        .join(sidecar))
+        .join(sidecar);
+    reject_symlink_sidecar(&path)?;
+    Ok(path)
+}
+
+fn validate_sidecar_filename(sidecar: &str) -> Result<()> {
+    let trimmed = sidecar.trim();
+    if trimmed.is_empty() {
+        bail!("open_items_sidecar cannot be empty");
+    }
+    if trimmed != sidecar {
+        bail!("open_items_sidecar must not contain leading or trailing whitespace");
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        bail!("open_items_sidecar must be a sibling filename, not a path");
+    }
+    let mut components = Path::new(trimmed).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => {}
+        _ => bail!("open_items_sidecar must be a sibling filename"),
+    }
+    if !trimmed.ends_with(".open_items.jsonl") {
+        bail!("open_items_sidecar must end with `.open_items.jsonl`");
+    }
+    Ok(())
+}
+
+fn reject_symlink_sidecar(path: &Path) -> Result<()> {
+    if let Ok(metadata) = fs::symlink_metadata(path)
+        && metadata.file_type().is_symlink()
+    {
+        bail!(
+            "open items sidecar must be a regular sibling file, not a symlink: {}",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 fn collect_open_items(
@@ -1516,6 +1588,111 @@ mod tests {
         let validation = validate_interview_brief(&report.brief_path, 45).expect("validate");
         assert_ne!(validation.status, InterviewValidationStatus::Invalid);
         assert_eq!(validation.summary.title.as_deref(), Some("Radbro Webring"));
+    }
+
+    #[test]
+    fn init_quotes_yaml_sensitive_frontmatter_values() {
+        let temp = tempdir().expect("tempdir");
+        let paths = paths(temp.path());
+        let report = create_interview_brief(
+            &paths,
+            &InterviewInitOptions {
+                title: "Miya: Notes".to_string(),
+                intent: "new".to_string(),
+                agent: Some("codex: local".to_string()),
+                source_article: Some("Source: Article".to_string()),
+                related_draft: Some(".wikitool/drafts/Miya Notes.wiki".to_string()),
+                timestamp: Some("20260601T172430Z".to_string()),
+                force: false,
+            },
+        )
+        .expect("init");
+
+        let validation = validate_interview_brief(&report.brief_path, 45).expect("validate");
+        assert_ne!(validation.status, InterviewValidationStatus::Invalid);
+        assert_eq!(validation.summary.title.as_deref(), Some("Miya: Notes"));
+        assert_eq!(validation.summary.agent.as_deref(), Some("codex: local"));
+    }
+
+    #[test]
+    fn validate_rejects_invalid_frontmatter_timestamps() {
+        let temp = tempdir().expect("tempdir");
+        let paths = paths(temp.path());
+        let report = create_interview_brief(
+            &paths,
+            &InterviewInitOptions {
+                title: "Radbro Webring".to_string(),
+                intent: "new".to_string(),
+                agent: None,
+                source_article: None,
+                related_draft: None,
+                timestamp: Some("20260601T172430Z".to_string()),
+                force: false,
+            },
+        )
+        .expect("init");
+        let brief = fs::read_to_string(&report.brief_path)
+            .expect("read brief")
+            .replace(
+                "last_updated: \"2026-06-01T17:24:30Z\"",
+                "last_updated: \"not-a-timestamp\"",
+            );
+        fs::write(&report.brief_path, brief).expect("write brief");
+
+        let validation = validate_interview_brief(&report.brief_path, 45).expect("validate");
+        assert_eq!(validation.status, InterviewValidationStatus::Invalid);
+        assert!(validation.errors.iter().any(|error| {
+            error.contains("frontmatter field `last_updated` must be a UTC RFC3339 timestamp")
+        }));
+    }
+
+    #[test]
+    fn validate_rejects_sidecar_paths_that_escape_the_brief_directory() {
+        let temp = tempdir().expect("tempdir");
+        let paths = paths(temp.path());
+        let report = create_interview_brief(
+            &paths,
+            &InterviewInitOptions {
+                title: "Radbro Webring".to_string(),
+                intent: "new".to_string(),
+                agent: None,
+                source_article: None,
+                related_draft: None,
+                timestamp: Some("20260601T172430Z".to_string()),
+                force: false,
+            },
+        )
+        .expect("init");
+        let brief = fs::read_to_string(&report.brief_path)
+            .expect("read brief")
+            .replace(
+                "open_items_sidecar: \"20260601T172430Z.open_items.jsonl\"",
+                "open_items_sidecar: \"../outside.open_items.jsonl\"",
+            );
+        fs::write(&report.brief_path, brief).expect("write brief");
+
+        let validation = validate_interview_brief(&report.brief_path, 45).expect("validate");
+        assert_eq!(validation.status, InterviewValidationStatus::Invalid);
+        assert!(validation.errors.iter().any(|error| {
+            error.contains("open items sidecar path is invalid")
+                && error.contains("sibling filename")
+        }));
+
+        let append_error = append_interview_open_item(
+            &report.brief_path,
+            &InterviewOpenItemAppendOptions {
+                kind: "missing_source".to_string(),
+                status: "open".to_string(),
+                text: "Need source for launch sequence.".to_string(),
+                item_id: Some("OI-001".to_string()),
+                source_leads: Vec::new(),
+                notes: None,
+                timestamp: Some("20260601T180000Z".to_string()),
+                touch_brief: false,
+            },
+        )
+        .expect_err("escaped sidecar must not be writable");
+        assert!(append_error.to_string().contains("sibling filename"));
     }
 
     #[test]

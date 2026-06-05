@@ -171,8 +171,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        compute_hash, compute_wiki_sync_hash, format_iso8601_utc, normalize_path, normalize_pathbuf,
-        normalize_wiki_content, parse_redirect,
+        compute_hash, compute_wiki_sync_hash, format_iso8601_utc, normalize_path,
+        normalize_pathbuf, normalize_wiki_content, parse_redirect,
     };
 
     #[test]
@@ -189,8 +189,14 @@ mod tests {
             compute_wiki_sync_hash("return p")
         );
         // CR and CRLF normalize to LF.
-        assert_eq!(compute_wiki_sync_hash("a\r\nb"), compute_wiki_sync_hash("a\nb"));
-        assert_eq!(compute_wiki_sync_hash("a\rb"), compute_wiki_sync_hash("a\nb"));
+        assert_eq!(
+            compute_wiki_sync_hash("a\r\nb"),
+            compute_wiki_sync_hash("a\nb")
+        );
+        assert_eq!(
+            compute_wiki_sync_hash("a\rb"),
+            compute_wiki_sync_hash("a\nb")
+        );
         // The sync hash equals the raw hash of the canonical (normalized) form.
         assert_eq!(compute_wiki_sync_hash("x\n\n"), compute_hash("x"));
         // Genuine content differences still register.
@@ -201,7 +207,10 @@ mod tests {
     fn normalize_wiki_content_matches_mediawiki_canonical_form() {
         assert_eq!(normalize_wiki_content("line\n"), "line");
         assert_eq!(normalize_wiki_content("a\r\nb\r\n"), "a\nb");
-        assert_eq!(normalize_wiki_content("trailing spaces  \n\n"), "trailing spaces");
+        assert_eq!(
+            normalize_wiki_content("trailing spaces  \n\n"),
+            "trailing spaces"
+        );
         // Internal newlines are preserved; only the trailing edge is trimmed.
         assert_eq!(normalize_wiki_content("a\n\nb\n"), "a\n\nb");
     }

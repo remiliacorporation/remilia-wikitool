@@ -6,9 +6,9 @@ Chronological release notes for tagged wikitool versions.
 
 Date: 2026-06-05
 
-This release adds a way to get a human's knowledge into the wiki before drafting. Wikitool now bundles a `/knowledge-interview` agent skill (for both Claude and Codex; other agents you may have to adjust) and a playbook for drawing out what an editor knows, plus a `knowledge interview` command family that keeps a small ledger of what the interview turned up and what still needs a source. None of this existed in 0.3.1.
+This release adds a structured human-in-loop authoring lane. Wikitool now bundles a `/knowledge-interview` agent skill (for both Claude and Codex; other agents may need to adapt the packaged guidance) and a playbook for shaping an article's intent, scope, and angle before drafting, plus a `knowledge interview` command family that keeps a small ledger of what the interview turned up and what still needs explication or sourcing.
 
-The interview is optional and conversational, not a step you clear before writing. Reach for it when an editor knows more than the public sources do, and skip it when they do not. What the editor says is treated as reasonable truth once it passes a normal editorial check, rather than something to be proven before it can be trusted at all, which is the wrong stance for a wiki that is often the first place a subject gets written down. You still cite a real source when there is one, and the guidance names a habit to avoid: routing a fact you can already verify on-chain or first-hand through a weaker outside site just to have a link.
+The interview is optional and conversational, not a step you clear before writing, but for real article work it is the normal move after the article-start scout unless the user opts out or the task is mechanical. Its purpose is direction as much as fact intake: even a well-documented subject can need the editor's sense of what belongs on Remilia Wiki, what should be foregrounded, which sources or artifacts matter, and what should not be overstated. What the editor says is treated as reasonable truth once it passes a normal editorial check, rather than something that must be laundered through outside secondary coverage before it can be trusted at all. Cite a real source when one exists, especially for external, contested, or primary-record claims.
 
 ### New
 

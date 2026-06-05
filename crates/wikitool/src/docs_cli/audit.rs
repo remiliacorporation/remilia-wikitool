@@ -69,6 +69,7 @@ pub(crate) fn run_docs_audit(args: DocsAuditArgs) -> Result<()> {
     audit_no_retired_public_terms(&repo_root, &mut checks);
     audit_brief_guidance(&repo_root, &mut checks);
     audit_workflow_guidance(&repo_root, &mut checks);
+    audit_interview_direction_guidance(&repo_root, &mut checks);
     if let Some(host_root) = host_project_root.as_ref() {
         audit_host_project(host_root, &mut checks);
     }
@@ -390,6 +391,133 @@ fn audit_workflow_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     }
 }
 
+fn audit_interview_direction_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
+    let required = [
+        (
+            "ai-pack/CLAUDE.md",
+            &[
+                "normal move",
+                "intent, scope, and angle",
+                "well-documented subjects",
+            ][..],
+        ),
+        (
+            "ai-pack/AGENTS.md",
+            &[
+                "normal move",
+                "intent, scope, and angle",
+                "well-documented subjects",
+            ][..],
+        ),
+        (
+            "ai-pack/writing_context/interview_playbook.md",
+            &[
+                "normal move, not an exception",
+                "well-documented subjects",
+                "This is framing, not a forced",
+            ][..],
+        ),
+        (
+            "ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md",
+            &[
+                "normal move",
+                "intent, scope, and angle",
+                "well-documented subjects",
+            ][..],
+        ),
+        (
+            "docs/wikitool/guide.md",
+            &[
+                "interview by default",
+                "intent, scope, and angle",
+                "well-documented subjects",
+            ][..],
+        ),
+        (
+            "docs/wikitool/architecture.md",
+            &[
+                "knowledge-interview skill by default",
+                "sets article intent, scope, and",
+                "not limited to cases",
+            ][..],
+        ),
+        (
+            "RELEASE_LOG.md",
+            &[
+                "normal move after the article-start scout",
+                "purpose is direction",
+                "well-documented subject",
+            ][..],
+        ),
+    ];
+
+    for (relative, needles) in required {
+        let path = repo_root.join(relative);
+        match read_to_string(&path) {
+            Ok(body) => {
+                let normalized = normalize_whitespace(&body);
+                let missing = needles
+                    .iter()
+                    .filter(|needle| !normalized.contains(&normalize_whitespace(needle)))
+                    .copied()
+                    .collect::<Vec<_>>();
+                push_check(
+                    checks,
+                    "guidance.interview_direction",
+                    missing.is_empty(),
+                    Some(&path),
+                    if missing.is_empty() {
+                        format!("{relative} preserves direction-first interview framing")
+                    } else {
+                        format!(
+                            "{relative} is missing direction-first interview term(s): {}",
+                            missing.join(", ")
+                        )
+                    },
+                );
+            }
+            Err(error) => push_check(
+                checks,
+                "guidance.interview_direction",
+                false,
+                Some(&path),
+                format!("failed to read {relative}: {error}"),
+            ),
+        }
+    }
+
+    let retired = [
+        "Reach for it when your specific knowledge reaches further than public sources do, and skip it when they do not",
+        "Reach for it when an editor knows more than the public sources do, and skip it when they do not",
+    ];
+    let mut failures = Vec::new();
+    for path in markdown_files(repo_root) {
+        let Ok(body) = read_to_string(&path) else {
+            continue;
+        };
+        let normalized = normalize_whitespace(&body);
+        for phrase in retired {
+            if normalized.contains(&normalize_whitespace(phrase)) {
+                failures.push(format!(
+                    "{} contains retired interview framing",
+                    normalize_path(&path)
+                ));
+            }
+        }
+    }
+    push_check(
+        checks,
+        "guidance.interview_retired_framing",
+        failures.is_empty(),
+        Some(repo_root),
+        if failures.is_empty() {
+            "guidance does not retain the retired public-sources-only interview framing".to_string()
+        } else {
+            failures.join("; ")
+        },
+    );
+}
+
 fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     for relative in ["AGENTS.md", "CLAUDE.md"] {
         let path = host_root.join(relative);
@@ -506,6 +634,10 @@ fn read_to_string(path: &Path) -> Result<String> {
 
 fn normalize_newlines(value: &str) -> String {
     value.replace("\r\n", "\n")
+}
+
+fn normalize_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn print_docs_audit_report(report: &DocsAuditReport) {

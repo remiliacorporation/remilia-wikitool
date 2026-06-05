@@ -83,6 +83,9 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
                 && body.contains("knowledge interview validate")
                 && body.contains("knowledge article-start --brief-path")
                 && body.contains("review --brief-path")
+                && body.contains("intent, scope, and")
+                && body.contains("well-documented")
+                && body.contains("normal move")
                 && body.contains("user assertions are research leads")
                 && body.contains("opt-outs"),
             "packaged guidance must route human-in-loop article work through the interview faculty"
@@ -222,6 +225,9 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
                 && body.contains("knowledge interview validate")
                 && body.contains("article-start")
                 && body.contains("--brief-path")
+                && body.contains("intent, scope, and angle")
+                && body.contains("well-documented subjects")
+                && body.contains("normal move")
                 && body.contains(".wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md"),
             "knowledge interview wrappers must stay thin, help-backed, and ledger-aware"
         );
@@ -231,6 +237,9 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
         playbook.contains("Scout first")
             && playbook.contains("freeform dump")
             && playbook.contains("Read supplied materials")
+            && playbook.contains("what the person actually wants written")
+            && playbook.contains("well-documented subjects")
+            && playbook.contains("This is framing, not a forced")
             && playbook.contains("no fixed number of rounds")
             && playbook.contains("interviewer/critic loop")
             && playbook.contains("explicit opt-out")
@@ -245,6 +254,12 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
         "interview playbook must preserve the adaptive, evidence-bounded intake contract"
     );
     assert!(
+        !playbook.contains(
+            "Reach for it when your specific knowledge reaches further than public sources do"
+        ),
+        "interview playbook must not narrow usage to public-source gaps"
+    );
+    assert!(
         !playbook.contains("There is not yet a Rust `knowledge interview` command")
             && !claude_skill.contains("Do not invent a `knowledge interview` CLI command")
             && !codex_skill.contains("Do not invent a `knowledge interview` CLI command"),
@@ -254,6 +269,15 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
         codex_readme.contains("wikitool-knowledge-interview")
             && writing_readme.contains("interview_playbook.md"),
         "bundle indexes must expose the interview skill and playbook"
+    );
+
+    let release_log = read_repo_file("RELEASE_LOG.md");
+    assert!(
+        release_log.contains("normal move after the article-start scout")
+            && release_log.contains("Its purpose is direction")
+            && release_log.contains("well-documented subject")
+            && !release_log.contains("skip it when they do not"),
+        "0.4.0 release notes must describe interview as direction-first, not public-source-gap-only"
     );
 }
 

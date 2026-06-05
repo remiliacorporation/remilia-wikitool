@@ -45,8 +45,9 @@ the compact/default behavior. Generated help changes require regenerating `docs/
 Agent guidance should stay aligned with the command boundaries:
 
 - Route authoring through `knowledge article-start`; use `knowledge contracts` and `knowledge inspect` for targeted drill-downs.
-- Route new articles and substantial expansions through the knowledge-interview skill when human
-  context can improve scope, source leads, or editorial framing, unless the user opts out.
+- Route new articles and substantial expansions through the knowledge-interview skill by default,
+  unless the user opts out or the task is mechanical. The interview sets article intent, scope, and
+  angle; it is not limited to cases where the user knows facts absent from public sources.
 - Use `wiki profile show` and `wiki surface show` for target-wiki contracts, not assumptions from
   source wikis.
 - Use `knowledge inspect` subcommands for targeted retrieval and audit slices.

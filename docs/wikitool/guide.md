@@ -68,14 +68,15 @@ wikitool review --format json --view brief --summary "Summary"
 ## Human-in-loop authoring
 
 For new articles and substantial expansions, the recommended agent flow is scout first, then
-interview when human context can improve the article. Start with
+interview by default unless the user opts out or the task is mechanical. Start with
 `knowledge article-start --view brief` and a cursory wiki/source search so questions are grounded in
 what wikitool already knows. Then use the packaged knowledge-interview skill and
-`writing_context/interview_playbook.md` to collect the user's freeform knowledge. Read any supplied
-documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the
-interview. Reflect the emerging article scope and ask adaptive follow-ups where the answer changes
-structure, research targets, terminology, date/order disambiguation, source strategy, or risk. There is
-no fixed round count; continue while new answers materially improve the article.
+`writing_context/interview_playbook.md` to set the article's intent, scope, and angle with the user,
+including well-documented subjects where the value is Remilia Wiki's framing rather than missing
+facts. Read any supplied documents, links, notes, transcripts, screenshots, or source excerpts before
+narrowing the interview. Reflect the emerging article scope and ask adaptive follow-ups where the
+answer changes structure, research targets, terminology, date/order disambiguation, source strategy,
+or risk. There is no fixed round count; continue while new answers materially improve the article.
 
 Reusable interview distillations should be saved as:
 
