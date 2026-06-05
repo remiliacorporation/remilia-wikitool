@@ -6,35 +6,25 @@ Chronological release notes for tagged wikitool versions.
 
 Date: 2026-06-05
 
-This release is about how the tool handles a human's own knowledge. The interview faculty is now a
-real `/knowledge-interview` skill and playbook for drawing out what an editor knows before drafting,
-backed by a single ledger for whatever still needs a source. The per-claim bookkeeping that used to
-sit behind it is gone: it treated an editor's knowledge as suspect until proven, which is the wrong
-stance for a wiki that is often the first place a subject gets written down at all.
+This release adds a way to get a human's knowledge into the wiki before drafting. Wikitool now bundles a `/knowledge-interview` agent skill (for both Claude and Codex; other agents you may have to adjust) and a playbook for drawing out what an editor knows, plus a `knowledge interview` command family that keeps a small ledger of what the interview turned up and what still needs a source. None of this existed in 0.3.1.
 
-### Breaking changes
+The interview is optional and conversational, not a step you clear before writing. Reach for it when an editor knows more than the public sources do, and skip it when they do not. What the editor says is treated as reasonable truth once it passes a normal editorial check, rather than something to be proven before it can be trusted at all, which is the wrong stance for a wiki that is often the first place a subject gets written down. You still cite a real source when there is one, and the guidance names a habit to avoid: routing a fact you can already verify on-chain or first-hand through a weaker outside site just to have a link.
 
-- The `knowledge interview claim` commands, the `--claim-id` open-item flag, and the `.claims.json`
-  sidecar are removed. Track unresolved sources and follow-ups as open items; a new `do-not-assert`
-  kind holds a claim that should stay out of an article until it has a source.
-- `knowledge interview show` and `validate` no longer report claim counts. Their JSON now carries the
-  brief's draft plan instead.
+### New
+
+- `knowledge interview` starts a brief, logs open questions and dead-end sources as open items, resolves them as they close, and validates or audits the ledger. A finished brief feeds `knowledge article-start` and `review` through `--brief-path`.
+- The `/knowledge-interview` skill and `interview_playbook.md`, bundled for Claude and Codex.
 
 ### Improvements
 
-- Interviewing is optional, not a gate. Reach for it when an editor knows more than the sources do,
-  and skip it when they do not.
-- Sourcing guidance matches how the wiki actually works. A quality-gated statement from a creator or a
-  knowledgeable editor can stand on its own, and you cite the real source when there is one. It also
-  names a habit to avoid: routing a fact you can already verify on-chain or first-hand through a
-  weaker outside site just to have a link.
-- Headings stop tripping over names. "Place in the Radbro Webring" is left alone because the tool
-  recognizes Radbro and Webring as proper nouns, not Title Case slips.
+- The article quality banner now reads as an editorial review state (`unverified`, `wip`, `verified`) rather than an AI-authorship label, and lint leaves an intentional state alone.
+- Headings stop tripping over names. e.g. "Place in the Radbro Webring" is left alone because the tool recognizes Radbro and Webring as proper nouns, not Title Case slips.
 - Template checks stop flagging parameters a template is visibly used with on real pages.
 
 ### Fixes
 
 - Sentence-case heading suggestions keep proper nouns capitalized instead of lowercasing them.
+- A page no longer shows as changed over a trailing-newline-only difference during sync.
 
 ## 0.3.1
 
