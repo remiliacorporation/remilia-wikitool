@@ -1,6 +1,6 @@
 ---
 name: wikitool-knowledge-interview
-description: Interview users for wiki authoring and review knowledge before research and drafting when human context matters.
+description: Interview users to shape an article's intent, scope, and angle and surface what they know, before research and drafting.
 ---
 
 # Skill: wikitool-knowledge-interview
@@ -20,14 +20,18 @@ transcripts, notes, or source excerpts, read them before narrowing the interview
 better questions. Then interview to the depth needed to improve the article or review; there is no
 fixed round count.
 
-Interviewing is an optional, conversational lane, not a required step. Reach for it on new articles
-and substantial expansions when the user's own knowledge would improve the article, and skip it
-freely - for mechanical lint, link, sync, source-fetch, or validation tasks, for well-covered
-subjects, or whenever the user opts out. When you do interview, begin with a broad freeform prompt
-that asks the user what the subject is, why it matters, what sources or artifacts matter, what
-outsiders misunderstand, and what should not be overstated. Reflect the scope back in neutral wiki
-language, ask adaptive follow-ups based on article-shaping gaps, and continue while new answers
-materially improve scope, terminology, date/order disambiguation, source strategy, section planning, or risk.
+Interviewing is an optional, conversational lane, not a rigid gate - but for real article work it is
+the normal move. Its job is direction: find out what the person actually wants written, not only what
+they know that the public record lacks. Reach for it by default on new articles and substantial
+expansions, including well-documented subjects, because Remilia Wiki writes every subject from its own
+perspective and the interview is how that angle gets set - a generic entry on the manul becomes the
+manul as this wiki would frame it. Skip it for mechanical lint, link, sync, source-fetch, or validation
+tasks, on an explicit opt-out, or for tiny edits. When you do interview, begin with a broad freeform
+prompt that asks the user what the article should be about and why, what they know, what details or
+sources may not be online, what outsiders misunderstand, and what should not be overstated. Reflect the
+scope back in neutral wiki language, ask adaptive follow-ups based on article-shaping gaps, and continue
+while new answers materially improve scope, terminology, date/order disambiguation, source strategy,
+section planning, or risk.
 
 When the interview yields reusable knowledge, write a brief under
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat the brief as working notes,

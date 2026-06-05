@@ -1,8 +1,9 @@
 # Knowledge Interview Playbook
 
-Use this playbook when a user asks for article creation, substantial expansion, article refresh,
-or a review where human context can materially improve the article. It is a general knowledge
-elicitation workflow, not a script for one article type and not a checklist to rush through.
+Use this playbook when a user asks for article creation, substantial expansion, article refresh, or a
+review. The interview is how the agent finds out what the person actually wants written, not only what
+they happen to know that the public record lacks. It is a general elicitation workflow, not a script
+for one article type and not a checklist to rush through.
 
 Interview briefs are working notes. They are not article prose, citation evidence, proof that a
 claim is true, or proof that the interview is complete. Treat user assertions as leads, then write
@@ -16,17 +17,25 @@ through a weaker third party just to manufacture an external citation.
 
 ## When To Interview
 
-Interviewing is an optional, conversational lane, not a required step before drafting. Reach for it
-when human context would improve the article:
+Interviewing is an optional, conversational lane, not a rigid gate before drafting - but for real
+article work it is the normal move, not an exception. Its job is direction: before drafting, draw out
+the subject as the person sees it - what the article should be about and where its emphasis sits, what
+they already know, details that may never have been put online, and any sources, artifacts, or context
+the agent should use. On Remilia Wiki every subject is written from the wiki's own perspective, so this
+matters even when the topic is exhaustively documented elsewhere: an interview turns a generic entry on,
+say, the manul into the manul as Remilia Wiki would frame it - what a person writing here wants it to
+foreground and how it sits in the wiki's world. A contributor writing for this wiki already has that
+lens; the interview surfaces it. This is framing, not a forced "relationship to Remilia" section.
 
-- New articles where the user likely knows context, names, date/order details that disambiguate the subject, relationships, terminology,
-  or subcultural importance that public search may miss.
-- Substantial expansions or rewrites where the user's taste and domain model should shape the
-  scope before drafting.
-- Audits or refreshes where mechanical checks reveal unresolved conflicts, missing context, or
+Reach for it by default on:
+
+- New articles, where the intent, scope, and angle are worth setting with the person before drafting,
+  including well-documented subjects where the value is the wiki's framing rather than missing facts.
+- Substantial expansions or rewrites, where the user's taste and domain model should shape the scope.
+- Audits or refreshes, where mechanical checks reveal unresolved conflicts, missing context, or
   editorial choices that cannot be decided from sources alone.
 
-Skip or keep it minimal for:
+Keep it light or skip it for:
 
 - mechanical link checks, lint/fix passes, category cleanup, sync review, or source extraction.
 - Requests with an explicit opt-out such as "no interview" or "just draft from sources".

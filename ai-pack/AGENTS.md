@@ -89,11 +89,13 @@ wikitool knowledge article-start "Cheetah" --contract-query "species infobox tax
 wikitool knowledge contracts search "contract terms" --format json
 ```
 
-For new articles and substantial expansions, scout first with `knowledge article-start`. The
-knowledge-interview faculty is an optional, conversational lane: reach for it when human context can
-improve scope, terminology, relationships, date/order disambiguation, or source leads, and skip it
-freely for mechanical lint, link, sync, source-fetch, or validation work, for well-covered subjects,
-or on explicit opt-outs such as "no interview".
+For new articles and substantial expansions, scout first with `knowledge article-start`, then
+interview by default. The knowledge-interview faculty is an optional, conversational lane, but for real
+article work it is the normal move: its job is to set what the article should be - intent, scope, and
+angle - and surface what the person knows, what may not be online, and which sources to use, so the
+draft is shaped to the wiki's perspective rather than generic. This holds even for well-documented
+subjects. Skip it for mechanical lint, link, sync, source-fetch, or validation work, on explicit opt-outs
+such as "no interview", or for tiny edits.
 
 The interview is an elicitation loop, not a checklist. Read any user-supplied documents, links,
 screenshots, transcripts, notes, or source excerpts before narrowing the questions. Start with a
