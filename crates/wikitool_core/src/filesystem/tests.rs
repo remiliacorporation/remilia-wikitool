@@ -3,8 +3,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::{
-    Namespace, ScanOptions, content_path_to_title, relative_path_to_title, scan_files, scan_stats,
-    template_path_to_title, title_to_relative_path, validate_scoped_path,
+    Namespace, ScanOptions, case_safe_title_relative_path, content_path_to_title,
+    relative_path_to_title, scan_files, scan_stats, template_path_to_title, title_to_relative_path,
+    validate_scoped_path,
 };
 use crate::runtime::{ResolvedPaths, ValueSource};
 use tempfile::tempdir;
@@ -151,6 +152,36 @@ fn windows_separator_content_parse() {
 fn windows_separator_template_parse() {
     let title = template_path_to_title("navbox\\Module_Navbar\\configuration.lua");
     assert_eq!(title, "Module:Navbar/configuration");
+}
+
+#[test]
+fn case_safe_paths_decode_exact_mediawiki_title() {
+    let relative = case_safe_title_relative_path(
+        "templates/quotation/Template_Quote_box.wiki",
+        "Template:Quote box",
+    );
+    assert!(relative.contains("__mwtitle_"));
+    assert_eq!(
+        template_path_to_title(
+            relative
+                .strip_prefix("templates/")
+                .expect("template relative path")
+        ),
+        "Template:Quote box"
+    );
+
+    let relative = case_safe_title_relative_path(
+        "wiki_content/Main/I_Long_For_Network_Spirituality.wiki",
+        "I Long For Network Spirituality",
+    );
+    assert_eq!(
+        content_path_to_title(
+            relative
+                .strip_prefix("wiki_content/")
+                .expect("content relative path")
+        ),
+        "I Long For Network Spirituality"
+    );
 }
 
 #[test]

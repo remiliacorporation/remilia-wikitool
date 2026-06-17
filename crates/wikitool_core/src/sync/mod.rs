@@ -8,7 +8,8 @@ use rusqlite::{Connection, params};
 use similar::TextDiff;
 
 use crate::filesystem::{
-    NamespaceMapper, ScanOptions, ScannedFile, scan_files, validate_scoped_path,
+    NamespaceMapper, ScanOptions, ScannedFile, case_safe_title_relative_path, scan_files,
+    validate_scoped_path,
 };
 use crate::knowledge::content_index::rebuild_index;
 pub use crate::mw::{

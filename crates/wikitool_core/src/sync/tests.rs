@@ -182,6 +182,26 @@ fn base_page(title: &str, content: &str) -> RemotePage {
 }
 
 #[test]
+fn sync_title_keys_preserve_case_after_initial_character() {
+    assert_eq!(
+        super::normalized_title_key("network_Spirituality"),
+        super::normalized_title_key("Network Spirituality")
+    );
+    assert_ne!(
+        super::normalized_title_key("Network Spirituality"),
+        super::normalized_title_key("Network spirituality")
+    );
+    assert_eq!(
+        super::normalized_title_key("template:infobox Concept"),
+        super::normalized_title_key("Template:Infobox Concept")
+    );
+    assert_ne!(
+        super::normalized_title_key("Template:Infobox Concept"),
+        super::normalized_title_key("Template:Infobox concept")
+    );
+}
+
+#[test]
 fn namespace_discovery_filters_builtin_and_talk_namespaces() {
     let builtin = SiteInfoNamespace {
         id: 14,
@@ -424,6 +444,188 @@ fn pull_preserves_old_path_when_redirect_target_has_local_conflict() {
     );
     let redirect_content = fs::read_to_string(&redirect_path).expect("read redirect path");
     assert_eq!(redirect_content, "conflicting local redirect");
+}
+
+#[test]
+fn pull_keeps_case_distinct_redirect_and_target_pages() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    let mut redirect = base_page("Network Spirituality", "#REDIRECT [[Network spirituality]]");
+    redirect.page_id = 101;
+    redirect.revision_id = 201;
+    redirect.timestamp = "2026-02-18T00:00:00Z".to_string();
+    let mut target = base_page("Network spirituality", "network spirituality body");
+    target.page_id = 102;
+    target.revision_id = 202;
+    target.timestamp = "2026-02-19T00:00:00Z".to_string();
+
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace.insert(
+        NS_MAIN,
+        vec![
+            "Network Spirituality".to_string(),
+            "Network spirituality".to_string(),
+        ],
+    );
+    api.page_contents
+        .insert("Network Spirituality".to_string(), redirect);
+    api.page_contents
+        .insert("Network spirituality".to_string(), target);
+
+    let report = pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: false,
+        },
+        &mut api,
+    )
+    .expect("pull");
+
+    assert!(report.success);
+    assert_eq!(report.created, 2);
+    let redirect_content = fs::read_to_string(
+        paths
+            .wiki_content_dir
+            .join("Main")
+            .join("_redirects")
+            .join("Network_Spirituality.wiki"),
+    )
+    .expect("read redirect");
+    assert_eq!(redirect_content, "#REDIRECT [[Network spirituality]]");
+    let target_content = fs::read_to_string(
+        paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Network_spirituality.wiki"),
+    )
+    .expect("read target");
+    assert_eq!(target_content, "network spirituality body");
+
+    let plan = plan_sync_changes(
+        &paths,
+        &SyncPlanOptions {
+            include_templates: false,
+            categories_only: false,
+            include_deletes: true,
+            include_remote_conflicts: false,
+            selection: SyncSelection::default(),
+        },
+    )
+    .expect("plan")
+    .expect("plan report");
+    assert_eq!(plan.new_local, 0);
+    assert_eq!(plan.modified_local, 0);
+    assert_eq!(plan.deleted_local, 0);
+}
+
+#[test]
+fn pull_uses_case_safe_path_for_case_colliding_titles() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(paths.wiki_content_dir.join("Main")).expect("create main dir");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("I_Long_for_Network_Spirituality.wiki"),
+        "stale lower body",
+    );
+
+    let mut upper = base_page("I Long For Network Spirituality", "upper body");
+    upper.page_id = 301;
+    upper.revision_id = 401;
+    let mut lower = base_page("I Long for Network Spirituality", "lower body");
+    lower.page_id = 302;
+    lower.revision_id = 402;
+
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace.insert(
+        NS_MAIN,
+        vec![
+            "I Long For Network Spirituality".to_string(),
+            "I Long for Network Spirituality".to_string(),
+        ],
+    );
+    api.page_contents
+        .insert("I Long For Network Spirituality".to_string(), upper);
+    api.page_contents
+        .insert("I Long for Network Spirituality".to_string(), lower);
+
+    let report = pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: true,
+        },
+        &mut api,
+    )
+    .expect("pull");
+
+    assert!(report.success);
+    assert_eq!(
+        fs::read_to_string(
+            paths
+                .wiki_content_dir
+                .join("Main")
+                .join("I_Long_for_Network_Spirituality.wiki")
+        )
+        .expect("read normal path"),
+        "lower body"
+    );
+    let escaped_path = fs::read_dir(paths.wiki_content_dir.join("Main"))
+        .expect("read main dir")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains("__mwtitle_"))
+        })
+        .expect("case-safe path");
+    assert_eq!(
+        fs::read_to_string(&escaped_path).expect("read escaped path"),
+        "upper body"
+    );
+    let escaped_relative = escaped_path
+        .strip_prefix(&paths.project_root)
+        .expect("relative escaped path")
+        .to_string_lossy()
+        .replace('\\', "/");
+    assert_eq!(
+        crate::filesystem::relative_path_to_title(&paths, &escaped_relative)
+            .expect("parse escaped title"),
+        "I Long For Network Spirituality"
+    );
+
+    let plan = plan_sync_changes(
+        &paths,
+        &SyncPlanOptions {
+            include_templates: false,
+            categories_only: false,
+            include_deletes: true,
+            include_remote_conflicts: false,
+            selection: SyncSelection::default(),
+        },
+    )
+    .expect("plan")
+    .expect("plan report");
+    assert_eq!(plan.new_local, 0);
+    assert_eq!(plan.modified_local, 0);
+    assert_eq!(plan.deleted_local, 0);
 }
 
 #[test]

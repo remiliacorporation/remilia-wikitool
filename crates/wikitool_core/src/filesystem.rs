@@ -14,6 +14,8 @@ use crate::config::load_config;
 use crate::runtime::ResolvedPaths;
 use crate::support::{compute_wiki_sync_hash, normalize_pathbuf, parse_redirect};
 
+const CASE_SAFE_TITLE_MARKER: &str = "__mwtitle_";
+
 #[derive(Debug, Clone)]
 struct CachedTemplateCategoryMappings {
     modified_at: Option<SystemTime>,
@@ -300,6 +302,21 @@ pub fn title_to_relative_path(
     Ok(mapper.title_to_relative_path(paths, title, is_redirect))
 }
 
+pub fn case_safe_title_relative_path(relative_path: &str, title: &str) -> String {
+    let normalized = normalize_separators(relative_path);
+    let (directory, filename) = normalized
+        .rsplit_once('/')
+        .map(|(directory, filename)| (Some(directory), filename))
+        .unwrap_or((None, normalized.as_str()));
+    let (stem, extension) = split_known_extension(filename);
+    let encoded_title = hex_encode(title.as_bytes());
+    let filename = format!("{stem}{CASE_SAFE_TITLE_MARKER}{encoded_title}{extension}");
+    match directory {
+        Some(directory) if !directory.is_empty() => format!("{directory}/{filename}"),
+        _ => filename,
+    }
+}
+
 fn title_to_relative_path_with_rules(
     paths: &ResolvedPaths,
     title: &str,
@@ -407,6 +424,9 @@ fn relative_path_to_title_with_rules(
     custom_rules: &[CustomNamespaceRule],
 ) -> String {
     let normalized = normalize_separators(relative_path);
+    if let Some(title) = case_safe_title_from_path(&normalized) {
+        return title;
+    }
     let content_rel = rel_from_root(paths, &paths.wiki_content_dir);
     let templates_rel = rel_from_root(paths, &paths.templates_dir);
 
@@ -621,6 +641,9 @@ fn content_path_to_title_with_rules(
     custom_rules: &[CustomNamespaceRule],
 ) -> String {
     let normalized = normalize_separators(content_rel_path);
+    if let Some(title) = case_safe_title_from_path(&normalized) {
+        return title;
+    }
     let mut segments: Vec<&str> = normalized
         .split('/')
         .filter(|segment| !segment.is_empty())
@@ -652,6 +675,9 @@ fn content_path_to_title_with_rules(
 
 pub fn template_path_to_title(templates_rel_path: &str) -> String {
     let normalized = normalize_separators(templates_rel_path);
+    if let Some(title) = case_safe_title_from_path(&normalized) {
+        return title;
+    }
     let raw_segments: Vec<&str> = normalized
         .split('/')
         .filter(|segment| !segment.is_empty())
@@ -841,7 +867,7 @@ fn decode_segment(value: &str) -> String {
 }
 
 fn strip_known_extensions(value: &str) -> &str {
-    strip_one_of(value, &[".wiki", ".wikitext", ".lua", ".css", ".js"])
+    split_known_extension(value).0
 }
 
 fn strip_base_extension(value: &str) -> &str {
@@ -859,6 +885,61 @@ fn strip_one_of<'a>(value: &'a str, extensions: &[&str]) -> &'a str {
         }
     }
     value
+}
+
+fn split_known_extension(value: &str) -> (&str, &str) {
+    for ext in [".wikitext", ".wiki", ".lua", ".css", ".js"] {
+        if let Some(stripped) = value.strip_suffix(ext) {
+            return (stripped, ext);
+        }
+    }
+    (value, "")
+}
+
+fn case_safe_title_from_path(path: &str) -> Option<String> {
+    let filename = path.rsplit('/').next().unwrap_or(path);
+    let stem = strip_known_extensions(filename);
+    let (_, encoded) = stem.rsplit_once(CASE_SAFE_TITLE_MARKER)?;
+    let bytes = hex_decode(encoded)?;
+    String::from_utf8(bytes).ok()
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(hex_digit(byte >> 4));
+        out.push(hex_digit(byte & 0x0f));
+    }
+    out
+}
+
+fn hex_digit(value: u8) -> char {
+    match value {
+        0..=9 => char::from(b'0' + value),
+        10..=15 => char::from(b'a' + value - 10),
+        _ => unreachable!(),
+    }
+}
+
+fn hex_decode(value: &str) -> Option<Vec<u8>> {
+    if value.len() % 2 != 0 {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(value.len() / 2);
+    let mut chars = value.bytes();
+    while let (Some(high), Some(low)) = (chars.next(), chars.next()) {
+        bytes.push((hex_value(high)? << 4) | hex_value(low)?);
+    }
+    Some(bytes)
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn file_extension(namespace: Namespace, title: &str) -> &'static str {

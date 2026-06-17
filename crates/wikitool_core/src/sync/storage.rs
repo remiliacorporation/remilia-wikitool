@@ -3,10 +3,7 @@ use super::*;
 pub(super) fn remove_sync_ledger_entry(connection: &Connection, title: &str) -> Result<()> {
     initialize_sync_schema(connection)?;
     connection
-        .execute(
-            "DELETE FROM sync_ledger_pages WHERE lower(title) = lower(?1)",
-            [title],
-        )
+        .execute("DELETE FROM sync_ledger_pages WHERE title = ?1", [title])
         .with_context(|| format!("failed to delete sync ledger row for {title}"))?;
     Ok(())
 }
@@ -103,10 +100,7 @@ pub(super) fn upsert_sync_snapshot(
 pub(super) fn remove_sync_snapshot(connection: &Connection, title: &str) -> Result<()> {
     initialize_sync_schema(connection)?;
     connection
-        .execute(
-            "DELETE FROM sync_snapshots WHERE lower(title) = lower(?1)",
-            [title],
-        )
+        .execute("DELETE FROM sync_snapshots WHERE title = ?1", [title])
         .with_context(|| format!("failed to delete sync snapshot for {title}"))?;
     Ok(())
 }
@@ -248,9 +242,40 @@ pub(super) fn absolute_path_from_relative(paths: &ResolvedPaths, relative: &str)
 }
 
 pub(super) fn normalized_title_key(title: &str) -> String {
-    normalize_title_for_storage(title).to_ascii_lowercase()
+    let normalized = normalize_title_for_storage(title);
+    let Some((prefix, rest)) = normalized.split_once(':') else {
+        return normalize_title_initial(&normalized);
+    };
+    let Some(namespace) = canonical_namespace_prefix(prefix) else {
+        return normalize_title_initial(&normalized);
+    };
+    format!("{namespace}:{}", normalize_title_initial(rest))
 }
 
 pub(super) fn normalize_title_for_storage(title: &str) -> String {
     title.replace('_', " ").trim().to_string()
+}
+
+fn canonical_namespace_prefix(prefix: &str) -> Option<&'static str> {
+    match prefix.trim().to_ascii_lowercase().as_str() {
+        "category" => Some("Category"),
+        "file" => Some("File"),
+        "user" => Some("User"),
+        "template" => Some("Template"),
+        "module" => Some("Module"),
+        "mediawiki" => Some("MediaWiki"),
+        _ => None,
+    }
+}
+
+fn normalize_title_initial(title: &str) -> String {
+    let mut chars = title.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+
+    let mut out = String::new();
+    out.extend(first.to_uppercase());
+    out.push_str(chars.as_str());
+    out
 }

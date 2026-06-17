@@ -51,6 +51,18 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
     let mut files_changed = false;
     let mut max_timestamp: Option<String> = None;
     let namespace_mapper = NamespaceMapper::load(paths)?;
+    let existing_local_by_title = load_existing_local_files(paths)?;
+    let relative_paths_by_title = select_relative_paths_for_pull(
+        paths,
+        &pages_to_pull,
+        &content_by_title,
+        &namespace_mapper,
+        &existing_local_by_title,
+    );
+    let protected_relative_path_keys = relative_paths_by_title
+        .values()
+        .map(|relative_path| case_insensitive_path_key(relative_path))
+        .collect::<BTreeSet<_>>();
 
     for title in &pages_to_pull {
         let key = normalized_title_key(title);
@@ -69,8 +81,12 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
         };
 
         let (is_redirect, redirect_target) = parse_redirect(&page.content);
-        let relative_path =
-            namespace_mapper.title_to_relative_path(paths, &page.title, is_redirect);
+        let relative_path = relative_paths_by_title
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| {
+                namespace_mapper.title_to_relative_path(paths, &page.title, is_redirect)
+            });
         let absolute_path = absolute_path_from_relative(paths, &relative_path);
         validate_scoped_path(paths, &absolute_path)?;
         ensure_parent_dir(&absolute_path)?;
@@ -81,6 +97,7 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
             paths,
             &ledger_entry,
             &relative_path,
+            &protected_relative_path_keys,
             options.overwrite_local,
         )?;
 
@@ -210,6 +227,89 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
     Ok(report)
 }
 
+fn load_existing_local_files(paths: &ResolvedPaths) -> Result<BTreeMap<String, ScannedFile>> {
+    let mut out = BTreeMap::new();
+    for file in scan_files(
+        paths,
+        &ScanOptions {
+            include_content: true,
+            include_templates: true,
+            ..ScanOptions::default()
+        },
+    )? {
+        out.insert(normalized_title_key(&file.title), file);
+    }
+    Ok(out)
+}
+
+fn select_relative_paths_for_pull(
+    paths: &ResolvedPaths,
+    pages_to_pull: &[String],
+    content_by_title: &BTreeMap<String, RemotePage>,
+    namespace_mapper: &NamespaceMapper,
+    existing_local_by_title: &BTreeMap<String, ScannedFile>,
+) -> BTreeMap<String, String> {
+    let mut candidates = Vec::new();
+
+    for title in pages_to_pull {
+        let key = normalized_title_key(title);
+        let Some(page) = content_by_title.get(&key) else {
+            continue;
+        };
+        let (is_redirect, _) = parse_redirect(&page.content);
+        let default_relative_path =
+            namespace_mapper.title_to_relative_path(paths, &page.title, is_redirect);
+        let (relative_path, existing_local) = existing_local_by_title
+            .get(&key)
+            .filter(|file| file.is_redirect == is_redirect)
+            .map(|file| (file.relative_path.clone(), true))
+            .unwrap_or((default_relative_path, false));
+        candidates.push(PullPathCandidate {
+            key,
+            title: page.title.clone(),
+            relative_path,
+            existing_local,
+        });
+    }
+
+    let mut groups = BTreeMap::<String, Vec<usize>>::new();
+    for (index, candidate) in candidates.iter().enumerate() {
+        groups
+            .entry(case_insensitive_path_key(&candidate.relative_path))
+            .or_default()
+            .push(index);
+    }
+
+    let mut out = BTreeMap::new();
+    for group in groups.values() {
+        let keep_index = group
+            .iter()
+            .copied()
+            .find(|index| candidates[*index].existing_local)
+            .unwrap_or(group[0]);
+
+        for index in group {
+            let candidate = &candidates[*index];
+            let relative_path = if *index == keep_index {
+                candidate.relative_path.clone()
+            } else {
+                case_safe_title_relative_path(&candidate.relative_path, &candidate.title)
+            };
+            out.insert(candidate.key.clone(), relative_path);
+        }
+    }
+
+    out
+}
+
+#[derive(Debug)]
+struct PullPathCandidate {
+    key: String,
+    title: String,
+    relative_path: String,
+    existing_local: bool,
+}
+
 fn resolve_pages_to_pull<A: WikiReadApi>(
     connection: &Connection,
     options: &PullOptions,
@@ -269,12 +369,22 @@ fn stale_synced_path_for_removal(
     paths: &ResolvedPaths,
     existing: &Option<SyncLedgerEntry>,
     target_relative_path: &str,
+    protected_relative_path_keys: &BTreeSet<String>,
     overwrite_local: bool,
 ) -> Result<Option<PathBuf>> {
     let Some(existing) = existing else {
         return Ok(None);
     };
     if existing.relative_path == target_relative_path {
+        return Ok(None);
+    }
+
+    let existing_path_key = case_insensitive_path_key(&existing.relative_path);
+    let target_path_key = case_insensitive_path_key(target_relative_path);
+    if existing_path_key == target_path_key {
+        return Ok(None);
+    }
+    if protected_relative_path_keys.contains(&existing_path_key) {
         return Ok(None);
     }
 
@@ -301,6 +411,10 @@ fn stale_synced_path_for_removal(
     }
 
     Ok(Some(old_absolute))
+}
+
+fn case_insensitive_path_key(path: &str) -> String {
+    normalize_path(path).to_ascii_lowercase()
 }
 
 fn remove_stale_synced_path(stale_path: Option<&Path>) -> Result<bool> {

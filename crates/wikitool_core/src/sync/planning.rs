@@ -276,7 +276,9 @@ fn resolve_sync_selection(
     for title in &selection.titles {
         let normalized = normalize_title_for_storage(title);
         if !normalized.is_empty() {
-            resolved.title_keys.insert(normalized.to_ascii_lowercase());
+            resolved
+                .title_keys
+                .insert(normalized_title_key(&normalized));
         }
     }
     for path in &selection.paths {
