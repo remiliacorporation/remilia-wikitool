@@ -29,6 +29,8 @@ Commands:
   module     Run Lua module linting and related checks
   export     Export a remote wiki page tree to local files
   delete     Delete a page from the live wiki
+  purge      Purge pages through the MediaWiki API
+  upload     Upload a local file through the MediaWiki API
   db         Inspect or reset the local runtime database
   docs       Manage and query pinned MediaWiki docs corpora
   import     Import content from external sources
@@ -336,6 +338,54 @@ Options:
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
       --dry-run              Preview deletion without making changes
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+  -h, --help                 Print help
+```
+
+## purge
+
+```text
+Purge pages through the MediaWiki API
+
+Usage: wikitool purge [OPTIONS] [TITLE]...
+
+Arguments:
+  [TITLE]...
+
+Options:
+      --project-root <PATH>
+      --title <TITLE>
+      --data-dir <PATH>
+      --titles-file <PATH>        Read one canonical page title per line
+      --config <PATH>
+      --forcelinkupdate           Force link table update while purging
+      --diagnostics               Print resolved runtime diagnostics
+      --forcerecursivelinkupdate  Force recursive link table update while purging
+      --dry-run                   Preview purge without writing to the wiki
+      --format <FORMAT>           Output format: text|json [default: text] [possible values: text, json]
+  -h, --help                      Print help
+```
+
+## upload
+
+```text
+Upload a local file through the MediaWiki API
+
+Usage: wikitool upload [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>
+
+Options:
+      --filename <FILENAME>  Target wiki filename
+      --project-root <PATH>
+      --comment <TEXT>       Upload comment [default: "Upload via wikitool"]
+      --data-dir <PATH>
+      --config <PATH>
+      --text <WIKITEXT>      Initial file description text
+      --diagnostics          Print resolved runtime diagnostics
+      --ignore-warnings      Pass ignorewarnings=1 to MediaWiki upload
+      --dry-run              Preview upload without writing to the wiki
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
   -h, --help                 Print help
 ```
