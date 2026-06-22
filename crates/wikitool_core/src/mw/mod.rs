@@ -15,3 +15,4 @@ pub use namespace::{NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE};
 pub use search::{
     ExternalSearchReport, MediaWikiSearchOptions, MediaWikiSearchWhat, search_pages_report,
 };
+pub use write::{PurgeOptions, PurgePageReport, PurgeReport, UploadOptions, UploadReport};

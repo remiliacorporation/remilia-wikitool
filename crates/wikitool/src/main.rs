@@ -21,6 +21,7 @@ mod knowledge_cli;
 mod knowledge_inspect_cli;
 mod lsp_cli;
 mod module_cli;
+mod ops_cli;
 mod quality_cli;
 mod query_cli;
 #[cfg(feature = "maintainer")]
@@ -96,6 +97,10 @@ enum Commands {
     Export(export_cli::ExportArgs),
     #[command(about = "Delete a page from the live wiki")]
     Delete(sync_cli::DeleteArgs),
+    #[command(about = "Purge pages through the MediaWiki API")]
+    Purge(ops_cli::PurgeArgs),
+    #[command(about = "Upload a local file through the MediaWiki API")]
+    Upload(ops_cli::UploadArgs),
     #[command(about = "Inspect or reset the local runtime database")]
     Db(db_cli::DbArgs),
     #[command(about = "Manage and query pinned MediaWiki docs corpora")]
@@ -154,6 +159,8 @@ fn main() -> Result<()> {
         Some(Commands::Module(args)) => module_cli::run_module(&runtime, args),
         Some(Commands::Export(args)) => export_cli::run_export(&runtime, args),
         Some(Commands::Delete(args)) => sync_cli::run_delete(&runtime, args),
+        Some(Commands::Purge(args)) => ops_cli::run_purge(&runtime, args),
+        Some(Commands::Upload(args)) => ops_cli::run_upload(&runtime, args),
         Some(Commands::Db(args)) => db_cli::run_db(&runtime, args),
         Some(Commands::Docs(args)) => docs_cli::run_docs(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
@@ -431,5 +438,35 @@ mod tests {
         for args in cases {
             Cli::try_parse_from(*args).expect_err("compatibility alias should not parse");
         }
+    }
+
+    #[test]
+    fn mediawiki_operation_commands_parse() {
+        let purge = Cli::try_parse_from([
+            "wikitool",
+            "purge",
+            "Main Page",
+            "--title",
+            "Template:Trait gallery",
+            "--forcelinkupdate",
+            "--format",
+            "json",
+        ])
+        .expect("purge should parse");
+        assert!(matches!(purge.command, Some(Commands::Purge(_))));
+
+        let upload = Cli::try_parse_from([
+            "wikitool",
+            "upload",
+            "image.png",
+            "--filename",
+            "Example.png",
+            "--comment",
+            "test",
+            "--ignore-warnings",
+            "--dry-run",
+        ])
+        .expect("upload should parse");
+        assert!(matches!(upload.command, Some(Commands::Upload(_))));
     }
 }

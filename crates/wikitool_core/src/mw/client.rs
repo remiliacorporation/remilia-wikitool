@@ -3,6 +3,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use reqwest::blocking::Client;
+use reqwest::blocking::multipart::Form;
 use reqwest::{StatusCode, Url};
 use serde::Serialize;
 use serde_json::Value;
@@ -235,6 +236,67 @@ impl MediaWikiClient {
                 .post(&self.config.api_url)
                 .header("User-Agent", self.config.user_agent.clone())
                 .form(&pairs)
+                .send();
+
+            match response {
+                Ok(response) => {
+                    let status = response.status();
+                    if !status.is_success() {
+                        if attempt < max_retries && is_retryable_status(status) {
+                            self.wait_before_retry(attempt, is_write);
+                            continue;
+                        }
+                        bail!("MediaWiki API request failed with HTTP {status}");
+                    }
+
+                    let payload: Value = response
+                        .json()
+                        .context("failed to decode MediaWiki API JSON response")?;
+                    if let Some(error) = payload.get("error") {
+                        let code = error
+                            .get("code")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unknown_error");
+                        let info = error
+                            .get("info")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unknown info");
+                        bail!("MediaWiki API error [{code}]: {info}");
+                    }
+                    return Ok(payload);
+                }
+                Err(error) => {
+                    if attempt < max_retries && is_retryable_error(&error) {
+                        self.wait_before_retry(attempt, is_write);
+                        continue;
+                    }
+                    return Err(error).context("failed to call MediaWiki API");
+                }
+            }
+        }
+
+        bail!("MediaWiki API request exhausted retry budget")
+    }
+
+    pub(crate) fn request_json_multipart_post(
+        &mut self,
+        mut build_form: impl FnMut() -> Result<Form>,
+        is_write: bool,
+    ) -> Result<Value> {
+        let max_retries = if is_write {
+            self.config.max_write_retries
+        } else {
+            self.config.max_retries
+        };
+
+        for attempt in 0..=max_retries {
+            let form = build_form()?;
+            self.apply_rate_limit(is_write);
+            let response = self
+                .client
+                .post(&self.config.api_url)
+                .header("User-Agent", self.config.user_agent.clone())
+                .multipart(form)
                 .send();
 
             match response {
