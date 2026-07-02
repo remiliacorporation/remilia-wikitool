@@ -286,12 +286,12 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
         "bundle indexes must expose the interview skill and playbook"
     );
 
-    let release_log = read_repo_file("RELEASE_LOG.md");
+    let changelog = read_repo_file("CHANGELOG.md");
     assert!(
-        release_log.contains("normal move after the article-start scout")
-            && release_log.contains("Its purpose is direction")
-            && release_log.contains("well-documented subject")
-            && !release_log.contains("skip it when they do not"),
+        changelog.contains("normal move after the article-start scout")
+            && changelog.contains("Its purpose is direction")
+            && changelog.contains("well-documented subject")
+            && !changelog.contains("skip it when they do not"),
         "0.4.0 release notes must describe interview as direction-first, not public-source-gap-only"
     );
 }

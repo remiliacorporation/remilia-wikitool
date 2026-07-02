@@ -74,6 +74,12 @@ struct ReleasePackageArgs {
         help = "Optional host project root containing CLAUDE.md + .claude/{rules,skills}"
     )]
     host_project_root: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Directory of unpacked contextmink release bundles, one subdirectory per platform slug (fetch with scripts/fetch_contextmink.sh)"
+    )]
+    contextmink_dist: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -126,6 +132,12 @@ struct ReleaseBuildMatrixArgs {
         help = "Optional host project root containing CLAUDE.md + .claude/{rules,skills}"
     )]
     host_project_root: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Directory of unpacked contextmink release bundles, one subdirectory per platform slug (fetch with scripts/fetch_contextmink.sh)"
+    )]
+    contextmink_dist: Option<PathBuf>,
 }
 
 pub(crate) fn run_release(args: ReleaseArgs) -> Result<()> {

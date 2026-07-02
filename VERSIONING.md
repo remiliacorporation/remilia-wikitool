@@ -75,7 +75,7 @@ Packaged / distributable:
 
 1. Pick next version using rules above.
 2. Update version in `Cargo.toml` workspace package.
-3. Update `RELEASE_LOG.md` with dated entry and highlights.
+3. Move the `[Unreleased]` notes in `CHANGELOG.md` under a dated `## [x.y.z] - date` heading.
 4. Run:
    - `cargo build`
    - `cargo fmt --all`

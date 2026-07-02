@@ -3,9 +3,6 @@ members = [
   "crates/wikitool",
   "crates/wikitool_core",
 ]
-# Vendored transcript guard: builds standalone (own lockfile, own tests) and
-# ships as a separate binary in release bundles. See release/bundle.rs.
-exclude = ["tools/contextmink"]
 resolver = "2"
 
 [workspace.package]

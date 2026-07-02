@@ -62,6 +62,12 @@ jobs:
         env:
           RAW: ${{ inputs.artifact_version }}
 
+      - name: Fetch pinned contextmink release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/fetch_contextmink.sh --platform ${{ matrix.platform }} --dest dist/contextmink-dist
+
       - name: Build + package versioned release bundle
         run: >
           cargo run --quiet --package wikitool --features maintainer --
@@ -69,6 +75,7 @@ jobs:
           --targets ${{ matrix.target }}
           --artifact-version ${{ steps.names.outputs.version }}
           --output-dir dist/release-matrix
+          --contextmink-dist dist/contextmink-dist
 
       - name: Verify packaged release (Unix)
         if: runner.os != 'Windows'
@@ -149,13 +156,20 @@ jobs:
       - name: List downloaded assets
         run: ls -lh release-zips/
 
-      - name: Extract release notes
+      - name: Extract release notes from CHANGELOG.md
         run: |
-          # RELEASE_LOG headings are bare semver ("## <x.y.z>"); subsections use "### "
-          # so they are not section boundaries. Capture up to the next "## " heading.
-          awk '/^## '"${VERSION}"'$/{found=1; next} /^## /{if(found) exit} found' RELEASE_LOG.md > release_body.md
+          set -euo pipefail
+          # Keep a Changelog headings: "## [x.y.z] - date". Capture the body
+          # up to the next "## " heading; fail if the section is missing so a
+          # release can never ship without written notes.
+          awk -v heading="## [${VERSION}]" '
+            index($0, heading) == 1 { found = 1; next }
+            /^## / { if (found) exit }
+            found { print }
+          ' CHANGELOG.md > release_body.md
           if [ ! -s release_body.md ]; then
-            echo "Release ${VERSION}" > release_body.md
+            echo "CHANGELOG.md has no section for ${VERSION}; add one before releasing." >&2
+            exit 1
           fi
           cat release_body.md
         env:

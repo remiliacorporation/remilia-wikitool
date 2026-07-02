@@ -85,7 +85,7 @@ Every command has `--help`, and `docs/wikitool/reference.md` is the full generat
 | `docs/wikitool/architecture.md` | Internals and the agent token contract |
 | `writing_context/` | Article structure, style rules, and writing guide |
 | `CLAUDE.md` / `AGENTS.md` | Agent routing brief |
-| `VERSIONING.md` / `RELEASE_LOG.md` | Release process and history |
+| `VERSIONING.md` / `CHANGELOG.md` | Release process and history |
 
 ## Runtime state
 

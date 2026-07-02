@@ -33,14 +33,18 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
     let ai_pack_result =
         build_ai_pack(&repo_root, &staging_dir, args.host_project_root.as_deref())?;
 
-    run_cargo_contextmink_build(&repo_root, &PathBuf::from("cargo"), None, true)?;
     stage_release_bundle(
         &output_dir,
         &binary_path,
         default_release_binary_name(),
         &staging_dir,
     )?;
-    stage_contextmink_pack(&repo_root, &output_dir, None)?;
+    stage_contextmink_pack(
+        &repo_root,
+        &output_dir,
+        host_platform_slug(),
+        args.contextmink_dist.as_deref(),
+    )?;
     if staging_dir.exists() {
         fs::remove_dir_all(&staging_dir)
             .with_context(|| format!("failed to remove {}", normalize_path(&staging_dir)))?;
@@ -88,7 +92,6 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
     for target in &targets {
         if !args.skip_build {
             run_cargo_release_build_for_target(&repo_root, &cargo_bin, target, use_locked)?;
-            run_cargo_contextmink_build(&repo_root, &cargo_bin, Some(target), use_locked)?;
         }
 
         let binary_path = release_binary_path_for_target(&repo_root, target);
@@ -107,7 +110,12 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
             release_binary_name_for_target(target),
             &ai_pack_dir,
         )?;
-        stage_contextmink_pack(&repo_root, &bundle_dir, Some(target))?;
+        stage_contextmink_pack(
+            &repo_root,
+            &bundle_dir,
+            release_platform_slug(target),
+            args.contextmink_dist.as_deref(),
+        )?;
 
         let zip_path = output_dir.join(format!("{bundle_name}.zip"));
         zip_release_bundle(&bundle_dir, &zip_path, &bundle_name)?;
@@ -288,103 +296,116 @@ fn release_binary_path_for_target(repo_root: &Path, target: &str) -> PathBuf {
         .join(release_binary_name_for_target(target))
 }
 
-/// Vendored contextmink transcript guard, staged into a `contextmink/`
-/// subdirectory of every release bundle so wikitool users get bounded-read
-/// tooling without a separate install. It stays a separate binary
-/// deliberately: contextmink is project-generic, and agents must not have to
-/// route bounded reads through wikitool.
-fn contextmink_manifest_path(repo_root: &Path) -> PathBuf {
-    repo_root.join("tools/contextmink/Cargo.toml")
+/// Release bundles ship contextmink in a `contextmink/` subdirectory so
+/// wikitool users get bounded-read tooling without a separate install. It
+/// stays a separate binary: contextmink is project-generic, and agents must
+/// not have to route bounded reads through wikitool. The pack comes from
+/// contextmink's own published release archives at the version pinned in
+/// `config/contextmink.version`; `scripts/fetch_contextmink.sh` downloads,
+/// checksum-verifies, and unpacks one bundle per platform slug into the
+/// directory passed as `--contextmink-dist`.
+fn read_contextmink_pin(repo_root: &Path) -> Result<String> {
+    let path = repo_root.join("config/contextmink.version");
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read {}", normalize_path(&path)))?;
+    parse_contextmink_pin(&raw).with_context(|| {
+        format!(
+            "invalid contextmink version pin in {}",
+            normalize_path(&path)
+        )
+    })
 }
 
-fn run_cargo_contextmink_build(
+fn parse_contextmink_pin(raw: &str) -> Result<String> {
+    let version = raw.trim();
+    let is_semver = !version.is_empty()
+        && version.split('.').count() == 3
+        && version
+            .split('.')
+            .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()));
+    if !is_semver {
+        bail!("expected bare semver (x.y.z), got {raw:?}");
+    }
+    Ok(version.to_string())
+}
+
+fn host_platform_slug() -> &'static str {
+    if cfg!(windows) {
+        "windows-x86_64"
+    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "macos-arm64"
+    } else if cfg!(target_os = "macos") {
+        "macos-x86_64"
+    } else {
+        "linux-x86_64"
+    }
+}
+
+fn stage_contextmink_pack(
     repo_root: &Path,
-    cargo_bin: &Path,
-    target: Option<&str>,
-    use_locked: bool,
+    bundle_dir: &Path,
+    platform_slug: &str,
+    contextmink_dist: Option<&Path>,
 ) -> Result<()> {
-    let manifest = contextmink_manifest_path(repo_root);
-    if !manifest.is_file() {
+    let pin = read_contextmink_pin(repo_root)?;
+    let Some(dist) = contextmink_dist else {
         bail!(
-            "vendored contextmink missing: {} (sync tools/contextmink before packaging)",
-            normalize_path(&manifest)
+            "--contextmink-dist is required; fetch contextmink {pin} with `bash scripts/fetch_contextmink.sh --platform {platform_slug}` and pass --contextmink-dist dist/contextmink-dist"
         );
-    }
-    let mut command = ProcessCommand::new(cargo_bin);
-    command
-        .current_dir(repo_root)
-        .arg("build")
-        .arg("--manifest-path")
-        .arg(&manifest)
-        .arg("--release");
-    if let Some(target) = target {
-        command.arg("--target").arg(target);
-    }
-    if use_locked {
-        command.arg("--locked");
-    }
-    let status = command.status().with_context(|| {
+    };
+    let source = dist.join(platform_slug);
+    let manifest_path = source.join("manifest.json");
+    let manifest_text = fs::read_to_string(&manifest_path).with_context(|| {
         format!(
-            "failed to execute {} for vendored contextmink",
-            normalize_path(cargo_bin)
+            "missing contextmink bundle for {platform_slug}: {} (run scripts/fetch_contextmink.sh --platform {platform_slug})",
+            normalize_path(&manifest_path)
         )
     })?;
-    if !status.success() {
-        bail!("cargo build failed for vendored contextmink");
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
+        .with_context(|| format!("invalid JSON in {}", normalize_path(&manifest_path)))?;
+    validate_contextmink_manifest(&manifest, &pin, platform_slug)?;
+    for key in ["binary", "bridge_binary"] {
+        if let Some(binary) = manifest.get(key).and_then(serde_json::Value::as_str) {
+            let path = source.join(binary);
+            if !path.is_file() {
+                bail!(
+                    "contextmink manifest names {key} {binary:?} but it is missing: {}",
+                    normalize_path(&path)
+                );
+            }
+        }
     }
+    let pack_dir = bundle_dir.join("contextmink");
+    reset_directory(&pack_dir)?;
+    copy_dir_contents(&source, &pack_dir)?;
     Ok(())
 }
 
-/// contextmink-bridge is Windows-purpose (PowerShell argv mangling, MSYS
-/// rewriting, Git Bash discovery); POSIX bundles carry only contextmink.
-fn contextmink_binary_names(windows: bool) -> &'static [&'static str] {
-    if windows {
-        &["contextmink.exe", "contextmink-bridge.exe"]
-    } else {
-        &["contextmink"]
+fn validate_contextmink_manifest(
+    manifest: &serde_json::Value,
+    pin: &str,
+    platform_slug: &str,
+) -> Result<()> {
+    let name = manifest.get("name").and_then(serde_json::Value::as_str);
+    if name != Some("contextmink") {
+        bail!("contextmink manifest name is {name:?}, expected \"contextmink\"");
     }
-}
-
-fn contextmink_target_is_windows(target: Option<&str>) -> bool {
-    match target {
-        Some(target) => target.to_ascii_lowercase().contains("windows"),
-        None => cfg!(windows),
+    let version = manifest.get("version").and_then(serde_json::Value::as_str);
+    if version != Some(pin) {
+        bail!(
+            "contextmink bundle version {version:?} does not match the pin {pin} in config/contextmink.version; re-run scripts/fetch_contextmink.sh"
+        );
     }
-}
-
-fn stage_contextmink_pack(repo_root: &Path, bundle_dir: &Path, target: Option<&str>) -> Result<()> {
-    let contextmink_root = repo_root.join("tools/contextmink");
-    let mut release_dir = contextmink_root.join("target");
-    if let Some(target) = target {
-        release_dir = release_dir.join(target);
+    let platform = manifest.get("platform").and_then(serde_json::Value::as_str);
+    if platform != Some(platform_slug) {
+        bail!("contextmink bundle platform {platform:?} does not match requested {platform_slug}");
     }
-    let release_dir = release_dir.join("release");
-    let pack_dir = bundle_dir.join("contextmink");
-    reset_directory(&pack_dir)?;
-    for binary in contextmink_binary_names(contextmink_target_is_windows(target)) {
-        let source = release_dir.join(binary);
-        if !source.is_file() {
-            bail!(
-                "missing built contextmink binary: {}",
-                normalize_path(&source)
-            );
-        }
-        copy_file(&source, &pack_dir.join(binary))?;
-    }
-    for file in [
-        "README.md",
-        "SETUP.md",
-        "LICENSE",
-        "LICENSE-SSL",
-        "LICENSE-VPL",
-    ] {
-        copy_file(&contextmink_root.join(file), &pack_dir.join(file))?;
-    }
-    for dir in ["docs", "templates"] {
-        let destination = pack_dir.join(dir);
-        fs::create_dir_all(&destination)
-            .with_context(|| format!("failed to create {}", normalize_path(&destination)))?;
-        copy_dir_contents(&contextmink_root.join(dir), &destination)?;
+    if manifest
+        .get("binary")
+        .and_then(serde_json::Value::as_str)
+        .is_none()
+    {
+        bail!("contextmink manifest is missing the binary field");
     }
     Ok(())
 }
@@ -498,9 +519,9 @@ fn is_release_binary_entry(relative_path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        contextmink_binary_names, contextmink_target_is_windows, is_release_binary_entry,
+        host_platform_slug, is_release_binary_entry, parse_contextmink_pin,
         release_binary_name_for_target, release_bundle_name, release_platform_slug,
-        resolve_release_artifact_version, resolve_release_targets,
+        resolve_release_artifact_version, resolve_release_targets, validate_contextmink_manifest,
     };
 
     #[test]
@@ -561,18 +582,24 @@ mod tests {
     }
 
     #[test]
-    fn contextmink_pack_ships_bridge_only_on_windows_targets() {
-        assert!(contextmink_target_is_windows(Some(
-            "x86_64-pc-windows-msvc"
-        )));
-        assert!(!contextmink_target_is_windows(Some(
-            "x86_64-unknown-linux-gnu"
-        )));
-        assert_eq!(
-            contextmink_binary_names(true),
-            &["contextmink.exe", "contextmink-bridge.exe"]
-        );
-        assert_eq!(contextmink_binary_names(false), &["contextmink"]);
+    fn contextmink_pin_and_manifest_validation_fail_fast() {
+        assert_eq!(parse_contextmink_pin(" 0.3.0\n").unwrap(), "0.3.0");
+        assert!(parse_contextmink_pin("").is_err());
+        assert!(parse_contextmink_pin("v0.3.0").is_err());
+        assert!(parse_contextmink_pin("0.3").is_err());
+
+        let manifest: serde_json::Value = serde_json::json!({
+            "name": "contextmink",
+            "version": "0.3.0",
+            "platform": "windows-x86_64",
+            "binary": "contextmink.exe",
+            "bridge_binary": "contextmink-bridge.exe",
+        });
+        assert!(validate_contextmink_manifest(&manifest, "0.3.0", "windows-x86_64").is_ok());
+        assert!(validate_contextmink_manifest(&manifest, "0.4.0", "windows-x86_64").is_err());
+        assert!(validate_contextmink_manifest(&manifest, "0.3.0", "linux-x86_64").is_err());
+
+        assert!(!host_platform_slug().is_empty());
         for binary in ["wikitool", "contextmink", "contextmink-bridge"] {
             assert!(is_release_binary_entry(std::path::Path::new(binary)));
         }

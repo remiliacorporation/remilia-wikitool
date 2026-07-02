@@ -1,10 +1,30 @@
-# Release Log
+# Changelog
 
-Chronological release notes for tagged wikitool versions.
+All notable changes to wikitool are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
+[Semantic Versioning](https://semver.org/).
 
-## 0.4.0
+The release workflow extracts the section for the requested version and fails
+if it is missing, so land notes here (staged under Unreleased, then retitled)
+before dispatching a release.
 
-Date: 2026-06-05
+## [Unreleased]
+
+### Added
+
+- Release bundles ship the contextmink transcript guard in a `contextmink/`
+  directory: the pinned release binary (plus `contextmink-bridge.exe` on
+  Windows), instruction templates, and setup docs. contextmink stays a
+  separate binary; nothing routes through wikitool. The pin lives in
+  `config/contextmink.version` and bundles are fetched from contextmink's
+  own GitHub releases at build time.
+- `upload` and `purge` API commands.
+
+### Changed
+
+- Release notes moved from RELEASE_LOG.md to this CHANGELOG.
+
+## [0.4.0] - 2026-06-05
 
 This release adds a structured human-in-loop authoring lane. Wikitool now bundles a `/knowledge-interview` agent skill (for both Claude and Codex; other agents may need to adapt the packaged guidance) and a playbook for shaping an article's intent, scope, and angle before drafting, plus a `knowledge interview` command family that keeps a small ledger of what the interview turned up and what still needs explication or sourcing.
 
@@ -32,9 +52,7 @@ While this is not uncommon for subcultural and gaming-related MediaWikis either,
 - Sentence-case heading suggestions keep proper nouns capitalized instead of lowercasing them.
 - A page no longer shows as changed over a trailing-newline-only difference during sync.
 
-## 0.3.1
-
-Date: 2026-05-29
+## [0.3.1] - 2026-05-29
 
 A follow-up to 0.3.0 that makes the wiki target durable and explicit, removes ambiguous
 overrides and vestigial flags, and tightens the agent-facing command contract. 0.3.0
@@ -64,9 +82,7 @@ reorganized the public surface; 0.3.1 makes the tool behave the way that surface
 
 - Because the docs profile was renamed, docs imported under `remilia-mw-1.44` are no longer found under `remilia-wiki`. Run `wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing` (or `wikitool workflow session-refresh`) once to re-hydrate. Fresh installs need no action.
 
-## 0.3.0
-
-Date: 2026-05-28
+## [0.3.0] - 2026-05-28
 
 A consolidation release. No database reset required — 0.2.0 runtime state carries forward.
 
@@ -90,9 +106,7 @@ A consolidation release. No database reset required — 0.2.0 runtime state carr
 - The source-build feature flag `maintainer-surface` is now simply `maintainer`.
 - Substantial internal restructuring for maintainability, with no change to command behavior or output contracts.
 
-## 0.2.0
-
-Date: 2026-03-18
+## [0.2.0] - 2026-03-18
 
 Breaking release that replaces the retrieval layer with a purpose-built knowledge system for AI-assisted authoring.
 Just delete your old wikitool installation ;d
@@ -136,9 +150,7 @@ The core idea: wikitool's local index should give an AI agent everything it need
 - Docs bridge enriches authoring retrieval with pinned MediaWiki 1.44 documentation, blending "how MediaWiki says it works" with "how this wiki uses it."
 - 146 unit tests (up from 78). CLI regression testbench and acceptance workflow harness expanded.
 
-## 0.1.0
-
-Date: 2026-02-21
+## [0.1.0] - 2026-02-21
 
 First public release. Single self-contained binary per platform with bundled AI companion pack.
 
