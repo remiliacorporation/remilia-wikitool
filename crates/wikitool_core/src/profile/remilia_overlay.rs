@@ -13,9 +13,9 @@ use crate::schema::open_initialized_database_connection;
 use crate::support::{compute_hash, normalize_path, unix_timestamp};
 
 use super::rules::{
-    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, GoldenSetRules,
-    InfoboxPreference, LintRules, ProfileOverlay, ProfileSourceDocument, RemiliaRules,
-    UnreliableSourceRule, WikiProfileSnapshot,
+    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, ExtensionContractRule,
+    GoldenSetRules, InfoboxPreference, LintRules, ProfileOverlay, ProfileSourceDocument,
+    RemiliaRules, UnreliableSourceRule, WikiProfileSnapshot,
 };
 use super::template_catalog::load_template_catalog;
 use super::wiki_capabilities::{
@@ -23,19 +23,21 @@ use super::wiki_capabilities::{
 };
 
 const PROFILE_OVERLAY_ARTIFACT_KIND: &str = "profile_overlay";
-const PROFILE_OVERLAY_SCHEMA_VERSION: &str = "profile_overlay_v1";
+const PROFILE_OVERLAY_SCHEMA_VERSION: &str = "profile_overlay_v2";
 const REMILIA_PROFILE_ID: &str = "remilia";
 const MEDIAWIKI_GENERIC_PROFILE_ID: &str = "mediawiki-generic";
 
 const ARTICLE_STRUCTURE_PATH: &str = "tools/wikitool/ai-pack/writing_context/article_structure.md";
 const STYLE_RULES_PATH: &str = "tools/wikitool/ai-pack/writing_context/style_rules.md";
 const WRITING_GUIDE_PATH: &str = "tools/wikitool/ai-pack/writing_context/writing_guide.md";
+const EXTENSIONS_PATH: &str = "tools/wikitool/ai-pack/writing_context/extensions.md";
 
 pub fn build_remilia_profile_overlay(paths: &ResolvedPaths) -> Result<ProfileOverlay> {
     let (article_structure, article_structure_source) =
         load_source_document(paths, ARTICLE_STRUCTURE_PATH)?;
     let (style_rules, style_rules_source) = load_source_document(paths, STYLE_RULES_PATH)?;
     let (writing_guide, writing_guide_source) = load_source_document(paths, WRITING_GUIDE_PATH)?;
+    let (extensions_doc, extensions_source) = load_source_document(paths, EXTENSIONS_PATH)?;
 
     let preferred_templates = extract_citation_templates(&writing_guide);
     let infobox_preferences = extract_infobox_preferences(&writing_guide);
@@ -61,6 +63,7 @@ pub fn build_remilia_profile_overlay(paths: &ResolvedPaths) -> Result<ProfileOve
             article_structure_source,
             style_rules_source,
             writing_guide_source,
+            extensions_source,
         ],
         authoring: AuthoringRules {
             require_short_description: article_structure.contains("{{SHORTDESC:"),
@@ -159,6 +162,7 @@ pub fn build_remilia_profile_overlay(paths: &ResolvedPaths) -> Result<ProfileOve
             forbid_placeholder_fragments: placeholder_fragments,
             proper_nouns: default_proper_nouns(),
         },
+        extension_contracts: extract_extension_contracts(&extensions_doc),
         golden_set: GoldenSetRules {
             article_corpus_available: false,
             source_documents: vec![
@@ -232,7 +236,9 @@ pub fn load_latest_profile_overlay(paths: &ResolvedPaths) -> Result<Option<Profi
 }
 
 pub fn load_or_build_remilia_profile_overlay(paths: &ResolvedPaths) -> Result<ProfileOverlay> {
-    if let Some(overlay) = load_profile_overlay(paths, REMILIA_PROFILE_ID)? {
+    if let Some(overlay) = load_profile_overlay(paths, REMILIA_PROFILE_ID)?
+        && overlay.schema_version == PROFILE_OVERLAY_SCHEMA_VERSION
+    {
         return Ok(overlay);
     }
     build_remilia_profile_overlay(paths)
@@ -374,6 +380,82 @@ fn resolve_source_document_path(
 
     let fallback = paths.project_root.join(relative);
     Err(anyhow::anyhow!("failed to read {}", fallback.display()))
+}
+
+/// Parse the `Contract:` lines from writing_context/extensions.md. Each is
+/// `key=value` pairs separated by `;`; the first fenced code block that follows
+/// a contract inside the same section becomes its example. Sections without a
+/// contract line are prose-only and produce nothing.
+fn extract_extension_contracts(content: &str) -> Vec<ExtensionContractRule> {
+    let mut out: Vec<ExtensionContractRule> = Vec::new();
+    let mut in_fence = false;
+    let mut fence_body = String::new();
+    let mut awaiting_example: Option<usize> = None;
+
+    for raw in content.lines() {
+        let trimmed = raw.trim();
+        if trimmed.starts_with("```") {
+            if in_fence {
+                if let Some(index) = awaiting_example.take() {
+                    out[index].example = fence_body.trim_end().to_string();
+                }
+                fence_body.clear();
+            }
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            fence_body.push_str(raw);
+            fence_body.push('\n');
+            continue;
+        }
+        if trimmed.starts_with("## ") {
+            // A new section closes any contract still waiting for its example.
+            awaiting_example = None;
+            continue;
+        }
+        let Some(rest) = trimmed.strip_prefix("Contract:") else {
+            continue;
+        };
+        let mut contract = ExtensionContractRule {
+            kind: String::new(),
+            name: String::new(),
+            provider: String::new(),
+            syntax: String::new(),
+            body_required: false,
+            attributes: Vec::new(),
+            example: String::new(),
+        };
+        for pair in rest.split(';') {
+            let Some((key, value)) = pair.split_once('=') else {
+                continue;
+            };
+            let key = key.trim();
+            let value = value.trim();
+            match key {
+                "kind" => contract.kind = value.to_string(),
+                "name" => contract.name = value.to_string(),
+                "provider" => contract.provider = value.to_string(),
+                "syntax" => contract.syntax = value.to_string(),
+                "body" => contract.body_required = value == "required",
+                "attributes" => {
+                    contract.attributes = value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|attribute| !attribute.is_empty())
+                        .map(str::to_string)
+                        .collect();
+                }
+                _ => {}
+            }
+        }
+        if contract.kind.is_empty() || contract.name.is_empty() {
+            continue;
+        }
+        out.push(contract);
+        awaiting_example = Some(out.len() - 1);
+    }
+    out
 }
 
 fn extract_citation_templates(content: &str) -> Vec<CitationTemplateRule> {
@@ -658,8 +740,95 @@ mod tests {
     use super::{
         ARTICLE_STRUCTURE_PATH, STYLE_RULES_PATH, WRITING_GUIDE_PATH,
         build_remilia_profile_overlay, extract_banned_phrases, extract_citation_templates,
-        extract_infobox_preferences, extract_placeholder_fragments,
+        extract_extension_contracts, extract_infobox_preferences, extract_placeholder_fragments,
     };
+
+    #[test]
+    fn extension_contracts_parse_from_contract_lines() {
+        let doc = "# Content Extension Tags
+
+## Tabbed content (TabberNeue)
+
+Contract: kind=tag; name=tabber; provider=TabberNeue; syntax=paired; body=required
+
+```wikitext
+<tabber>
+|-|One=Body
+</tabber>
+```
+
+## Galleries
+
+Contract: kind=tag; name=gallery; provider=core; syntax=paired; body=required; attributes=mode,widths
+
+## Prose only
+
+No contract here.
+
+## Video (EmbedVideo)
+
+Contract: kind=parser_function; name=ev; provider=EmbedVideo; syntax=parser_function
+";
+        let contracts = extract_extension_contracts(doc);
+        assert_eq!(contracts.len(), 3);
+        assert_eq!(contracts[0].name, "tabber");
+        assert_eq!(contracts[0].kind, "tag");
+        assert!(contracts[0].body_required);
+        assert!(contracts[0].example.contains("<tabber>"));
+        assert_eq!(contracts[1].name, "gallery");
+        assert_eq!(contracts[1].attributes, vec!["mode", "widths"]);
+        assert!(contracts[1].example.is_empty());
+        assert_eq!(contracts[2].kind, "parser_function");
+        assert!(!contracts[2].body_required);
+    }
+
+    #[test]
+    fn shipped_extensions_doc_yields_contracts() {
+        // The real ai-pack document must keep parseable contract lines; this is
+        // the drift guard between the doc, lint, and the surface.
+        let path = super::resolve_source_document_path(
+            &test_paths(&std::env::temp_dir()),
+            super::EXTENSIONS_PATH,
+        );
+        let Ok(path) = path else {
+            panic!("extensions.md must resolve from the source checkout");
+        };
+        let content = fs::read_to_string(path).expect("read extensions.md");
+        let contracts = extract_extension_contracts(&content);
+        assert!(
+            contracts.len() >= 8,
+            "expected >=8 contracts, got {}",
+            contracts.len()
+        );
+        assert!(
+            contracts
+                .iter()
+                .any(|rule| rule.name == "tabber" && rule.body_required)
+        );
+        assert!(contracts.iter().any(|rule| rule.name == "dpl"));
+        assert!(
+            contracts
+                .iter()
+                .any(|rule| rule.kind == "module" && rule.name == "D3Chart")
+        );
+    }
+
+    fn test_paths(root: &std::path::Path) -> ResolvedPaths {
+        use crate::runtime::ValueSource;
+        ResolvedPaths {
+            db_path: root.join(".wikitool/data/wikitool.db"),
+            wiki_content_dir: root.join("wiki_content"),
+            templates_dir: root.join("templates"),
+            state_dir: root.join(".wikitool"),
+            data_dir: root.join(".wikitool/data"),
+            config_path: root.join(".wikitool/config.toml"),
+            parser_config_path: root.join(".wikitool/parser-config.json"),
+            project_root: root.to_path_buf(),
+            root_source: ValueSource::Flag,
+            data_source: ValueSource::Default,
+            config_source: ValueSource::Default,
+        }
+    }
 
     #[test]
     fn citation_templates_and_infobox_preferences_are_extracted() {

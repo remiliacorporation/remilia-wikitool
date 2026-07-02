@@ -326,6 +326,7 @@ pub(super) fn run_knowledge_article_start(
 
 const BRIEF_SECTION_RATIONALE: &str =
     "Planned in the interview brief Draft Plan; not observed on comparable pages.";
+const BRIEF_BLOCKING_GAP_REASON: &str = "The interview brief records this as a blocking evidence gap; resolve it or explicitly defer it before drafting.";
 const BRIEF_OPEN_QUESTION_REASON: &str =
     "Recorded as an open question before drafting in the interview brief.";
 
@@ -337,6 +338,12 @@ fn fold_interview_brief_into_article_start(
     brief_report: &mut InterviewValidationReport,
     brief_path: &std::path::Path,
 ) {
+    // Handoff signals live on the validation summary; fold them before the file
+    // read so an unreadable brief cannot silently drop a recorded blocker.
+    fold_blocking_evidence_gaps(
+        &mut article_start.open_questions,
+        &brief_report.summary.handoff.blocking_evidence_gaps,
+    );
     let Ok(body) = std::fs::read_to_string(brief_path) else {
         return;
     };
@@ -370,14 +377,28 @@ fn fold_interview_brief_into_article_start(
                 .to_string(),
         );
     }
+}
 
-    // Blocking evidence gaps recorded by the interview are drafting blockers the
-    // agent must see without re-reading the whole brief; the remaining handoff
-    // signals (framing, related pages) ride on the embedded brief summary.
-    for gap in &brief_report.summary.handoff.blocking_evidence_gaps {
-        brief_report
-            .warnings
-            .push(format!("interview brief blocking evidence gap: {gap}"));
+/// The human explicitly recorded these as blocking; honor the semantics by
+/// making them blocking open questions, which force readiness to not_ready
+/// through the normal blocking machinery. The remaining handoff signals
+/// (framing, related pages) ride on the embedded brief summary.
+fn fold_blocking_evidence_gaps(open_questions: &mut Vec<OpenQuestion>, gaps: &[String]) {
+    let existing: std::collections::BTreeSet<String> = open_questions
+        .iter()
+        .map(|question| question.question.to_ascii_lowercase())
+        .collect();
+    for gap in gaps {
+        let question = format!("Blocking evidence gap from the interview: {gap}");
+        if existing.contains(&question.to_ascii_lowercase()) {
+            continue;
+        }
+        open_questions.push(OpenQuestion {
+            question,
+            reason: BRIEF_BLOCKING_GAP_REASON.to_string(),
+            blocking: true,
+            evidence: Vec::new(),
+        });
     }
 }
 
@@ -1046,6 +1067,19 @@ mod tests {
             content_backed: false,
             supporting_pages: Vec::new(),
         }
+    }
+
+    #[test]
+    fn blocking_evidence_gaps_become_blocking_open_questions() {
+        let mut open_questions = Vec::new();
+        fold_blocking_evidence_gaps(&mut open_questions, &["mint date unverified".to_string()]);
+        assert_eq!(open_questions.len(), 1);
+        assert!(open_questions[0].blocking);
+        assert!(open_questions[0].question.contains("mint date unverified"));
+
+        // Deduplicates on refold instead of stacking.
+        fold_blocking_evidence_gaps(&mut open_questions, &["mint date unverified".to_string()]);
+        assert_eq!(open_questions.len(), 1);
     }
 
     fn valid_interview_report() -> InterviewValidationReport {

@@ -1,5 +1,6 @@
 use crate::article_lint::document::ParsedArticleDocument;
 use crate::article_lint::model::{ArticleLintIssue, ArticleLintSeverity};
+use crate::article_lint::resources::LoadedResources;
 use crate::content_store::parsing::{
     find_closing_html_tag, parse_gallery_media_line, parse_open_tag, starts_with_html_tag,
 };
@@ -8,17 +9,25 @@ use super::IssueMatch;
 
 pub(super) fn lint_extension_contracts(
     document: &ParsedArticleDocument,
+    resources: &LoadedResources,
     matches: &mut Vec<IssueMatch>,
 ) {
+    // Tabber and gallery carry body-format checks beyond emptiness; every other
+    // body-required tag comes from the extensions.md contract data, so adding a
+    // tag to the doc adds its empty-body lint without code changes.
     lint_tabber_blocks(document, matches);
     lint_gallery_blocks(document, matches);
-    lint_nonempty_body_blocks(document, "DPL", "extension.dpl_empty", matches);
-    lint_nonempty_body_blocks(
-        document,
-        "categorytree",
-        "extension.categorytree_empty",
-        matches,
-    );
+    for contract in &resources.overlay.extension_contracts {
+        if contract.kind != "tag"
+            || !contract.body_required
+            || contract.name.eq_ignore_ascii_case("tabber")
+            || contract.name.eq_ignore_ascii_case("gallery")
+        {
+            continue;
+        }
+        let rule_id = format!("extension.{}_empty", contract.name.to_ascii_lowercase());
+        lint_nonempty_body_blocks(document, &contract.name, &rule_id, matches);
+    }
 }
 
 fn lint_tabber_blocks(document: &ParsedArticleDocument, matches: &mut Vec<IssueMatch>) {

@@ -222,6 +222,19 @@ fn collect_stub_docs_signals(
 /// tags. Parser-function syntax is self-identifying, so detections are kept even without a
 /// capability manifest (the known set only filters when present). `<name` is ambiguous with
 /// plain HTML, so tag detections require membership in the manifest's extension-tag set.
+/// Tags every article uses do not merit one of the four capped docs-query
+/// slots: their usage is baseline wiki literacy and their docs would crowd out
+/// the tags an agent actually needs help with (cargo, tabber, DPL, math).
+const UBIQUITOUS_EXTENSION_TAGS: &[&str] = &[
+    "ref",
+    "references",
+    "nowiki",
+    "pre",
+    "includeonly",
+    "noinclude",
+    "onlyinclude",
+];
+
 fn scan_stub_docs_signals(
     content: &str,
     known_parser_functions: &BTreeSet<String>,
@@ -261,7 +274,10 @@ fn scan_stub_docs_signals(
                 && matches!(bytes[end], b' ' | b'\t' | b'\r' | b'\n' | b'>' | b'/')
             {
                 let name = content[start..end].to_ascii_lowercase();
-                if known_extension_tags.contains(&name) && seen_tags.insert(name.clone()) {
+                if known_extension_tags.contains(&name)
+                    && !UBIQUITOUS_EXTENSION_TAGS.contains(&name.as_str())
+                    && seen_tags.insert(name.clone())
+                {
                     signals.extension_tags.push(name);
                 }
             }
@@ -395,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_detects_parser_functions_and_known_extension_tags() {
+    fn scan_detects_parser_functions_and_skips_ubiquitous_tags() {
         let known_functions = BTreeSet::from(["cargo_query".to_string(), "if".to_string()]);
         let known_tags = BTreeSet::from(["ref".to_string(), "tabber".to_string()]);
         let signals = scan_stub_docs_signals(
@@ -404,7 +420,8 @@ mod tests {
             &known_tags,
         );
         assert_eq!(signals.parser_functions, vec!["cargo_query", "if"]);
-        assert_eq!(signals.extension_tags, vec!["ref", "tabber"]);
+        // `<ref>` is manifest-known but ubiquitous; it must not claim a query slot.
+        assert_eq!(signals.extension_tags, vec!["tabber"]);
     }
 
     #[test]
@@ -435,9 +452,10 @@ mod tests {
             &BTreeSet::new(),
             &BTreeSet::from(["ref".to_string()]),
         );
-        // `{{#cargo_query tables}}` lacks the trailing colon, so it is not an invocation.
+        // `{{#cargo_query tables}}` lacks the trailing colon, so it is not an invocation,
+        // and `<ref>` is filtered as ubiquitous even when manifest-known.
         assert!(signals.parser_functions.is_empty());
-        assert_eq!(signals.extension_tags, vec!["ref"]);
+        assert!(signals.extension_tags.is_empty());
     }
 
     #[test]

@@ -9,6 +9,7 @@ use crate::runtime::ResolvedPaths;
 use crate::support::now_iso8601_utc;
 
 use super::remilia_overlay::load_or_build_remilia_profile_overlay;
+use super::rules::ExtensionContractRule;
 use super::template_catalog::{
     TemplateCatalog, TemplateCatalogEntry, TemplateCatalogExample, TemplateCatalogParameter,
     build_template_catalog_with_overlay, load_template_catalog, sync_template_catalog_with_overlay,
@@ -200,6 +201,13 @@ pub struct AuthoringExtensionTagSurface {
     pub self_closing_syntax: String,
     pub source: String,
     pub docs_query: String,
+    /// True when writing_context/extensions.md carries a contract for this tag.
+    #[serde(default)]
+    pub documented: bool,
+    #[serde(default)]
+    pub body_required: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -259,9 +267,12 @@ pub fn build_authoring_surface_with_config(
         &overlay.profile_id,
         capabilities.as_ref(),
         catalog.as_ref(),
-        Some(&local_modules),
-        Some(&local_module_functions),
-        Some(&local_assets),
+        AuthoringSurfaceSources {
+            local_modules: Some(&local_modules),
+            local_module_functions: Some(&local_module_functions),
+            local_assets: Some(&local_assets),
+            extension_contracts: &overlay.extension_contracts,
+        },
         options,
     ))
 }
@@ -281,9 +292,12 @@ pub fn sync_authoring_surface_with_config(
         &overlay.profile_id,
         Some(&capabilities),
         Some(&catalog),
-        Some(&local_modules),
-        Some(&local_module_functions),
-        Some(&local_assets),
+        AuthoringSurfaceSources {
+            local_modules: Some(&local_modules),
+            local_module_functions: Some(&local_module_functions),
+            local_assets: Some(&local_assets),
+            extension_contracts: &overlay.extension_contracts,
+        },
         options,
     ))
 }
@@ -294,18 +308,38 @@ pub fn build_authoring_surface(
     catalog: Option<&TemplateCatalog>,
     options: AuthoringSurfaceOptions,
 ) -> AuthoringSurface {
-    build_authoring_surface_from_parts(profile_id, capabilities, catalog, None, None, None, options)
+    build_authoring_surface_from_parts(
+        profile_id,
+        capabilities,
+        catalog,
+        AuthoringSurfaceSources::default(),
+        options,
+    )
+}
+
+/// Locally-scanned inputs to the surface build, grouped so the builder keeps a
+/// readable signature as sources grow.
+#[derive(Default)]
+struct AuthoringSurfaceSources<'a> {
+    local_modules: Option<&'a BTreeMap<String, LocalModuleRecord>>,
+    local_module_functions: Option<&'a BTreeMap<String, BTreeSet<String>>>,
+    local_assets: Option<&'a BTreeMap<String, LocalAssetRecord>>,
+    extension_contracts: &'a [ExtensionContractRule],
 }
 
 fn build_authoring_surface_from_parts(
     profile_id: &str,
     capabilities: Option<&WikiCapabilityManifest>,
     catalog: Option<&TemplateCatalog>,
-    local_modules: Option<&BTreeMap<String, LocalModuleRecord>>,
-    local_module_functions: Option<&BTreeMap<String, BTreeSet<String>>>,
-    local_assets: Option<&BTreeMap<String, LocalAssetRecord>>,
+    sources: AuthoringSurfaceSources<'_>,
     options: AuthoringSurfaceOptions,
 ) -> AuthoringSurface {
+    let AuthoringSurfaceSources {
+        local_modules,
+        local_module_functions,
+        local_assets,
+        extension_contracts,
+    } = sources;
     let mut warnings = Vec::new();
     if capabilities.is_none() {
         warnings.push(
@@ -341,8 +375,18 @@ fn build_authoring_surface_from_parts(
         .map(|capabilities| build_extension_surfaces(capabilities, options.extension_limit))
         .unwrap_or_default();
     let extension_tags = capabilities
-        .map(|capabilities| build_extension_tag_surfaces(capabilities, options.extension_tag_limit))
+        .map(|capabilities| {
+            build_extension_tag_surfaces(
+                capabilities,
+                extension_contracts,
+                options.extension_tag_limit,
+            )
+        })
         .unwrap_or_default();
+    warnings.extend(extension_contract_drift_warnings(
+        capabilities,
+        extension_contracts,
+    ));
     let parser_functions = capabilities
         .map(|capabilities| {
             build_parser_function_surfaces(capabilities, options.parser_function_limit)
@@ -556,6 +600,7 @@ fn build_extension_surfaces(
 
 fn build_extension_tag_surfaces(
     capabilities: &WikiCapabilityManifest,
+    extension_contracts: &[ExtensionContractRule],
     limit: usize,
 ) -> Vec<AuthoringExtensionTagSurface> {
     capabilities
@@ -566,12 +611,52 @@ fn build_extension_tag_surfaces(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .take(limit)
-        .map(|tag| AuthoringExtensionTagSurface {
-            tag_name: tag.clone(),
-            paired_syntax: format!("<{tag}>...</{tag}>"),
-            self_closing_syntax: format!("<{tag} />"),
-            source: "live wiki capability manifest".to_string(),
-            docs_query: format!("{tag} extension tag"),
+        .map(|tag| {
+            let contract = extension_contracts
+                .iter()
+                .find(|rule| rule.kind == "tag" && rule.name.eq_ignore_ascii_case(&tag));
+            AuthoringExtensionTagSurface {
+                paired_syntax: format!("<{tag}>...</{tag}>"),
+                self_closing_syntax: format!("<{tag} />"),
+                source: "live wiki capability manifest".to_string(),
+                docs_query: format!("{tag} extension tag"),
+                documented: contract.is_some(),
+                body_required: contract.is_some_and(|rule| rule.body_required),
+                attributes: contract
+                    .map(|rule| rule.attributes.clone())
+                    .unwrap_or_default(),
+                tag_name: tag,
+            }
+        })
+        .collect()
+}
+
+/// Documented-but-not-installed drift: a tag contract in extensions.md whose tag
+/// is absent from the live manifest means the guidance teaches syntax the wiki
+/// cannot render. Surfaced as a warning so the docs and the wiki reconcile.
+fn extension_contract_drift_warnings(
+    capabilities: Option<&WikiCapabilityManifest>,
+    extension_contracts: &[ExtensionContractRule],
+) -> Vec<String> {
+    let Some(manifest) = capabilities else {
+        return Vec::new();
+    };
+    if manifest.parser_extension_tags.is_empty() {
+        return Vec::new();
+    }
+    let live: BTreeSet<String> = manifest
+        .parser_extension_tags
+        .iter()
+        .map(|tag| normalize_parser_tag_name(tag))
+        .collect();
+    extension_contracts
+        .iter()
+        .filter(|rule| rule.kind == "tag" && !live.contains(&rule.name.to_ascii_lowercase()))
+        .map(|rule| {
+            format!(
+                "extensions.md documents tag `{}` ({}), but the live wiki does not expose it; update the doc or install the extension",
+                rule.name, rule.provider
+            )
         })
         .collect()
 }
@@ -737,6 +822,81 @@ mod tests {
     }
 
     #[test]
+    fn extension_tags_enrich_from_contracts_and_warn_on_drift() {
+        let manifest = sample_manifest(
+            vec!["<tabber>".to_string(), "<ref>".to_string()],
+            Vec::new(),
+        );
+        let contracts = vec![
+            ExtensionContractRule {
+                kind: "tag".to_string(),
+                name: "tabber".to_string(),
+                provider: "TabberNeue".to_string(),
+                syntax: "paired".to_string(),
+                body_required: true,
+                attributes: Vec::new(),
+                example: String::new(),
+            },
+            ExtensionContractRule {
+                kind: "tag".to_string(),
+                name: "dpl".to_string(),
+                provider: "DPL4".to_string(),
+                syntax: "paired".to_string(),
+                body_required: true,
+                attributes: vec!["category".to_string()],
+                example: String::new(),
+            },
+            // Non-tag kinds never drift-warn against the tag manifest.
+            ExtensionContractRule {
+                kind: "module".to_string(),
+                name: "D3Chart".to_string(),
+                provider: "local".to_string(),
+                syntax: "module_invoke".to_string(),
+                body_required: false,
+                attributes: Vec::new(),
+                example: String::new(),
+            },
+        ];
+
+        let surface = build_authoring_surface_from_parts(
+            "remilia",
+            Some(&manifest),
+            None,
+            AuthoringSurfaceSources {
+                extension_contracts: &contracts,
+                ..AuthoringSurfaceSources::default()
+            },
+            AuthoringSurfaceOptions::default(),
+        );
+
+        let tabber = surface
+            .extension_tags
+            .iter()
+            .find(|tag| tag.tag_name == "tabber")
+            .expect("tabber surfaced");
+        assert!(tabber.documented);
+        assert!(tabber.body_required);
+        let reference = surface
+            .extension_tags
+            .iter()
+            .find(|tag| tag.tag_name == "ref")
+            .expect("ref surfaced");
+        assert!(!reference.documented);
+        assert!(
+            surface
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("documents tag `dpl`"))
+        );
+        assert!(
+            !surface
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("D3Chart"))
+        );
+    }
+
+    #[test]
     fn extension_tag_policy_combines_live_tags_and_source_html() {
         let manifest = sample_manifest(vec!["<math>".to_string()], Vec::new());
         let policy = ExtensionTagPolicy::from_capabilities(&manifest);
@@ -763,9 +923,7 @@ mod tests {
             "remilia",
             Some(&manifest),
             None,
-            None,
-            None,
-            None,
+            AuthoringSurfaceSources::default(),
             AuthoringSurfaceOptions::default(),
         );
 
@@ -817,9 +975,11 @@ mod tests {
             "remilia",
             None,
             Some(&catalog),
-            Some(&local_modules),
-            Some(&local_module_functions),
-            None,
+            AuthoringSurfaceSources {
+                local_modules: Some(&local_modules),
+                local_module_functions: Some(&local_module_functions),
+                ..AuthoringSurfaceSources::default()
+            },
             AuthoringSurfaceOptions::default(),
         );
 
@@ -885,9 +1045,10 @@ mod tests {
             "remilia",
             None,
             Some(&catalog),
-            Some(&local_modules),
-            None,
-            None,
+            AuthoringSurfaceSources {
+                local_modules: Some(&local_modules),
+                ..AuthoringSurfaceSources::default()
+            },
             AuthoringSurfaceOptions::default(),
         );
 
@@ -928,9 +1089,10 @@ mod tests {
             "remilia",
             None,
             None,
-            None,
-            None,
-            Some(&local_assets),
+            AuthoringSurfaceSources {
+                local_assets: Some(&local_assets),
+                ..AuthoringSurfaceSources::default()
+            },
             AuthoringSurfaceOptions::default(),
         );
 

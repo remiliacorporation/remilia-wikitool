@@ -99,7 +99,33 @@ pub struct ProfileOverlay {
     pub categories: CategoryRules,
     pub lint: LintRules,
     pub golden_set: GoldenSetRules,
+    /// Content-extension contracts parsed from writing_context/extensions.md:
+    /// one record per invocable mechanism (tag, parser function, template,
+    /// module). Lint, the authoring surface, and the packaged guidance all
+    /// consume these, so the document and the checks cannot drift apart.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extension_contracts: Vec<ExtensionContractRule>,
     pub refreshed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExtensionContractRule {
+    /// Mechanism kind: `tag`, `parser_function`, `template`, or `module`.
+    pub kind: String,
+    /// Invocable name: tag name, parser-function name (no `#`), template
+    /// name, or module title tail.
+    pub name: String,
+    /// Providing extension (or `core` / `local`).
+    pub provider: String,
+    /// Invocation syntax: `paired`, `self_closing`, `parser_function`,
+    /// `template`, or `module_invoke`.
+    pub syntax: String,
+    #[serde(default)]
+    pub body_required: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub example: String,
 }
 
 impl ProfileOverlay {

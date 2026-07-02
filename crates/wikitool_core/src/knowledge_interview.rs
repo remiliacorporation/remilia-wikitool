@@ -431,7 +431,13 @@ fn build_question_agenda(
     if let Some(scout) = scout {
         match scout.local_state.as_str() {
             "exact_page_exists" | "redirect_exists" => {
-                if intent != "new" {
+                if intent == "new" {
+                    agenda.push(InterviewQuestionArea {
+                        area: "intent check: this page already exists".to_string(),
+                        suggested_question: "The wiki already has a page (or redirect) at this title. Should this be an expansion or refresh of the existing page rather than a new article - or a genuinely different subject that needs its own title?".to_string(),
+                        why: format!("Local state is {} but the interview intent is `new`; resolving the mismatch first prevents drafting a duplicate.", scout.local_state),
+                    });
+                } else {
                     agenda.push(InterviewQuestionArea {
                         area: "what the current page gets wrong or misses".to_string(),
                         suggested_question: "The wiki already has this page. What is wrong, missing, or under-emphasized in it as it stands?".to_string(),
@@ -2402,6 +2408,20 @@ mod scout_and_handoff_tests {
         let expand = build_question_agenda("expand", Some(&existing));
         assert!(
             expand
+                .iter()
+                .any(|area| area.area == "what the current page gets wrong or misses")
+        );
+
+        // The same existing page under the default `new` intent must surface the
+        // intent mismatch instead of silently proceeding toward a duplicate.
+        let as_new = build_question_agenda("new", Some(&existing));
+        assert!(
+            as_new
+                .iter()
+                .any(|area| area.area == "intent check: this page already exists")
+        );
+        assert!(
+            !as_new
                 .iter()
                 .any(|area| area.area == "what the current page gets wrong or misses")
         );

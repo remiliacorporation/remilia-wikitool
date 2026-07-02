@@ -130,6 +130,7 @@ fn test_profile_overlay() -> ProfileOverlay {
             article_corpus_available: false,
             source_documents: Vec::new(),
         },
+        extension_contracts: Vec::new(),
         refreshed_at: "1739000000".to_string(),
     }
 }

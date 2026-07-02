@@ -103,6 +103,7 @@ fn sample_snapshot() -> WikiProfileSnapshot {
                 article_corpus_available: true,
                 source_documents: vec!["alpha".to_string()],
             },
+            extension_contracts: Vec::new(),
             refreshed_at: "1739000000".to_string(),
         },
         capabilities: Some(sample_manifest()),
