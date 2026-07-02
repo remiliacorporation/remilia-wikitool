@@ -702,6 +702,30 @@ else
     fail "delete --dry-run removed the file!"
 fi
 
+# --- protect --dry-run ---
+section "protect --dry-run"
+OUTPUT=$(wt "$PROJ" protect "Delete Test" --protection edit=sysop --protection move=sysop --dry-run --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"dry_run": true' && echo "$OUTPUT" | grep -q '"edit=sysop"'; then
+    pass "protect --dry-run reports planned protections"
+else
+    fail "protect --dry-run reports planned protections (got: $OUTPUT)"
+fi
+OUTPUT=$(wt "$PROJ" protect "Delete Test" --protection "editsysop" --dry-run 2>&1 || true)
+if echo "$OUTPUT" | grep -q "TYPE=LEVEL"; then
+    pass "protect rejects malformed --protection pair"
+else
+    fail "protect rejects malformed --protection pair (got: $OUTPUT)"
+fi
+
+# --- undelete --dry-run ---
+section "undelete --dry-run"
+OUTPUT=$(wt "$PROJ" undelete "Delete Test" --reason "restore" --dry-run --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"dry_run": true' && echo "$OUTPUT" | grep -q '"Delete Test"'; then
+    pass "undelete --dry-run reports planned restore"
+else
+    fail "undelete --dry-run reports planned restore (got: $OUTPUT)"
+fi
+
 # --- push --dry-run ---
 section "push --dry-run"
 if [ "$TIER" != "live" ]; then
@@ -820,6 +844,15 @@ if [ "$TIER" = "live" ]; then
         pass "research fetch accepts non-short MediaWiki URLs"
     else
         fail "research fetch accepts non-short MediaWiki URLs (got: ${OUTPUT:0:300})"
+    fi
+
+    # --- wiki cargo count ---
+    section "wiki cargo count (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" wiki cargo count Traits --format json 2>&1 || true)
+    if echo "$OUTPUT" | grep -q '"table": "Traits"' && echo "$OUTPUT" | grep -q '"rows"'; then
+        pass "wiki cargo count returns a row count"
+    else
+        fail "wiki cargo count returns a row count (got: ${OUTPUT:0:300})"
     fi
 
     # --- export ---

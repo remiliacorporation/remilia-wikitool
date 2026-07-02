@@ -6,6 +6,7 @@ use crate::briefs::BriefView;
 use crate::cli_support::OutputFormat;
 
 mod capabilities;
+mod cargo;
 mod output;
 mod profile;
 mod rules;
@@ -24,6 +25,8 @@ pub(crate) struct WikiArgs {
 enum WikiSubcommand {
     #[command(about = "Sync and inspect live wiki capability manifests")]
     Capabilities(WikiCapabilitiesArgs),
+    #[command(about = "Query the live wiki's Cargo extension tables")]
+    Cargo(WikiCargoArgs),
     #[command(about = "Show the combined live/profile-aware wiki surface")]
     Profile(WikiProfileArgs),
     #[command(about = "Show the structured local editorial rules overlay")]
@@ -32,6 +35,32 @@ enum WikiSubcommand {
         about = "Show the agent-facing template, module, asset, and extension authoring surface"
     )]
     Surface(WikiSurfaceArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct WikiCargoArgs {
+    #[command(subcommand)]
+    command: WikiCargoSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum WikiCargoSubcommand {
+    #[command(about = "Count rows in a live Cargo table")]
+    Count(WikiCargoCountArgs),
+}
+
+#[derive(Debug, Args)]
+struct WikiCargoCountArgs {
+    #[arg(value_name = "TABLE", help = "Cargo table name to count rows in")]
+    table: String,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -203,6 +232,7 @@ struct WikiSurfaceFormatArgs {
 pub(crate) fn run_wiki(runtime: &RuntimeOptions, args: WikiArgs) -> Result<()> {
     match args.command {
         WikiSubcommand::Capabilities(args) => capabilities::run_wiki_capabilities(runtime, args),
+        WikiSubcommand::Cargo(args) => cargo::run_wiki_cargo(runtime, args),
         WikiSubcommand::Profile(args) => profile::run_wiki_profile(runtime, args),
         WikiSubcommand::Rules(args) => rules::run_wiki_rules(runtime, args),
         WikiSubcommand::Surface(args) => surface::run_wiki_surface(runtime, args),

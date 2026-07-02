@@ -176,6 +176,72 @@ struct MovePayload {
     talkto: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProtectPageOptions {
+    pub title: String,
+    /// (restriction type, level) pairs, e.g. ("edit", "sysop"). An empty level
+    /// clears that restriction.
+    pub protections: Vec<(String, String)>,
+    pub expiry: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProtectReport {
+    pub title: String,
+    pub reason: String,
+    pub protections: Vec<AppliedProtection>,
+    pub request_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AppliedProtection {
+    pub restriction: String,
+    pub level: String,
+    pub expiry: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ProtectResponse {
+    protect: Option<ProtectPayload>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ProtectPayload {
+    title: Option<String>,
+    reason: Option<String>,
+    #[serde(default)]
+    protections: Vec<Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UndeletePageOptions {
+    pub title: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UndeleteReport {
+    pub title: String,
+    pub reason: String,
+    pub revisions: u64,
+    pub file_versions: u64,
+    pub request_count: usize,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UndeleteResponse {
+    undelete: Option<UndeletePayload>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UndeletePayload {
+    title: Option<String>,
+    reason: Option<String>,
+    revisions: Option<Value>,
+    fileversions: Option<Value>,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct UserInfoResponse {
     #[serde(default)]
@@ -480,15 +546,15 @@ impl MediaWikiClient {
         let reason = options.reason.trim().to_string();
 
         let rights = self.current_user_rights()?;
-        require_move_right(&rights, "move")?;
+        require_right(&rights, "move", "move")?;
         if self.site_exposes_right("skip-move-moderation")? {
-            require_move_right(&rights, "skip-move-moderation")?;
+            require_right(&rights, "skip-move-moderation", "move")?;
         }
         if options.no_redirect {
-            require_move_right(&rights, "suppressredirect")?;
+            require_right(&rights, "suppressredirect", "move")?;
         }
         if options.move_subpages {
-            require_move_right(&rights, "move-subpages")?;
+            require_right(&rights, "move-subpages", "move")?;
         }
 
         let token = self.ensure_csrf_token()?;
@@ -523,6 +589,68 @@ impl MediaWikiClient {
             response,
             self.request_count(),
         )
+    }
+
+    pub fn protect_page(&mut self, options: &ProtectPageOptions) -> Result<ProtectReport> {
+        let title = options.title.replace('_', " ").trim().to_string();
+        if title.is_empty() {
+            bail!("protect requires a non-empty title");
+        }
+        if options.protections.is_empty() {
+            bail!("protect requires at least one restriction=level pair");
+        }
+        let reason = options.reason.trim().to_string();
+        let expiry = options.expiry.trim().to_string();
+        if expiry.is_empty() {
+            bail!("protect requires a non-empty expiry");
+        }
+
+        let rights = self.current_user_rights()?;
+        require_right(&rights, "protect", "protect")?;
+
+        let protections = options
+            .protections
+            .iter()
+            .map(|(restriction, level)| format!("{restriction}={level}"))
+            .collect::<Vec<_>>()
+            .join("|");
+
+        let token = self.ensure_csrf_token()?;
+        let params = vec![
+            ("action", "protect".to_string()),
+            ("title", title.clone()),
+            ("protections", protections),
+            ("expiry", expiry.clone()),
+            ("reason", reason.clone()),
+            ("watchlist", "nochange".to_string()),
+            ("token", token),
+        ];
+
+        let response = self.request_json_post(&params, true)?;
+        decode_protect_response(title, reason, response, self.request_count())
+    }
+
+    pub fn undelete_page(&mut self, options: &UndeletePageOptions) -> Result<UndeleteReport> {
+        let title = options.title.replace('_', " ").trim().to_string();
+        if title.is_empty() {
+            bail!("undelete requires a non-empty title");
+        }
+        let reason = options.reason.trim().to_string();
+
+        let rights = self.current_user_rights()?;
+        require_right(&rights, "undelete", "undelete")?;
+
+        let token = self.ensure_csrf_token()?;
+        let params = vec![
+            ("action", "undelete".to_string()),
+            ("title", title.clone()),
+            ("reason", reason.clone()),
+            ("watchlist", "nochange".to_string()),
+            ("token", token),
+        ];
+
+        let response = self.request_json_post(&params, true)?;
+        decode_undelete_response(title, reason, response, self.request_count())
     }
 
     fn current_user_rights(&mut self) -> Result<Vec<String>> {
@@ -560,13 +688,92 @@ fn decode_site_exposes_right(response: Value, right: &str) -> Result<bool> {
         .any(|group| group.rights.iter().any(|candidate| candidate == right)))
 }
 
-fn require_move_right(rights: &[String], right: &str) -> Result<()> {
+fn require_right(rights: &[String], right: &str, action: &str) -> Result<()> {
     if rights.iter().any(|candidate| candidate == right) {
         return Ok(());
     }
     bail!(
-        "current MediaWiki user lacks `{right}` right; refusing action=move because it would not complete immediately"
+        "current MediaWiki user lacks `{right}` right; refusing action={action} because it would not complete immediately"
     );
+}
+
+fn decode_protect_response(
+    requested_title: String,
+    reason: String,
+    response: Value,
+    request_count: usize,
+) -> Result<ProtectReport> {
+    let parsed: ProtectResponse =
+        serde_json::from_value(response).context("failed to decode protect response")?;
+    let payload = parsed
+        .protect
+        .ok_or_else(|| anyhow::anyhow!("missing protect payload in API response"))?;
+
+    let mut protections = Vec::new();
+    for entry in &payload.protections {
+        let Value::Object(fields) = entry else {
+            bail!("protect response protections entry has unsupported JSON shape: {entry}");
+        };
+        let expiry = fields
+            .get("expiry")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        for (key, value) in fields {
+            if key == "expiry" {
+                continue;
+            }
+            let Value::String(level) = value else {
+                bail!("protect response level for `{key}` has unsupported JSON shape: {value}");
+            };
+            protections.push(AppliedProtection {
+                restriction: key.clone(),
+                level: level.clone(),
+                expiry: expiry.clone(),
+            });
+        }
+    }
+
+    Ok(ProtectReport {
+        title: payload.title.unwrap_or(requested_title),
+        reason: payload.reason.unwrap_or(reason),
+        protections,
+        request_count,
+    })
+}
+
+fn decode_undelete_response(
+    requested_title: String,
+    reason: String,
+    response: Value,
+    request_count: usize,
+) -> Result<UndeleteReport> {
+    let parsed: UndeleteResponse =
+        serde_json::from_value(response).context("failed to decode undelete response")?;
+    let payload = parsed
+        .undelete
+        .ok_or_else(|| anyhow::anyhow!("missing undelete payload in API response"))?;
+
+    Ok(UndeleteReport {
+        title: payload.title.unwrap_or(requested_title),
+        reason: payload.reason.unwrap_or(reason),
+        revisions: decode_count_field("revisions", payload.revisions.as_ref())?,
+        file_versions: decode_count_field("fileversions", payload.fileversions.as_ref())?,
+        request_count,
+    })
+}
+
+fn decode_count_field(field: &str, value: Option<&Value>) -> Result<u64> {
+    match value {
+        None => Ok(0),
+        Some(Value::Number(number)) => number
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("{field} is not an unsigned integer: {number}")),
+        Some(Value::String(text)) => text
+            .parse::<u64>()
+            .with_context(|| format!("{field} is not an unsigned integer: {text}")),
+        Some(other) => bail!("{field} has unsupported JSON shape: {other}"),
+    }
 }
 
 fn decode_move_response(
@@ -685,8 +892,8 @@ mod move_tests {
         .unwrap();
 
         assert_eq!(rights, vec!["read", "edit", "move"]);
-        assert!(require_move_right(&rights, "move").is_ok());
-        assert!(require_move_right(&rights, "suppressredirect").is_err());
+        assert!(require_right(&rights, "move", "move").is_ok());
+        assert!(require_right(&rights, "suppressredirect", "move").is_err());
     }
 
     #[test]
@@ -719,5 +926,84 @@ mod move_tests {
         .unwrap();
 
         assert!(!missing);
+    }
+
+    #[test]
+    fn decodes_protect_response_protection_entries() {
+        let report = decode_protect_response(
+            "Sample Page".to_string(),
+            "requested reason".to_string(),
+            json!({
+                "protect": {
+                    "title": "Sample Page",
+                    "reason": "curation lock",
+                    "protections": [
+                        { "edit": "sysop", "expiry": "infinite" },
+                        { "move": "autoconfirmed", "expiry": "2027-01-01T00:00:00Z" }
+                    ]
+                }
+            }),
+            3,
+        )
+        .unwrap();
+
+        assert_eq!(report.title, "Sample Page");
+        assert_eq!(report.reason, "curation lock");
+        assert_eq!(report.request_count, 3);
+        assert_eq!(report.protections.len(), 2);
+        assert_eq!(report.protections[0].restriction, "edit");
+        assert_eq!(report.protections[0].level, "sysop");
+        assert_eq!(report.protections[0].expiry, "infinite");
+        assert_eq!(report.protections[1].restriction, "move");
+        assert_eq!(report.protections[1].level, "autoconfirmed");
+        assert_eq!(report.protections[1].expiry, "2027-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn rejects_protect_response_without_payload() {
+        let error = decode_protect_response(
+            "Sample Page".to_string(),
+            "reason".to_string(),
+            json!({}),
+            1,
+        )
+        .expect_err("must reject missing payload");
+        assert!(error.to_string().contains("missing protect payload"));
+    }
+
+    #[test]
+    fn decodes_undelete_response_counts() {
+        let report = decode_undelete_response(
+            "Sample Page".to_string(),
+            "requested reason".to_string(),
+            json!({
+                "undelete": {
+                    "title": "Sample Page",
+                    "reason": "restore after accidental delete",
+                    "revisions": 4,
+                    "fileversions": "2"
+                }
+            }),
+            2,
+        )
+        .unwrap();
+
+        assert_eq!(report.title, "Sample Page");
+        assert_eq!(report.reason, "restore after accidental delete");
+        assert_eq!(report.revisions, 4);
+        assert_eq!(report.file_versions, 2);
+        assert_eq!(report.request_count, 2);
+    }
+
+    #[test]
+    fn rejects_undelete_response_without_payload() {
+        let error = decode_undelete_response(
+            "Sample Page".to_string(),
+            "reason".to_string(),
+            json!({}),
+            1,
+        )
+        .expect_err("must reject missing payload");
+        assert!(error.to_string().contains("missing undelete payload"));
     }
 }

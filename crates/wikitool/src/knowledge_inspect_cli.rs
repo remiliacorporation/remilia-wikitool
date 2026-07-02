@@ -19,7 +19,16 @@ pub(crate) struct KnowledgeInspectArgs {
 #[derive(Debug, Subcommand)]
 enum KnowledgeInspectSubcommand {
     /// Show index statistics
-    Stats,
+    Stats {
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = OutputFormat::Text,
+            value_name = "FORMAT",
+            help = "Output format: text|json"
+        )]
+        format: OutputFormat,
+    },
     /// Retrieve token-budgeted content chunks from indexed pages
     Chunks {
         title: Option<String>,
@@ -113,10 +122,28 @@ enum KnowledgeInspectSubcommand {
     /// Audit indexed references for cleanup work
     References(references::ReferenceInspectArgs),
     /// Show indexed pages with no backlinks
-    Orphans,
+    Orphans {
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = OutputFormat::Text,
+            value_name = "FORMAT",
+            help = "Output format: text|json"
+        )]
+        format: OutputFormat,
+    },
     #[command(name = "empty-categories")]
     /// Show categories with no indexed members
-    EmptyCategories,
+    EmptyCategories {
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = OutputFormat::Text,
+            value_name = "FORMAT",
+            help = "Output format: text|json"
+        )]
+        format: OutputFormat,
+    },
 }
 
 pub(crate) fn run_knowledge_inspect(
@@ -124,7 +151,7 @@ pub(crate) fn run_knowledge_inspect(
     args: KnowledgeInspectArgs,
 ) -> Result<()> {
     match args.command {
-        KnowledgeInspectSubcommand::Stats => pages::run_inspect_stats(runtime),
+        KnowledgeInspectSubcommand::Stats { format } => pages::run_inspect_stats(runtime, format),
         KnowledgeInspectSubcommand::Chunks {
             title,
             query,
@@ -161,7 +188,11 @@ pub(crate) fn run_knowledge_inspect(
         KnowledgeInspectSubcommand::References(args) => {
             references::run_inspect_references(runtime, args)
         }
-        KnowledgeInspectSubcommand::Orphans => pages::run_inspect_orphans(runtime),
-        KnowledgeInspectSubcommand::EmptyCategories => pages::run_inspect_empty_categories(runtime),
+        KnowledgeInspectSubcommand::Orphans { format } => {
+            pages::run_inspect_orphans(runtime, format)
+        }
+        KnowledgeInspectSubcommand::EmptyCategories { format } => {
+            pages::run_inspect_empty_categories(runtime, format)
+        }
     }
 }

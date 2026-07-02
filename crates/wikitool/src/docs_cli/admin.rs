@@ -25,6 +25,22 @@ pub(super) struct DocsListArgs {
         help = "Filter corpora by source profile"
     )]
     profile: Option<String>,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct DocsListJsonReport<'a> {
+    project_root: String,
+    outdated_only: bool,
+    #[serde(flatten)]
+    listing: &'a wikitool_core::docs::DocsListReport,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -75,6 +91,16 @@ pub(super) fn run_docs_list(runtime: &RuntimeOptions, args: DocsListArgs) -> Res
             profile: args.profile.clone(),
         },
     )?;
+
+    if args.format.is_json() {
+        let report = DocsListJsonReport {
+            project_root: normalize_path(&paths.project_root),
+            outdated_only: args.outdated,
+            listing: &listing,
+        };
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
 
     println!("docs list");
     println!("project_root: {}", normalize_path(&paths.project_root));

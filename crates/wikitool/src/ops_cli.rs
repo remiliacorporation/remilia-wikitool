@@ -7,8 +7,8 @@ use clap::Args;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use wikitool_core::mw::{
-    MediaWikiClient, MovePageOptions, MoveReport, PurgeOptions, PurgeReport, UploadOptions,
-    UploadReport, WikiWriteApi,
+    MediaWikiClient, MovePageOptions, MoveReport, ProtectPageOptions, ProtectReport, PurgeOptions,
+    PurgeReport, UndeletePageOptions, UndeleteReport, UploadOptions, UploadReport, WikiWriteApi,
 };
 
 use crate::RuntimeOptions;
@@ -108,6 +108,82 @@ pub(crate) struct MoveArgs {
         help = "Output format: text|json"
     )]
     pub(crate) format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ProtectArgs {
+    #[arg(value_name = "TITLE")]
+    pub(crate) title: String,
+    #[arg(
+        long = "protection",
+        value_name = "TYPE=LEVEL",
+        required = true,
+        help = "Restriction to apply, e.g. edit=sysop or move=autoconfirmed; repeat for multiple. An empty level (edit=) clears the restriction"
+    )]
+    pub(crate) protections: Vec<String>,
+    #[arg(
+        long,
+        value_name = "EXPIRY",
+        default_value = "infinite",
+        help = "Protection expiry (MediaWiki timestamp or relative expression)"
+    )]
+    pub(crate) expiry: String,
+    #[arg(
+        long,
+        value_name = "TEXT",
+        default_value = "Protect via wikitool",
+        help = "Protection reason"
+    )]
+    pub(crate) reason: String,
+    #[arg(long, help = "Preview protect without writing to the wiki")]
+    pub(crate) dry_run: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    pub(crate) format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct UndeleteArgs {
+    #[arg(value_name = "TITLE")]
+    pub(crate) title: String,
+    #[arg(
+        long,
+        value_name = "TEXT",
+        default_value = "Undelete via wikitool",
+        help = "Undelete reason"
+    )]
+    pub(crate) reason: String,
+    #[arg(long, help = "Preview undelete without writing to the wiki")]
+    pub(crate) dry_run: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    pub(crate) format: OutputFormat,
+}
+
+#[derive(Debug, Serialize)]
+struct ProtectDryRunReport {
+    title: String,
+    protections: Vec<String>,
+    expiry: String,
+    reason: String,
+    dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct UndeleteDryRunReport {
+    title: String,
+    reason: String,
+    dry_run: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -262,6 +338,101 @@ pub(crate) fn run_move(runtime: &RuntimeOptions, args: MoveArgs) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn run_protect(runtime: &RuntimeOptions, args: ProtectArgs) -> Result<()> {
+    let (_paths, config) = resolve_runtime_with_config(runtime)?;
+    let title = args.title.replace('_', " ").trim().to_string();
+    if title.is_empty() {
+        bail!("protect requires a non-empty TITLE");
+    }
+    let protections = parse_protection_pairs(&args.protections)?;
+
+    if args.dry_run {
+        let report = ProtectDryRunReport {
+            title,
+            protections: protections
+                .iter()
+                .map(|(restriction, level)| format!("{restriction}={level}"))
+                .collect(),
+            expiry: args.expiry.clone(),
+            reason: args.reason.clone(),
+            dry_run: true,
+        };
+        if args.format.is_json() {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            print_protect_dry_run(&report);
+        }
+        return Ok(());
+    }
+
+    let options = ProtectPageOptions {
+        title,
+        protections,
+        expiry: args.expiry.clone(),
+        reason: args.reason.clone(),
+    };
+    let mut client = MediaWikiClient::from_config(&config)?;
+    login_with_bot_credentials(&mut client, "protect")?;
+    let report = client.protect_page(&options)?;
+    if args.format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_protect_report(&report);
+    }
+    Ok(())
+}
+
+pub(crate) fn run_undelete(runtime: &RuntimeOptions, args: UndeleteArgs) -> Result<()> {
+    let (_paths, config) = resolve_runtime_with_config(runtime)?;
+    let title = args.title.replace('_', " ").trim().to_string();
+    if title.is_empty() {
+        bail!("undelete requires a non-empty TITLE");
+    }
+
+    if args.dry_run {
+        let report = UndeleteDryRunReport {
+            title,
+            reason: args.reason.clone(),
+            dry_run: true,
+        };
+        if args.format.is_json() {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            print_undelete_dry_run(&report);
+        }
+        return Ok(());
+    }
+
+    let options = UndeletePageOptions {
+        title,
+        reason: args.reason.clone(),
+    };
+    let mut client = MediaWikiClient::from_config(&config)?;
+    login_with_bot_credentials(&mut client, "undelete")?;
+    let report = client.undelete_page(&options)?;
+    if args.format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_undelete_report(&report);
+    }
+    Ok(())
+}
+
+fn parse_protection_pairs(raw: &[String]) -> Result<Vec<(String, String)>> {
+    let mut pairs = Vec::new();
+    for entry in raw {
+        let Some((restriction, level)) = entry.split_once('=') else {
+            bail!("--protection expects TYPE=LEVEL, got `{entry}`");
+        };
+        let restriction = restriction.trim();
+        if restriction.is_empty() {
+            bail!("--protection expects a non-empty restriction type in `{entry}`");
+        }
+        pairs.push((restriction.to_string(), level.trim().to_string()));
+    }
+    Ok(pairs)
+}
+
 fn collect_titles(args: &PurgeArgs) -> Result<Vec<String>> {
     let mut titles = Vec::new();
     titles.extend(args.positional_titles.iter().cloned());
@@ -331,6 +502,46 @@ fn login_with_bot_credentials(client: &mut MediaWikiClient, action: &str) -> Res
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow::anyhow!("{action} requires WIKITOOL_BOT_PASS"))?;
     client.login(&username, &password)
+}
+
+fn print_protect_dry_run(report: &ProtectDryRunReport) {
+    println!("protect");
+    println!("dry_run: true");
+    println!("title: {}", report.title);
+    for protection in &report.protections {
+        println!("protection: {protection}");
+    }
+    println!("expiry: {}", report.expiry);
+    println!("reason: {}", report.reason);
+}
+
+fn print_protect_report(report: &ProtectReport) {
+    println!("protect");
+    println!("title: {}", report.title);
+    println!("reason: {}", report.reason);
+    for protection in &report.protections {
+        println!(
+            "protection: {}={} expiry={}",
+            protection.restriction, protection.level, protection.expiry
+        );
+    }
+    println!("request_count: {}", report.request_count);
+}
+
+fn print_undelete_dry_run(report: &UndeleteDryRunReport) {
+    println!("undelete");
+    println!("dry_run: true");
+    println!("title: {}", report.title);
+    println!("reason: {}", report.reason);
+}
+
+fn print_undelete_report(report: &UndeleteReport) {
+    println!("undelete");
+    println!("title: {}", report.title);
+    println!("reason: {}", report.reason);
+    println!("revisions: {}", report.revisions);
+    println!("file_versions: {}", report.file_versions);
+    println!("request_count: {}", report.request_count);
 }
 
 fn print_move_dry_run(report: &MoveDryRunReport) {

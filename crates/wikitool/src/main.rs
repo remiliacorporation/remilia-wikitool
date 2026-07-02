@@ -103,6 +103,10 @@ enum Commands {
     Upload(ops_cli::UploadArgs),
     #[command(about = "Move (rename) a page through the MediaWiki API")]
     Move(ops_cli::MoveArgs),
+    #[command(about = "Protect or unprotect a page through the MediaWiki API")]
+    Protect(ops_cli::ProtectArgs),
+    #[command(about = "Restore a deleted page through the MediaWiki API")]
+    Undelete(ops_cli::UndeleteArgs),
     #[command(about = "Inspect or reset the local runtime database")]
     Db(db_cli::DbArgs),
     #[command(about = "Manage and query pinned MediaWiki docs corpora")]
@@ -164,6 +168,8 @@ fn main() -> Result<()> {
         Some(Commands::Purge(args)) => ops_cli::run_purge(&runtime, args),
         Some(Commands::Upload(args)) => ops_cli::run_upload(&runtime, args),
         Some(Commands::Move(args)) => ops_cli::run_move(&runtime, args),
+        Some(Commands::Protect(args)) => ops_cli::run_protect(&runtime, args),
+        Some(Commands::Undelete(args)) => ops_cli::run_undelete(&runtime, args),
         Some(Commands::Db(args)) => db_cli::run_db(&runtime, args),
         Some(Commands::Docs(args)) => docs_cli::run_docs(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
@@ -489,5 +495,46 @@ mod tests {
         ])
         .expect("move should parse");
         assert!(matches!(move_page.command, Some(Commands::Move(_))));
+
+        let protect = Cli::try_parse_from([
+            "wikitool",
+            "protect",
+            "Main Page",
+            "--protection",
+            "edit=sysop",
+            "--protection",
+            "move=sysop",
+            "--expiry",
+            "infinite",
+            "--reason",
+            "test",
+            "--dry-run",
+            "--format",
+            "json",
+        ])
+        .expect("protect should parse");
+        assert!(matches!(protect.command, Some(Commands::Protect(_))));
+
+        Cli::try_parse_from(["wikitool", "protect", "Main Page"])
+            .expect_err("protect without --protection should not parse");
+
+        let undelete = Cli::try_parse_from([
+            "wikitool",
+            "undelete",
+            "Old Page",
+            "--reason",
+            "restore",
+            "--dry-run",
+            "--format",
+            "json",
+        ])
+        .expect("undelete should parse");
+        assert!(matches!(undelete.command, Some(Commands::Undelete(_))));
+
+        let cargo_count = Cli::try_parse_from([
+            "wikitool", "wiki", "cargo", "count", "Traits", "--format", "json",
+        ])
+        .expect("wiki cargo count should parse");
+        assert!(matches!(cargo_count.command, Some(Commands::Wiki(_))));
     }
 }

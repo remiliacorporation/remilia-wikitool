@@ -18,6 +18,7 @@ pub use search::{
     ExternalSearchReport, MediaWikiSearchOptions, MediaWikiSearchWhat, search_pages_report,
 };
 pub use write::{
-    MovePageOptions, MoveReport, PurgeOptions, PurgePageReport, PurgeReport, UploadOptions,
+    AppliedProtection, MovePageOptions, MoveReport, ProtectPageOptions, ProtectReport,
+    PurgeOptions, PurgePageReport, PurgeReport, UndeletePageOptions, UndeleteReport, UploadOptions,
     UploadReport,
 };

@@ -10,10 +10,24 @@ The release workflow extracts the section for the requested version and fails if
 
 - Release bundles ship the contextmink transcript guard in a `contextmink/` directory: the pinned release binary (plus `contextmink-bridge.exe` on Windows), instruction templates, and setup docs. contextmink stays a separate binary; nothing routes through wikitool. The pin lives in `config/contextmink.version` and bundles are fetched from contextmink's own GitHub releases at build time.
 - `upload`, `purge`, and `move` API commands; `move` preflights the bot account's rights and supports `--no-redirect`, `--move-talk`, `--move-subpages`, and `--dry-run`.
-- Library support for MediaWiki Cargo row counts (`cargo_count_rows`), ahead of a CLI surface.
+- `protect` and `undelete` API commands with the same bot-rights preflight and `--dry-run` support, completing the write-API family (`watch` was considered and skipped: no wikitool workflow consumes watchlists).
+- `wiki cargo count <table>` counts rows in a live Cargo extension table, giving `cargo_count_rows` its CLI surface under a `wiki cargo` group that later Cargo inspection commands can grow into.
+- `--format json` on `knowledge inspect stats`, `knowledge inspect orphans`, `knowledge inspect empty-categories`, and `docs list`, closing the agent-facing JSON gaps those siblings already covered.
+- `testbench/perf_bench.sh`: a performance harness that times end-to-end CLI scenarios (sync, lint, knowledge, refresh) against a disposable project copy and prints a baseline table; optimizations are held to before/after numbers on it.
+
+### Performance
+
+All numbers measured on the Remilia Wiki corpus (~676 pages, Windows) with `testbench/perf_bench.sh`; medians of repeated runs.
+
+- Batch `article lint` (and the `review` gate's changed-article lint) loads project lint resources once per invocation instead of once per file: full-corpus lint of 395 articles drops from ~275s to ~1.5s with byte-identical findings.
+- Database schema DDL and column validation now run once per database, stamped via `PRAGMA user_version`, instead of on every connection open and every sync ledger/snapshot upsert: `status --modified` drops from ~0.76s to ~0.47s and `diff` from ~0.44s to ~0.25s.
+- The knowledge index rebuild is skipped when the scanned corpus is byte-identical to the current-generation index (any content, scan-set, or generation change still forces a full rebuild): `knowledge warm` on an unchanged corpus drops from ~1.6s to ~0.6s, and `workflow session-refresh` no longer pays a second full rebuild after pull (~6.1s to ~5.0s warm).
+- The disposable runtime database uses `synchronous=NORMAL` under WAL, trimming per-commit fsync stalls on bulk index writes.
+- `article fix` no longer reloads lint resources for its post-fix verification pass.
 
 ### Changed
 
+- `knowledge build` and `knowledge warm` reports gain an `unchanged` field marking rebuilds that were skipped because the corpus already matched the index.
 - Release notes moved from RELEASE_LOG.md to this CHANGELOG.
 
 ## [0.4.0] - 2026-06-05

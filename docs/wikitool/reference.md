@@ -32,6 +32,8 @@ Commands:
   purge      Purge pages through the MediaWiki API
   upload     Upload a local file through the MediaWiki API
   move       Move (rename) a page through the MediaWiki API
+  protect    Protect or unprotect a page through the MediaWiki API
+  undelete   Restore a deleted page through the MediaWiki API
   db         Inspect or reset the local runtime database
   docs       Manage and query pinned MediaWiki docs corpora
   import     Import content from external sources
@@ -417,6 +419,50 @@ Options:
   -h, --help                 Print help
 ```
 
+## protect
+
+```text
+Protect or unprotect a page through the MediaWiki API
+
+Usage: wikitool protect [OPTIONS] --protection <TYPE=LEVEL> <TITLE>
+
+Arguments:
+  <TITLE>
+
+Options:
+      --project-root <PATH>
+      --protection <TYPE=LEVEL>  Restriction to apply, e.g. edit=sysop or move=autoconfirmed; repeat for multiple. An empty level (edit=) clears the restriction
+      --data-dir <PATH>
+      --expiry <EXPIRY>          Protection expiry (MediaWiki timestamp or relative expression) [default: infinite]
+      --config <PATH>
+      --reason <TEXT>            Protection reason [default: "Protect via wikitool"]
+      --diagnostics              Print resolved runtime diagnostics
+      --dry-run                  Preview protect without writing to the wiki
+      --format <FORMAT>          Output format: text|json [default: text] [possible values: text, json]
+  -h, --help                     Print help
+```
+
+## undelete
+
+```text
+Restore a deleted page through the MediaWiki API
+
+Usage: wikitool undelete [OPTIONS] <TITLE>
+
+Arguments:
+  <TITLE>
+
+Options:
+      --project-root <PATH>
+      --reason <TEXT>        Undelete reason [default: "Undelete via wikitool"]
+      --data-dir <PATH>
+      --dry-run              Preview undelete without writing to the wiki
+      --config <PATH>
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
 ## db
 
 ```text
@@ -579,6 +625,7 @@ Options:
       --kind <KIND>          Filter corpora by kind: extension|technical|profile [possible values: extension, technical, profile]
       --diagnostics          Print resolved runtime diagnostics
       --profile <PROFILE>    Filter corpora by source profile
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
   -h, --help                 Print help
 ```
 
@@ -1137,6 +1184,7 @@ Show index statistics
 Usage: wikitool knowledge inspect stats [OPTIONS]
 
 Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
       --config <PATH>
@@ -1354,6 +1402,7 @@ Show indexed pages with no backlinks
 Usage: wikitool knowledge inspect orphans [OPTIONS]
 
 Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
       --config <PATH>
@@ -1369,6 +1418,7 @@ Show categories with no indexed members
 Usage: wikitool knowledge inspect empty-categories [OPTIONS]
 
 Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --project-root <PATH>
       --data-dir <PATH>
       --config <PATH>
@@ -1642,6 +1692,7 @@ Usage: wikitool wiki [OPTIONS] <COMMAND>
 
 Commands:
   capabilities  Sync and inspect live wiki capability manifests
+  cargo         Query the live wiki's Cargo extension tables
   profile       Show the combined live/profile-aware wiki surface
   rules         Show the structured local editorial rules overlay
   surface       Show the agent-facing template, module, asset, and extension authoring surface
@@ -1704,6 +1755,44 @@ Options:
       --project-root <PATH>
       --data-dir <PATH>
       --view <VIEW>          JSON view: summary|full [default: summary] [possible values: summary, full]
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki cargo
+
+```text
+Query the live wiki's Cargo extension tables
+
+Usage: wikitool wiki cargo [OPTIONS] <COMMAND>
+
+Commands:
+  count  Count rows in a live Cargo table
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki cargo count
+
+```text
+Count rows in a live Cargo table
+
+Usage: wikitool wiki cargo count [OPTIONS] <TABLE>
+
+Arguments:
+  <TABLE>  Cargo table name to count rows in
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
