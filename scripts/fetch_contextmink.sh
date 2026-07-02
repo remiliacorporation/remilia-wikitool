@@ -8,6 +8,16 @@ set -euo pipefail
 repo="remiliacorporation/contextmink"
 dest="dist/contextmink-dist"
 platform=""
+install=0
+
+host_platform() {
+  case "$(uname -s 2>/dev/null):$(uname -m 2>/dev/null)" in
+    Darwin:arm64) echo "macos-arm64" ;;
+    Darwin:*) echo "macos-x86_64" ;;
+    Linux:*) echo "linux-x86_64" ;;
+    *) echo "windows-x86_64" ;;
+  esac
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,8 +33,15 @@ while [[ $# -gt 0 ]]; do
       repo="${2:?--repo requires a value}"
       shift 2
       ;;
+    --install)
+      install=1
+      shift
+      ;;
     --help | -h)
-      echo "usage: fetch_contextmink.sh --platform <windows-x86_64|linux-x86_64|macos-x86_64|macos-arm64> [--dest <dir>] [--repo <owner/name>]"
+      echo "usage: fetch_contextmink.sh [--platform <windows-x86_64|linux-x86_64|macos-x86_64|macos-arm64>] [--dest <dir>] [--repo <owner/name>] [--install]"
+      echo "  --platform defaults to the host platform."
+      echo "  --install additionally places the binaries in tools/contextmink/bin/ and the"
+      echo "  launcher at scripts/contextmink for repo-local agent use."
       exit 0
       ;;
     *)
@@ -35,8 +52,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$platform" ]]; then
-  echo "fetch_contextmink: --platform is required" >&2
-  exit 64
+  platform="$(host_platform)"
 fi
 if [[ ! -f config/contextmink.version ]]; then
   echo "fetch_contextmink: run from the wikitool repository root (config/contextmink.version not found)" >&2
@@ -67,10 +83,12 @@ fi
     echo "fetch_contextmink: checksum file missing for $(basename "$archive")" >&2
     exit 67
   fi
+  # The checksum file may carry CRLF when produced on Windows; strip CRs
+  # before verifying so the listed filename resolves.
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum -c "$checksum"
+    tr -d '\r' < "$checksum" | sha256sum -c -
   else
-    shasum -a 256 -c "$checksum"
+    tr -d '\r' < "$checksum" | shasum -a 256 -c -
   fi
 )
 
@@ -94,3 +112,16 @@ if [[ ! -f "$out/manifest.json" ]]; then
   exit 68
 fi
 echo "contextmink ${version} (${platform}) -> $out"
+
+if [[ "$install" -eq 1 ]]; then
+  mkdir -p tools/contextmink/bin
+  for binary in contextmink contextmink.exe contextmink-bridge.exe; do
+    if [[ -f "$out/$binary" ]]; then
+      cp "$out/$binary" "tools/contextmink/bin/$binary"
+      chmod +x "tools/contextmink/bin/$binary"
+    fi
+  done
+  cp "$out/templates/scripts/contextmink" scripts/contextmink
+  chmod +x scripts/contextmink
+  echo "installed: tools/contextmink/bin + scripts/contextmink"
+fi

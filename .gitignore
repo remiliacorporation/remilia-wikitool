@@ -24,6 +24,10 @@ testbench/.tmp
 dist/
 target/
 
+# Fetched contextmink install (scripts/fetch_contextmink.sh --install)
+tools/contextmink/
+scripts/contextmink
+
 # OS
 .DS_Store
 Thumbs.db
