@@ -6,6 +6,9 @@ use crate::docs::{DocsContextOptions, build_docs_context};
 use crate::knowledge::model::{
     AuthoringDocsContext, ModuleUsageSummary, StubTemplateHint, TemplateReference,
 };
+use crate::profile::{
+    load_latest_wiki_capabilities, normalize_parser_function_name, normalize_parser_tag_name,
+};
 use crate::runtime::ResolvedPaths;
 
 const AUTHORING_DOCS_QUERY_LIMIT: usize = 4;
@@ -16,20 +19,20 @@ pub(crate) fn build_authoring_docs_context(
     template_references: &[TemplateReference],
     module_patterns: &[ModuleUsageSummary],
     stub_detected_templates: &[StubTemplateHint],
+    stub_content: Option<&str>,
     docs_profile: &str,
 ) -> Result<Option<AuthoringDocsContext>> {
     let normalized_profile = normalize_spaces(&docs_profile.replace('_', " "));
     if normalized_profile.is_empty() {
         return Ok(None);
     }
-    if stub_detected_templates.is_empty() {
-        return Ok(None);
-    }
 
+    let stub_signals = collect_stub_docs_signals(paths, stub_content)?;
     let queries = build_authoring_docs_queries(
         template_references,
         module_patterns,
         stub_detected_templates,
+        &stub_signals,
     );
     if queries.is_empty() {
         return Ok(None);
@@ -172,32 +175,152 @@ pub(crate) fn build_authoring_docs_context(
     }))
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+struct StubDocsSignals {
+    /// Bare lowercase parser-function names (no leading `#`), in stub order.
+    parser_functions: Vec<String>,
+    /// Bare lowercase extension-tag names, in stub order.
+    extension_tags: Vec<String>,
+}
+
+fn collect_stub_docs_signals(
+    paths: &ResolvedPaths,
+    stub_content: Option<&str>,
+) -> Result<StubDocsSignals> {
+    let Some(content) = stub_content.filter(|content| !content.trim().is_empty()) else {
+        return Ok(StubDocsSignals::default());
+    };
+    let manifest = load_latest_wiki_capabilities(paths)?;
+    let known_parser_functions = manifest
+        .as_ref()
+        .map(|manifest| {
+            manifest
+                .parser_function_hooks
+                .iter()
+                .map(|hook| normalize_parser_function_name(hook))
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let known_extension_tags = manifest
+        .as_ref()
+        .map(|manifest| {
+            manifest
+                .parser_extension_tags
+                .iter()
+                .map(|tag| normalize_parser_tag_name(tag))
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    Ok(scan_stub_docs_signals(
+        content,
+        &known_parser_functions,
+        &known_extension_tags,
+    ))
+}
+
+/// Character-scan the stub for `{{#name:` parser-function calls and `<name ...>` extension
+/// tags. Parser-function syntax is self-identifying, so detections are kept even without a
+/// capability manifest (the known set only filters when present). `<name` is ambiguous with
+/// plain HTML, so tag detections require membership in the manifest's extension-tag set.
+fn scan_stub_docs_signals(
+    content: &str,
+    known_parser_functions: &BTreeSet<String>,
+    known_extension_tags: &BTreeSet<String>,
+) -> StubDocsSignals {
+    let bytes = content.as_bytes();
+    let mut signals = StubDocsSignals::default();
+    let mut seen_functions = BTreeSet::new();
+    let mut seen_tags = BTreeSet::new();
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        if bytes[cursor..].starts_with(b"{{#") {
+            let start = cursor + 3;
+            let mut end = start;
+            while end < bytes.len() && is_stub_symbol_name_byte(bytes[end]) {
+                end += 1;
+            }
+            if end > start && end < bytes.len() && bytes[end] == b':' {
+                let name = content[start..end].to_ascii_lowercase();
+                if (known_parser_functions.is_empty() || known_parser_functions.contains(&name))
+                    && seen_functions.insert(name.clone())
+                {
+                    signals.parser_functions.push(name);
+                }
+            }
+            cursor = end.max(cursor + 1);
+            continue;
+        }
+        if bytes[cursor] == b'<' {
+            let start = cursor + 1;
+            let mut end = start;
+            while end < bytes.len() && is_stub_symbol_name_byte(bytes[end]) {
+                end += 1;
+            }
+            if end > start
+                && end < bytes.len()
+                && matches!(bytes[end], b' ' | b'\t' | b'\r' | b'\n' | b'>' | b'/')
+            {
+                let name = content[start..end].to_ascii_lowercase();
+                if known_extension_tags.contains(&name) && seen_tags.insert(name.clone()) {
+                    signals.extension_tags.push(name);
+                }
+            }
+            cursor = end.max(cursor + 1);
+            continue;
+        }
+        cursor += 1;
+    }
+    signals
+}
+
+fn is_stub_symbol_name_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'
+}
+
 fn build_authoring_docs_queries(
     template_references: &[TemplateReference],
     module_patterns: &[ModuleUsageSummary],
     stub_detected_templates: &[StubTemplateHint],
+    stub_signals: &StubDocsSignals,
 ) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
 
-    for template_title in stub_detected_templates
-        .iter()
-        .map(|template| template.template_title.as_str())
-        .chain(
-            template_references
-                .iter()
-                .map(|reference| reference.template.template_title.as_str()),
-        )
-    {
-        if let Some(tail) = template_title.split_once(':').map(|(_, tail)| tail) {
+    // Stub-derived signals first: what the draft explicitly invokes is the direct
+    // docs need. Pack-derived template references are indirect (suggested by
+    // comparables) and must not crowd stub signals out of the query cap.
+    // Signal names keep their underscores (`cargo_query`): the docs FTS index treats `_`
+    // as a term character, and the docs corpus spells parser functions that way.
+    for name in &stub_signals.parser_functions {
+        push_authoring_docs_query_raw(&mut out, &mut seen, &format!("{name} parser function"));
+    }
+    for name in &stub_signals.extension_tags {
+        push_authoring_docs_query_raw(&mut out, &mut seen, &format!("{name} extension tag"));
+    }
+    for template in stub_detected_templates {
+        if let Some(tail) = template
+            .template_title
+            .split_once(':')
+            .map(|(_, tail)| tail)
+        {
             push_authoring_docs_query(&mut out, &mut seen, tail);
-        }
-        if out.len() >= AUTHORING_DOCS_QUERY_LIMIT {
-            break;
         }
     }
     if !stub_detected_templates.is_empty() {
         push_authoring_docs_query(&mut out, &mut seen, "template parameters");
+    }
+    for reference in template_references {
+        if out.len() >= AUTHORING_DOCS_QUERY_LIMIT {
+            break;
+        }
+        if let Some(tail) = reference
+            .template
+            .template_title
+            .split_once(':')
+            .map(|(_, tail)| tail)
+        {
+            push_authoring_docs_query(&mut out, &mut seen, tail);
+        }
     }
     if !module_patterns.is_empty() {
         push_authoring_docs_query(&mut out, &mut seen, "Scribunto #invoke");
@@ -207,7 +330,15 @@ fn build_authoring_docs_queries(
 }
 
 fn push_authoring_docs_query(queries: &mut Vec<String>, seen: &mut BTreeSet<String>, value: &str) {
-    let normalized = normalize_spaces(&value.replace('_', " "));
+    push_authoring_docs_query_raw(queries, seen, &value.replace('_', " "));
+}
+
+fn push_authoring_docs_query_raw(
+    queries: &mut Vec<String>,
+    seen: &mut BTreeSet<String>,
+    value: &str,
+) {
+    let normalized = normalize_spaces(value);
     if normalized.is_empty() {
         return;
     }
@@ -239,4 +370,129 @@ fn estimate_tokens(value: &str) -> usize {
         return 0;
     }
     value.len().div_ceil(4)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stub_template(title: &str) -> StubTemplateHint {
+        StubTemplateHint {
+            template_title: title.to_string(),
+            parameter_keys: Vec::new(),
+        }
+    }
+
+    fn module_pattern(title: &str) -> ModuleUsageSummary {
+        ModuleUsageSummary {
+            module_title: title.to_string(),
+            usage_count: 1,
+            distinct_page_count: 1,
+            function_stats: Vec::new(),
+            example_pages: Vec::new(),
+            example_invocations: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn scan_detects_parser_functions_and_known_extension_tags() {
+        let known_functions = BTreeSet::from(["cargo_query".to_string(), "if".to_string()]);
+        let known_tags = BTreeSet::from(["ref".to_string(), "tabber".to_string()]);
+        let signals = scan_stub_docs_signals(
+            "Intro.<ref name=\"a\">source</ref>\n{{#cargo_query:tables=Traits|fields=Name}}\n<div class=\"x\">{{#if:yes|then}}</div>\n<tabber>One=body</tabber>",
+            &known_functions,
+            &known_tags,
+        );
+        assert_eq!(signals.parser_functions, vec!["cargo_query", "if"]);
+        assert_eq!(signals.extension_tags, vec!["ref", "tabber"]);
+    }
+
+    #[test]
+    fn scan_filters_parser_functions_by_known_set_only_when_present() {
+        let known_tags = BTreeSet::new();
+        let filtered = scan_stub_docs_signals(
+            "{{#cargo_query:tables=Traits}} {{#unknown_fn:x}}",
+            &BTreeSet::from(["cargo_query".to_string()]),
+            &known_tags,
+        );
+        assert_eq!(filtered.parser_functions, vec!["cargo_query"]);
+
+        let unfiltered = scan_stub_docs_signals(
+            "{{#cargo_query:tables=Traits}} {{#unknown_fn:x}}",
+            &BTreeSet::new(),
+            &known_tags,
+        );
+        assert_eq!(
+            unfiltered.parser_functions,
+            vec!["cargo_query", "unknown_fn"]
+        );
+    }
+
+    #[test]
+    fn scan_ignores_tags_outside_known_set_and_non_invocations() {
+        let signals = scan_stub_docs_signals(
+            "<div>{{Infobox person|name=A}}</div> {{#cargo_query tables}} <ref>x</ref>",
+            &BTreeSet::new(),
+            &BTreeSet::from(["ref".to_string()]),
+        );
+        // `{{#cargo_query tables}}` lacks the trailing colon, so it is not an invocation.
+        assert!(signals.parser_functions.is_empty());
+        assert_eq!(signals.extension_tags, vec!["ref"]);
+    }
+
+    #[test]
+    fn queries_fire_from_stub_signals_without_templates() {
+        let signals = StubDocsSignals {
+            parser_functions: vec!["cargo_query".to_string()],
+            extension_tags: vec!["tabber".to_string()],
+        };
+        let queries = build_authoring_docs_queries(&[], &[], &[], &signals);
+        assert_eq!(
+            queries,
+            vec!["cargo_query parser function", "tabber extension tag"]
+        );
+    }
+
+    #[test]
+    fn queries_put_stub_signals_before_templates_and_cap_at_limit() {
+        let signals = StubDocsSignals {
+            parser_functions: vec!["cargo_query".to_string()],
+            extension_tags: vec!["tabber".to_string()],
+        };
+        let queries = build_authoring_docs_queries(
+            &[],
+            &[module_pattern("Module:Infobox")],
+            &[stub_template("Template:Infobox person")],
+            &signals,
+        );
+        // Stub-invoked parser functions and tags are the direct docs need and
+        // outrank template-derived queries for the capped slots.
+        assert_eq!(
+            queries,
+            vec![
+                "cargo_query parser function",
+                "tabber extension tag",
+                "Infobox person",
+                "template parameters",
+            ]
+        );
+        assert_eq!(queries.len(), AUTHORING_DOCS_QUERY_LIMIT);
+    }
+
+    #[test]
+    fn queries_stay_empty_without_any_signal() {
+        let queries = build_authoring_docs_queries(&[], &[], &[], &StubDocsSignals::default());
+        assert!(queries.is_empty());
+    }
+
+    #[test]
+    fn queries_keep_scribunto_lane_for_module_patterns() {
+        let queries = build_authoring_docs_queries(
+            &[],
+            &[module_pattern("Module:Traits")],
+            &[],
+            &StubDocsSignals::default(),
+        );
+        assert_eq!(queries, vec!["Scribunto #invoke"]);
+    }
 }

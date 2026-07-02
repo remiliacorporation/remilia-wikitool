@@ -114,7 +114,13 @@ a source or a claim is external or contested, and never launder a primary fact t
 party to manufacture an external citation.
 
 Use `wikitool knowledge interview init "Topic" --intent new|expand|audit|refresh --format json`
-to create the timestamped brief and sidecars. Use `knowledge interview open-item add/list/update` to
+to create the timestamped brief and sidecars. Init runs the local scout itself: it writes a
+tool-authored `Scout Context` section into the brief and returns an evidence-grounded
+`question_agenda` (what the wiki already knows, which comparable shape to confirm, which terms have
+no local evidence, where sources must come from). Treat the agenda as prompts to adapt in
+conversation, not a script; `--no-scout` starts blank. `validate` warns advisorily when core
+sections are still at their template state, and the brief's Editorial Framing, Research Plan, and
+Entities labels flow into `article-start --brief-path` as structured handoff signals. Use `knowledge interview open-item add/list/update` to
 record and resolve unresolved follow-up, source rejection, access failures, do-not-assert holds, and
 negative evidence as structured ledger entries instead of article prose. Use
 `knowledge interview validate`, `show`, and `audit` for deterministic checks, compact handoff
@@ -130,6 +136,14 @@ Agent-facing defaults are intentionally compact. Start from wikitool brief views
 `review --view brief`. Reserve `--view full`, broad `knowledge inspect` selections, and high token
 budgets for cases where the brief identifies a concrete need. Prefer one targeted drill-down over
 loading a whole catalog or page set into context.
+
+For MediaWiki and extension syntax questions - Cargo query grammar, extension tag attributes,
+parser functions, table or image formatting - query the local docs corpora before reaching for the
+web: `wikitool docs context "<question>" --limit 4`, `docs search`, and `docs symbols <name>`.
+`wikitool docs list` shows what is hydrated; `docs update` refreshes expired corpora. For the live
+wiki's Cargo data itself use `wikitool wiki cargo tables|fields <table>|rows <table>` (typed
+schemas and sample rows), and `wiki surface show --view brief` for supported extension tags and
+parser functions.
 
 ## Bounded Output
 

@@ -117,7 +117,6 @@ pub(crate) fn parse_docs_page(input: DocsPageParseInput) -> ParsedDocsPage {
     symbols.extend(extract_content_symbols(
         &input.page_title,
         &page_kind,
-        &input.content,
         &raw_sections,
     ));
     dedupe_symbols(&mut symbols);
@@ -280,6 +279,74 @@ mod tests {
                 .any(|example| example.language.as_deref() == Some("php"))
         );
         assert!(parsed.link_titles.iter().any(|title| title == "API:Edit"));
+    }
+
+    #[test]
+    fn usage_symbols_derive_signature_and_summary_from_section_context() {
+        let parsed = parse_docs_page(DocsPageParseInput {
+            page_title: "Extension:Cargo/Querying data".to_string(),
+            local_path: "docs/extensions/Cargo/Extension_Cargo_Querying_data.wiki".to_string(),
+            content: "Cargo stores template data in database tables.\n== Querying ==\nThe #cargo_query parser function displays data from one or more Cargo tables. A basic call looks like this:\n{{#cargo_query:tables=Traits|fields=Name,Rarity|where=Rarity='Rare'|limit=10}}\n== Display formats ==\nResults can be embedded in a <tabber>Table=table view|Chart=chart view</tabber> widget.".to_string(),
+            source_revision_id: None,
+            source_parent_revision_id: None,
+            source_timestamp: None,
+        });
+
+        let cargo_query = parsed
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.symbol_kind == "parser_function" && symbol.symbol_name == "#cargo_query"
+            })
+            .expect("expected #cargo_query parser_function symbol");
+        assert_eq!(
+            cargo_query.signature_text,
+            "{{#cargo_query:tables=Traits|fields=Name,Rarity|where=Rarity='Rare'|limit=10}}"
+        );
+        assert_eq!(
+            cargo_query.summary_text,
+            "The #cargo_query parser function displays data from one or more Cargo tables."
+        );
+
+        let tabber = parsed
+            .symbols
+            .iter()
+            .find(|symbol| symbol.symbol_kind == "tag" && symbol.symbol_name == "<tabber>")
+            .expect("expected <tabber> tag symbol");
+        assert_eq!(
+            tabber.signature_text,
+            "<tabber>Table=table view|Chart=chart view</tabber>"
+        );
+        assert_eq!(
+            tabber.summary_text,
+            "Results can be embedded in a <tabber>Table=table view|Chart=chart view</tabber> widget."
+        );
+    }
+
+    #[test]
+    fn usage_symbols_fall_back_to_bare_name_without_code_like_usage() {
+        let parsed = parse_docs_page(DocsPageParseInput {
+            page_title: "Help:Extension:ParserFunctions".to_string(),
+            local_path: "docs/mediawiki/Help_Extension_ParserFunctions.wiki".to_string(),
+            content: "ParserFunctions adds logic functions.\n== #titleparts ==\nThe #titleparts function splits a page title into segments. It does not accept named parameters.".to_string(),
+            source_revision_id: None,
+            source_parent_revision_id: None,
+            source_timestamp: None,
+        });
+
+        let titleparts = parsed
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.symbol_kind == "parser_function" && symbol.symbol_name == "#titleparts"
+            })
+            .expect("expected #titleparts parser_function symbol");
+        // No inline `{{#titleparts:...}}` usage exists, so the signature stays the name.
+        assert_eq!(titleparts.signature_text, "#titleparts");
+        assert_eq!(
+            titleparts.summary_text,
+            "The #titleparts function splits a page title into segments."
+        );
     }
 
     #[test]

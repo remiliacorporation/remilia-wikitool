@@ -70,6 +70,7 @@ fn import_extension_docs_with_api_internal_with_rebuild<A: DocsApi>(
             }
         }
         filter_translation_titles(&mut pages_to_fetch);
+        filter_archive_titles(&mut pages_to_fetch);
         dedupe_titles_in_order(&mut pages_to_fetch);
 
         let mut fetched_pages = Vec::new();
@@ -87,12 +88,15 @@ fn import_extension_docs_with_api_internal_with_rebuild<A: DocsApi>(
                     if !page.requested_title.eq_ignore_ascii_case(&page.title) {
                         alias_titles.push(page.requested_title);
                     }
-                    fetched_pages.push(FetchedDocsPage {
-                        page_title: page.title.clone(),
-                        alias_titles,
-                        local_path: extension_local_path(&extension, &page.title),
-                        content: page.content,
-                    });
+                    push_fetched_page(
+                        &mut fetched_pages,
+                        FetchedDocsPage {
+                            page_title: page.title.clone(),
+                            alias_titles,
+                            local_path: extension_local_path(&extension, &page.title),
+                            content: page.content,
+                        },
+                    );
                 }
                 Ok(None) => {
                     failures.push(format!("{extension}: page missing during refresh: {title}"));
@@ -304,6 +308,7 @@ pub(super) fn collect_pages_for_technical_task<A: DocsApi>(
         }
     }
     filter_translation_titles(&mut pages_to_fetch);
+    filter_archive_titles(&mut pages_to_fetch);
     dedupe_titles_in_order(&mut pages_to_fetch);
 
     let mut fetched_pages = Vec::new();
@@ -320,18 +325,55 @@ pub(super) fn collect_pages_for_technical_task<A: DocsApi>(
                 if !page.requested_title.eq_ignore_ascii_case(&page.title) {
                     alias_titles.push(page.requested_title);
                 }
-                fetched_pages.push(FetchedDocsPage {
-                    page_title: page.title.clone(),
-                    alias_titles,
-                    local_path: technical_local_path(
-                        infer_doc_type_from_title(&page.title),
-                        &page.title,
-                    ),
-                    content: page.content,
-                });
+                push_fetched_page(
+                    &mut fetched_pages,
+                    FetchedDocsPage {
+                        page_title: page.title.clone(),
+                        alias_titles,
+                        local_path: technical_local_path(
+                            infer_doc_type_from_title(&page.title),
+                            &page.title,
+                        ),
+                        content: page.content,
+                    },
+                );
             }
             None => bail!("page missing during refresh: {title}"),
         }
     }
     Ok(fetched_pages)
+}
+
+/// Requested titles are deduped before fetching, but `redirects=1` can resolve
+/// two requested titles to the same canonical page; a second insert would then
+/// violate the (corpus_id, page_title) primary key. Merge such hits into the
+/// existing entry's aliases instead.
+fn push_fetched_page(fetched_pages: &mut Vec<FetchedDocsPage>, incoming: FetchedDocsPage) {
+    // A requested doc page can redirect into a talk namespace
+    // (e.g. Extension:Cargo/Feedback -> Extension talk:Cargo); discussion pages
+    // are not documentation.
+    if incoming
+        .page_title
+        .split('/')
+        .next()
+        .is_some_and(|root| root.contains(" talk:"))
+    {
+        return;
+    }
+    if let Some(existing) = fetched_pages
+        .iter_mut()
+        .find(|page| page.page_title.eq_ignore_ascii_case(&incoming.page_title))
+    {
+        for alias in incoming.alias_titles {
+            if !existing
+                .alias_titles
+                .iter()
+                .any(|existing_alias| existing_alias.eq_ignore_ascii_case(&alias))
+            {
+                existing.alias_titles.push(alias);
+            }
+        }
+        return;
+    }
+    fetched_pages.push(incoming);
 }

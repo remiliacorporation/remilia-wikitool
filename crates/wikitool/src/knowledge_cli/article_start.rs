@@ -370,6 +370,15 @@ fn fold_interview_brief_into_article_start(
                 .to_string(),
         );
     }
+
+    // Blocking evidence gaps recorded by the interview are drafting blockers the
+    // agent must see without re-reading the whole brief; the remaining handoff
+    // signals (framing, related pages) ride on the embedded brief summary.
+    for gap in &brief_report.summary.handoff.blocking_evidence_gaps {
+        brief_report
+            .warnings
+            .push(format!("interview brief blocking evidence gap: {gap}"));
+    }
 }
 
 fn merge_brief_planned_sections(section_skeleton: &mut Vec<SectionSkeleton>, planned: &[String]) {
@@ -1057,6 +1066,7 @@ mod tests {
                 open_items_sidecar: None,
                 sections_present: Vec::new(),
                 sections_missing: Vec::new(),
+                sections_unfilled: Vec::new(),
                 open_item_count: 0,
                 open_item_counts: InterviewOpenItemCounts {
                     by_kind: BTreeMap::new(),
@@ -1064,6 +1074,7 @@ mod tests {
                     ..InterviewOpenItemCounts::default()
                 },
                 draft_plan: BriefDraftPlan::default(),
+                handoff: wikitool_core::knowledge_interview::BriefHandoffSignals::default(),
             },
             errors: Vec::new(),
             warnings: Vec::new(),

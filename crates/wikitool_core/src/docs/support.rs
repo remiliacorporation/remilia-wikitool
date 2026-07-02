@@ -121,6 +121,17 @@ pub(super) fn filter_translation_titles(titles: &mut Vec<String>) {
     titles.retain(|title| !is_translation_variant(title));
 }
 
+/// Talk-page archives live under documentation prefixes on mediawiki.org
+/// (e.g. `Extension:Cargo/Archive January to March 2016`) but are discussion
+/// history, not documentation.
+pub(super) fn filter_archive_titles(titles: &mut Vec<String>) {
+    titles.retain(|title| {
+        !title
+            .split('/')
+            .any(|segment| segment.starts_with("Archive"))
+    });
+}
+
 pub(super) fn normalize_extension_name(value: &str) -> String {
     normalize_title(value.trim().trim_start_matches("Extension:"))
 }

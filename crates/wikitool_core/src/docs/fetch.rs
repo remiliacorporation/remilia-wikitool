@@ -209,7 +209,7 @@ impl DocsApi for MediaWikiDocsClient {
             let mut params = vec![
                 ("action", "query".to_string()),
                 ("list", "allpages".to_string()),
-                ("apprefix", prefix.to_string()),
+                ("apprefix", namespace_relative_prefix(prefix).to_string()),
                 ("apnamespace", namespace.to_string()),
                 ("aplimit", batch_limit.to_string()),
             ];
@@ -493,4 +493,30 @@ struct RevisionSlots {
 struct MainSlot {
     #[serde(default)]
     content: Option<String>,
+}
+
+/// `list=allpages` takes `apprefix` relative to `apnamespace`; passing the
+/// namespaced title (e.g. `Extension:Cargo/`) silently matches nothing, which
+/// left every extension and technical corpus main-page-only. Callers pass the
+/// human-readable prefixed title; this strips the leading namespace segment.
+fn namespace_relative_prefix(prefix: &str) -> &str {
+    match prefix.split_once(':') {
+        Some((_, rest)) => rest,
+        None => prefix,
+    }
+}
+
+#[cfg(test)]
+mod prefix_tests {
+    use super::namespace_relative_prefix;
+
+    #[test]
+    fn strips_the_namespace_segment_only() {
+        assert_eq!(namespace_relative_prefix("Extension:Cargo/"), "Cargo/");
+        assert_eq!(namespace_relative_prefix("Manual:Hooks/"), "Hooks/");
+        assert_eq!(namespace_relative_prefix("Manual:$wg"), "$wg");
+        assert_eq!(namespace_relative_prefix("API:"), "");
+        assert_eq!(namespace_relative_prefix("Help:"), "");
+        assert_eq!(namespace_relative_prefix("NoNamespace/"), "NoNamespace/");
+    }
 }

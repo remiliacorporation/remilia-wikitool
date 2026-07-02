@@ -1030,8 +1030,9 @@ Options:
       --agent <AGENT>                 Agent label for brief metadata
       --data-dir <PATH>
       --config <PATH>
-      --source-article <TITLE>        Existing article title this interview concerns
+      --no-scout                      Skip the local-evidence scout (blank brief, generic question agenda)
       --diagnostics                   Print resolved runtime diagnostics
+      --source-article <TITLE>        Existing article title this interview concerns
       --related-draft <PATH>          Related draft path to record in brief metadata
       --timestamp <YYYYMMDDTHHMMSSZ>  UTC ledger timestamp; defaults to current time
       --force                         Overwrite files if the timestamped brief already exists

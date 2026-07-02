@@ -62,6 +62,35 @@ pub struct InterviewInitOptions {
     pub related_draft: Option<String>,
     pub timestamp: Option<String>,
     pub force: bool,
+    /// Local-evidence snapshot from the authoring scout; when present it is
+    /// written into the brief and drives the question agenda.
+    pub scout: Option<InterviewScoutContext>,
+}
+
+/// What the local index already knows about the subject, captured at init so
+/// the interviewer and the human share ground truth from the first question.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct InterviewScoutContext {
+    /// Serialized local existence state, e.g. `likely_missing` or `exact_page_exists`.
+    pub local_state: String,
+    pub comparable_pages: Vec<String>,
+    pub closest_comparable_title: Option<String>,
+    pub closest_comparable_outline: Vec<String>,
+    pub infobox_candidates: Vec<String>,
+    pub categories_seen: Vec<String>,
+    pub citation_template_families: Vec<String>,
+    pub missing_query_terms: Vec<String>,
+}
+
+/// An evidence-grounded area the interviewer should consider raising, with a
+/// suggested phrasing and the evidence that motivates it. These are prompts to
+/// adapt in conversation, not a script: the interview stays open-ended, and the
+/// agenda exists so questions start from what the wiki actually knows.
+#[derive(Debug, Clone, Serialize)]
+pub struct InterviewQuestionArea {
+    pub area: String,
+    pub suggested_question: String,
+    pub why: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,6 +105,8 @@ pub struct InterviewInitReport {
     pub wrote_brief: bool,
     pub wrote_open_items: bool,
     pub next_steps: Vec<String>,
+    pub scout_included: bool,
+    pub question_agenda: Vec<InterviewQuestionArea>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -110,9 +141,15 @@ pub struct InterviewBriefSummary {
     pub open_items_sidecar: Option<String>,
     pub sections_present: Vec<String>,
     pub sections_missing: Vec<String>,
+    /// Sections whose body is still template scaffolding; advisory, not gating.
+    pub sections_unfilled: Vec<String>,
     pub open_item_count: usize,
     pub open_item_counts: InterviewOpenItemCounts,
     pub draft_plan: BriefDraftPlan,
+    /// Structured handoff signals parsed from the brief body beyond the Draft
+    /// Plan, so downstream commands receive the interview's framing and leads
+    /// instead of validating them and throwing them away.
+    pub handoff: BriefHandoffSignals,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -203,6 +240,7 @@ struct ParsedBrief {
     metadata: BriefFrontmatter,
     sections_present: Vec<String>,
     sections_missing: Vec<String>,
+    sections_unfilled: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -283,6 +321,12 @@ pub fn create_interview_brief(
         open_items_name: &open_items_name,
     });
 
+    let brief = match &options.scout {
+        Some(scout) => insert_scout_section(&brief, scout),
+        None => brief,
+    };
+    let question_agenda = build_question_agenda(&options.intent, options.scout.as_ref());
+
     let wrote_brief = write_if_allowed(&brief_path, &brief, options.force)?;
     let wrote_open_items = write_if_allowed(&open_items_path, "", options.force)?;
 
@@ -296,12 +340,162 @@ pub fn create_interview_brief(
         open_items_path,
         wrote_brief,
         wrote_open_items,
+        scout_included: options.scout.is_some(),
+        question_agenda,
         next_steps: vec![
+            "Open the interview from the question agenda, adapting it to the conversation."
+                .to_string(),
             "Fill the brief from the user interview; keep user assertions as leads.".to_string(),
             "Run `wikitool knowledge interview validate PATH --format json` before drafting."
                 .to_string(),
         ],
     })
+}
+
+/// Render the tool-written Scout Context section and place it directly after the
+/// brief title, so both parties see the same local-evidence baseline. The section
+/// is informational; validation never requires it and never checks its fill state.
+fn insert_scout_section(brief: &str, scout: &InterviewScoutContext) -> String {
+    let mut section = String::from("\n## Scout Context\n\n");
+    section.push_str(
+        "Tool-written local-evidence snapshot from `knowledge article-start`; do not edit.\n\n",
+    );
+    section.push_str(&format!("Local state: {}\n", scout.local_state));
+    if !scout.comparable_pages.is_empty() {
+        section.push_str(&format!(
+            "Comparable pages: {}\n",
+            scout.comparable_pages.join("; ")
+        ));
+    }
+    if let Some(title) = &scout.closest_comparable_title
+        && !scout.closest_comparable_outline.is_empty()
+    {
+        section.push_str(&format!(
+            "Closest comparable outline ({}): {}\n",
+            title,
+            scout.closest_comparable_outline.join(" > ")
+        ));
+    }
+    if !scout.infobox_candidates.is_empty() {
+        section.push_str(&format!(
+            "Infobox candidates: {}\n",
+            scout.infobox_candidates.join("; ")
+        ));
+    }
+    if !scout.categories_seen.is_empty() {
+        section.push_str(&format!(
+            "Categories seen on comparables: {}\n",
+            scout.categories_seen.join("; ")
+        ));
+    }
+    if !scout.citation_template_families.is_empty() {
+        section.push_str(&format!(
+            "Citation patterns seen locally: {}\n",
+            scout.citation_template_families.join("; ")
+        ));
+    }
+    if !scout.missing_query_terms.is_empty() {
+        section.push_str(&format!(
+            "Query terms with no local evidence: {}\n",
+            scout.missing_query_terms.join("; ")
+        ));
+    }
+    match brief.find("\n## Article Object") {
+        Some(index) => {
+            let mut out = String::with_capacity(brief.len() + section.len());
+            out.push_str(&brief[..index]);
+            out.push_str(&section);
+            out.push_str(&brief[index..]);
+            out
+        }
+        None => format!("{brief}{section}"),
+    }
+}
+
+/// Derive evidence-grounded question areas for the interviewer. The agenda is
+/// adaptive by design: the opener is always the freeform monologue invitation,
+/// followed only by areas the local evidence actually raises, and it closes on
+/// boundaries (what the article must not assert). Without a scout the agenda
+/// still gives the interviewer a fluid opening rather than an empty form.
+fn build_question_agenda(
+    intent: &str,
+    scout: Option<&InterviewScoutContext>,
+) -> Vec<InterviewQuestionArea> {
+    let mut agenda = Vec::new();
+    agenda.push(InterviewQuestionArea {
+        area: "subject in the person's own words".to_string(),
+        suggested_question: "Before I narrow this into article sections, tell me what this subject is in your own words: why it matters, where it came from, what people misunderstand, what sources or artifacts I should look at, and what you would be disappointed to see omitted.".to_string(),
+        why: "The freeform monologue sets intent, scope, and angle before any structure is imposed.".to_string(),
+    });
+
+    if let Some(scout) = scout {
+        match scout.local_state.as_str() {
+            "exact_page_exists" | "redirect_exists" => {
+                if intent != "new" {
+                    agenda.push(InterviewQuestionArea {
+                        area: "what the current page gets wrong or misses".to_string(),
+                        suggested_question: "The wiki already has this page. What is wrong, missing, or under-emphasized in it as it stands?".to_string(),
+                        why: format!("Local state is {}; the interview should target the delta, not restate coverage.", scout.local_state),
+                    });
+                }
+            }
+            "likely_missing" | "linked_but_missing" => {
+                agenda.push(InterviewQuestionArea {
+                    area: "primary knowledge the wiki lacks".to_string(),
+                    suggested_question: "The wiki has no coverage of this subject yet, so your knowledge is the starting record. What do you know firsthand, and what should I verify independently?".to_string(),
+                    why: "Local index has no page for this subject; everything starts from the human's knowledge and leads.".to_string(),
+                });
+            }
+            _ => {}
+        }
+        if let Some(title) = &scout.closest_comparable_title {
+            let outline = if scout.closest_comparable_outline.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", scout.closest_comparable_outline.join(" > "))
+            };
+            agenda.push(InterviewQuestionArea {
+                area: "article shape".to_string(),
+                suggested_question: format!(
+                    "The closest existing page is {title}{outline}. Should this article follow a similar shape, or is the subject a different kind of thing?"
+                ),
+                why: "Comparable-page structure is the strongest local signal for the section plan; confirming or rejecting it early shapes every later question.".to_string(),
+            });
+        }
+        for term in scout.missing_query_terms.iter().take(3) {
+            agenda.push(InterviewQuestionArea {
+                area: format!("unknown term: {term}"),
+                suggested_question: format!(
+                    "The wiki has no local evidence for \"{term}\". Is it central to this subject, and what is it?"
+                ),
+                why: "The topic query hit nothing locally for this term; it is either central and undocumented or incidental.".to_string(),
+            });
+        }
+        if scout.citation_template_families.is_empty() {
+            agenda.push(InterviewQuestionArea {
+                area: "source leads".to_string(),
+                suggested_question: "No citation patterns exist locally for this subject. What primary sources, posts, artifacts, or records should anchor it?".to_string(),
+                why: "Comparable pages surfaced no citation templates, so the source strategy must come from the interview.".to_string(),
+            });
+        }
+        if scout.infobox_candidates.len() > 1 {
+            agenda.push(InterviewQuestionArea {
+                area: "subject kind".to_string(),
+                suggested_question: format!(
+                    "Local evidence suggests more than one page kind ({}). Which fits, or is it none of these?",
+                    scout.infobox_candidates.join("; ")
+                ),
+                why: "The infobox choice pins the page kind and steers required parameters.".to_string(),
+            });
+        }
+    }
+
+    agenda.push(InterviewQuestionArea {
+        area: "boundaries".to_string(),
+        suggested_question: "Is there anything the article must not say, overstate, or attribute — privacy limits, contested claims, or readings that need a source before they can appear?".to_string(),
+        why: "Do-not-assert and privacy boundaries belong in open items before drafting, not discovered after.".to_string(),
+    });
+    agenda
 }
 
 pub fn validate_interview_brief(path: &Path, stale_days: u64) -> Result<InterviewValidationReport> {
@@ -316,6 +510,16 @@ pub fn validate_interview_brief(path: &Path, stale_days: u64) -> Result<Intervie
 
     for missing in &parsed.sections_missing {
         warnings.push(format!("missing recommended section `{missing}`"));
+    }
+    for unfilled in &parsed.sections_unfilled {
+        if CORE_SUBSTANCE_SECTIONS
+            .iter()
+            .any(|core| core.eq_ignore_ascii_case(unfilled))
+        {
+            warnings.push(format!(
+                "section `{unfilled}` is still at its template state; fill it or record why it stays empty"
+            ));
+        }
     }
 
     let open_items_report =
@@ -340,9 +544,11 @@ pub fn validate_interview_brief(path: &Path, stale_days: u64) -> Result<Intervie
         open_items_sidecar: parsed.metadata.open_items_sidecar.clone(),
         sections_present: parsed.sections_present,
         sections_missing: parsed.sections_missing,
+        sections_unfilled: parsed.sections_unfilled,
         open_item_count: open_items_report.counts.total,
         open_item_counts: open_items_report.counts,
         draft_plan: parse_brief_draft_plan(&content),
+        handoff: parse_brief_handoff_signals(&content),
     };
 
     let status = if !errors.is_empty() {
@@ -451,9 +657,11 @@ fn unreadable_brief_report(path: &Path, error: &anyhow::Error) -> InterviewValid
             open_items_sidecar: None,
             sections_present: Vec::new(),
             sections_missing: Vec::new(),
+            sections_unfilled: Vec::new(),
             open_item_count: 0,
             open_item_counts: InterviewOpenItemCounts::default(),
             draft_plan: BriefDraftPlan::default(),
+            handoff: BriefHandoffSignals::default(),
         },
         errors: vec![format!("brief could not be parsed: {error}")],
         warnings: Vec::new(),
@@ -793,11 +1001,44 @@ fn parse_brief(content: &str) -> Result<ParsedBrief> {
         .filter(|section| !present_set.contains(&section.to_ascii_lowercase()))
         .map(|section| (*section).to_string())
         .collect();
+    let sections_unfilled = collect_unfilled_sections(&body);
     Ok(ParsedBrief {
         metadata,
         sections_present,
         sections_missing,
+        sections_unfilled,
     })
+}
+
+/// A section is unfilled when every non-empty line is still template
+/// scaffolding: a prompt line ending in `:` or the `TBD.` placeholder. Filled
+/// answers are prose or `Label: value` lines, which do not end with `:`.
+/// The tool-written Scout Context section is never counted.
+fn collect_unfilled_sections(body: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut section = String::new();
+    let mut has_content = true;
+    for raw in body.lines() {
+        let trimmed = raw.trim();
+        if trimmed.starts_with("## ") && !trimmed.starts_with("### ") {
+            if !section.is_empty() && !has_content {
+                out.push(section.clone());
+            }
+            section = trimmed.trim_start_matches('#').trim().to_string();
+            has_content = section.eq_ignore_ascii_case("Scout Context");
+            continue;
+        }
+        if section.is_empty() || has_content || trimmed.is_empty() {
+            continue;
+        }
+        if trimmed != "TBD." && !trimmed.ends_with(':') {
+            has_content = true;
+        }
+    }
+    if !section.is_empty() && !has_content {
+        out.push(section);
+    }
+    out
 }
 
 fn parse_second_level_headings(body: &str) -> Vec<String> {
@@ -903,6 +1144,91 @@ pub fn parse_brief_draft_plan(body: &str) -> BriefDraftPlan {
     plan.likely_sections = split_labeled_items(&likely_lines);
     plan.open_questions = split_labeled_items(&open_lines);
     plan
+}
+
+/// Sections whose emptiness after an interview is worth an advisory warning.
+/// Chronology, Entities, Scope, and Initial Materials stay warning-free: the
+/// playbook explicitly says not to force them when they do not improve the
+/// article.
+const CORE_SUBSTANCE_SECTIONS: &[&str] = &[
+    "Article Object",
+    "User-Framed Summary",
+    "Interview Transcript and Context",
+    "Editorial Framing",
+    "Research Plan",
+    "Draft Plan",
+];
+
+/// Handoff signals parsed from brief sections beyond the Draft Plan. Everything
+/// here is human knowledge the drafting agent should see without re-reading the
+/// whole brief: framing, risks, blocking gaps, and related pages.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct BriefHandoffSignals {
+    pub recommended_angle: Vec<String>,
+    pub tone_risks: Vec<String>,
+    pub likely_misconceptions: Vec<String>,
+    pub terminology_notes: Vec<String>,
+    pub blocking_evidence_gaps: Vec<String>,
+    pub related_wiki_pages: Vec<String>,
+}
+
+/// Parse labeled lists from the Editorial Framing, Research Plan, and Entities
+/// sections. Same deterministic line scan as the draft-plan parser: a label line
+/// starts capture, list items follow until the next label or section.
+pub fn parse_brief_handoff_signals(body: &str) -> BriefHandoffSignals {
+    let captures: &[(&str, &str)] = &[
+        ("Editorial Framing", "Recommended angle:"),
+        ("Editorial Framing", "Tone risks:"),
+        ("Editorial Framing", "Likely misconceptions:"),
+        ("Editorial Framing", "Terminology notes:"),
+        ("Research Plan", "Blocking evidence gaps:"),
+        ("Entities and Relationships", "Related wiki pages:"),
+    ];
+    let mut collected: Vec<Vec<String>> = vec![Vec::new(); captures.len()];
+    let mut section = String::new();
+    let mut active: Option<usize> = None;
+
+    for raw in body.lines() {
+        let trimmed = raw.trim();
+        if trimmed.starts_with("## ") && !trimmed.starts_with("### ") {
+            section = trimmed.trim_start_matches('#').trim().to_string();
+            active = None;
+            continue;
+        }
+        if let Some(index) = captures.iter().position(|(capture_section, label)| {
+            section.eq_ignore_ascii_case(capture_section) && trimmed.starts_with(label)
+        }) {
+            active = Some(index);
+            let rest = trimmed[captures[index].1.len()..].trim();
+            if !rest.is_empty() {
+                collected[index].push(rest.to_string());
+            }
+            continue;
+        }
+        if trimmed.ends_with(':') {
+            // Another label within the section ends the current capture.
+            active = None;
+            continue;
+        }
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(index) = active {
+            collected[index].push(trimmed.to_string());
+        }
+    }
+
+    let mut lists = collected
+        .into_iter()
+        .map(|lines| split_labeled_items(&lines));
+    BriefHandoffSignals {
+        recommended_angle: lists.next().unwrap_or_default(),
+        tone_risks: lists.next().unwrap_or_default(),
+        likely_misconceptions: lists.next().unwrap_or_default(),
+        terminology_notes: lists.next().unwrap_or_default(),
+        blocking_evidence_gaps: lists.next().unwrap_or_default(),
+        related_wiki_pages: lists.next().unwrap_or_default(),
+    }
 }
 
 fn strip_list_bullet(line: &str) -> &str {
@@ -1577,6 +1903,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1604,6 +1931,7 @@ mod tests {
                 related_draft: Some(".wikitool/drafts/Miya Notes.wiki".to_string()),
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1628,6 +1956,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1660,6 +1989,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1709,6 +2039,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1732,6 +2063,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1782,6 +2114,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1879,6 +2212,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1913,6 +2247,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1952,6 +2287,7 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260601T172430Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect("init");
@@ -1967,7 +2303,10 @@ mod tests {
         let audit = audit_interview_briefs(&paths, 45)
             .expect("audit must survive a single unparseable brief");
         assert_eq!(audit.total_briefs, 2);
-        assert_eq!(audit.valid, 1);
+        // A freshly-inited brief is all template scaffolding, which now draws
+        // advisory substance warnings instead of counting as clean.
+        assert_eq!(audit.valid, 0);
+        assert_eq!(audit.warning, 1);
         assert_eq!(audit.invalid, 1);
         assert!(audit.briefs.iter().any(|brief| {
             brief.status == InterviewValidationStatus::Invalid
@@ -1992,11 +2331,112 @@ mod tests {
                 related_draft: None,
                 timestamp: Some("20260631T100000Z".to_string()),
                 force: false,
+                scout: None,
             },
         )
         .expect_err("June 31 is not a valid calendar date");
         let rendered = format!("{error:#}");
         assert!(rendered.contains("invalid ledger timestamp"));
         assert!(rendered.contains("invalid day"));
+    }
+}
+
+#[cfg(test)]
+mod scout_and_handoff_tests {
+    use super::*;
+
+    fn scout_fixture() -> InterviewScoutContext {
+        InterviewScoutContext {
+            local_state: "likely_missing".to_string(),
+            comparable_pages: vec!["Post-Authorship".to_string()],
+            closest_comparable_title: Some("Post-Authorship".to_string()),
+            closest_comparable_outline: vec![
+                "Core principles".to_string(),
+                "Historical context".to_string(),
+            ],
+            infobox_candidates: vec![
+                "Template:Infobox concept".to_string(),
+                "Template:Infobox NFT collection".to_string(),
+            ],
+            categories_seen: vec!["Category:Concepts".to_string()],
+            citation_template_families: Vec::new(),
+            missing_query_terms: vec!["XCOPY".to_string()],
+        }
+    }
+
+    #[test]
+    fn scout_section_lands_after_title_and_before_article_object() {
+        let brief =
+            "---\nx: 1\n---\n\n# Knowledge Interview Brief: T\n\n## Article Object\n\nTBD.\n";
+        let out = insert_scout_section(brief, &scout_fixture());
+        let scout_index = out.find("## Scout Context").expect("scout section");
+        let object_index = out.find("## Article Object").expect("object section");
+        assert!(scout_index < object_index);
+        assert!(out.contains("Local state: likely_missing"));
+        assert!(out.contains(
+            "Closest comparable outline (Post-Authorship): Core principles > Historical context"
+        ));
+        assert!(out.contains("Query terms with no local evidence: XCOPY"));
+    }
+
+    #[test]
+    fn question_agenda_adapts_to_evidence() {
+        let scout = scout_fixture();
+        let agenda = build_question_agenda("new", Some(&scout));
+        let areas: Vec<&str> = agenda.iter().map(|area| area.area.as_str()).collect();
+        assert_eq!(areas.first(), Some(&"subject in the person's own words"));
+        assert!(areas.contains(&"primary knowledge the wiki lacks"));
+        assert!(areas.contains(&"article shape"));
+        assert!(areas.contains(&"unknown term: XCOPY"));
+        assert!(areas.contains(&"source leads"));
+        assert!(areas.contains(&"subject kind"));
+        assert_eq!(areas.last(), Some(&"boundaries"));
+
+        // Without a scout the agenda still opens fluidly and closes on boundaries.
+        let bare = build_question_agenda("new", None);
+        assert_eq!(bare.len(), 2);
+
+        // An existing page with expand intent asks for the delta, not a monologue only.
+        let mut existing = scout_fixture();
+        existing.local_state = "exact_page_exists".to_string();
+        let expand = build_question_agenda("expand", Some(&existing));
+        assert!(
+            expand
+                .iter()
+                .any(|area| area.area == "what the current page gets wrong or misses")
+        );
+    }
+
+    #[test]
+    fn unfilled_sections_track_template_state() {
+        let body = "## Scout Context\n\nLocal state: likely_missing\n\n## Article Object\n\nTBD.\n\n## Scope\n\nIncluded:\n\nExcluded:\n\n## User-Framed Summary\n\nA real answer from the interview.\n";
+        let unfilled = collect_unfilled_sections(body);
+        assert_eq!(
+            unfilled,
+            vec!["Article Object".to_string(), "Scope".to_string()]
+        );
+    }
+
+    #[test]
+    fn handoff_signals_parse_labeled_lists() {
+        let body = "## Entities and Relationships\n\nPeople:\n\nRelated wiki pages:\nPost-Authorship\nXCOPY\n\n## Editorial Framing\n\nRecommended angle: collection as artifact of the 2021 wave\nTone risks:\n- significance inflation\n\n## Research Plan\n\nBlocking evidence gaps:\nmint date unverified\n";
+        let signals = parse_brief_handoff_signals(body);
+        assert_eq!(
+            signals.recommended_angle,
+            vec!["collection as artifact of the 2021 wave".to_string()]
+        );
+        assert_eq!(
+            signals.tone_risks,
+            vec!["significance inflation".to_string()]
+        );
+        assert_eq!(
+            signals.blocking_evidence_gaps,
+            vec!["mint date unverified".to_string()]
+        );
+        assert_eq!(
+            signals.related_wiki_pages,
+            vec!["Post-Authorship".to_string(), "XCOPY".to_string()]
+        );
+        assert!(signals.likely_misconceptions.is_empty());
     }
 }

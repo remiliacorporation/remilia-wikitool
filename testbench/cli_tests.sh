@@ -702,6 +702,22 @@ else
     fail "delete --dry-run removed the file!"
 fi
 
+# --- knowledge interview init/validate ---
+section "knowledge interview"
+OUTPUT=$(wt "$PROJ" knowledge interview init "Interview Smoke" --no-scout --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"question_agenda"' && echo "$OUTPUT" | grep -q '"scout_included": false'; then
+    pass "interview init returns a question agenda without a scout"
+else
+    fail "interview init returns a question agenda without a scout (got: ${OUTPUT:0:300})"
+fi
+IB_PATH=$(echo "$OUTPUT" | grep -o '"brief_path": "[^"]*"' | cut -d'"' -f4)
+OUTPUT=$(wt "$PROJ" knowledge interview validate "$IB_PATH" --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"status": "warning"' && echo "$OUTPUT" | grep -q 'template state'; then
+    pass "interview validate flags template-state sections advisorily"
+else
+    fail "interview validate flags template-state sections advisorily (got: ${OUTPUT:0:300})"
+fi
+
 # --- contextmink install ---
 section "contextmink install"
 FAKE_PACK="$TMPDIR_ROOT/fake-contextmink-pack"

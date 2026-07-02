@@ -250,6 +250,7 @@ pub fn build_authoring_knowledge_pack(
         &template_references,
         &module_patterns,
         &stub_detected_templates,
+        stub_content,
         &options.docs_profile,
     )?;
     if !template_references.is_empty() {

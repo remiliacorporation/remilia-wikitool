@@ -45,10 +45,11 @@ pub use model::{
 pub use query::{build_docs_context, lookup_docs_symbols, search_docs};
 use support::{
     OutdatedRefreshRow, cleanup_empty_corpora, count_query, dedupe_titles_in_order,
-    deserialize_string_list, extension_corpus_id, extension_local_path, filter_translation_titles,
-    infer_doc_type_from_title, normalize_corpus_kind_filter, normalize_extension_list,
-    normalize_extension_name, normalize_extensions, open_docs_connection, profile_corpus_id,
-    rebuild_docs_fts_indexes, serialize_string_list, technical_corpus_id, technical_local_path,
+    deserialize_string_list, extension_corpus_id, extension_local_path, filter_archive_titles,
+    filter_translation_titles, infer_doc_type_from_title, normalize_corpus_kind_filter,
+    normalize_extension_list, normalize_extension_name, normalize_extensions, open_docs_connection,
+    profile_corpus_id, rebuild_docs_fts_indexes, serialize_string_list, technical_corpus_id,
+    technical_local_path,
 };
 
 use catalog::{load_docs_corpora, load_docs_stats, load_outdated_docs, load_outdated_refresh_rows};

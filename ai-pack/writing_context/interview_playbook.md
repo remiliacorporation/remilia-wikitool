@@ -46,6 +46,14 @@ Keep it light or skip it for:
 1. Scout first. Run the normal authoring front door, usually
    `wikitool knowledge article-start "<Topic>" --intent new|expand|audit|refresh --format json --view brief`,
    and do a cursory source/wiki search before asking broad questions.
+   `knowledge interview init` runs this scout itself: it writes a tool-authored
+   `Scout Context` section into the brief (local state, comparable pages, the
+   closest comparable's outline, categories, citation patterns, missing query
+   terms) and returns a `question_agenda` of evidence-grounded question areas.
+   The agenda is a set of suggestions to adapt in conversation, not a script:
+   when the wiki knows nothing, it opens with the freeform monologue; when a
+   page or close comparable exists, it steers toward the delta and the shape
+   question instead. Pass `--no-scout` to start from a blank brief.
 2. Read supplied materials before narrowing the interview. If the user provides documents, links,
    notes, screenshots, transcripts, or source excerpts, inspect them first when access permits.
    Start the interview by asking the user to explain what the subject is, why it matters, and what
@@ -92,7 +100,9 @@ an inferred reading, or something we should seek a publishable source for?
 
 Avoid turning the interview into quality-marker compliance. The checklist exists to preserve a
 handoff, not to decide that the article is good. The interviewer should prefer more context, clearer
-source leads, and better article judgment over early closure.
+source leads, and better article judgment over early closure. Use the init `question_agenda` the same
+way: each area names the evidence that motivates it, so rephrase, reorder, drop, or replace areas as
+the conversation actually unfolds.
 
 For Remilia Wiki, do not force every adjacent subject into a "relationship to Remilia" frame. The
 wiki is the online world viewed from Remilia's perspective; a visual artist, game, scene, or artifact
@@ -122,8 +132,12 @@ wikitool knowledge interview open-item list .wikitool/interviews/Title/20260601T
 wikitool knowledge interview audit --view brief --format json
 ```
 
-Brief sections. The `init` command renders this canonical skeleton, and `validate` warns on any
-that go missing, so keep these headings:
+Brief sections. The `init` command renders this canonical skeleton (plus a tool-written
+`Scout Context` section when the scout ran; leave that section alone), and `validate` warns on any
+that go missing, so keep these headings. `validate` also warns advisorily when a core section
+(Article Object, User-Framed Summary, Interview Transcript and Context, Editorial Framing,
+Research Plan, Draft Plan) is still at its template state - fill it or note why it stays empty.
+Chronology, Entities, Scope, and Initial Materials never draw fill warnings; do not pad them:
 
 - Article Object: a neutral definition of what the subject is and what kind of page it may become.
 - Scope: what is included or excluded, plus possible redirects and merge/split targets.
@@ -144,7 +158,12 @@ that go missing, so keep these headings:
 
 For machine-readable Draft Plan extraction, write `Likely sections` and `Open questions before
 drafting` one item per line, or use semicolons on the label line. Do not comma-separate section
-names; commas often belong inside natural headings.
+names; commas often belong inside natural headings. The same one-item-per-line rule applies to the
+other machine-read labels: `Recommended angle`, `Tone risks`, `Likely misconceptions`, and
+`Terminology notes` under Editorial Framing, `Blocking evidence gaps` under Research Plan, and
+`Related wiki pages` under Entities and Relationships. These flow into `article-start --brief-path`
+as handoff signals (blocking gaps become warnings), so what you record there reaches the drafting
+agent without re-reading the brief.
 
 Do not put planning labels such as "Editorial vantage", "Remilia Wiki context", or "Why this
 belongs here" into `Likely sections` unless they name an actual sourceable article section. Use

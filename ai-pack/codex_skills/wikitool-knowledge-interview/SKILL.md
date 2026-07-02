@@ -15,7 +15,10 @@ validation, summaries, audits, and structured open-item logging through
 
 Read `writing_context/interview_playbook.md` before using this skill. Start with a compact scout:
 `wikitool knowledge article-start "<Topic>" --intent new|expand|audit|refresh --format json --view brief`,
-plus a cursory wiki/source search when useful. If the user provides documents, links, screenshots,
+plus a cursory wiki/source search when useful. `knowledge interview init` also runs the scout itself:
+it seeds the brief with a tool-written `Scout Context` section and returns an evidence-grounded
+`question_agenda` - adapt those areas conversationally rather than reading them as a script, and use
+`--no-scout` when a blank brief is wanted. If the user provides documents, links, screenshots,
 transcripts, notes, or source excerpts, read them before narrowing the interview and use them to ask
 better questions. Then interview to the depth needed to improve the article or review; there is no
 fixed round count.

@@ -6,10 +6,10 @@ use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::knowledge_interview::{
     InterviewAuditReport, InterviewInitOptions, InterviewInitReport,
     InterviewOpenItemAppendOptions, InterviewOpenItemAppendReport, InterviewOpenItemListReport,
-    InterviewOpenItemUpdateOptions, InterviewOpenItemUpdateReport, InterviewValidationReport,
-    InterviewValidationStatus, append_interview_open_item, audit_interview_briefs,
-    create_interview_brief, list_interview_open_items, update_interview_open_item,
-    validate_interview_brief,
+    InterviewOpenItemUpdateOptions, InterviewOpenItemUpdateReport, InterviewScoutContext,
+    InterviewValidationReport, InterviewValidationStatus, append_interview_open_item,
+    audit_interview_briefs, create_interview_brief, list_interview_open_items,
+    update_interview_open_item, validate_interview_brief,
 };
 
 use crate::RuntimeOptions;
@@ -53,6 +53,11 @@ struct KnowledgeInterviewInitArgs {
     intent: KnowledgeInterviewIntentArg,
     #[arg(long, value_name = "AGENT", help = "Agent label for brief metadata")]
     agent: Option<String>,
+    #[arg(
+        long = "no-scout",
+        help = "Skip the local-evidence scout (blank brief, generic question agenda)"
+    )]
+    no_scout: bool,
     #[arg(
         long,
         value_name = "TITLE",
@@ -251,6 +256,16 @@ impl KnowledgeInterviewIntentArg {
             Self::Refresh => "refresh",
         }
     }
+
+    fn into_article_start_intent(self) -> wikitool_core::authoring::model::ArticleStartIntent {
+        use wikitool_core::authoring::model::ArticleStartIntent;
+        match self {
+            Self::New => ArticleStartIntent::New,
+            Self::Expand => ArticleStartIntent::Expand,
+            Self::Audit => ArticleStartIntent::Audit,
+            Self::Refresh => ArticleStartIntent::Refresh,
+        }
+    }
 }
 
 // Stored records and JSON output use snake_case kinds (e.g. `rejected_source`).
@@ -371,6 +386,11 @@ pub(crate) fn run_knowledge_interview(
 
 fn run_init(runtime: &RuntimeOptions, args: KnowledgeInterviewInitArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
+    let scout = if args.no_scout {
+        None
+    } else {
+        build_interview_scout(&paths, &args.title, args.intent)?
+    };
     let report = create_interview_brief(
         &paths,
         &InterviewInitOptions {
@@ -381,6 +401,7 @@ fn run_init(runtime: &RuntimeOptions, args: KnowledgeInterviewInitArgs) -> Resul
             related_draft: args.related_draft,
             timestamp: args.timestamp,
             force: args.force,
+            scout,
         },
     )?;
 
@@ -541,6 +562,75 @@ fn resolve_scoped_input_path(
     Ok(absolute)
 }
 
+/// Run the local authoring scout and reduce it to the interview's evidence
+/// snapshot. The interview must stay usable on a cold runtime, so a missing
+/// index degrades to `None` (blank brief + generic agenda) rather than failing.
+fn build_interview_scout(
+    paths: &wikitool_core::runtime::ResolvedPaths,
+    title: &str,
+    intent: KnowledgeInterviewIntentArg,
+) -> Result<Option<InterviewScoutContext>> {
+    use wikitool_core::authoring::article_start::build_article_start;
+    use wikitool_core::knowledge::authoring::{
+        AuthoringKnowledgePack, AuthoringKnowledgePackOptions, build_authoring_knowledge_pack,
+    };
+    use wikitool_core::profile::load_or_build_remilia_profile_overlay;
+
+    let pack = build_authoring_knowledge_pack(
+        paths,
+        Some(title),
+        None,
+        &AuthoringKnowledgePackOptions::default(),
+    )?;
+    let AuthoringKnowledgePack::Found(report) = pack else {
+        return Ok(None);
+    };
+    let overlay = load_or_build_remilia_profile_overlay(paths)?;
+    let article_start = build_article_start(&report, &overlay, intent.into_article_start_intent());
+
+    let local_state = serde_json::to_value(&article_start.local_state)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "unknown".to_string());
+    let integration = &article_start.local_integration;
+    Ok(Some(InterviewScoutContext {
+        local_state,
+        comparable_pages: integration.comparable_pages.clone(),
+        closest_comparable_title: integration
+            .closest_comparable_outline
+            .as_ref()
+            .map(|outline| outline.title.clone()),
+        closest_comparable_outline: integration
+            .closest_comparable_outline
+            .as_ref()
+            .map(|outline| outline.ordered_headings.clone())
+            .unwrap_or_default(),
+        infobox_candidates: integration
+            .available_infoboxes
+            .iter()
+            .map(|entry| entry.template_title.clone())
+            .take(4)
+            .collect(),
+        categories_seen: integration
+            .categories_seen
+            .iter()
+            .map(|entry| entry.category_title.clone())
+            .take(6)
+            .collect(),
+        citation_template_families: {
+            let mut families = article_start
+                .subject_research
+                .citation_template_families
+                .clone();
+            families.dedup();
+            families.sort();
+            families.dedup();
+            families
+        },
+        missing_query_terms: article_start.evidence_profile.missing_query_terms.clone(),
+    }))
+}
+
 fn print_init_report(report: &InterviewInitReport) {
     println!("knowledge interview init");
     println!("title: {}", report.title);
@@ -554,6 +644,12 @@ fn print_init_report(report: &InterviewInitReport) {
     );
     println!("wrote_brief: {}", yes_no(report.wrote_brief));
     println!("wrote_open_items: {}", yes_no(report.wrote_open_items));
+    println!("scout_included: {}", yes_no(report.scout_included));
+    for area in &report.question_agenda {
+        println!("question_area: {}", area.area);
+        println!("  suggested: {}", area.suggested_question);
+        println!("  why: {}", area.why);
+    }
     for step in &report.next_steps {
         println!("next_step: {step}");
     }
