@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use wikitool_core::article_lint::lint_article;
+use wikitool_core::article_lint::{lint_article_with_resources, load_article_lint_resources};
 use wikitool_core::config::WikiConfig;
 use wikitool_core::knowledge::inspect::{ValidationReport, run_validation_checks};
 use wikitool_core::runtime::ResolvedPaths;
@@ -28,9 +28,12 @@ pub(super) fn run_changed_article_lint(
         });
     };
 
+    let resources = load_article_lint_resources(paths)?;
     let reports = target_paths
         .iter()
-        .map(|relative_path| lint_article(paths, Path::new(relative_path)))
+        .map(|relative_path| {
+            lint_article_with_resources(paths, Path::new(relative_path), None, &resources)
+        })
         .collect::<Result<Vec<_>>>()?;
     let total_errors = reports.iter().map(|report| report.errors).sum();
     let total_warnings = reports.iter().map(|report| report.warnings).sum();

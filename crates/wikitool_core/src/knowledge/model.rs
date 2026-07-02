@@ -11,6 +11,10 @@ pub struct RebuildReport {
     pub inserted_rows: usize,
     pub inserted_links: usize,
     pub scan: ScanStats,
+    /// True when the scanned corpus already matched the current-generation index
+    /// byte-for-byte and the rebuild was skipped; the row/link counts then report
+    /// the existing index contents.
+    pub unchanged: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

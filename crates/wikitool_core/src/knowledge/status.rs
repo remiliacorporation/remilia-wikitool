@@ -49,6 +49,12 @@ pub fn docs_profile_artifact_key(profile: &str) -> String {
     format!("docs_profile:{}", normalize_profile(profile))
 }
 
+pub(crate) fn load_content_index_artifact(
+    connection: &Connection,
+) -> Result<Option<KnowledgeArtifact>> {
+    load_artifact(connection, CONTENT_INDEX_ARTIFACT_KEY)
+}
+
 pub fn record_content_index_artifact(
     connection: &Connection,
     row_count: usize,

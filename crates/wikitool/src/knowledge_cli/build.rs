@@ -32,6 +32,7 @@ pub(super) fn run_knowledge_build(
         "knowledge_generation: {}",
         report.status.knowledge_generation
     );
+    println!("rebuild.unchanged: {}", report.rebuild.unchanged);
     println!("rebuild.inserted_rows: {}", report.rebuild.inserted_rows);
     println!("rebuild.inserted_links: {}", report.rebuild.inserted_links);
     print_scan_stats("scan", &report.rebuild.scan);

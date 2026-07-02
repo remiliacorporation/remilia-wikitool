@@ -2,7 +2,10 @@ use std::path::Path;
 
 use anyhow::{Result, bail};
 use serde::Serialize;
-use wikitool_core::article_lint::{ArticleLintReport, lint_article, lint_article_with_title};
+use wikitool_core::article_lint::{
+    ArticleLintReport, lint_article, lint_article_with_resources, lint_article_with_title,
+    load_article_lint_resources,
+};
 
 use crate::cli_support::{normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
@@ -103,9 +106,12 @@ pub(super) fn run_article_lint(runtime: &RuntimeOptions, args: ArticleLintArgs) 
         args.changed,
     )?;
     let target_paths = resolve_article_targets(&paths, args.path.as_deref(), &selection, false)?;
+    let resources = load_article_lint_resources(&paths)?;
     let reports = target_paths
         .iter()
-        .map(|relative_path| lint_article(&paths, Path::new(relative_path)))
+        .map(|relative_path| {
+            lint_article_with_resources(&paths, Path::new(relative_path), None, &resources)
+        })
         .collect::<Result<Vec<_>>>()?;
     let total_errors = reports.iter().map(|report| report.errors).sum();
     let total_warnings = reports.iter().map(|report| report.warnings).sum();

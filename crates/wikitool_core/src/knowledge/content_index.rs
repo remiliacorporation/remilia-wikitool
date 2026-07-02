@@ -1,4 +1,6 @@
 use super::prelude::*;
+use crate::filesystem::{ScanStats, ScannedFile};
+use crate::knowledge::status::{KNOWLEDGE_GENERATION, load_content_index_artifact};
 use crate::title_variants::translation_variant_info;
 
 pub use super::model::{RebuildReport, StoredIndexStats};
@@ -7,6 +9,9 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
     let files = scan_files(paths, options)?;
     let scan = summarize_files(&files);
     let mut connection = open_initialized_database_connection(&paths.db_path)?;
+    if let Some(report) = unchanged_index_report(&connection, paths, &files, &scan)? {
+        return Ok(report);
+    }
     let indexed_at_unix = unix_timestamp()?;
 
     let transaction = connection
@@ -672,7 +677,60 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         inserted_rows,
         inserted_links,
         scan,
+        unchanged: false,
     })
+}
+
+/// A rebuild is a full wipe-and-reinsert of the index and every FTS table. When
+/// the scanned corpus is byte-identical (path + content hash) to what the
+/// current-generation index already holds, the rebuild would reproduce the
+/// existing rows exactly, so report the stored state instead. Any generation
+/// bump, scan-set difference, or content change falls through to a full rebuild.
+fn unchanged_index_report(
+    connection: &Connection,
+    paths: &ResolvedPaths,
+    files: &[ScannedFile],
+    scan: &ScanStats,
+) -> Result<Option<RebuildReport>> {
+    let Some(artifact) = load_content_index_artifact(connection)? else {
+        return Ok(None);
+    };
+    if artifact.schema_generation != KNOWLEDGE_GENERATION {
+        return Ok(None);
+    }
+
+    let mut statement = connection
+        .prepare("SELECT relative_path, content_hash FROM indexed_pages")
+        .context("failed to prepare indexed_pages hash query")?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .context("failed to query indexed_pages hashes")?;
+    let mut indexed_hashes = std::collections::BTreeMap::new();
+    for row in rows {
+        let (relative_path, content_hash) =
+            row.context("failed to decode indexed_pages hash row")?;
+        indexed_hashes.insert(relative_path, content_hash);
+    }
+    if indexed_hashes.len() != files.len() {
+        return Ok(None);
+    }
+    for file in files {
+        if indexed_hashes.get(&file.relative_path) != Some(&file.content_hash) {
+            return Ok(None);
+        }
+    }
+
+    let inserted_links = count_query(connection, "SELECT COUNT(*) FROM indexed_links")
+        .context("failed to count indexed links")?;
+    Ok(Some(RebuildReport {
+        db_path: normalize_path(&paths.db_path),
+        inserted_rows: indexed_hashes.len(),
+        inserted_links,
+        scan: scan.clone(),
+        unchanged: true,
+    }))
 }
 
 pub fn load_stored_index_stats(paths: &ResolvedPaths) -> Result<Option<StoredIndexStats>> {

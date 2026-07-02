@@ -197,6 +197,7 @@ fn rebuild_index_persists_scan_rows() {
 
     let report = rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
     assert!(paths.db_path.exists());
+    assert!(!report.unchanged);
     assert_eq!(report.inserted_rows, 3);
     assert_eq!(report.scan.total_files, 3);
     assert_eq!(report.scan.redirects, 1);
@@ -214,6 +215,40 @@ fn rebuild_index_persists_scan_rows() {
             (Namespace::Module.as_str().to_string(), 1usize),
         ])
     );
+}
+
+#[test]
+fn rebuild_index_skips_when_corpus_unchanged_and_rebuilds_on_change() {
+    let temp = tempdir().expect("tempdir");
+    let project_root: PathBuf = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    let alpha_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(&alpha_path, "Alpha article [[Beta]]");
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
+        "Beta article",
+    );
+
+    let first = rebuild_index(&paths, &ScanOptions::default()).expect("first rebuild");
+    assert!(!first.unchanged);
+    assert_eq!(first.inserted_rows, 2);
+
+    let second = rebuild_index(&paths, &ScanOptions::default()).expect("second rebuild");
+    assert!(second.unchanged);
+    assert_eq!(second.inserted_rows, first.inserted_rows);
+    assert_eq!(second.inserted_links, first.inserted_links);
+
+    write_file(&alpha_path, "Alpha article revised [[Beta]] [[Gamma]]");
+    let third = rebuild_index(&paths, &ScanOptions::default()).expect("third rebuild");
+    assert!(!third.unchanged);
+    assert_eq!(third.inserted_rows, 2);
+
+    fs::remove_file(&alpha_path).expect("remove alpha");
+    let fourth = rebuild_index(&paths, &ScanOptions::default()).expect("fourth rebuild");
+    assert!(!fourth.unchanged);
+    assert_eq!(fourth.inserted_rows, 1);
 }
 
 #[test]

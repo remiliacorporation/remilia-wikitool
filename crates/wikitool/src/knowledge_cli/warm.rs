@@ -40,6 +40,7 @@ pub(crate) fn run_knowledge_warm(runtime: &RuntimeOptions, args: KnowledgeWarmAr
         "knowledge_generation: {}",
         report.status.knowledge_generation
     );
+    println!("rebuild.unchanged: {}", report.rebuild.unchanged);
     println!("rebuild.inserted_rows: {}", report.rebuild.inserted_rows);
     println!("rebuild.inserted_links: {}", report.rebuild.inserted_links);
     println!("docs.action: {}", report.docs_action);

@@ -33,6 +33,20 @@ const ARTICLE_LINT_SCHEMA_VERSION: &str = "article_lint_v1";
 const ARTICLE_FIX_SCHEMA_VERSION: &str = "article_fix_v1";
 const REMILIA_PROFILE_ID: &str = "remilia";
 
+/// Project-wide lint context (profile overlay, template catalog, local scans,
+/// index connection). Loading it walks the whole project, so batch callers must
+/// load once and lint every file through [`lint_article_with_resources`].
+#[derive(Debug)]
+pub struct ArticleLintResources {
+    inner: LoadedResources,
+}
+
+pub fn load_article_lint_resources(paths: &ResolvedPaths) -> Result<ArticleLintResources> {
+    Ok(ArticleLintResources {
+        inner: load_resources(paths)?,
+    })
+}
+
 pub fn lint_article(paths: &ResolvedPaths, article_path: &Path) -> Result<ArticleLintReport> {
     lint_article_with_title(paths, article_path, None)
 }
@@ -42,10 +56,19 @@ pub fn lint_article_with_title(
     article_path: &Path,
     title_override: Option<&str>,
 ) -> Result<ArticleLintReport> {
+    let resources = load_article_lint_resources(paths)?;
+    lint_article_with_resources(paths, article_path, title_override, &resources)
+}
+
+pub fn lint_article_with_resources(
+    paths: &ResolvedPaths,
+    article_path: &Path,
+    title_override: Option<&str>,
+    resources: &ArticleLintResources,
+) -> Result<ArticleLintReport> {
     let document = load_article_document_with_title(paths, article_path, title_override)?;
-    let resources = load_resources(paths)?;
-    let matches = collect_issue_matches(paths, &document, &resources)?;
-    Ok(build_report(&document, &resources, matches))
+    let matches = collect_issue_matches(paths, &document, &resources.inner)?;
+    Ok(build_report(&document, &resources.inner, matches))
 }
 
 pub fn fix_article(
@@ -63,8 +86,8 @@ pub fn fix_article_with_title(
     title_override: Option<&str>,
 ) -> Result<ArticleFixResult> {
     let document = load_article_document_with_title(paths, article_path, title_override)?;
-    let resources = load_resources(paths)?;
-    let matches = collect_issue_matches(paths, &document, &resources)?;
+    let resources = load_article_lint_resources(paths)?;
+    let matches = collect_issue_matches(paths, &document, &resources.inner)?;
     let safe_fixes = collect_safe_fixes(&matches);
     let changed = apply_mode == ArticleFixApplyMode::Safe && !safe_fixes.is_empty();
     if changed {
@@ -80,7 +103,8 @@ pub fn fix_article_with_title(
             .with_context(|| format!("failed to write {}", absolute_path.display()))?;
     }
 
-    let remaining_report = lint_article_with_title(paths, article_path, title_override)?;
+    let remaining_report =
+        lint_article_with_resources(paths, article_path, title_override, &resources)?;
     Ok(ArticleFixResult {
         schema_version: ARTICLE_FIX_SCHEMA_VERSION.to_string(),
         profile_id: REMILIA_PROFILE_ID.to_string(),

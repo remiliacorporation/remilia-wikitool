@@ -11,6 +11,22 @@ pub const LOCAL_DB_POLICY_MESSAGE: &str = "The local wikitool DB is disposable. 
 
 const DB_SCHEMA_SQL: &str = include_str!("schema.sql");
 
+/// Fingerprint of the schema text, stamped into `PRAGMA user_version` after a
+/// successful bootstrap so later connection opens skip re-running the DDL batch
+/// and column validation. Any change to schema.sql changes the fingerprint and
+/// forces one full re-bootstrap; an unstamped database (0) never matches.
+const SCHEMA_FINGERPRINT: i32 = {
+    let bytes = DB_SCHEMA_SQL.as_bytes();
+    let mut hash = 0x811c_9dc5_u32;
+    let mut i = 0;
+    while i < bytes.len() {
+        hash ^= bytes[i] as u32;
+        hash = hash.wrapping_mul(0x0100_0193);
+        i += 1;
+    }
+    if hash == 0 { 1 } else { hash as i32 }
+};
+
 const REQUIRED_REFERENCE_COLUMNS: &[&str] = &[
     "citation_profile",
     "citation_family",
@@ -330,17 +346,31 @@ pub fn open_database_connection(db_path: &Path) -> Result<Connection> {
     connection
         .pragma_update(None, "journal_mode", "WAL")
         .context("failed to enable WAL journal mode")?;
+    // The local database is disposable state (LOCAL_DB_POLICY_MESSAGE); under WAL,
+    // NORMAL keeps transactions consistent while dropping per-commit fsync stalls.
+    connection
+        .pragma_update(None, "synchronous", "NORMAL")
+        .context("failed to set synchronous pragma")?;
     Ok(connection)
 }
 
 pub fn ensure_database_schema_connection(connection: &Connection) -> Result<()> {
+    let stamped_version: i32 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .context("failed to read schema user_version")?;
+    if stamped_version == SCHEMA_FINGERPRINT {
+        return Ok(());
+    }
     if let Err(init_error) = connection.execute_batch(DB_SCHEMA_SQL) {
         if let Err(schema_error) = validate_disposable_schema(connection) {
             return Err(schema_error).context("failed to initialize database schema");
         }
         return Err(init_error).context("failed to initialize database schema");
     }
-    validate_disposable_schema(connection)
+    validate_disposable_schema(connection)?;
+    connection
+        .pragma_update(None, "user_version", SCHEMA_FINGERPRINT)
+        .context("failed to stamp schema user_version")
 }
 
 fn validate_disposable_schema(connection: &Connection) -> Result<()> {
@@ -498,6 +528,28 @@ mod tests {
             )
             .expect("query sqlite_master");
         assert_eq!(exists, 1);
+    }
+
+    #[test]
+    fn schema_bootstrap_stamps_fingerprint_and_restamps_on_mismatch() {
+        let (_temp, paths) = test_paths();
+        ensure_database_schema(&paths).expect("first ensure");
+
+        let connection = open_database_connection(&paths.db_path).expect("open db");
+        let version: i32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(version, SCHEMA_FINGERPRINT);
+        assert_ne!(SCHEMA_FINGERPRINT, 0);
+
+        connection
+            .pragma_update(None, "user_version", 7)
+            .expect("force mismatch");
+        ensure_database_schema_connection(&connection).expect("re-ensure after mismatch");
+        let restamped: i32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(restamped, SCHEMA_FINGERPRINT);
     }
 
     #[test]
