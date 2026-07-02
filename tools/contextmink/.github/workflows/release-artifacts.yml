@@ -223,38 +223,29 @@ jobs:
       - name: List downloaded assets
         run: ls -lh release-assets/
 
-      - name: Write release notes
+      - name: Extract release notes from CHANGELOG.md
         shell: bash
         run: |
-          cat > release_body.md <<EOF
-          contextmink ${{ steps.ver.outputs.version }}
-
-          File-read discipline release.
-
-          - New outline subcommand: declaration-line maps for large source
-            files via hand-written token classifiers (Rust, Python, JS/TS,
-            Go, C/C++, Java, C#, Kotlin, shell, Lua, Ruby, Markdown, TOML,
-            INI, YAML, SQL DDL, MediaWiki wikitext), shebang detection for
-            extensionless scripts, --contains row filters, --prefix literal
-            matcher, --pattern regex escape hatch.
-          - slice reframed as the guarded file-read primitive (outline to
-            locate, slice to read; defaults are the point).
-          - Allocation-free ASCII case folding for literal and grep-terms
-            ignore-case matching; regex remains only in user-supplied
-            patterns.
-          - New contextmink-bridge binary (Windows archive only): native
-            PowerShell -> Git Bash bridge with --argv-b64 (single-token
-            lossless argv channel, immune to PowerShell 5.1 quote mangling),
-            --argfile, --print-argv, automatic Git Bash discovery, no MSYS
-            argument rewriting in direct mode, and a content-dump trip-wire.
-            The codex-bash.sh template ships on every platform for
-            bash-first setups.
-          - Launcher shields slash-bearing --pattern/--prefix/--contains/
-            --term values from MSYS rewriting on Git Bash/Windows.
-
-          Prebuilt CLI archives for Windows x64, macOS Intel, macOS ARM, and Linux x64.
-          Each archive includes the contextmink binary, setup docs, templates, licenses, a manifest, and a SHA-256 checksum; the Windows archive also carries contextmink-bridge.
-          EOF
+          set -euo pipefail
+          # Keep a Changelog headings: "## [x.y.z] - date". Capture the body
+          # up to the next "## " heading; fail if the section is missing so a
+          # release can never ship without written notes.
+          awk -v heading="## [${VERSION}]" '
+            index($0, heading) == 1 { found = 1; next }
+            /^## / { if (found) exit }
+            found { print }
+          ' CHANGELOG.md > release_body.md
+          if [ ! -s release_body.md ]; then
+            echo "CHANGELOG.md has no section for ${VERSION}; add one before releasing." >&2
+            exit 1
+          fi
+          {
+            echo ""
+            echo "Prebuilt CLI archives for Windows x64, macOS Intel, macOS ARM, and Linux x64. Each archive includes the contextmink binary, setup docs, templates, licenses, a manifest, and a SHA-256 checksum; the Windows archive also carries contextmink-bridge."
+          } >> release_body.md
+          cat release_body.md
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
 
       - name: Create GitHub Release
         env:
