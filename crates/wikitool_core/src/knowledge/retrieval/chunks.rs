@@ -113,7 +113,7 @@ pub fn retrieve_local_context_chunks_across_pages(
     }
     let query_terms = expand_retrieval_query_terms(&normalized_query);
     let semantic_page_hits =
-        load_semantic_page_hits(&connection, &query_terms, max_pages.max(limit).max(1))?;
+        load_term_profile_page_hits(&connection, &query_terms, max_pages.max(limit).max(1))?;
     let authority_page_hits =
         load_reference_authority_page_hits(&connection, &query_terms, max_pages.max(limit).max(1))?;
     let identifier_page_hits = load_reference_identifier_page_hits(
@@ -147,7 +147,7 @@ pub fn retrieve_local_context_chunks_across_pages(
         },
         &related_page_titles,
         ChunkRerankSignals {
-            semantic_page_weights: build_semantic_page_weight_map(&semantic_page_hits),
+            term_profile_page_weights: build_semantic_page_weight_map(&semantic_page_hits),
             authority_page_weights: build_authority_page_weight_map(&authority_page_hits),
             identifier_page_weights: build_identifier_page_weight_map(&identifier_page_hits),
             ..ChunkRerankSignals::default()
@@ -165,16 +165,16 @@ pub(crate) fn load_chunks_for_query(
 ) -> Result<(Vec<LocalContextChunk>, String)> {
     if table_exists(connection, "indexed_page_chunks")? {
         if let Some(query) = normalized_query {
-            if fts_table_exists(connection, "indexed_page_chunks_fts")
-                && let Ok(hits) = query_page_chunks_fts_for_connection(
+            if fts_table_exists(connection, "indexed_page_chunks_fts") {
+                let hits = query_page_chunks_fts_for_connection(
                     connection,
                     source_relative_path,
                     query,
                     limit,
-                )
-                && !hits.is_empty()
-            {
-                return Ok((hits, "fts".to_string()));
+                )?;
+                if !hits.is_empty() {
+                    return Ok((hits, "fts".to_string()));
+                }
             }
 
             let hits = query_page_chunks_like_for_connection(
@@ -358,7 +358,9 @@ pub(crate) fn query_chunks_fts_across_pages_for_connection(
     limit: usize,
 ) -> Result<Vec<RetrievedChunk>> {
     let limit_i64 = i64::try_from(limit).context("chunk query limit does not fit into i64")?;
-    let fts_query = format!("\"{normalized_query}\" *");
+    let Some(fts_query) = crate::fts::fts_prefix_match_expression(normalized_query) else {
+        return Ok(Vec::new());
+    };
     let mut statement = connection
         .prepare(
             "SELECT c.source_title, c.source_namespace, c.source_relative_path, c.section_heading, c.token_estimate, c.chunk_text
@@ -611,8 +613,9 @@ pub(crate) fn query_page_records_from_reference_authorities_for_connection(
     }
     let limit_i64 =
         i64::try_from(limit).context("reference authority query limit does not fit into i64")?;
-    if fts_table_exists(connection, "indexed_reference_authorities_fts") {
-        let fts_query = format!("\"{}\" *", normalized);
+    if fts_table_exists(connection, "indexed_reference_authorities_fts")
+        && let Some(fts_query) = crate::fts::fts_prefix_match_expression(&normalized)
+    {
         let mut statement = connection
             .prepare(
                 "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
@@ -679,7 +682,7 @@ pub(crate) fn load_reference_authority_page_hits(
     connection: &Connection,
     query_terms: &[String],
     limit: usize,
-) -> Result<Vec<SemanticPageHit>> {
+) -> Result<Vec<TermProfilePageHit>> {
     if limit == 0 || query_terms.is_empty() {
         return Ok(Vec::new());
     }
@@ -764,7 +767,7 @@ pub(crate) fn load_reference_identifier_page_hits(
     connection: &Connection,
     query_terms: &[String],
     limit: usize,
-) -> Result<Vec<SemanticPageHit>> {
+) -> Result<Vec<TermProfilePageHit>> {
     if limit == 0 || query_terms.is_empty() {
         return Ok(Vec::new());
     }

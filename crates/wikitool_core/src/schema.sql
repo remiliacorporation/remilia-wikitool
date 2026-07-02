@@ -23,9 +23,7 @@ CREATE TABLE IF NOT EXISTS sync_config (
 CREATE TABLE IF NOT EXISTS sync_snapshots (
     title TEXT PRIMARY KEY,
     relative_path TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    content_text TEXT NOT NULL,
-    synced_at_unix INTEGER NOT NULL
+    content_text TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sync_snapshots_relative_path
     ON sync_snapshots(relative_path);
@@ -227,14 +225,6 @@ CREATE INDEX IF NOT EXISTS idx_indexed_template_examples_template
     ON indexed_template_examples(template_title);
 CREATE INDEX IF NOT EXISTS idx_indexed_template_examples_source
     ON indexed_template_examples(source_title);
-CREATE VIRTUAL TABLE IF NOT EXISTS indexed_template_examples_fts USING fts5(
-    template_title,
-    source_title,
-    example_wikitext,
-    content=indexed_template_examples,
-    content_rowid=rowid
-);
-
 CREATE TABLE IF NOT EXISTS indexed_module_invocations (
     source_relative_path TEXT NOT NULL,
     invocation_index INTEGER NOT NULL,
@@ -254,16 +244,6 @@ CREATE INDEX IF NOT EXISTS idx_indexed_module_invocations_source
     ON indexed_module_invocations(source_title);
 CREATE INDEX IF NOT EXISTS idx_indexed_module_invocations_function
     ON indexed_module_invocations(function_name);
-CREATE VIRTUAL TABLE IF NOT EXISTS indexed_module_invocations_fts USING fts5(
-    module_title,
-    function_name,
-    parameter_keys,
-    invocation_wikitext,
-    source_title,
-    content=indexed_module_invocations,
-    content_rowid=rowid
-);
-
 CREATE TABLE IF NOT EXISTS indexed_page_references (
     source_relative_path TEXT NOT NULL,
     reference_index INTEGER NOT NULL,
@@ -314,31 +294,6 @@ CREATE INDEX IF NOT EXISTS idx_indexed_page_references_domain
     ON indexed_page_references(source_domain);
 CREATE INDEX IF NOT EXISTS idx_indexed_page_references_template
     ON indexed_page_references(primary_template_title);
-CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_references_fts USING fts5(
-    source_title,
-    section_heading,
-    citation_profile,
-    citation_family,
-    source_type,
-    source_family,
-    authority_kind,
-    source_authority,
-    reference_title,
-    source_container,
-    source_author,
-    source_domain,
-    source_date,
-    canonical_url,
-    identifier_entries,
-    source_urls,
-    summary_text,
-    reference_wikitext,
-    template_titles,
-    link_titles,
-    content=indexed_page_references,
-    content_rowid=rowid
-);
-
 CREATE TABLE IF NOT EXISTS indexed_reference_authorities (
     source_relative_path TEXT NOT NULL,
     reference_index INTEGER NOT NULL,
@@ -438,62 +393,28 @@ CREATE INDEX IF NOT EXISTS idx_indexed_page_media_file
     ON indexed_page_media(file_title);
 CREATE INDEX IF NOT EXISTS idx_indexed_page_media_title
     ON indexed_page_media(source_title);
-CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_media_fts USING fts5(
-    source_title,
-    section_heading,
-    file_title,
-    caption_text,
-    options_text,
-    content=indexed_page_media,
-    content_rowid=rowid
-);
-
-CREATE TABLE IF NOT EXISTS indexed_page_semantics (
+-- Per-page term profile: the page's structural vocabulary (headings, categories,
+-- templates, links, reference facets, media titles) flattened into one FTS-indexed
+-- blob used as a page-relatedness prior. Relational copies of those term lists
+-- live in their own indexed_* tables; this table only carries the search text.
+CREATE TABLE IF NOT EXISTS indexed_page_term_profiles (
     source_relative_path TEXT PRIMARY KEY,
     source_title TEXT NOT NULL,
     source_namespace TEXT NOT NULL,
     summary_text TEXT NOT NULL,
-    section_headings TEXT NOT NULL,
-    category_titles TEXT NOT NULL,
-    template_titles TEXT NOT NULL,
-    template_parameter_keys TEXT NOT NULL,
-    link_titles TEXT NOT NULL,
-    reference_titles TEXT NOT NULL,
-    reference_containers TEXT NOT NULL,
-    reference_domains TEXT NOT NULL,
-    reference_source_families TEXT NOT NULL,
-    reference_authorities TEXT NOT NULL,
-    reference_identifiers TEXT NOT NULL,
-    media_titles TEXT NOT NULL,
-    media_captions TEXT NOT NULL,
-    template_implementation_titles TEXT NOT NULL,
-    semantic_text TEXT NOT NULL,
+    terms_text TEXT NOT NULL,
     token_estimate INTEGER NOT NULL,
     FOREIGN KEY (source_relative_path) REFERENCES indexed_pages(relative_path) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_indexed_page_semantics_title
-    ON indexed_page_semantics(source_title);
-CREATE INDEX IF NOT EXISTS idx_indexed_page_semantics_namespace
-    ON indexed_page_semantics(source_namespace);
-CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_semantics_fts USING fts5(
+CREATE INDEX IF NOT EXISTS idx_indexed_page_term_profiles_title
+    ON indexed_page_term_profiles(source_title);
+CREATE INDEX IF NOT EXISTS idx_indexed_page_term_profiles_namespace
+    ON indexed_page_term_profiles(source_namespace);
+CREATE VIRTUAL TABLE IF NOT EXISTS indexed_page_term_profiles_fts USING fts5(
     source_title,
     summary_text,
-    section_headings,
-    category_titles,
-    template_titles,
-    template_parameter_keys,
-    link_titles,
-    reference_titles,
-    reference_containers,
-    reference_domains,
-    reference_source_families,
-    reference_authorities,
-    reference_identifiers,
-    media_titles,
-    media_captions,
-    template_implementation_titles,
-    semantic_text,
-    content=indexed_page_semantics,
+    terms_text,
+    content=indexed_page_term_profiles,
     content_rowid=rowid
 );
 
@@ -511,7 +432,7 @@ CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_template
 CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_role
     ON indexed_template_implementation_pages(role);
 
-CREATE TABLE IF NOT EXISTS indexed_authoring_contracts (
+CREATE TABLE IF NOT EXISTS authoring_contracts (
     profile TEXT NOT NULL,
     contract_key TEXT PRIMARY KEY,
     contract_kind TEXT NOT NULL,
@@ -524,19 +445,19 @@ CREATE TABLE IF NOT EXISTS indexed_authoring_contracts (
     function_names TEXT NOT NULL,
     module_titles TEXT NOT NULL,
     example_titles TEXT NOT NULL,
-    semantic_text TEXT NOT NULL,
+    terms_text TEXT NOT NULL,
     token_estimate INTEGER NOT NULL,
     source TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contracts_profile
-    ON indexed_authoring_contracts(profile);
-CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contracts_kind
-    ON indexed_authoring_contracts(contract_kind);
-CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contracts_title
-    ON indexed_authoring_contracts(title);
-CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contracts_category
-    ON indexed_authoring_contracts(category);
-CREATE VIRTUAL TABLE IF NOT EXISTS indexed_authoring_contracts_fts USING fts5(
+CREATE INDEX IF NOT EXISTS idx_authoring_contracts_profile
+    ON authoring_contracts(profile);
+CREATE INDEX IF NOT EXISTS idx_authoring_contracts_kind
+    ON authoring_contracts(contract_kind);
+CREATE INDEX IF NOT EXISTS idx_authoring_contracts_title
+    ON authoring_contracts(title);
+CREATE INDEX IF NOT EXISTS idx_authoring_contracts_category
+    ON authoring_contracts(category);
+CREATE VIRTUAL TABLE IF NOT EXISTS authoring_contracts_fts USING fts5(
     title,
     category,
     summary_text,
@@ -544,12 +465,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS indexed_authoring_contracts_fts USING fts5(
     function_names,
     module_titles,
     example_titles,
-    semantic_text,
-    content=indexed_authoring_contracts,
+    terms_text,
+    content=authoring_contracts,
     content_rowid=rowid
 );
 
-CREATE TABLE IF NOT EXISTS indexed_authoring_contract_edges (
+CREATE TABLE IF NOT EXISTS authoring_contract_edges (
     profile TEXT NOT NULL,
     from_contract_key TEXT NOT NULL,
     from_kind TEXT NOT NULL,
@@ -561,12 +482,12 @@ CREATE TABLE IF NOT EXISTS indexed_authoring_contract_edges (
     evidence TEXT NOT NULL,
     PRIMARY KEY (profile, from_contract_key, to_contract_key, relation)
 );
-CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contract_edges_from
-    ON indexed_authoring_contract_edges(from_contract_key);
-CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contract_edges_to
-    ON indexed_authoring_contract_edges(to_contract_key);
-CREATE INDEX IF NOT EXISTS idx_indexed_authoring_contract_edges_relation
-    ON indexed_authoring_contract_edges(relation);
+CREATE INDEX IF NOT EXISTS idx_authoring_contract_edges_from
+    ON authoring_contract_edges(from_contract_key);
+CREATE INDEX IF NOT EXISTS idx_authoring_contract_edges_to
+    ON authoring_contract_edges(to_contract_key);
+CREATE INDEX IF NOT EXISTS idx_authoring_contract_edges_relation
+    ON authoring_contract_edges(relation);
 
 CREATE TABLE IF NOT EXISTS docs_corpora (
     corpus_id TEXT PRIMARY KEY,
@@ -726,22 +647,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS docs_examples_fts USING fts5(
     content_rowid=rowid
 );
 
-CREATE TABLE IF NOT EXISTS docs_links (
-    corpus_id TEXT NOT NULL,
-    page_title TEXT NOT NULL,
-    link_index INTEGER NOT NULL,
-    target_title TEXT NOT NULL,
-    relation_kind TEXT NOT NULL,
-    display_text TEXT NOT NULL,
-    PRIMARY KEY (corpus_id, page_title, link_index),
-    FOREIGN KEY (corpus_id, page_title) REFERENCES docs_pages(corpus_id, page_title) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_docs_links_target
-    ON docs_links(target_title);
-CREATE INDEX IF NOT EXISTS idx_docs_links_kind
-    ON docs_links(relation_kind);
-
-CREATE TABLE IF NOT EXISTS knowledge_artifacts (
+CREATE TABLE IF NOT EXISTS runtime_artifacts (
     artifact_key TEXT PRIMARY KEY,
     artifact_kind TEXT NOT NULL,
     profile TEXT,
@@ -750,7 +656,7 @@ CREATE TABLE IF NOT EXISTS knowledge_artifacts (
     row_count INTEGER NOT NULL,
     metadata_json TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_knowledge_artifacts_kind
-    ON knowledge_artifacts(artifact_kind);
-CREATE INDEX IF NOT EXISTS idx_knowledge_artifacts_profile
-    ON knowledge_artifacts(profile);
+CREATE INDEX IF NOT EXISTS idx_runtime_artifacts_kind
+    ON runtime_artifacts(artifact_kind);
+CREATE INDEX IF NOT EXISTS idx_runtime_artifacts_profile
+    ON runtime_artifacts(profile);

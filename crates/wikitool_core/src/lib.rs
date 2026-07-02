@@ -6,6 +6,7 @@ pub mod delete;
 pub mod docs;
 pub mod external;
 pub mod filesystem;
+pub(crate) mod fts;
 pub mod graph;
 pub mod import_cargo;
 pub mod knowledge;

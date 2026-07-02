@@ -237,32 +237,18 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
         )
         .context("failed to prepare indexed_page_media insert")?;
 
-    let mut semantic_statement = transaction
+    let mut term_profile_statement = transaction
         .prepare(
-            "INSERT OR REPLACE INTO indexed_page_semantics (
+            "INSERT OR REPLACE INTO indexed_page_term_profiles (
                 source_relative_path,
                 source_title,
                 source_namespace,
                 summary_text,
-                section_headings,
-                category_titles,
-                template_titles,
-                template_parameter_keys,
-                link_titles,
-                reference_titles,
-                reference_containers,
-                reference_domains,
-                reference_source_families,
-                reference_authorities,
-                reference_identifiers,
-                media_titles,
-                media_captions,
-                template_implementation_titles,
-                semantic_text,
+                terms_text,
                 token_estimate
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
-        .context("failed to prepare indexed_page_semantics insert")?;
+        .context("failed to prepare indexed_page_term_profiles insert")?;
 
     let mut template_implementation_statement = transaction
         .prepare(
@@ -350,7 +336,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
             file,
             &artifacts,
         );
-        let semantic_profile = build_page_semantic_profile(file, &links, &artifacts);
+        let semantic_profile = build_page_term_profile(file, &links, &artifacts);
         for (section_index, section) in artifacts.section_records.iter().enumerate() {
             section_statement
                 .execute(params![
@@ -519,36 +505,17 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
                 })?;
         }
 
-        semantic_statement
+        term_profile_statement
             .execute(params![
                 file.relative_path,
                 semantic_profile.source_title.as_str(),
                 semantic_profile.source_namespace.as_str(),
                 semantic_profile.summary_text.as_str(),
-                serialize_string_list(&semantic_profile.section_headings),
-                serialize_string_list(&semantic_profile.category_titles),
-                serialize_string_list(&semantic_profile.template_titles),
-                serialize_string_list(&semantic_profile.template_parameter_keys),
-                serialize_string_list(&semantic_profile.link_titles),
-                serialize_string_list(&semantic_profile.reference_titles),
-                serialize_string_list(&semantic_profile.reference_containers),
-                serialize_string_list(&semantic_profile.reference_domains),
-                serialize_string_list(&semantic_profile.reference_source_families),
-                serialize_string_list(&semantic_profile.reference_authorities),
-                serialize_string_list(&semantic_profile.reference_identifiers),
-                serialize_string_list(&semantic_profile.media_titles),
-                serialize_string_list(&semantic_profile.media_captions),
-                serialize_string_list(&semantic_profile.template_implementation_titles),
-                semantic_profile.semantic_text.as_str(),
+                semantic_profile.terms_text.as_str(),
                 i64::try_from(semantic_profile.token_estimate)
-                    .context("semantic profile token estimate does not fit into i64")?,
+                    .context("term profile token estimate does not fit into i64")?,
             ])
-            .with_context(|| {
-                format!(
-                    "failed to insert semantic profile for {}",
-                    file.relative_path
-                )
-            })?;
+            .with_context(|| format!("failed to insert term profile for {}", file.relative_path))?;
 
         let mut seen_signatures = BTreeSet::new();
         for (invocation_index, invocation) in artifacts.template_invocations.into_iter().enumerate()
@@ -638,7 +605,7 @@ pub fn rebuild_index(paths: &ResolvedPaths, options: &ScanOptions) -> Result<Reb
     )?;
     drop(template_implementation_statement);
     drop(media_statement);
-    drop(semantic_statement);
+    drop(term_profile_statement);
     drop(reference_identifier_statement);
     drop(reference_authority_statement);
     drop(reference_statement);

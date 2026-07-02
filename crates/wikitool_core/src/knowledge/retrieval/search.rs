@@ -43,7 +43,9 @@ pub(crate) fn query_search_fts(
     limit: usize,
 ) -> Result<Vec<RawLocalSearchHit>> {
     let limit_i64 = i64::try_from(limit).context("search limit does not fit into i64")?;
-    let fts_query = format!("\"{normalized}\" *");
+    let Some(fts_query) = crate::fts::fts_prefix_match_expression(normalized) else {
+        return Ok(Vec::new());
+    };
     let mut statement = connection
         .prepare(
             "SELECT ip.title, ip.namespace, ip.is_redirect,

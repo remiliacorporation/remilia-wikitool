@@ -433,27 +433,6 @@ pub(crate) fn rebuild_fts_index(connection: &Connection) -> Result<()> {
             )
             .context("failed to rebuild indexed_page_sections_fts")?;
     }
-    if fts_table_exists(connection, "indexed_template_examples_fts") {
-        connection
-            .execute_batch(
-                "INSERT INTO indexed_template_examples_fts(indexed_template_examples_fts) VALUES('rebuild')",
-            )
-            .context("failed to rebuild indexed_template_examples_fts")?;
-    }
-    if fts_table_exists(connection, "indexed_module_invocations_fts") {
-        connection
-            .execute_batch(
-                "INSERT INTO indexed_module_invocations_fts(indexed_module_invocations_fts) VALUES('rebuild')",
-            )
-            .context("failed to rebuild indexed_module_invocations_fts")?;
-    }
-    if fts_table_exists(connection, "indexed_page_references_fts") {
-        connection
-            .execute_batch(
-                "INSERT INTO indexed_page_references_fts(indexed_page_references_fts) VALUES('rebuild')",
-            )
-            .context("failed to rebuild indexed_page_references_fts")?;
-    }
     if fts_table_exists(connection, "indexed_reference_authorities_fts") {
         connection
             .execute_batch(
@@ -461,26 +440,19 @@ pub(crate) fn rebuild_fts_index(connection: &Connection) -> Result<()> {
             )
             .context("failed to rebuild indexed_reference_authorities_fts")?;
     }
-    if fts_table_exists(connection, "indexed_page_media_fts") {
+    if fts_table_exists(connection, "indexed_page_term_profiles_fts") {
         connection
             .execute_batch(
-                "INSERT INTO indexed_page_media_fts(indexed_page_media_fts) VALUES('rebuild')",
+                "INSERT INTO indexed_page_term_profiles_fts(indexed_page_term_profiles_fts) VALUES('rebuild')",
             )
-            .context("failed to rebuild indexed_page_media_fts")?;
+            .context("failed to rebuild indexed_page_term_profiles_fts")?;
     }
-    if fts_table_exists(connection, "indexed_page_semantics_fts") {
+    if fts_table_exists(connection, "authoring_contracts_fts") {
         connection
             .execute_batch(
-                "INSERT INTO indexed_page_semantics_fts(indexed_page_semantics_fts) VALUES('rebuild')",
+                "INSERT INTO authoring_contracts_fts(authoring_contracts_fts) VALUES('rebuild')",
             )
-            .context("failed to rebuild indexed_page_semantics_fts")?;
-    }
-    if fts_table_exists(connection, "indexed_authoring_contracts_fts") {
-        connection
-            .execute_batch(
-                "INSERT INTO indexed_authoring_contracts_fts(indexed_authoring_contracts_fts) VALUES('rebuild')",
-            )
-            .context("failed to rebuild indexed_authoring_contracts_fts")?;
+            .context("failed to rebuild authoring_contracts_fts")?;
     }
     Ok(())
 }

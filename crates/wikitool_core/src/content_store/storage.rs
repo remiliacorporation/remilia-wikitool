@@ -11,11 +11,9 @@ pub(crate) fn query_page_records_from_sections_for_connection(
     }
 
     let limit_i64 = i64::try_from(limit).context("section query limit does not fit into i64")?;
-    if super::parsing::fts_table_exists(connection, "indexed_page_sections_fts") {
-        let fts_query = format!(
-            "\"{}\" *",
-            super::parsing::normalize_spaces(&query.replace('_', " "))
-        );
+    if super::parsing::fts_table_exists(connection, "indexed_page_sections_fts")
+        && let Some(fts_query) = crate::fts::fts_prefix_match_expression(query)
+    {
         let mut statement = connection
             .prepare(
                 "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
@@ -76,38 +74,37 @@ pub(crate) fn query_page_records_from_sections_for_connection(
     Ok(out)
 }
 
-pub(crate) fn query_page_records_from_semantics_for_connection(
+pub(crate) fn query_page_records_from_term_profiles_for_connection(
     connection: &Connection,
     query: &str,
     limit: usize,
 ) -> Result<Vec<IndexedPageRecord>> {
-    if limit == 0 || !table_exists(connection, "indexed_page_semantics")? {
+    if limit == 0 || !table_exists(connection, "indexed_page_term_profiles")? {
         return Ok(Vec::new());
     }
 
-    let limit_i64 = i64::try_from(limit).context("semantic query limit does not fit into i64")?;
-    if super::parsing::fts_table_exists(connection, "indexed_page_semantics_fts") {
-        let fts_query = format!(
-            "\"{}\" *",
-            super::parsing::normalize_spaces(&query.replace('_', " "))
-        );
+    let limit_i64 =
+        i64::try_from(limit).context("term profile query limit does not fit into i64")?;
+    if super::parsing::fts_table_exists(connection, "indexed_page_term_profiles_fts")
+        && let Some(fts_query) = crate::fts::fts_prefix_match_expression(query)
+    {
         let mut statement = connection
             .prepare(
                 "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
-                 FROM indexed_page_semantics_fts fts
-                 JOIN indexed_page_semantics s ON s.rowid = fts.rowid
+                 FROM indexed_page_term_profiles_fts fts
+                 JOIN indexed_page_term_profiles s ON s.rowid = fts.rowid
                  JOIN indexed_pages p ON p.relative_path = s.source_relative_path
-                 WHERE indexed_page_semantics_fts MATCH ?1
-                 ORDER BY bm25(indexed_page_semantics_fts) ASC, p.title ASC
+                 WHERE indexed_page_term_profiles_fts MATCH ?1
+                 ORDER BY bm25(indexed_page_term_profiles_fts) ASC, p.title ASC
                  LIMIT ?2",
             )
-            .context("failed to prepare semantic FTS query")?;
+            .context("failed to prepare term profile FTS query")?;
         let rows = statement
             .query_map(params![fts_query, limit_i64], decode_page_record_row)
-            .context("failed to run semantic FTS query")?;
+            .context("failed to run term profile FTS query")?;
         let mut out = Vec::new();
         for row in rows {
-            out.push(row.context("failed to decode semantic FTS row")?);
+            out.push(row.context("failed to decode term profile FTS row")?);
         }
         if !out.is_empty() {
             return Ok(out);
@@ -119,9 +116,9 @@ pub(crate) fn query_page_records_from_semantics_for_connection(
     let mut statement = connection
         .prepare(
             "SELECT p.title, p.namespace, p.is_redirect, p.redirect_target, p.relative_path, p.bytes
-             FROM indexed_page_semantics s
+             FROM indexed_page_term_profiles s
              JOIN indexed_pages p ON p.relative_path = s.source_relative_path
-             WHERE lower(s.semantic_text) LIKE lower(?1)
+             WHERE lower(s.terms_text) LIKE lower(?1)
                 OR lower(s.summary_text) LIKE lower(?1)
                 OR lower(s.source_title) LIKE lower(?1)
              ORDER BY
@@ -133,25 +130,25 @@ pub(crate) fn query_page_records_from_semantics_for_connection(
                p.title ASC
              LIMIT ?4",
         )
-        .context("failed to prepare semantic LIKE query")?;
+        .context("failed to prepare term profile LIKE query")?;
     let rows = statement
         .query_map(
             params![wildcard, query, prefix, limit_i64],
             decode_page_record_row,
         )
-        .context("failed to run semantic LIKE query")?;
+        .context("failed to run term profile LIKE query")?;
     let mut out = Vec::new();
     for row in rows {
-        out.push(row.context("failed to decode semantic LIKE row")?);
+        out.push(row.context("failed to decode term profile LIKE row")?);
     }
     Ok(out)
 }
 
-pub(crate) fn load_semantic_page_hits(
+pub(crate) fn load_term_profile_page_hits(
     connection: &Connection,
     query_terms: &[String],
     limit: usize,
-) -> Result<Vec<SemanticPageHit>> {
+) -> Result<Vec<TermProfilePageHit>> {
     if limit == 0 || query_terms.is_empty() {
         return Ok(Vec::new());
     }
@@ -164,7 +161,7 @@ pub(crate) fn load_semantic_page_hits(
             .saturating_sub(query_index.saturating_mul(18))
             .max(40);
         for (rank, page) in
-            query_page_records_from_semantics_for_connection(connection, term, search_limit)?
+            query_page_records_from_term_profiles_for_connection(connection, term, search_limit)?
                 .into_iter()
                 .enumerate()
         {
@@ -183,11 +180,11 @@ pub(crate) fn materialize_page_hits(
     weights: BTreeMap<String, usize>,
     titles: BTreeMap<String, String>,
     limit: usize,
-) -> Result<Vec<SemanticPageHit>> {
+) -> Result<Vec<TermProfilePageHit>> {
     let mut hits = weights
         .into_iter()
         .filter_map(|(key, retrieval_weight)| {
-            titles.get(&key).map(|title| SemanticPageHit {
+            titles.get(&key).map(|title| TermProfilePageHit {
                 title: title.clone(),
                 retrieval_weight,
             })
@@ -204,7 +201,7 @@ pub(crate) fn materialize_page_hits(
 }
 
 pub(crate) fn build_semantic_page_weight_map(
-    semantic_hits: &[SemanticPageHit],
+    semantic_hits: &[TermProfilePageHit],
 ) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for hit in semantic_hits {
@@ -213,7 +210,9 @@ pub(crate) fn build_semantic_page_weight_map(
     out
 }
 
-pub(crate) fn build_authority_page_weight_map(hits: &[SemanticPageHit]) -> BTreeMap<String, usize> {
+pub(crate) fn build_authority_page_weight_map(
+    hits: &[TermProfilePageHit],
+) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for hit in hits {
         out.insert(hit.title.to_ascii_lowercase(), hit.retrieval_weight);
@@ -222,7 +221,7 @@ pub(crate) fn build_authority_page_weight_map(hits: &[SemanticPageHit]) -> BTree
 }
 
 pub(crate) fn build_identifier_page_weight_map(
-    hits: &[SemanticPageHit],
+    hits: &[TermProfilePageHit],
 ) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for hit in hits {
@@ -336,7 +335,9 @@ pub(crate) fn query_page_chunks_fts_for_connection(
     limit: usize,
 ) -> Result<Vec<LocalContextChunk>> {
     let limit_i64 = i64::try_from(limit).context("chunk query limit does not fit into i64")?;
-    let fts_query = format!("\"{normalized_query}\" *");
+    let Some(fts_query) = crate::fts::fts_prefix_match_expression(normalized_query) else {
+        return Ok(Vec::new());
+    };
     let mut statement = connection
         .prepare(
             "SELECT c.section_heading, c.token_estimate, c.chunk_text

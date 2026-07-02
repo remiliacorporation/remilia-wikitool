@@ -12,11 +12,11 @@ pub(crate) fn extract_page_artifacts(content: &str) -> ParsedPageArtifacts {
     }
 }
 
-pub(crate) fn build_page_semantic_profile(
+pub(crate) fn build_page_term_profile(
     file: &ScannedFile,
     links: &[ParsedLink],
     artifacts: &ParsedPageArtifacts,
-) -> IndexedSemanticProfileRecord {
+) -> PageTermProfileRecord {
     let summary_text = artifacts
         .section_records
         .iter()
@@ -115,7 +115,7 @@ pub(crate) fn build_page_semantic_profile(
             ]
         }),
     );
-    let mut profile = IndexedSemanticProfileRecord {
+    let mut profile = PageTermProfileRecord {
         source_title: file.title.clone(),
         source_namespace: file.namespace.clone(),
         summary_text,
@@ -133,17 +133,17 @@ pub(crate) fn build_page_semantic_profile(
         media_titles,
         media_captions,
         template_implementation_titles,
-        semantic_text: String::new(),
+        terms_text: String::new(),
         token_estimate: 0,
     };
-    profile.semantic_text = build_page_semantic_text(file, &profile, &module_terms);
-    profile.token_estimate = estimate_tokens(&profile.semantic_text);
+    profile.terms_text = build_page_terms_text(file, &profile, &module_terms);
+    profile.token_estimate = estimate_tokens(&profile.terms_text);
     profile
 }
 
-pub(crate) fn build_page_semantic_text(
+pub(crate) fn build_page_terms_text(
     file: &ScannedFile,
-    profile: &IndexedSemanticProfileRecord,
+    profile: &PageTermProfileRecord,
     module_terms: &[String],
 ) -> String {
     let mut terms = Vec::new();

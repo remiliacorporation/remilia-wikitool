@@ -198,7 +198,7 @@ pub fn load_profile_overlay(
     let overlay_json: Option<String> = connection
         .query_row(
             "SELECT metadata_json
-             FROM knowledge_artifacts
+             FROM runtime_artifacts
              WHERE artifact_key = ?1",
             params![profile_overlay_artifact_key(profile_id)],
             |row| row.get(0),
@@ -216,7 +216,7 @@ pub fn load_latest_profile_overlay(paths: &ResolvedPaths) -> Result<Option<Profi
     let overlay_json: Option<String> = connection
         .query_row(
             "SELECT metadata_json
-             FROM knowledge_artifacts
+             FROM runtime_artifacts
              WHERE artifact_kind = ?1
              ORDER BY built_at_unix DESC
              LIMIT 1",
@@ -293,7 +293,7 @@ fn store_profile_overlay(paths: &ResolvedPaths, overlay: &ProfileOverlay) -> Res
 
     connection
         .execute(
-            "INSERT INTO knowledge_artifacts (
+            "INSERT INTO runtime_artifacts (
                 artifact_key,
                 artifact_kind,
                 profile,

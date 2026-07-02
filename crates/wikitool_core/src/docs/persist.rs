@@ -80,12 +80,6 @@ pub(super) fn persist_docs_corpus(
             summary_text, example_text, retrieval_text, token_estimate
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
     )?;
-    let mut link_statement = transaction.prepare(
-        "INSERT INTO docs_links (
-            corpus_id, page_title, link_index, target_title, relation_kind, display_text
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-    )?;
-
     for (page, alias_titles, parsed) in &parsed_pages {
         page_statement.execute(params![
             descriptor.corpus_id,
@@ -126,12 +120,6 @@ pub(super) fn persist_docs_corpus(
             &parsed.examples,
             &mut stats,
         )?;
-        insert_links(
-            &mut link_statement,
-            &descriptor.corpus_id,
-            &page.page_title,
-            &parsed.links,
-        )?;
     }
 
     transaction.execute(
@@ -147,7 +135,6 @@ pub(super) fn persist_docs_corpus(
         ],
     )?;
 
-    drop(link_statement);
     drop(example_statement);
     drop(symbol_statement);
     drop(section_statement);
@@ -231,25 +218,6 @@ fn insert_examples(
             i64::try_from(example.token_estimate)?,
         ])?;
         stats.examples += 1;
-    }
-    Ok(())
-}
-
-fn insert_links(
-    statement: &mut rusqlite::Statement<'_>,
-    corpus_id: &str,
-    page_title: &str,
-    links: &[ParsedDocsLink],
-) -> Result<()> {
-    for (index, link) in links.iter().enumerate() {
-        statement.execute(params![
-            corpus_id,
-            page_title,
-            i64::try_from(index)?,
-            link.target_title,
-            link.relation_kind,
-            link.display_text,
-        ])?;
     }
     Ok(())
 }

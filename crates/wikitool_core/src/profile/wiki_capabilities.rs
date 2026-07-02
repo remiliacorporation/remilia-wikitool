@@ -238,7 +238,7 @@ pub fn load_latest_wiki_capabilities(
     let manifest_json: Option<String> = connection
         .query_row(
             "SELECT metadata_json
-             FROM knowledge_artifacts
+             FROM runtime_artifacts
              WHERE artifact_kind = ?1
              ORDER BY built_at_unix DESC
              LIMIT 1",
@@ -263,7 +263,7 @@ fn load_wiki_capabilities(
     let manifest_json: Option<String> = connection
         .query_row(
             "SELECT metadata_json
-             FROM knowledge_artifacts
+             FROM runtime_artifacts
              WHERE artifact_key = ?1",
             params![wiki_capabilities_artifact_key(wiki_id)],
             |row| row.get(0),
@@ -291,7 +291,7 @@ fn store_wiki_capabilities(paths: &ResolvedPaths, manifest: &WikiCapabilityManif
 
     connection
         .execute(
-            "INSERT INTO knowledge_artifacts (
+            "INSERT INTO runtime_artifacts (
                 artifact_key,
                 artifact_kind,
                 profile,

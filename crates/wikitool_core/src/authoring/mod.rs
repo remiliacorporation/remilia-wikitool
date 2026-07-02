@@ -83,12 +83,12 @@ pub fn build_authoring_knowledge_pack(
     let topic_assessment = topic_assessment::build_topic_assessment(&connection, &topic)?;
     let template_page_weights = build_template_match_score_map(&connection, &stub_template_titles)?;
     let semantic_page_hits =
-        comparables::load_semantic_page_hits(&connection, &query_terms, related_limit)?;
+        comparables::load_term_profile_page_hits(&connection, &query_terms, related_limit)?;
     let authority_page_hits =
         load_reference_authority_page_hits(&connection, &query_terms, related_limit)?;
     let identifier_page_hits =
         load_reference_identifier_page_hits(&connection, &query_terms, related_limit)?;
-    let semantic_page_weights = build_semantic_page_weight_map(&semantic_page_hits);
+    let term_profile_page_weights = build_semantic_page_weight_map(&semantic_page_hits);
     let authority_page_weights = build_authority_page_weight_map(&authority_page_hits);
     let identifier_page_weights = build_identifier_page_weight_map(&identifier_page_hits);
 
@@ -148,7 +148,7 @@ pub fn build_authoring_knowledge_pack(
         ChunkRerankSignals {
             related_page_weights,
             template_page_weights,
-            semantic_page_weights,
+            term_profile_page_weights,
             authority_page_weights,
             identifier_page_weights,
         },
@@ -674,9 +674,12 @@ fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventor
     let indexed_pages_total =
         parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_pages")
             .context("failed to count indexed pages for authoring inventory")?;
-    let semantic_profiles_total = if table_exists(connection, "indexed_page_semantics")? {
-        parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_semantics")
-            .context("failed to count semantic profiles for authoring inventory")?
+    let semantic_profiles_total = if table_exists(connection, "indexed_page_term_profiles")? {
+        parsing::count_query(
+            connection,
+            "SELECT COUNT(*) FROM indexed_page_term_profiles",
+        )
+        .context("failed to count semantic profiles for authoring inventory")?
     } else {
         0
     };

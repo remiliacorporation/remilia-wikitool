@@ -68,7 +68,7 @@ struct ContractIndexRecord {
     function_names: Vec<String>,
     module_titles: Vec<String>,
     example_titles: Vec<String>,
-    semantic_text: String,
+    terms_text: String,
 }
 
 #[derive(Debug, Clone)]
@@ -155,12 +155,12 @@ fn load_indexed_contract_records(
     profile_id: &str,
     options: &AuthoringContractPlanOptions,
 ) -> Result<Vec<ContractIndexRecord>> {
-    if !table_exists(connection, "indexed_authoring_contracts")? {
+    if !table_exists(connection, "authoring_contracts")? {
         return Ok(Vec::new());
     }
 
     let mut records = BTreeMap::<String, ContractIndexRecord>::new();
-    if fts_table_exists(connection, "indexed_authoring_contracts_fts") {
+    if fts_table_exists(connection, "authoring_contracts_fts") {
         let terms = normalized_terms(&options.query_terms, &options.query);
         for token in fts_tokens(&terms) {
             for record in query_contract_records_by_fts(connection, profile_id, &token)? {
@@ -201,12 +201,12 @@ fn query_contract_records_by_fts(
         .prepare(
             "SELECT c.contract_key, c.contract_kind, c.title, c.category, c.summary_text,
                     c.usage_count, c.distinct_page_count, c.parameter_keys, c.function_names,
-                    c.module_titles, c.example_titles, c.semantic_text
-             FROM indexed_authoring_contracts_fts fts
-             JOIN indexed_authoring_contracts c ON c.rowid = fts.rowid
-             WHERE indexed_authoring_contracts_fts MATCH ?1
+                    c.module_titles, c.example_titles, c.terms_text
+             FROM authoring_contracts_fts fts
+             JOIN authoring_contracts c ON c.rowid = fts.rowid
+             WHERE authoring_contracts_fts MATCH ?1
                AND c.profile = ?2
-             ORDER BY bm25(indexed_authoring_contracts_fts) ASC, c.usage_count DESC, c.title ASC
+             ORDER BY bm25(authoring_contracts_fts) ASC, c.usage_count DESC, c.title ASC
              LIMIT 256",
         )
         .context("failed to prepare authoring contract FTS query")?;
@@ -228,8 +228,8 @@ fn query_contract_records_by_usage(
         .prepare(
             "SELECT contract_key, contract_kind, title, category, summary_text,
                     usage_count, distinct_page_count, parameter_keys, function_names,
-                    module_titles, example_titles, semantic_text
-             FROM indexed_authoring_contracts
+                    module_titles, example_titles, terms_text
+             FROM authoring_contracts
              WHERE profile = ?1
              ORDER BY
                CASE contract_kind WHEN 'template' THEN 0 WHEN 'module' THEN 1 ELSE 2 END,
@@ -274,7 +274,7 @@ fn decode_contract_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Contr
         function_names: parse_string_list(&row.get::<_, String>(8)?),
         module_titles: parse_string_list(&row.get::<_, String>(9)?),
         example_titles: parse_string_list(&row.get::<_, String>(10)?),
-        semantic_text: row.get(11)?,
+        terms_text: row.get(11)?,
     })
 }
 
@@ -283,7 +283,7 @@ fn load_contract_edges(
     profile_id: &str,
     selected_keys: &BTreeSet<String>,
 ) -> Result<Vec<AuthoringContractEdge>> {
-    if selected_keys.is_empty() || !table_exists(connection, "indexed_authoring_contract_edges")? {
+    if selected_keys.is_empty() || !table_exists(connection, "authoring_contract_edges")? {
         return Ok(Vec::new());
     }
     let placeholders = std::iter::repeat_n("?", selected_keys.len())
@@ -291,7 +291,7 @@ fn load_contract_edges(
         .join(", ");
     let sql = format!(
         "SELECT from_title, from_kind, to_title, to_kind, relation
-         FROM indexed_authoring_contract_edges
+         FROM authoring_contract_edges
          WHERE profile = ?
            AND (from_contract_key IN ({placeholders}) OR to_contract_key IN ({placeholders}))
          ORDER BY from_title ASC, relation ASC, to_title ASC"
@@ -447,7 +447,7 @@ fn score_query_matches(
     let summary = record.summary_text.to_ascii_lowercase();
     let params = record.parameter_keys.join(" ").to_ascii_lowercase();
     let functions = record.function_names.join(" ").to_ascii_lowercase();
-    let semantic = record.semantic_text.to_ascii_lowercase();
+    let semantic = record.terms_text.to_ascii_lowercase();
 
     for term in terms {
         if title.contains(term) {
@@ -505,7 +505,7 @@ fn score_query_matches(
             add_reason(
                 score,
                 reasons,
-                "semantic_match",
+                "term_profile_match",
                 24,
                 &format!("contract semantic text contains `{term}`"),
                 Vec::new(),
@@ -750,7 +750,7 @@ fn record_from_catalog_entry(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
-    let semantic_text = normalize_spaces(
+    let terms_text = normalize_spaces(
         &[
             entry.template_title.clone(),
             entry.category.clone(),
@@ -774,7 +774,7 @@ fn record_from_catalog_entry(
         function_names: Vec::new(),
         module_titles: entry.module_titles.clone(),
         example_titles: entry.example_pages.clone(),
-        semantic_text,
+        terms_text,
     }
 }
 
@@ -787,7 +787,7 @@ fn record_from_template_summary(
         .iter()
         .map(|parameter| parameter.key.clone())
         .collect::<Vec<_>>();
-    let semantic_text = normalize_spaces(
+    let terms_text = normalize_spaces(
         &[
             template.template_title.clone(),
             parameter_keys.join(" "),
@@ -813,7 +813,7 @@ fn record_from_template_summary(
             .cloned()
             .collect(),
         example_titles: template.example_pages.clone(),
-        semantic_text,
+        terms_text,
     }
 }
 
@@ -826,7 +826,7 @@ fn record_from_module_summary(
         .iter()
         .map(|function| function.function_name.clone())
         .collect::<Vec<_>>();
-    let semantic_text = normalize_spaces(
+    let terms_text = normalize_spaces(
         &[
             module.module_title.clone(),
             function_names.join(" "),
@@ -846,7 +846,7 @@ fn record_from_module_summary(
         function_names,
         module_titles: Vec::new(),
         example_titles: module.example_pages.clone(),
-        semantic_text,
+        terms_text,
     }
 }
 

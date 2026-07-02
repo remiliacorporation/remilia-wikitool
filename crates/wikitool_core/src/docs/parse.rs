@@ -6,8 +6,7 @@ pub(crate) use self::parse_common::{
 use self::parse_examples::extract_examples_for_section;
 use self::parse_markup::{dedupe_strings, extract_link_titles, extract_template_titles};
 use self::parse_sections::{
-    build_page_aliases, build_page_links, build_section_semantic_text, build_semantic_text,
-    split_into_sections,
+    build_page_aliases, build_section_semantic_text, build_semantic_text, split_into_sections,
 };
 use self::parse_symbols::{dedupe_symbols, extract_content_symbols, extract_title_symbols};
 
@@ -46,7 +45,6 @@ pub(crate) struct ParsedDocsPage {
     pub sections: Vec<ParsedDocsSection>,
     pub symbols: Vec<ParsedDocsSymbol>,
     pub examples: Vec<ParsedDocsExample>,
-    pub links: Vec<ParsedDocsLink>,
 }
 
 #[allow(dead_code)]
@@ -97,13 +95,6 @@ pub(crate) struct ParsedDocsExample {
     pub example_text: String,
     pub retrieval_text: String,
     pub token_estimate: usize,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ParsedDocsLink {
-    pub target_title: String,
-    pub relation_kind: String,
-    pub display_text: String,
 }
 
 #[derive(Debug, Clone)]
@@ -218,7 +209,6 @@ pub(crate) fn parse_docs_page(input: DocsPageParseInput) -> ParsedDocsPage {
         &sections,
         &examples,
     );
-    let links = build_page_links(&link_titles, &template_titles);
     let token_estimate = estimate_token_count(&lead_text);
 
     ParsedDocsPage {
@@ -243,7 +233,6 @@ pub(crate) fn parse_docs_page(input: DocsPageParseInput) -> ParsedDocsPage {
         sections,
         symbols,
         examples,
-        links,
     }
 }
 

@@ -13,7 +13,7 @@ pub(super) fn store_template_catalog(
         .context("failed to start template catalog transaction")?;
     transaction
         .execute(
-            "INSERT INTO knowledge_artifacts (
+            "INSERT INTO runtime_artifacts (
                 artifact_key,
                 artifact_kind,
                 profile,
@@ -61,7 +61,7 @@ fn store_authoring_contract_index(
 ) -> Result<()> {
     connection
         .execute(
-            "DELETE FROM indexed_authoring_contract_edges WHERE profile = ?1",
+            "DELETE FROM authoring_contract_edges WHERE profile = ?1",
             [catalog.profile_id.as_str()],
         )
         .with_context(|| {
@@ -72,7 +72,7 @@ fn store_authoring_contract_index(
         })?;
     connection
         .execute(
-            "DELETE FROM indexed_authoring_contracts WHERE profile = ?1",
+            "DELETE FROM authoring_contracts WHERE profile = ?1",
             [catalog.profile_id.as_str()],
         )
         .with_context(|| {
@@ -111,7 +111,7 @@ fn store_authoring_contract_index(
 
     let mut node_statement = connection
         .prepare(
-            "INSERT INTO indexed_authoring_contracts (
+            "INSERT INTO authoring_contracts (
                 profile,
                 contract_key,
                 contract_kind,
@@ -124,7 +124,7 @@ fn store_authoring_contract_index(
                 function_names,
                 module_titles,
                 example_titles,
-                semantic_text,
+                terms_text,
                 token_estimate,
                 source
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
@@ -132,8 +132,8 @@ fn store_authoring_contract_index(
         .context("failed to prepare authoring contract node insert")?;
     for entry in &catalog.entries {
         let parameter_keys = template_contract_parameter_keys(entry);
-        let semantic_text = template_contract_semantic_text(entry, &parameter_keys);
-        let token_estimate = estimate_tokens(&semantic_text);
+        let terms_text = template_contract_terms_text(entry, &parameter_keys);
+        let token_estimate = estimate_tokens(&terms_text);
         node_statement
             .execute(params![
                 catalog.profile_id,
@@ -150,7 +150,7 @@ fn store_authoring_contract_index(
                 serialize_string_list(&Vec::<String>::new()),
                 serialize_string_list(&entry.module_titles),
                 serialize_string_list(&entry.example_pages),
-                semantic_text,
+                terms_text,
                 i64::try_from(token_estimate)
                     .context("template contract token estimate does not fit into i64")?,
                 "template_catalog",
@@ -169,8 +169,8 @@ fn store_authoring_contract_index(
             .unwrap_or_default()
             .into_iter()
             .collect();
-        let semantic_text = module_contract_semantic_text(&record);
-        let token_estimate = estimate_tokens(&semantic_text);
+        let terms_text = module_contract_terms_text(&record);
+        let token_estimate = estimate_tokens(&terms_text);
         node_statement
             .execute(params![
                 catalog.profile_id,
@@ -187,7 +187,7 @@ fn store_authoring_contract_index(
                 serialize_string_list(&record.function_names),
                 serialize_string_list(&Vec::<String>::new()),
                 serialize_string_list(&record.example_pages),
-                semantic_text,
+                terms_text,
                 i64::try_from(token_estimate)
                     .context("module contract token estimate does not fit into i64")?,
                 "template_catalog",
@@ -202,7 +202,7 @@ fn store_authoring_contract_index(
 
     let mut edge_statement = connection
         .prepare(
-            "INSERT INTO indexed_authoring_contract_edges (
+            "INSERT INTO authoring_contract_edges (
                 profile,
                 from_contract_key,
                 from_kind,
@@ -337,10 +337,7 @@ fn template_contract_parameter_keys(entry: &TemplateCatalogEntry) -> Vec<String>
     keys.into_iter().collect()
 }
 
-fn template_contract_semantic_text(
-    entry: &TemplateCatalogEntry,
-    parameter_keys: &[String],
-) -> String {
+fn template_contract_terms_text(entry: &TemplateCatalogEntry, parameter_keys: &[String]) -> String {
     normalize_spaces(
         &[
             entry.template_title.clone(),
@@ -359,7 +356,7 @@ fn template_contract_semantic_text(
     )
 }
 
-fn module_contract_semantic_text(record: &ModuleContractIndexRecord) -> String {
+fn module_contract_terms_text(record: &ModuleContractIndexRecord) -> String {
     normalize_spaces(
         &[
             record.module_title.clone(),

@@ -124,13 +124,7 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
                 is_redirect,
                 redirect_target.as_deref(),
             )?;
-            upsert_sync_snapshot(
-                &connection,
-                &page.title,
-                &relative_path,
-                &remote_hash,
-                &page.content,
-            )?;
+            upsert_sync_snapshot(&connection, &page.title, &relative_path, &page.content)?;
             ledger_by_title.insert(
                 key.clone(),
                 SyncLedgerEntry {
@@ -175,13 +169,7 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
             is_redirect,
             redirect_target.as_deref(),
         )?;
-        upsert_sync_snapshot(
-            &connection,
-            &page.title,
-            &relative_path,
-            &remote_hash,
-            &page.content,
-        )?;
+        upsert_sync_snapshot(&connection, &page.title, &relative_path, &page.content)?;
         ledger_by_title.insert(
             key.clone(),
             SyncLedgerEntry {

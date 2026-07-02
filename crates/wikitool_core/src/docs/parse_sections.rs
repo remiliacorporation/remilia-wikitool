@@ -3,7 +3,6 @@ use super::parse_markup::{
     strip_tagged_block,
 };
 use super::*;
-use std::collections::BTreeSet;
 
 #[derive(Debug, Clone)]
 pub(super) struct RawSection {
@@ -218,33 +217,4 @@ pub(super) fn build_section_semantic_text(
     terms.extend(symbol_names.iter().cloned());
     terms.extend(link_titles.iter().cloned());
     collapse_whitespace(&terms.join(" | "))
-}
-
-pub(super) fn build_page_links(
-    link_titles: &[String],
-    template_titles: &[String],
-) -> Vec<ParsedDocsLink> {
-    let mut out = Vec::new();
-    let mut seen = BTreeSet::new();
-    for title in link_titles {
-        let key = format!("wikilink|{}", title.to_ascii_lowercase());
-        if seen.insert(key) {
-            out.push(ParsedDocsLink {
-                target_title: title.clone(),
-                relation_kind: "wikilink".to_string(),
-                display_text: title.clone(),
-            });
-        }
-    }
-    for title in template_titles {
-        let key = format!("template|{}", title.to_ascii_lowercase());
-        if seen.insert(key) {
-            out.push(ParsedDocsLink {
-                target_title: title.clone(),
-                relation_kind: "template".to_string(),
-                display_text: title.clone(),
-            });
-        }
-    }
-    out
 }

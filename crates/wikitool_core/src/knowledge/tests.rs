@@ -745,7 +745,7 @@ fn retrieve_local_context_chunks_across_pages_uses_semantic_page_profiles() {
         LocalChunkAcrossRetrieval::Found(report) => report,
         other => panic!("expected found report, got {other:?}"),
     };
-    assert!(report.retrieval_mode.contains("semantic"));
+    assert!(report.retrieval_mode.contains("term-profile"));
     assert!(report.retrieval_mode.contains("seed-pages"));
     assert!(
         report
@@ -1384,7 +1384,7 @@ fn authoring_contract_index_preserves_case_distinct_template_titles() {
     let count: i64 = connection
         .query_row(
             "SELECT COUNT(*)
-             FROM indexed_authoring_contracts
+             FROM authoring_contracts
              WHERE profile = ?1
                AND contract_kind = 'template'
                AND title IN ('Template:Block Indent', 'Template:Block indent')",

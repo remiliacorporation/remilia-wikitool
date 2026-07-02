@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::content_store::parsing;
 use crate::knowledge::prelude::{
-    SemanticPageHit, candidate_limit, query_page_records_from_aliases_for_connection,
+    TermProfilePageHit, candidate_limit, query_page_records_from_aliases_for_connection,
     query_page_records_from_sections_for_connection,
 };
 use crate::knowledge::templates::load_page_summary_for_connection;
@@ -26,9 +26,9 @@ pub(crate) struct AuthoringRelatedPageInputs<'a> {
     pub query_terms: &'a [String],
     pub limit: usize,
     pub template_page_scores: &'a BTreeMap<String, usize>,
-    pub semantic_page_hits: &'a [SemanticPageHit],
-    pub authority_page_hits: &'a [SemanticPageHit],
-    pub identifier_page_hits: &'a [SemanticPageHit],
+    pub semantic_page_hits: &'a [TermProfilePageHit],
+    pub authority_page_hits: &'a [TermProfilePageHit],
+    pub identifier_page_hits: &'a [TermProfilePageHit],
 }
 
 pub(crate) fn authoring_page_allowed(page: &IndexedPageRecord) -> bool {
@@ -37,12 +37,12 @@ pub(crate) fn authoring_page_allowed(page: &IndexedPageRecord) -> bool {
         && !is_translation_variant(&page.title)
 }
 
-pub(crate) fn load_semantic_page_hits(
+pub(crate) fn load_term_profile_page_hits(
     connection: &Connection,
     query_terms: &[String],
     limit: usize,
-) -> Result<Vec<SemanticPageHit>> {
-    crate::knowledge::prelude::load_semantic_page_hits(connection, query_terms, limit)
+) -> Result<Vec<TermProfilePageHit>> {
+    crate::knowledge::prelude::load_term_profile_page_hits(connection, query_terms, limit)
 }
 
 pub(crate) fn collect_related_pages_for_authoring(
@@ -90,7 +90,7 @@ pub(crate) fn collect_related_pages_for_authoring(
             add_authoring_page_candidate(
                 &mut candidates,
                 page,
-                "semantic-profile",
+                "term-profile",
                 semantic_hit.retrieval_weight.clamp(24, 260),
             );
         }

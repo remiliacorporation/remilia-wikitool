@@ -110,7 +110,7 @@ pub(crate) struct IndexedReferenceRecord {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct IndexedSemanticProfileRecord {
+pub(crate) struct PageTermProfileRecord {
     pub(crate) source_title: String,
     pub(crate) source_namespace: String,
     pub(crate) summary_text: String,
@@ -128,7 +128,7 @@ pub(crate) struct IndexedSemanticProfileRecord {
     pub(crate) media_titles: Vec<String>,
     pub(crate) media_captions: Vec<String>,
     pub(crate) template_implementation_titles: Vec<String>,
-    pub(crate) semantic_text: String,
+    pub(crate) terms_text: String,
     pub(crate) token_estimate: usize,
 }
 
@@ -208,13 +208,13 @@ pub(crate) enum RetrievalAudience {
 pub(crate) struct ChunkRerankSignals {
     pub(crate) related_page_weights: BTreeMap<String, usize>,
     pub(crate) template_page_weights: BTreeMap<String, usize>,
-    pub(crate) semantic_page_weights: BTreeMap<String, usize>,
+    pub(crate) term_profile_page_weights: BTreeMap<String, usize>,
     pub(crate) authority_page_weights: BTreeMap<String, usize>,
     pub(crate) identifier_page_weights: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SemanticPageHit {
+pub(crate) struct TermProfilePageHit {
     pub(crate) title: String,
     pub(crate) retrieval_weight: usize,
 }

@@ -121,7 +121,7 @@ pub fn load_template_catalog(
     let catalog_json: Option<String> = connection
         .query_row(
             "SELECT metadata_json
-             FROM knowledge_artifacts
+             FROM runtime_artifacts
              WHERE artifact_key = ?1",
             params![template_catalog_artifact_key(profile_id)],
             |row| row.get(0),
@@ -140,7 +140,7 @@ pub fn load_latest_template_catalog(paths: &ResolvedPaths) -> Result<Option<Temp
     let catalog_json: Option<String> = connection
         .query_row(
             "SELECT metadata_json
-             FROM knowledge_artifacts
+             FROM runtime_artifacts
              WHERE artifact_kind = ?1
              ORDER BY built_at_unix DESC
              LIMIT 1",

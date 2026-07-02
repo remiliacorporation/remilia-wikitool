@@ -151,25 +151,11 @@ const REQUIRED_MEDIA_COLUMNS: &[&str] = &[
     "token_estimate",
 ];
 
-const REQUIRED_SEMANTIC_COLUMNS: &[&str] = &[
+const REQUIRED_TERM_PROFILE_COLUMNS: &[&str] = &[
     "source_title",
     "source_namespace",
     "summary_text",
-    "section_headings",
-    "category_titles",
-    "template_titles",
-    "template_parameter_keys",
-    "link_titles",
-    "reference_titles",
-    "reference_containers",
-    "reference_domains",
-    "reference_source_families",
-    "reference_authorities",
-    "reference_identifiers",
-    "media_titles",
-    "media_captions",
-    "template_implementation_titles",
-    "semantic_text",
+    "terms_text",
     "token_estimate",
 ];
 
@@ -194,7 +180,7 @@ const REQUIRED_AUTHORING_CONTRACT_COLUMNS: &[&str] = &[
     "function_names",
     "module_titles",
     "example_titles",
-    "semantic_text",
+    "terms_text",
     "token_estimate",
     "source",
 ];
@@ -280,14 +266,6 @@ const REQUIRED_DOCS_EXAMPLE_COLUMNS: &[&str] = &[
     "example_text",
     "retrieval_text",
     "token_estimate",
-];
-
-const REQUIRED_DOCS_LINK_COLUMNS: &[&str] = &[
-    "page_title",
-    "link_index",
-    "target_title",
-    "relation_kind",
-    "display_text",
 ];
 
 const REQUIRED_KNOWLEDGE_ARTIFACT_COLUMNS: &[&str] = &[
@@ -409,8 +387,8 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
     require_columns(connection, "indexed_page_media", REQUIRED_MEDIA_COLUMNS)?;
     require_columns(
         connection,
-        "indexed_page_semantics",
-        REQUIRED_SEMANTIC_COLUMNS,
+        "indexed_page_term_profiles",
+        REQUIRED_TERM_PROFILE_COLUMNS,
     )?;
     require_columns(
         connection,
@@ -419,12 +397,12 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
     )?;
     require_columns(
         connection,
-        "indexed_authoring_contracts",
+        "authoring_contracts",
         REQUIRED_AUTHORING_CONTRACT_COLUMNS,
     )?;
     require_columns(
         connection,
-        "indexed_authoring_contract_edges",
+        "authoring_contract_edges",
         REQUIRED_AUTHORING_CONTRACT_EDGE_COLUMNS,
     )?;
     require_columns(connection, "docs_corpora", REQUIRED_DOCS_CORPORA_COLUMNS)?;
@@ -432,10 +410,9 @@ fn validate_disposable_schema(connection: &Connection) -> Result<()> {
     require_columns(connection, "docs_sections", REQUIRED_DOCS_SECTION_COLUMNS)?;
     require_columns(connection, "docs_symbols", REQUIRED_DOCS_SYMBOL_COLUMNS)?;
     require_columns(connection, "docs_examples", REQUIRED_DOCS_EXAMPLE_COLUMNS)?;
-    require_columns(connection, "docs_links", REQUIRED_DOCS_LINK_COLUMNS)?;
     require_columns(
         connection,
-        "knowledge_artifacts",
+        "runtime_artifacts",
         REQUIRED_KNOWLEDGE_ARTIFACT_COLUMNS,
     )
 }

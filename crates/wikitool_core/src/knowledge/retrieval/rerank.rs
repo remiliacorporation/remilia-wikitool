@@ -166,7 +166,7 @@ pub(crate) fn rerank_retrieved_chunks(
             .unwrap_or(0);
             score += i64::try_from(
                 signals
-                    .semantic_page_weights
+                    .term_profile_page_weights
                     .get(&chunk.source_title.to_ascii_lowercase())
                     .copied()
                     .unwrap_or(0),
@@ -241,8 +241,8 @@ pub(crate) fn retrieve_reranked_chunks_across_pages(
         .sum::<usize>();
 
     let mut retrieval_mode = retrieval_mode;
-    if !signals.semantic_page_weights.is_empty() {
-        retrieval_mode = format!("{retrieval_mode}+semantic");
+    if !signals.term_profile_page_weights.is_empty() {
+        retrieval_mode = format!("{retrieval_mode}+term-profile");
     }
     if !signals.authority_page_weights.is_empty() {
         retrieval_mode = format!("{retrieval_mode}+authority");

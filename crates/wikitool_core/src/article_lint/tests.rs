@@ -88,7 +88,7 @@ fn write_capability_manifest(paths: &ResolvedPaths, manifest: &WikiCapabilityMan
     let connection = open_initialized_database_connection(&paths.db_path).expect("db");
     connection
         .execute(
-            "INSERT INTO knowledge_artifacts (
+            "INSERT INTO runtime_artifacts (
                     artifact_key,
                     artifact_kind,
                     profile,

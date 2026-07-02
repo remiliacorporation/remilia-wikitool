@@ -57,9 +57,8 @@ use import::{
     import_technical_docs_with_api_internal, import_technical_docs_with_api_internal_deferred,
 };
 use parse::{
-    DocsPageParseInput, ParsedDocsExample, ParsedDocsLink, ParsedDocsSection, ParsedDocsSymbol,
-    estimate_tokens, is_translation_variant, normalize_retrieval_key, normalize_title,
-    parse_docs_page,
+    DocsPageParseInput, ParsedDocsExample, ParsedDocsSection, ParsedDocsSymbol, estimate_tokens,
+    is_translation_variant, normalize_retrieval_key, normalize_title, parse_docs_page,
 };
 use persist::{accumulate_stats, persist_docs_corpus};
 use profiles::{collect_profile_pages, resolve_docs_profile};

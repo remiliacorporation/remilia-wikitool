@@ -181,7 +181,6 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                             &context.connection,
                             &remote_page.title,
                             &file.relative_path,
-                            &content_hash,
                             &remote_page.content,
                         ) {
                             report.errors.push(format!("{}: {error}", file.title));

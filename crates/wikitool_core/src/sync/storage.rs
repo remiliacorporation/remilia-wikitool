@@ -55,13 +55,7 @@ pub(super) fn backfill_sync_snapshots_from_local(
         let absolute = absolute_path_from_relative(paths, &file.relative_path);
         let content = fs::read_to_string(&absolute)
             .with_context(|| format!("failed to read {}", absolute.display()))?;
-        upsert_sync_snapshot(
-            connection,
-            &file.title,
-            &file.relative_path,
-            &file.content_hash,
-            &content,
-        )?;
+        upsert_sync_snapshot(connection, &file.title, &file.relative_path, &content)?;
     }
     Ok(())
 }
@@ -70,28 +64,18 @@ pub(super) fn upsert_sync_snapshot(
     connection: &Connection,
     title: &str,
     relative_path: &str,
-    content_hash: &str,
     content_text: &str,
 ) -> Result<()> {
     initialize_sync_schema(connection)?;
-    let now = unix_timestamp()?;
     connection
         .execute(
             "INSERT INTO sync_snapshots (
-                title, relative_path, content_hash, content_text, synced_at_unix
-            ) VALUES (?1, ?2, ?3, ?4, ?5)
+                title, relative_path, content_text
+            ) VALUES (?1, ?2, ?3)
             ON CONFLICT(title) DO UPDATE SET
                 relative_path = excluded.relative_path,
-                content_hash = excluded.content_hash,
-                content_text = excluded.content_text,
-                synced_at_unix = excluded.synced_at_unix",
-            params![
-                title,
-                relative_path,
-                content_hash,
-                content_text,
-                i64::try_from(now).context("timestamp does not fit into i64")?
-            ],
+                content_text = excluded.content_text",
+            params![title, relative_path, content_text],
         )
         .with_context(|| format!("failed to upsert sync snapshot for {title}"))?;
     Ok(())

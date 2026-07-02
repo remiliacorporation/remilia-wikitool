@@ -170,7 +170,7 @@ fn upsert_artifact(
     let built_at_unix = unix_timestamp()?;
     connection
         .execute(
-            "INSERT INTO knowledge_artifacts (
+            "INSERT INTO runtime_artifacts (
                 artifact_key,
                 artifact_kind,
                 profile,
@@ -226,7 +226,7 @@ fn load_docs_profile_corpora(connection: &Connection, docs_profile: &str) -> Res
 }
 
 fn load_artifact(connection: &Connection, artifact_key: &str) -> Result<Option<KnowledgeArtifact>> {
-    if !table_exists(connection, "knowledge_artifacts")? {
+    if !table_exists(connection, "runtime_artifacts")? {
         return Ok(None);
     }
 
@@ -240,7 +240,7 @@ fn load_artifact(connection: &Connection, artifact_key: &str) -> Result<Option<K
                 built_at_unix,
                 row_count,
                 metadata_json
-             FROM knowledge_artifacts
+             FROM runtime_artifacts
              WHERE artifact_key = ?1",
             params![artifact_key],
             |row| {
