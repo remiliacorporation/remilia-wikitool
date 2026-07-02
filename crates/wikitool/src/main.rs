@@ -9,6 +9,7 @@ mod article_cli;
 mod briefs;
 mod cli_support;
 mod config_cli;
+mod contextmink_cli;
 mod db_cli;
 #[cfg(feature = "maintainer")]
 mod dev_cli;
@@ -107,6 +108,8 @@ enum Commands {
     Protect(ops_cli::ProtectArgs),
     #[command(about = "Restore a deleted page through the MediaWiki API")]
     Undelete(ops_cli::UndeleteArgs),
+    #[command(about = "Install the bundled contextmink transcript guard into this project")]
+    Contextmink(contextmink_cli::ContextminkArgs),
     #[command(about = "Inspect or reset the local runtime database")]
     Db(db_cli::DbArgs),
     #[command(about = "Manage and query pinned MediaWiki docs corpora")]
@@ -170,6 +173,7 @@ fn main() -> Result<()> {
         Some(Commands::Move(args)) => ops_cli::run_move(&runtime, args),
         Some(Commands::Protect(args)) => ops_cli::run_protect(&runtime, args),
         Some(Commands::Undelete(args)) => ops_cli::run_undelete(&runtime, args),
+        Some(Commands::Contextmink(args)) => contextmink_cli::run_contextmink(&runtime, args),
         Some(Commands::Db(args)) => db_cli::run_db(&runtime, args),
         Some(Commands::Docs(args)) => docs_cli::run_docs(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
@@ -536,5 +540,21 @@ mod tests {
         ])
         .expect("wiki cargo count should parse");
         assert!(matches!(cargo_count.command, Some(Commands::Wiki(_))));
+
+        let contextmink_install = Cli::try_parse_from([
+            "wikitool",
+            "contextmink",
+            "install",
+            "--from",
+            "pack-dir",
+            "--dry-run",
+            "--format",
+            "json",
+        ])
+        .expect("contextmink install should parse");
+        assert!(matches!(
+            contextmink_install.command,
+            Some(Commands::Contextmink(_))
+        ));
     }
 }

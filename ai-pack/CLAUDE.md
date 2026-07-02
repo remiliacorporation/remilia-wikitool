@@ -142,9 +142,13 @@ must not route through wikitool. The binary runs natively from any shell
 `--argv-b64` lossless argv channel — optional, only for repositories that
 keep Bash-first scripts; nothing in contextmink requires it.
 
-Set it up in the working repository per `contextmink/SETUP.md` and merge
-`contextmink/templates/AGENTS.contextmink.md` (Codex) or
-`CLAUDE.contextmink.md` (Claude) into project guidance. The core habits:
+Install it with `wikitool contextmink install` from the project root: it finds
+the pack next to the wikitool binary (or takes `--from <pack-dir>`), places the
+binaries, launcher, and a wikitool-tailored `.contextmink.toml`, and verifies
+the installed binary against the pack manifest. Then merge
+`tools/contextmink/templates/CLAUDE.contextmink.md` (Claude) or
+`AGENTS.contextmink.md` (Codex) into project guidance. `contextmink/SETUP.md`
+remains the manual path for nonstandard layouts. The core habits:
 
 - Orient with `dirs`, discover with `files`/`grep`/`grep-terms`, and read
   known files through `outline` (declaration map with line numbers; wikitext

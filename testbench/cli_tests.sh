@@ -702,6 +702,42 @@ else
     fail "delete --dry-run removed the file!"
 fi
 
+# --- contextmink install ---
+section "contextmink install"
+FAKE_PACK="$TMPDIR_ROOT/fake-contextmink-pack"
+mkdir -p "$FAKE_PACK/templates/scripts"
+cat > "$FAKE_PACK/manifest.json" << 'JSONEOF'
+{"name": "contextmink", "version": "9.9.9", "platform": "test", "binary": "contextmink.exe", "bridge_binary": "contextmink-bridge.exe"}
+JSONEOF
+touch "$FAKE_PACK/contextmink.exe" "$FAKE_PACK/contextmink-bridge.exe"
+touch "$FAKE_PACK/templates/scripts/contextmink"
+touch "$FAKE_PACK/templates/CLAUDE.contextmink.md" "$FAKE_PACK/templates/AGENTS.contextmink.md"
+OUTPUT=$(wt "$PROJ" contextmink install --from "$(to_wikitool_path "$FAKE_PACK")" --dry-run --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"would_install"' && echo "$OUTPUT" | grep -q '"pack_version": "9.9.9"'; then
+    pass "contextmink install --dry-run plans a full pack install"
+else
+    fail "contextmink install --dry-run plans a full pack install (got: ${OUTPUT:0:300})"
+fi
+
+REAL_PACK=""
+for candidate in "$SCRIPT_DIR/../dist/contextmink-dist"/*/; do
+    if [ -f "$candidate/manifest.json" ]; then
+        REAL_PACK="$candidate"
+        break
+    fi
+done
+if [ -z "$REAL_PACK" ]; then
+    skip "contextmink install verified run (no fetched pack under dist/contextmink-dist)"
+else
+    PROJ_MINK=$(setup_project contextmink-install)
+    OUTPUT=$(wt "$PROJ_MINK" contextmink install --from "$(to_wikitool_path "$REAL_PACK")" --format json 2>&1 || true)
+    if echo "$OUTPUT" | grep -q '"verified": true' && [ -f "$PROJ_MINK/.contextmink.toml" ] && [ -f "$PROJ_MINK/scripts/contextmink" ]; then
+        pass "contextmink install places and verifies the real pack"
+    else
+        fail "contextmink install places and verifies the real pack (got: ${OUTPUT:0:300})"
+    fi
+fi
+
 # --- protect --dry-run ---
 section "protect --dry-run"
 OUTPUT=$(wt "$PROJ" protect "Delete Test" --protection edit=sysop --protection move=sysop --dry-run --format json 2>&1 || true)

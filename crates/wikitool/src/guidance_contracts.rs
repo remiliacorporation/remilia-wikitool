@@ -105,13 +105,18 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
                 && body.contains("opt-outs"),
             "packaged guidance must route human-in-loop article work through the interview faculty"
         );
+        // "wikitool context" was a removed command; "wikitool contextmink" is the
+        // live installer and must not trip the ban.
+        let refers_to_removed_context_command = body
+            .match_indices("wikitool context")
+            .any(|(index, needle)| !body[index + needle.len()..].starts_with("mink"));
         assert!(
             !body.contains("Docs bootstrap")
                 && !body.contains("WIKITOOL_CLAUDE.md")
                 && !body.contains("llm_instructions")
                 && !body.contains("wikitool search")
                 && !body.contains("wikitool fetch")
-                && !body.contains("wikitool context")
+                && !refers_to_removed_context_command
                 && !body.contains("wikitool seo")
                 && !body.contains("wikitool net")
                 && !body.contains("agent-card")

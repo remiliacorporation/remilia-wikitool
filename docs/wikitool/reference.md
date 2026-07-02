@@ -18,33 +18,34 @@ Wiki management CLI
 Usage: wikitool [OPTIONS] [COMMAND]
 
 Commands:
-  init       Initialize a new wikitool project
-  config     Show resolved configuration and target-wiki sources
-  pull       Pull wiki content and templates to local files
-  push       Push local changes to the live wiki
-  diff       Show local changes not yet pushed to the wiki
-  status     Show sync status and local project state
-  validate   Run structural and link integrity checks
-  review     Run the structured pre-push review gate
-  module     Run Lua module linting and related checks
-  export     Export a remote wiki page tree to local files
-  delete     Delete a page from the live wiki
-  purge      Purge pages through the MediaWiki API
-  upload     Upload a local file through the MediaWiki API
-  move       Move (rename) a page through the MediaWiki API
-  protect    Protect or unprotect a page through the MediaWiki API
-  undelete   Restore a deleted page through the MediaWiki API
-  db         Inspect or reset the local runtime database
-  docs       Manage and query pinned MediaWiki docs corpora
-  import     Import content from external sources
-  knowledge  Build and query the local knowledge layer
-  research   Inspect target-wiki evidence and fetch source URLs without mutating the wiki
-  wiki       Sync and inspect live wiki capability metadata
-  templates  Build and inspect the local template catalog
-  article    Lint and mechanically remediate article drafts
-  lsp        Generate parser config and editor integration settings
-  workflow   First-run setup and session/full runtime refresh workflows
-  help       Print this message or the help of the given subcommand(s)
+  init         Initialize a new wikitool project
+  config       Show resolved configuration and target-wiki sources
+  pull         Pull wiki content and templates to local files
+  push         Push local changes to the live wiki
+  diff         Show local changes not yet pushed to the wiki
+  status       Show sync status and local project state
+  validate     Run structural and link integrity checks
+  review       Run the structured pre-push review gate
+  module       Run Lua module linting and related checks
+  export       Export a remote wiki page tree to local files
+  delete       Delete a page from the live wiki
+  purge        Purge pages through the MediaWiki API
+  upload       Upload a local file through the MediaWiki API
+  move         Move (rename) a page through the MediaWiki API
+  protect      Protect or unprotect a page through the MediaWiki API
+  undelete     Restore a deleted page through the MediaWiki API
+  contextmink  Install the bundled contextmink transcript guard into this project
+  db           Inspect or reset the local runtime database
+  docs         Manage and query pinned MediaWiki docs corpora
+  import       Import content from external sources
+  knowledge    Build and query the local knowledge layer
+  research     Inspect target-wiki evidence and fetch source URLs without mutating the wiki
+  wiki         Sync and inspect live wiki capability metadata
+  templates    Build and inspect the local template catalog
+  article      Lint and mechanically remediate article drafts
+  lsp          Generate parser config and editor integration settings
+  workflow     First-run setup and session/full runtime refresh workflows
+  help         Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -460,6 +461,44 @@ Options:
       --config <PATH>
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## contextmink
+
+```text
+Install the bundled contextmink transcript guard into this project
+
+Usage: wikitool contextmink [OPTIONS] <COMMAND>
+
+Commands:
+  install  Install the bundled contextmink pack into this project
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## contextmink install
+
+```text
+Install the bundled contextmink pack into this project
+
+Usage: wikitool contextmink install [OPTIONS]
+
+Options:
+      --from <DIR>           Contextmink pack directory (default: the contextmink/ directory next to the wikitool binary)
+      --project-root <PATH>
+      --data-dir <PATH>
+      --force                Overwrite files that already exist in the project
+      --config <PATH>
+      --dry-run              Preview the install without writing files
+      --diagnostics          Print resolved runtime diagnostics
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
   -h, --help                 Print help
 ```
 
