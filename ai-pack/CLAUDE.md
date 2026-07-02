@@ -134,11 +134,13 @@ loading a whole catalog or page set into context.
 ## Bounded Output
 
 The release bundle ships the generic `contextmink` transcript guard in
-`contextmink/` (binary, setup docs, and instruction templates; the Windows
-bundle also carries `contextmink-bridge.exe`, a native PowerShell -> Git Bash
-bridge with an `--argv-b64` lossless argv channel). It is a separate binary on
-purpose: contextmink is project-generic, and bounded reads must not route
-through wikitool.
+`contextmink/` (binary, setup docs, and instruction templates). It is a
+separate binary on purpose: contextmink is project-generic, and bounded reads
+must not route through wikitool. The binary runs natively from any shell
+(PowerShell, cmd, WSL, POSIX). The Windows bundle also carries
+`contextmink-bridge.exe`, a PowerShell -> Git Bash bridge with an
+`--argv-b64` lossless argv channel — optional, only for repositories that
+keep Bash-first scripts; nothing in contextmink requires it.
 
 Set it up in the working repository per `contextmink/SETUP.md` and merge
 `contextmink/templates/AGENTS.contextmink.md` (Codex) or

@@ -139,10 +139,15 @@ scripts/contextmink files --path . --max 20.
 
 ## Optional: PowerShell -> Git Bash Bridge (Windows + Codex-style hosts)
 
-Repositories that keep scripts Bash-first but are driven by a PowerShell-hosted
-agent have two bridge options. Both exist because Windows has two distinct argv
-hazards; neither hazard exists on POSIX hosts, where agents should run bash and
-commands directly.
+Nothing in contextmink requires a bridge, Git Bash, or the
+`scripts/contextmink` launcher: the contextmink binary is native on every
+platform, and PowerShell, cmd, and WSL invoke it directly. Skip this section
+unless the repository deliberately keeps its scripts Bash-first for
+cross-platform authoring and is driven by a PowerShell-hosted agent.
+
+Such repositories have two bridge options. Both exist because Windows has two
+distinct argv hazards; neither hazard exists on POSIX hosts, where agents
+should run bash and commands directly.
 
 **Native binary (preferred on Windows).** The Windows release archive carries
 `contextmink-bridge.exe`. It locates Git Bash itself (no hardcoded path on the
@@ -290,6 +295,11 @@ guidance:
 
 Tests keep the two snippets equivalent so Codex and Claude guidance do not
 drift.
+
+The snippets invoke the repo-local `scripts/contextmink` launcher form.
+Repositories that skip the Bash launcher (pure PowerShell or WSL setups)
+should replace those references with direct `contextmink` binary invocation
+when merging; the policy content is shell-agnostic.
 
 Do not create a separate contextmink skill or slash command by default.
 Put the bounded-output rule in always-loaded project guidance so it applies

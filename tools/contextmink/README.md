@@ -135,6 +135,11 @@ Release archives are built for Windows x64, macOS Intel, macOS ARM, and Linux
 x64. Each archive includes the binary, setup docs, repository instruction
 templates, a manifest, and a SHA-256 checksum.
 
+The binary is self-contained on every platform: PowerShell, cmd, WSL, and
+POSIX shells all invoke it directly. Nothing in contextmink requires Git Bash,
+the `scripts/contextmink` launcher, or the optional Windows bridge — those
+exist only for repositories that deliberately keep their scripts Bash-first.
+
 Release builds include bundled SQLite support for portability.
 
 On Windows repositories that use extensionless Bash scripts, use the
@@ -162,14 +167,15 @@ Use the files from the release archive:
 3. Copy `templates/.contextmink.toml` to `.contextmink.toml` and edit excludes.
 4. Merge `templates/AGENTS.contextmink.md` into `AGENTS.md` for Codex, and/or
    `templates/CLAUDE.contextmink.md` into `CLAUDE.md` for Claude.
-5. Optional, for Bash-first repositories driven by a PowerShell-hosted agent
-   on Windows: copy `contextmink-bridge.exe` (Windows archive only) next to
-   the contextmink binary — a native PowerShell -> Git Bash bridge that
+5. Optional, only for Bash-first repositories driven by a PowerShell-hosted
+   agent on Windows: copy `contextmink-bridge.exe` (Windows archive only) next
+   to the contextmink binary — a native PowerShell -> Git Bash bridge that
    discovers Git Bash itself, spawns direct commands with zero MSYS argument
    rewriting, and accepts argv through `--argv-b64` (a single base64 token
    PowerShell cannot mangle) or `--argfile`. The `templates/scripts/codex-bash.sh`
    script launcher covers the same ground for setups that prefer a shell
-   entrypoint. See [docs/setup.md](docs/setup.md).
+   entrypoint. Repositories on pure PowerShell or WSL skip this entirely and
+   invoke the contextmink binary directly. See [docs/setup.md](docs/setup.md).
 6. Verify from the target repository root:
 
    ```bash
