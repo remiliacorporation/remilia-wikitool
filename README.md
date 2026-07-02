@@ -21,6 +21,9 @@ CLAUDE.md AGENTS.md   agent routing brief (identical content)
 codex_skills/         Codex skill equivalents
 writing_context/      article-writing rules and style profile
 docs/wikitool/        operator manual and generated command reference
+contextmink/          bundled contextmink transcript guard (separate binary,
+                      templates, and setup docs; Windows bundles also carry
+                      contextmink-bridge.exe, a PowerShell -> Git Bash bridge)
 manifest.json LICENSE*
 ```
 

@@ -131,6 +131,30 @@ Agent-facing defaults are intentionally compact. Start from wikitool brief views
 budgets for cases where the brief identifies a concrete need. Prefer one targeted drill-down over
 loading a whole catalog or page set into context.
 
+## Bounded Output
+
+The release bundle ships the generic `contextmink` transcript guard in
+`contextmink/` (binary, setup docs, and instruction templates; the Windows
+bundle also carries `contextmink-bridge.exe`, a native PowerShell -> Git Bash
+bridge with an `--argv-b64` lossless argv channel). It is a separate binary on
+purpose: contextmink is project-generic, and bounded reads must not route
+through wikitool.
+
+Set it up in the working repository per `contextmink/SETUP.md` and merge
+`contextmink/templates/AGENTS.contextmink.md` (Codex) or
+`CLAUDE.contextmink.md` (Claude) into project guidance. The core habits:
+
+- Orient with `dirs`, discover with `files`/`grep`/`grep-terms`, and read
+  known files through `outline` (declaration map with line numbers; wikitext
+  headings are a built-in language) then `slice --range START:END` — not
+  `sed -n`/`cat` dump windows.
+- Use `json-find`/`json-select`, `sqlite-schema`/`sqlite --sql-file`, and
+  `capture -- <command>` for bounded JSON, database, and unknown-size command
+  reads.
+- Treat a `CONTEXTMINK_RECEIPT` with `"truncated": true` or
+  `"complete": false` as capped output: narrow the query instead of trusting
+  the subset.
+
 ## Research And Source Boundaries
 
 Use normal agent web search to choose arbitrary source URLs, then use `wikitool research fetch`

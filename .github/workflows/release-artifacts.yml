@@ -85,6 +85,12 @@ jobs:
           test ! -e "$BUNDLE/llm_instructions"
           test ! -e "$BUNDLE/SETUP.md"
           test -f "$BUNDLE/manifest.json"
+          test -f "$BUNDLE/contextmink/contextmink"
+          test -f "$BUNDLE/contextmink/README.md"
+          test -f "$BUNDLE/contextmink/SETUP.md"
+          test -d "$BUNDLE/contextmink/templates"
+          test ! -e "$BUNDLE/contextmink/contextmink-bridge"
+          "$BUNDLE/contextmink/contextmink" --version
           test -f "${BUNDLE}.zip"
 
       - name: Verify packaged release (Windows)
@@ -104,6 +110,11 @@ jobs:
           if (Test-Path "$env:BUNDLE/llm_instructions") { throw "legacy llm_instructions directory must not ship" }
           if (Test-Path "$env:BUNDLE/SETUP.md") { throw "SETUP.md must not ship" }
           if (!(Test-Path "$env:BUNDLE/manifest.json")) { throw "manifest.json missing" }
+          if (!(Test-Path "$env:BUNDLE/contextmink/contextmink.exe")) { throw "contextmink binary missing" }
+          if (!(Test-Path "$env:BUNDLE/contextmink/contextmink-bridge.exe")) { throw "contextmink-bridge binary missing" }
+          if (!(Test-Path "$env:BUNDLE/contextmink/README.md")) { throw "contextmink README missing" }
+          if (!(Test-Path "$env:BUNDLE/contextmink/templates")) { throw "contextmink templates missing" }
+          & "$env:BUNDLE/contextmink/contextmink.exe" --version
           if (!(Test-Path "${env:BUNDLE}.zip")) { throw "zip artifact missing" }
 
       - uses: actions/upload-artifact@v7

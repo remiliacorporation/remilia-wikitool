@@ -1,0 +1,7 @@
+profile = "wikitool"
+
+exclude_globs = [
+  "target/**",
+  "**/target/**",
+  "dist/**",
+]

@@ -16,6 +16,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Cargo tests
         run: cargo test --workspace
+      - name: Vendored contextmink tests
+        run: cargo test --manifest-path tools/contextmink/Cargo.toml
       - name: Generated CLI reference is current
         run: |
           cargo run --quiet --package wikitool --features maintainer -- docs generate-reference --output /tmp/wikitool-reference.md

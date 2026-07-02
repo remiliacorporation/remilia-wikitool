@@ -1,0 +1,10 @@
+profile = "repo-name"
+
+exclude_globs = [
+  "target/**",
+  "**/target/**",
+  "node_modules/**",
+  "**/node_modules/**",
+  ".venv/**",
+  "**/.venv/**",
+]

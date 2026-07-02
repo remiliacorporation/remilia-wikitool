@@ -33,12 +33,14 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
     let ai_pack_result =
         build_ai_pack(&repo_root, &staging_dir, args.host_project_root.as_deref())?;
 
+    run_cargo_contextmink_build(&repo_root, &PathBuf::from("cargo"), None, true)?;
     stage_release_bundle(
         &output_dir,
         &binary_path,
         default_release_binary_name(),
         &staging_dir,
     )?;
+    stage_contextmink_pack(&repo_root, &output_dir, None)?;
     if staging_dir.exists() {
         fs::remove_dir_all(&staging_dir)
             .with_context(|| format!("failed to remove {}", normalize_path(&staging_dir)))?;
@@ -86,6 +88,7 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
     for target in &targets {
         if !args.skip_build {
             run_cargo_release_build_for_target(&repo_root, &cargo_bin, target, use_locked)?;
+            run_cargo_contextmink_build(&repo_root, &cargo_bin, Some(target), use_locked)?;
         }
 
         let binary_path = release_binary_path_for_target(&repo_root, target);
@@ -104,6 +107,7 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
             release_binary_name_for_target(target),
             &ai_pack_dir,
         )?;
+        stage_contextmink_pack(&repo_root, &bundle_dir, Some(target))?;
 
         let zip_path = output_dir.join(format!("{bundle_name}.zip"));
         zip_release_bundle(&bundle_dir, &zip_path, &bundle_name)?;
@@ -284,6 +288,107 @@ fn release_binary_path_for_target(repo_root: &Path, target: &str) -> PathBuf {
         .join(release_binary_name_for_target(target))
 }
 
+/// Vendored contextmink transcript guard, staged into a `contextmink/`
+/// subdirectory of every release bundle so wikitool users get bounded-read
+/// tooling without a separate install. It stays a separate binary
+/// deliberately: contextmink is project-generic, and agents must not have to
+/// route bounded reads through wikitool.
+fn contextmink_manifest_path(repo_root: &Path) -> PathBuf {
+    repo_root.join("tools/contextmink/Cargo.toml")
+}
+
+fn run_cargo_contextmink_build(
+    repo_root: &Path,
+    cargo_bin: &Path,
+    target: Option<&str>,
+    use_locked: bool,
+) -> Result<()> {
+    let manifest = contextmink_manifest_path(repo_root);
+    if !manifest.is_file() {
+        bail!(
+            "vendored contextmink missing: {} (sync tools/contextmink before packaging)",
+            normalize_path(&manifest)
+        );
+    }
+    let mut command = ProcessCommand::new(cargo_bin);
+    command
+        .current_dir(repo_root)
+        .arg("build")
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .arg("--release");
+    if let Some(target) = target {
+        command.arg("--target").arg(target);
+    }
+    if use_locked {
+        command.arg("--locked");
+    }
+    let status = command.status().with_context(|| {
+        format!(
+            "failed to execute {} for vendored contextmink",
+            normalize_path(cargo_bin)
+        )
+    })?;
+    if !status.success() {
+        bail!("cargo build failed for vendored contextmink");
+    }
+    Ok(())
+}
+
+/// contextmink-bridge is Windows-purpose (PowerShell argv mangling, MSYS
+/// rewriting, Git Bash discovery); POSIX bundles carry only contextmink.
+fn contextmink_binary_names(windows: bool) -> &'static [&'static str] {
+    if windows {
+        &["contextmink.exe", "contextmink-bridge.exe"]
+    } else {
+        &["contextmink"]
+    }
+}
+
+fn contextmink_target_is_windows(target: Option<&str>) -> bool {
+    match target {
+        Some(target) => target.to_ascii_lowercase().contains("windows"),
+        None => cfg!(windows),
+    }
+}
+
+fn stage_contextmink_pack(repo_root: &Path, bundle_dir: &Path, target: Option<&str>) -> Result<()> {
+    let contextmink_root = repo_root.join("tools/contextmink");
+    let mut release_dir = contextmink_root.join("target");
+    if let Some(target) = target {
+        release_dir = release_dir.join(target);
+    }
+    let release_dir = release_dir.join("release");
+    let pack_dir = bundle_dir.join("contextmink");
+    reset_directory(&pack_dir)?;
+    for binary in contextmink_binary_names(contextmink_target_is_windows(target)) {
+        let source = release_dir.join(binary);
+        if !source.is_file() {
+            bail!(
+                "missing built contextmink binary: {}",
+                normalize_path(&source)
+            );
+        }
+        copy_file(&source, &pack_dir.join(binary))?;
+    }
+    for file in [
+        "README.md",
+        "SETUP.md",
+        "LICENSE",
+        "LICENSE-SSL",
+        "LICENSE-VPL",
+    ] {
+        copy_file(&contextmink_root.join(file), &pack_dir.join(file))?;
+    }
+    for dir in ["docs", "templates"] {
+        let destination = pack_dir.join(dir);
+        fs::create_dir_all(&destination)
+            .with_context(|| format!("failed to create {}", normalize_path(&destination)))?;
+        copy_dir_contents(&contextmink_root.join(dir), &destination)?;
+    }
+    Ok(())
+}
+
 fn zip_release_bundle(source_dir: &Path, zip_path: &Path, bundle_name: &str) -> Result<()> {
     if !source_dir.is_dir() {
         bail!("directory not found: {}", normalize_path(source_dir));
@@ -386,13 +491,14 @@ fn is_release_binary_entry(relative_path: &Path) -> bool {
     relative_path
         .file_name()
         .and_then(|value| value.to_str())
-        .map(|value| value == "wikitool")
+        .map(|value| matches!(value, "wikitool" | "contextmink" | "contextmink-bridge"))
         .unwrap_or(false)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
+        contextmink_binary_names, contextmink_target_is_windows, is_release_binary_entry,
         release_binary_name_for_target, release_bundle_name, release_platform_slug,
         resolve_release_artifact_version, resolve_release_targets,
     };
@@ -452,6 +558,27 @@ mod tests {
             release_binary_name_for_target("x86_64-unknown-linux-gnu"),
             "wikitool"
         );
+    }
+
+    #[test]
+    fn contextmink_pack_ships_bridge_only_on_windows_targets() {
+        assert!(contextmink_target_is_windows(Some(
+            "x86_64-pc-windows-msvc"
+        )));
+        assert!(!contextmink_target_is_windows(Some(
+            "x86_64-unknown-linux-gnu"
+        )));
+        assert_eq!(
+            contextmink_binary_names(true),
+            &["contextmink.exe", "contextmink-bridge.exe"]
+        );
+        assert_eq!(contextmink_binary_names(false), &["contextmink"]);
+        for binary in ["wikitool", "contextmink", "contextmink-bridge"] {
+            assert!(is_release_binary_entry(std::path::Path::new(binary)));
+        }
+        assert!(!is_release_binary_entry(std::path::Path::new(
+            "contextmink/README.md"
+        )));
     }
 
     #[test]
