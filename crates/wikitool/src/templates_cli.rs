@@ -311,6 +311,21 @@ fn print_template_entry(entry: &TemplateCatalogEntry) {
         if let Some(value) = parameter.description.as_deref() {
             println!("parameter.description: {value}");
         }
+        if let Some(value) = parameter.example.as_deref() {
+            println!("parameter.example: {value}");
+        }
+        if let Some(value) = parameter.default_value.as_deref() {
+            println!("parameter.default_value: {value}");
+        }
+        if !parameter.suggested_values.is_empty() {
+            println!(
+                "parameter.suggested_values: {}",
+                parameter.suggested_values.join(", ")
+            );
+        }
+        if let Some(value) = parameter.auto_value.as_deref() {
+            println!("parameter.auto_value: {value}");
+        }
         if !parameter.aliases.is_empty() {
             println!("parameter.aliases: {}", parameter.aliases.join(", "));
         }
@@ -380,6 +395,14 @@ struct TemplateParameterCard<'a> {
     usage_count: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     example_values: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    example: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_value: Option<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    suggested_values: Vec<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auto_value: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -561,5 +584,13 @@ fn parameter_card(
         param_type: parameter.param_type.as_deref(),
         usage_count: parameter.usage_count,
         example_values: capped_strings(&parameter.example_values, 3),
+        example: parameter.example.as_deref(),
+        default_value: parameter.default_value.as_deref(),
+        suggested_values: parameter
+            .suggested_values
+            .iter()
+            .map(String::as_str)
+            .collect(),
+        auto_value: parameter.auto_value.as_deref(),
     }
 }

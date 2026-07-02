@@ -91,8 +91,8 @@ fn template_catalog_fuses_local_docs_templatedata_and_usage() {
 {
   "description": "Infobox for biographical articles.",
   "params": {
-    "name": {"label": "Name", "required": true},
-    "occupation": {"label": "Occupation", "suggested": true},
+    "name": {"label": "Name", "required": true, "example": "Alpha", "default": "Unknown"},
+    "occupation": {"label": "Occupation", "suggested": true, "suggestedvalues": ["Writer", "Artist"], "autovalue": "Writer"},
     "birth_date": {"label": "Birth date", "suggested": true}
   }
 }
@@ -133,12 +133,26 @@ fn template_catalog_fuses_local_docs_templatedata_and_usage() {
             .redirect_aliases
             .contains(&"Template:Infobox human".to_string())
     );
-    assert!(
-        entry
-            .parameters
-            .iter()
-            .any(|param| param.name == "name" && param.required)
+    let name = entry
+        .parameters
+        .iter()
+        .find(|param| param.name == "name")
+        .expect("name parameter");
+    assert!(name.required);
+    assert_eq!(name.example.as_deref(), Some("Alpha"));
+    assert_eq!(name.default_value.as_deref(), Some("Unknown"));
+    assert!(name.suggested_values.is_empty());
+    assert!(name.auto_value.is_none());
+    let occupation = entry
+        .parameters
+        .iter()
+        .find(|param| param.name == "occupation")
+        .expect("occupation parameter");
+    assert_eq!(
+        occupation.suggested_values,
+        vec!["Writer".to_string(), "Artist".to_string()]
     );
+    assert_eq!(occupation.auto_value.as_deref(), Some("Writer"));
     let birth_date = entry
         .parameters
         .iter()

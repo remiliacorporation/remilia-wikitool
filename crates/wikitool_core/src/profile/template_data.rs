@@ -23,6 +23,10 @@ pub struct TemplateDataParameter {
     pub example: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_value: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggested_values: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -92,6 +96,14 @@ pub(crate) fn extract_template_data(content: &str) -> Result<Option<TemplateData
             let default_value = param
                 .as_object()
                 .and_then(|value| string_field(value.get("default")));
+            let suggested_values = param
+                .as_object()
+                .and_then(|value| value.get("suggestedvalues"))
+                .map(value_string_list)
+                .unwrap_or_default();
+            let auto_value = param
+                .as_object()
+                .and_then(|value| string_field(value.get("autovalue")));
 
             parameters.push(TemplateDataParameter {
                 name: collapse_whitespace(name),
@@ -104,6 +116,8 @@ pub(crate) fn extract_template_data(content: &str) -> Result<Option<TemplateData
                 deprecated,
                 example,
                 default_value,
+                suggested_values,
+                auto_value,
             });
         }
     }
@@ -469,8 +483,8 @@ General-purpose infobox.
   "description": "Infobox for biographies.",
   "format": "block",
   "params": {
-    "name": {"label": "Name", "required": true},
-    "occupation": {"label": "Occupation", "suggested": true, "aliases": ["job"]}
+    "name": {"label": "Name", "required": true, "example": "Charlotte Fang", "default": "Unknown", "autovalue": "{{subst:PAGENAME}}"},
+    "occupation": {"label": "Occupation", "suggested": true, "aliases": ["job"], "suggestedvalues": ["Writer", "Artist"]}
   }
 }
 </templatedata>
@@ -485,7 +499,21 @@ General-purpose infobox.
             Some("Infobox for biographies.")
         );
         assert_eq!(data.parameters.len(), 2);
+        assert_eq!(
+            data.parameters[0].example.as_deref(),
+            Some("Charlotte Fang")
+        );
+        assert_eq!(data.parameters[0].default_value.as_deref(), Some("Unknown"));
+        assert_eq!(
+            data.parameters[0].auto_value.as_deref(),
+            Some("{{subst:PAGENAME}}")
+        );
+        assert!(data.parameters[0].suggested_values.is_empty());
         assert_eq!(data.parameters[1].aliases, vec!["job".to_string()]);
+        assert_eq!(
+            data.parameters[1].suggested_values,
+            vec!["Writer".to_string(), "Artist".to_string()]
+        );
 
         let examples = extract_template_examples(
             content,

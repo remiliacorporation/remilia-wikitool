@@ -45,8 +45,81 @@ pub(crate) struct WikiCargoArgs {
 
 #[derive(Debug, Subcommand)]
 enum WikiCargoSubcommand {
+    #[command(about = "List the live wiki's Cargo tables")]
+    Tables(WikiCargoTablesArgs),
+    #[command(about = "Show a live Cargo table's field schema (names, types, list markers)")]
+    Fields(WikiCargoFieldsArgs),
+    #[command(about = "Fetch rows from a live Cargo table")]
+    Rows(WikiCargoRowsArgs),
     #[command(about = "Count rows in a live Cargo table")]
     Count(WikiCargoCountArgs),
+}
+
+#[derive(Debug, Args)]
+struct WikiCargoTablesArgs {
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+struct WikiCargoFieldsArgs {
+    #[arg(value_name = "TABLE", help = "Cargo table name")]
+    table: String,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+struct WikiCargoRowsArgs {
+    #[arg(value_name = "TABLE", help = "Cargo table name")]
+    table: String,
+    #[arg(
+        long = "field",
+        value_name = "FIELD",
+        help = "Field to select (repeat or comma-separate); defaults to the table's full schema"
+    )]
+    fields: Vec<String>,
+    #[arg(
+        long = "where",
+        value_name = "CLAUSE",
+        help = "Cargo where clause, e.g. collection='Milady Maker'"
+    )]
+    where_clause: Option<String>,
+    #[arg(
+        long = "order-by",
+        value_name = "CLAUSE",
+        help = "Cargo order_by clause"
+    )]
+    order_by: Option<String>,
+    #[arg(
+        long,
+        default_value_t = 10,
+        value_name = "N",
+        help = "Maximum rows to return"
+    )]
+    limit: usize,
+    #[arg(long, default_value_t = 0, value_name = "N", help = "Row offset")]
+    offset: usize,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -227,6 +300,12 @@ struct WikiSurfaceFormatArgs {
     extension_limit: usize,
     #[arg(long = "extension-tag-limit", default_value_t = 128, value_name = "N")]
     extension_tag_limit: usize,
+    #[arg(
+        long = "parser-function-limit",
+        default_value_t = 128,
+        value_name = "N"
+    )]
+    parser_function_limit: usize,
 }
 
 pub(crate) fn run_wiki(runtime: &RuntimeOptions, args: WikiArgs) -> Result<()> {

@@ -7,9 +7,7 @@ use crate::knowledge::prelude::{
     ChunkRerankSignals, ChunkRetrievalPlan, RetrievalAudience, build_authority_page_weight_map,
     build_identifier_page_weight_map, build_semantic_page_weight_map,
 };
-use crate::knowledge::references::{
-    summarize_media_usage_for_sources, summarize_reference_usage_for_sources,
-};
+use crate::knowledge::references::summarize_reference_usage_for_sources;
 use crate::knowledge::retrieval::{
     build_related_page_weight_map, build_template_match_score_map,
     load_reference_authority_page_hits, load_reference_identifier_page_hits,
@@ -228,8 +226,6 @@ pub fn build_authoring_knowledge_pack(
         &source_titles,
         AUTHORING_REFERENCE_LIMIT,
     )?;
-    let suggested_media =
-        summarize_media_usage_for_sources(&connection, &source_titles, AUTHORING_MEDIA_LIMIT)?;
     let template_baseline =
         summarize_template_usage_for_sources(&connection, None, template_limit)?;
     let template_reference_titles = collect_authoring_template_reference_titles(
@@ -273,7 +269,6 @@ pub fn build_authoring_knowledge_pack(
             .map(|p| p.title.clone())
             .collect::<Vec<_>>(),
     )?;
-    let inventory = load_authoring_inventory(&connection)?;
     let profile_overlay = load_or_build_remilia_profile_overlay(paths)?;
     let fallback_catalog = match load_latest_template_catalog(paths)? {
         Some(catalog) => Some(catalog),
@@ -330,7 +325,6 @@ pub fn build_authoring_knowledge_pack(
         query,
         query_terms,
         topic_assessment,
-        inventory,
         pack_token_budget: token_budget,
         pack_token_estimate_total: 0,
         payload_mode: options.payload_mode,
@@ -340,7 +334,6 @@ pub fn build_authoring_knowledge_pack(
         suggested_categories,
         suggested_templates,
         suggested_references,
-        suggested_media,
         template_baseline,
         template_references,
         module_patterns,
@@ -445,7 +438,6 @@ struct AuthoringPackEstimateInputs<'a> {
     suggested_categories: &'a [AuthoringSuggestion],
     suggested_templates: &'a [TemplateUsageSummary],
     suggested_references: &'a [ReferenceUsageSummary],
-    suggested_media: &'a [MediaUsageSummary],
     template_baseline: &'a [TemplateUsageSummary],
     template_references: &'a [TemplateReference],
     module_patterns: &'a [ModuleUsageSummary],
@@ -461,7 +453,6 @@ fn estimate_authoring_pack_total(report: &AuthoringKnowledgePackResult) -> usize
         suggested_categories: &report.suggested_categories,
         suggested_templates: &report.suggested_templates,
         suggested_references: &report.suggested_references,
-        suggested_media: &report.suggested_media,
         template_baseline: &report.template_baseline,
         template_references: &report.template_references,
         module_patterns: &report.module_patterns,
@@ -623,18 +614,6 @@ fn estimate_authoring_pack_total_from_inputs(inputs: AuthoringPackEstimateInputs
                     .sum::<usize>()
         })
         .sum::<usize>();
-    let media_tokens = inputs
-        .suggested_media
-        .iter()
-        .map(|media| {
-            parsing::estimate_tokens(&media.file_title)
-                + media
-                    .example_usages
-                    .iter()
-                    .map(|example| example.token_estimate)
-                    .sum::<usize>()
-        })
-        .sum::<usize>();
     let stub_template_tokens = inputs
         .stub_detected_templates
         .iter()
@@ -664,153 +643,9 @@ fn estimate_authoring_pack_total_from_inputs(inputs: AuthoringPackEstimateInputs
         .saturating_add(template_reference_tokens)
         .saturating_add(module_tokens)
         .saturating_add(reference_tokens)
-        .saturating_add(media_tokens)
         .saturating_add(docs_tokens)
         .saturating_add(stub_template_tokens)
         .saturating_add(chunk_tokens)
-}
-
-fn load_authoring_inventory(connection: &Connection) -> Result<AuthoringInventory> {
-    let indexed_pages_total =
-        parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_pages")
-            .context("failed to count indexed pages for authoring inventory")?;
-    let semantic_profiles_total = if table_exists(connection, "indexed_page_term_profiles")? {
-        parsing::count_query(
-            connection,
-            "SELECT COUNT(*) FROM indexed_page_term_profiles",
-        )
-        .context("failed to count semantic profiles for authoring inventory")?
-    } else {
-        0
-    };
-    let main_pages = parsing::count_query(
-        connection,
-        "SELECT COUNT(*) FROM indexed_pages WHERE namespace = 'Main'",
-    )
-    .context("failed to count main pages for authoring inventory")?;
-    let template_pages = parsing::count_query(
-        connection,
-        "SELECT COUNT(*) FROM indexed_pages WHERE namespace = 'Template'",
-    )
-    .context("failed to count template pages for authoring inventory")?;
-    let indexed_links_total = if table_exists(connection, "indexed_links")? {
-        parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_links")
-            .context("failed to count indexed links for authoring inventory")?
-    } else {
-        0
-    };
-
-    let (template_invocation_rows, distinct_templates_invoked) =
-        if table_exists(connection, "indexed_template_invocations")? {
-            (
-                parsing::count_query(
-                    connection,
-                    "SELECT COUNT(*) FROM indexed_template_invocations",
-                )
-                .context("failed to count template invocation rows for authoring inventory")?,
-                parsing::count_query(
-                    connection,
-                    "SELECT COUNT(DISTINCT template_title) FROM indexed_template_invocations",
-                )
-                .context("failed to count distinct templates for authoring inventory")?,
-            )
-        } else {
-            (0, 0)
-        };
-    let (module_invocation_rows_total, distinct_modules_invoked) =
-        if table_exists(connection, "indexed_module_invocations")? {
-            (
-                parsing::count_query(
-                    connection,
-                    "SELECT COUNT(*) FROM indexed_module_invocations",
-                )
-                .context("failed to count module invocation rows for authoring inventory")?,
-                parsing::count_query(
-                    connection,
-                    "SELECT COUNT(DISTINCT module_title) FROM indexed_module_invocations",
-                )
-                .context("failed to count distinct modules for authoring inventory")?,
-            )
-        } else {
-            (0, 0)
-        };
-    let (reference_rows_total, distinct_reference_profiles) =
-        if table_exists(connection, "indexed_page_references")? {
-            (
-                parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_references")
-                    .context("failed to count reference rows for authoring inventory")?,
-                parsing::count_query(
-                    connection,
-                    "SELECT COUNT(DISTINCT citation_profile) FROM indexed_page_references",
-                )
-                .context("failed to count distinct reference profiles for authoring inventory")?,
-            )
-        } else {
-            (0, 0)
-        };
-    let reference_authority_rows_total =
-        if table_exists(connection, "indexed_reference_authorities")? {
-            parsing::count_query(
-                connection,
-                "SELECT COUNT(*) FROM indexed_reference_authorities",
-            )
-            .context("failed to count reference authority rows for authoring inventory")?
-        } else {
-            0
-        };
-    let reference_identifier_rows_total =
-        if table_exists(connection, "indexed_reference_identifiers")? {
-            parsing::count_query(
-                connection,
-                "SELECT COUNT(*) FROM indexed_reference_identifiers",
-            )
-            .context("failed to count reference identifier rows for authoring inventory")?
-        } else {
-            0
-        };
-    let (media_rows_total, distinct_media_files) =
-        if table_exists(connection, "indexed_page_media")? {
-            (
-                parsing::count_query(connection, "SELECT COUNT(*) FROM indexed_page_media")
-                    .context("failed to count media rows for authoring inventory")?,
-                parsing::count_query(
-                    connection,
-                    "SELECT COUNT(DISTINCT file_title) FROM indexed_page_media",
-                )
-                .context("failed to count distinct media files for authoring inventory")?,
-            )
-        } else {
-            (0, 0)
-        };
-    let template_implementation_rows_total =
-        if table_exists(connection, "indexed_template_implementation_pages")? {
-            parsing::count_query(
-                connection,
-                "SELECT COUNT(*) FROM indexed_template_implementation_pages",
-            )
-            .context("failed to count template implementation rows for authoring inventory")?
-        } else {
-            0
-        };
-
-    Ok(AuthoringInventory {
-        indexed_pages_total,
-        semantic_profiles_total,
-        main_pages,
-        template_pages,
-        indexed_links_total,
-        template_invocation_rows,
-        distinct_templates_invoked,
-        module_invocation_rows_total,
-        distinct_modules_invoked,
-        reference_rows_total,
-        reference_authority_rows_total,
-        reference_identifier_rows_total,
-        distinct_reference_profiles,
-        media_rows_total,
-        distinct_media_files,
-        template_implementation_rows_total,
-    })
 }
 
 fn load_comparable_page_headings(

@@ -1807,14 +1807,76 @@ Query the live wiki's Cargo extension tables
 Usage: wikitool wiki cargo [OPTIONS] <COMMAND>
 
 Commands:
-  count  Count rows in a live Cargo table
-  help   Print this message or the help of the given subcommand(s)
+  tables  List the live wiki's Cargo tables
+  fields  Show a live Cargo table's field schema (names, types, list markers)
+  rows    Fetch rows from a live Cargo table
+  count   Count rows in a live Cargo table
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
       --data-dir <PATH>
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki cargo tables
+
+```text
+List the live wiki's Cargo tables
+
+Usage: wikitool wiki cargo tables [OPTIONS]
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki cargo fields
+
+```text
+Show a live Cargo table's field schema (names, types, list markers)
+
+Usage: wikitool wiki cargo fields [OPTIONS] <TABLE>
+
+Arguments:
+  <TABLE>  Cargo table name
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## wiki cargo rows
+
+```text
+Fetch rows from a live Cargo table
+
+Usage: wikitool wiki cargo rows [OPTIONS] <TABLE>
+
+Arguments:
+  <TABLE>  Cargo table name
+
+Options:
+      --field <FIELD>        Field to select (repeat or comma-separate); defaults to the table's full schema
+      --project-root <PATH>
+      --data-dir <PATH>
+      --where <CLAUSE>       Cargo where clause, e.g. collection='Milady Maker'
+      --config <PATH>
+      --order-by <CLAUSE>    Cargo order_by clause
+      --diagnostics          Print resolved runtime diagnostics
+      --limit <N>            Maximum rows to return [default: 10]
+      --offset <N>           Row offset [default: 0]
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
   -h, --help                 Print help
 ```
 
@@ -1987,6 +2049,7 @@ Options:
       --asset-limit <N>             [default: 128]
       --extension-limit <N>         [default: 128]
       --extension-tag-limit <N>     [default: 128]
+      --parser-function-limit <N>   [default: 128]
   -h, --help                        Print help
 ```
 
@@ -2010,6 +2073,7 @@ Options:
       --asset-limit <N>             [default: 128]
       --extension-limit <N>         [default: 128]
       --extension-tag-limit <N>     [default: 128]
+      --parser-function-limit <N>   [default: 128]
   -h, --help                        Print help
 ```
 

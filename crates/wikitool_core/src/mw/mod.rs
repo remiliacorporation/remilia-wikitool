@@ -8,7 +8,10 @@ pub mod search;
 pub mod siteinfo;
 pub mod write;
 
-pub use cargo_query::cargo_count_rows;
+pub use cargo_query::{
+    CargoField, CargoRowsOptions, cargo_count_rows, cargo_list_tables, cargo_query_rows,
+    cargo_table_fields,
+};
 pub use client::{
     ExternalSearchHit, MediaWikiClient, MediaWikiClientConfig, PageTimestampInfo, RemotePage,
     WikiReadApi, WikiWriteApi,

@@ -171,26 +171,6 @@ pub enum LocalChunkAcrossRetrieval {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct AuthoringInventory {
-    pub indexed_pages_total: usize,
-    pub semantic_profiles_total: usize,
-    pub main_pages: usize,
-    pub template_pages: usize,
-    pub indexed_links_total: usize,
-    pub template_invocation_rows: usize,
-    pub distinct_templates_invoked: usize,
-    pub module_invocation_rows_total: usize,
-    pub distinct_modules_invoked: usize,
-    pub reference_rows_total: usize,
-    pub reference_authority_rows_total: usize,
-    pub reference_identifier_rows_total: usize,
-    pub distinct_reference_profiles: usize,
-    pub media_rows_total: usize,
-    pub distinct_media_files: usize,
-    pub template_implementation_rows_total: usize,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AuthoringPageCandidate {
     pub title: String,
     pub namespace: String,
@@ -430,26 +410,6 @@ pub struct ReferenceDuplicatesReport {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct MediaUsageExample {
-    pub source_title: String,
-    pub source_relative_path: String,
-    pub section_heading: Option<String>,
-    pub caption_text: String,
-    pub options: Vec<String>,
-    pub token_estimate: usize,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct MediaUsageSummary {
-    pub file_title: String,
-    pub media_kind: String,
-    pub usage_count: usize,
-    pub distinct_page_count: usize,
-    pub example_pages: Vec<String>,
-    pub example_usages: Vec<MediaUsageExample>,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct TemplateReference {
     pub template: TemplateUsageSummary,
     pub implementation_pages: Vec<TemplateImplementationPage>,
@@ -665,7 +625,6 @@ pub struct AuthoringKnowledgePackResult {
     pub query: String,
     pub query_terms: Vec<String>,
     pub topic_assessment: AuthoringTopicAssessment,
-    pub inventory: AuthoringInventory,
     pub pack_token_budget: usize,
     pub pack_token_estimate_total: usize,
     pub payload_mode: AuthoringPayloadMode,
@@ -675,7 +634,6 @@ pub struct AuthoringKnowledgePackResult {
     pub suggested_categories: Vec<AuthoringSuggestion>,
     pub suggested_templates: Vec<TemplateUsageSummary>,
     pub suggested_references: Vec<ReferenceUsageSummary>,
-    pub suggested_media: Vec<MediaUsageSummary>,
     pub template_baseline: Vec<TemplateUsageSummary>,
     pub template_references: Vec<TemplateReference>,
     pub module_patterns: Vec<ModuleUsageSummary>,

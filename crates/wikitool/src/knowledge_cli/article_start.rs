@@ -500,12 +500,15 @@ struct EvidenceCoverageCard<'a> {
     source_title: &'a str,
     locator: Option<&'a str>,
     evidence_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text_preview: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
 struct ArticleStartIntegrationCard<'a> {
-    counts: ArticleStartIntegrationCounts,
     comparable_pages: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    closest_comparable_outline: Option<&'a wikitool_core::authoring::model::ComparableOutline>,
     required_templates: Vec<RequiredTemplateCard<'a>>,
     available_infoboxes: Vec<TemplateSurfaceCard<'a>>,
     citation_templates_seen: Vec<&'a str>,
@@ -520,22 +523,11 @@ struct ArticleStartIntegrationCard<'a> {
 }
 
 #[derive(Debug, Serialize)]
-struct ArticleStartIntegrationCounts {
-    comparable_pages: usize,
-    required_templates: usize,
-    available_infoboxes: usize,
-    citation_templates_seen: usize,
-    template_surface: usize,
-    categories_seen: usize,
-    links_seen: usize,
-    section_skeleton: usize,
-    docs_queries: usize,
-}
-
-#[derive(Debug, Serialize)]
 struct RequiredTemplateCard<'a> {
     template_title: &'a str,
     reason: &'a str,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    parameter_keys: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -544,6 +536,8 @@ struct TemplateSurfaceCard<'a> {
     source: &'a ContextSurfaceSource,
     mapped_subject_type: Option<&'a str>,
     supporting_pages: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    parameter_keys: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -796,41 +790,25 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                         .direct_subject_evidence
                         .iter()
                         .take(3)
-                        .map(evidence_card)
+                        .map(|item| evidence_card(item, &article_start.subject_research.evidence))
                         .collect(),
                     top_context_evidence: article_start
                         .evidence_profile
                         .broad_context
                         .iter()
                         .take(3)
-                        .map(evidence_card)
+                        .map(|item| evidence_card(item, &article_start.subject_research.evidence))
                         .collect(),
                 }),
                 local_integration: Some(ArticleStartIntegrationCard {
-                    counts: ArticleStartIntegrationCounts {
-                        comparable_pages: article_start.local_integration.comparable_pages.len(),
-                        required_templates: article_start
-                            .local_integration
-                            .required_templates
-                            .len(),
-                        available_infoboxes: article_start
-                            .local_integration
-                            .available_infoboxes
-                            .len(),
-                        citation_templates_seen: article_start
-                            .local_integration
-                            .citation_templates_seen
-                            .len(),
-                        template_surface: article_start.local_integration.template_surface.len(),
-                        categories_seen: article_start.local_integration.categories_seen.len(),
-                        links_seen: article_start.local_integration.links_seen.len(),
-                        section_skeleton: article_start.local_integration.section_skeleton.len(),
-                        docs_queries: article_start.local_integration.docs_queries.len(),
-                    },
                     comparable_pages: capped_strings(
                         &article_start.local_integration.comparable_pages,
                         5,
                     ),
+                    closest_comparable_outline: article_start
+                        .local_integration
+                        .closest_comparable_outline
+                        .as_ref(),
                     required_templates: article_start
                         .local_integration
                         .required_templates
@@ -984,12 +962,22 @@ fn article_start_blocking(
     blocking
 }
 
-fn evidence_card(evidence: &EvidenceCoverageItem) -> EvidenceCoverageCard<'_> {
+fn evidence_card<'a>(
+    evidence: &'a EvidenceCoverageItem,
+    evidence_refs: &'a [wikitool_core::authoring::model::EvidenceRef],
+) -> EvidenceCoverageCard<'a> {
+    let text_preview = evidence.evidence_id.as_deref().and_then(|id| {
+        evidence_refs
+            .iter()
+            .find(|reference| reference.id == id)
+            .and_then(|reference| reference.text_preview.as_deref())
+    });
     EvidenceCoverageCard {
         source_kind: &evidence.source_kind,
         source_title: &evidence.source_title,
         locator: evidence.locator.as_deref(),
         evidence_id: evidence.evidence_id.as_deref(),
+        text_preview,
     }
 }
 
@@ -1007,6 +995,7 @@ fn required_template_card(template: &RequiredTemplate) -> RequiredTemplateCard<'
     RequiredTemplateCard {
         template_title: &template.template_title,
         reason: &template.reason,
+        parameter_keys: capped_strings(&template.parameter_keys, 12),
     }
 }
 
@@ -1016,6 +1005,7 @@ fn template_surface_card(template: &TemplateSurfaceEntry) -> TemplateSurfaceCard
         source: &template.source,
         mapped_subject_type: template.mapped_subject_type.as_deref(),
         supporting_pages: capped_strings(&template.supporting_pages, 3),
+        parameter_keys: capped_strings(&template.parameter_keys, 12),
     }
 }
 

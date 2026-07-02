@@ -62,6 +62,9 @@ fn surface_options(args: &WikiSurfaceFormatArgs) -> Result<AuthoringSurfaceOptio
     if args.extension_tag_limit == 0 {
         anyhow::bail!("wiki surface requires --extension-tag-limit >= 1");
     }
+    if args.parser_function_limit == 0 {
+        anyhow::bail!("wiki surface requires --parser-function-limit >= 1");
+    }
     Ok(AuthoringSurfaceOptions {
         template_limit: args.template_limit,
         template_example_limit: args.template_example_limit,
@@ -69,6 +72,7 @@ fn surface_options(args: &WikiSurfaceFormatArgs) -> Result<AuthoringSurfaceOptio
         asset_limit: args.asset_limit,
         extension_limit: args.extension_limit,
         extension_tag_limit: args.extension_tag_limit,
+        parser_function_limit: args.parser_function_limit,
     })
 }
 
@@ -133,6 +137,10 @@ fn print_authoring_surface(
         surface.extension_tag_count_total
     );
     println!(
+        "parser_function_count_total: {}",
+        surface.parser_function_count_total
+    );
+    println!(
         "top_templates: {}",
         join_or_none(
             &surface
@@ -150,6 +158,17 @@ fn print_authoring_surface(
                 .extension_tags
                 .iter()
                 .map(|tag| tag.tag_name.clone())
+                .take(32)
+                .collect::<Vec<_>>()
+        )
+    );
+    println!(
+        "parser_functions: {}",
+        join_or_none(
+            &surface
+                .parser_functions
+                .iter()
+                .map(|function| function.function_name.clone())
                 .take(32)
                 .collect::<Vec<_>>()
         )
@@ -205,11 +224,18 @@ struct SurfaceBrief<'a> {
     top_templates: Vec<SurfaceTemplateBrief<'a>>,
     modules: Vec<&'a str>,
     assets: Vec<&'a str>,
-    extension_tags: Vec<&'a str>,
-    source_html_tags: Vec<&'a str>,
+    extension_tags: Vec<SurfaceExtensionTagBrief<'a>>,
+    parser_functions: Vec<&'a str>,
     warnings: &'a [String],
     next_commands: Vec<BriefCommand>,
     full_view_command: BriefCommand,
+}
+
+#[derive(Debug, Serialize)]
+struct SurfaceExtensionTagBrief<'a> {
+    tag_name: &'a str,
+    paired_syntax: &'a str,
+    docs_query: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -231,6 +257,8 @@ struct SurfaceCounts {
     extension_count_returned: usize,
     extension_tag_count_total: usize,
     extension_tag_count_returned: usize,
+    parser_function_count_total: usize,
+    parser_function_count_returned: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -248,7 +276,7 @@ const BRIEF_TEMPLATE_LIMIT: usize = 10;
 const BRIEF_MODULE_LIMIT: usize = 12;
 const BRIEF_ASSET_LIMIT: usize = 12;
 const BRIEF_EXTENSION_TAG_LIMIT: usize = 20;
-const BRIEF_HTML_TAG_LIMIT: usize = 20;
+const BRIEF_PARSER_FUNCTION_LIMIT: usize = 20;
 
 fn build_surface_brief<'a>(command: &'a str, surface: &'a AuthoringSurface) -> SurfaceBrief<'a> {
     SurfaceBrief {
@@ -276,6 +304,8 @@ fn build_surface_brief<'a>(command: &'a str, surface: &'a AuthoringSurface) -> S
             extension_count_returned: surface.extension_count_returned,
             extension_tag_count_total: surface.extension_tag_count_total,
             extension_tag_count_returned: surface.extension_tag_count_returned,
+            parser_function_count_total: surface.parser_function_count_total,
+            parser_function_count_returned: surface.parser_function_count_returned,
         },
         top_templates: surface
             .templates
@@ -298,14 +328,18 @@ fn build_surface_brief<'a>(command: &'a str, surface: &'a AuthoringSurface) -> S
         extension_tags: surface
             .extension_tags
             .iter()
-            .map(|tag| tag.tag_name.as_str())
+            .map(|tag| SurfaceExtensionTagBrief {
+                tag_name: &tag.tag_name,
+                paired_syntax: &tag.paired_syntax,
+                docs_query: &tag.docs_query,
+            })
             .take(BRIEF_EXTENSION_TAG_LIMIT)
             .collect(),
-        source_html_tags: surface
-            .source_html_tags
+        parser_functions: surface
+            .parser_functions
             .iter()
-            .map(String::as_str)
-            .take(BRIEF_HTML_TAG_LIMIT)
+            .map(|function| function.function_name.as_str())
+            .take(BRIEF_PARSER_FUNCTION_LIMIT)
             .collect(),
         warnings: &surface.warnings,
         next_commands: surface

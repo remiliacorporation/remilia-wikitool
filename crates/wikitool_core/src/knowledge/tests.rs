@@ -907,9 +907,6 @@ fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
             .iter()
             .all(|reference| reference.implementation_chunks.is_empty())
     );
-    assert!(report.inventory.indexed_pages_total >= 3);
-    assert!(report.inventory.reference_rows_total >= 3);
-    assert!(report.inventory.media_rows_total >= 2);
     assert!(!report.related_pages.is_empty());
     assert!(
         report
@@ -937,12 +934,6 @@ fn build_authoring_knowledge_pack_collects_templates_links_and_chunks() {
                 .iter()
                 .any(|signal| signal == "citation-template")
     }));
-    assert!(
-        report
-            .suggested_media
-            .iter()
-            .any(|entry| entry.file_title == "File:Alpha.png")
-    );
     assert!(!report.template_baseline.is_empty());
     assert!(report.stub_existing_links.contains(&"Alpha".to_string()));
     assert!(!report.query_terms.contains(&"%PAGE%".to_string()));

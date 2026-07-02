@@ -6,7 +6,7 @@ use super::LocalTemplateExample;
 use super::TemplateDataRecord;
 
 pub(super) const TEMPLATE_CATALOG_ARTIFACT_KIND: &str = "template_catalog";
-pub(super) const TEMPLATE_CATALOG_SCHEMA_VERSION: &str = "template_catalog_v2";
+pub(super) const TEMPLATE_CATALOG_SCHEMA_VERSION: &str = "template_catalog_v3";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TemplateCatalogParameter {
@@ -26,6 +26,14 @@ pub struct TemplateCatalogParameter {
     pub deprecated: bool,
     pub usage_count: usize,
     pub example_values: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub example: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggested_values: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

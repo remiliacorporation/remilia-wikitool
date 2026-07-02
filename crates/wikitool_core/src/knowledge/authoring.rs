@@ -1,9 +1,8 @@
 pub use super::model::{
     AuthoringContractProfile, AuthoringContractTraversalPlan, AuthoringDocsContext,
-    AuthoringInventory, AuthoringKnowledgePack, AuthoringKnowledgePackOptions,
-    AuthoringKnowledgePackResult, AuthoringPageCandidate, AuthoringPayloadMode,
-    AuthoringSuggestion, AuthoringTopicAssessment, ModuleFunctionUsage, ModuleInvocationExample,
-    ModuleUsageSummary, StubTemplateHint,
+    AuthoringKnowledgePack, AuthoringKnowledgePackOptions, AuthoringKnowledgePackResult,
+    AuthoringPageCandidate, AuthoringPayloadMode, AuthoringSuggestion, AuthoringTopicAssessment,
+    ModuleFunctionUsage, ModuleInvocationExample, ModuleUsageSummary, StubTemplateHint,
 };
 
 pub use crate::authoring::{

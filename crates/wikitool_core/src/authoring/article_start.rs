@@ -39,19 +39,21 @@ pub fn build_article_start(
             source_kind: "local_chunk".to_string(),
             source_title: chunk.source_title.clone(),
             locator: chunk.section_heading.clone(),
-            score: u32::try_from(chunk.token_estimate.min(u32::MAX as usize)).unwrap_or(u32::MAX),
+            token_estimate: u32::try_from(chunk.token_estimate.min(u32::MAX as usize))
+                .unwrap_or(u32::MAX),
+            text_preview: Some(excerpt_text(&chunk.chunk_text, EVIDENCE_PREVIEW_CHARS)),
         })
         .collect::<Vec<_>>();
 
     let subject_research = SubjectResearchLane {
-        summary: pack.chunks.first().map(|chunk| chunk.chunk_text.clone()),
-        candidate_facts: pack
+        top_local_excerpt: pack.chunks.first().map(|chunk| chunk.chunk_text.clone()),
+        comparable_page_excerpts: pack
             .chunks
             .iter()
             .take(5)
             .map(|chunk| chunk.chunk_text.clone())
             .collect(),
-        external_sources_shortlist: pack
+        citation_template_families: pack
             .suggested_references
             .iter()
             .take(5)
@@ -68,18 +70,21 @@ pub fn build_article_start(
         .take(8)
         .map(|page| page.title.clone())
         .collect::<Vec<_>>();
-    let required_templates = build_required_templates(overlay);
+    let contract_parameter_keys = build_contract_parameter_key_map(pack);
+    let required_templates = build_required_templates(overlay, &contract_parameter_keys);
     let subject_type_hints = build_subject_type_hints(pack, overlay);
-    let available_infoboxes = build_available_infoboxes(pack, overlay);
-    let citation_templates_seen = build_citation_templates(pack, overlay);
-    let template_surface = build_template_surface(pack, overlay);
+    let available_infoboxes = build_available_infoboxes(pack, overlay, &contract_parameter_keys);
+    let citation_templates_seen = build_citation_templates(pack, overlay, &contract_parameter_keys);
+    let template_surface = build_template_surface(pack, overlay, &contract_parameter_keys);
     let categories_seen = build_category_surface(pack);
     let links_seen = build_link_surface(pack);
     let section_skeleton = build_section_skeleton(pack);
     let contract_plan = &pack.context_summary.wiki_contract_context.traversal_plan;
 
+    let closest_comparable_outline = build_closest_comparable_outline(pack);
     let local_integration = LocalIntegrationLane {
         comparable_pages,
+        closest_comparable_outline,
         required_templates,
         subject_type_hints,
         available_infoboxes,
@@ -443,7 +448,10 @@ fn has_local_authoring_evidence(evidence_profile: &ArticleEvidenceProfile) -> bo
         || !evidence_profile.comparable_pages.is_empty()
 }
 
-fn build_required_templates(overlay: &ProfileOverlay) -> Vec<RequiredTemplate> {
+fn build_required_templates(
+    overlay: &ProfileOverlay,
+    contract_parameter_keys: &BTreeMap<String, Vec<String>>,
+) -> Vec<RequiredTemplate> {
     let mut out = Vec::new();
     if overlay.authoring.require_article_quality_banner
         && let Some(template_title) = overlay.authoring.article_quality_template.as_deref()
@@ -451,15 +459,80 @@ fn build_required_templates(overlay: &ProfileOverlay) -> Vec<RequiredTemplate> {
         out.push(RequiredTemplate {
             template_title: template_title.to_string(),
             reason: "Required by the current profile overlay for article starts.".to_string(),
+            parameter_keys: lookup_parameter_keys(contract_parameter_keys, template_title),
         });
     }
     if let Some(template_title) = overlay.authoring.references_template.as_deref() {
         out.push(RequiredTemplate {
             template_title: template_title.to_string(),
             reason: "Required to render the References appendix on this wiki.".to_string(),
+            parameter_keys: lookup_parameter_keys(contract_parameter_keys, template_title),
         });
     }
     out
+}
+
+/// Contract-indexed parameter keys by lowercase template title, inlined into
+/// the template surfaces so agents get the parameter contract without a second
+/// command round-trip.
+fn build_contract_parameter_key_map(
+    pack: &AuthoringKnowledgePackResult,
+) -> BTreeMap<String, Vec<String>> {
+    let mut out = BTreeMap::new();
+    for contract in &pack
+        .context_summary
+        .wiki_contract_context
+        .traversal_plan
+        .selected_contracts
+    {
+        if contract.contract_kind != "template" || contract.parameter_keys.is_empty() {
+            continue;
+        }
+        out.entry(normalize_template_title(&contract.title).to_ascii_lowercase())
+            .or_insert_with(|| contract.parameter_keys.clone());
+    }
+    out
+}
+
+fn lookup_parameter_keys(
+    contract_parameter_keys: &BTreeMap<String, Vec<String>>,
+    template_title: &str,
+) -> Vec<String> {
+    contract_parameter_keys
+        .get(&normalize_template_title(template_title).to_ascii_lowercase())
+        .cloned()
+        .unwrap_or_default()
+}
+
+const EVIDENCE_PREVIEW_CHARS: usize = 200;
+
+fn excerpt_text(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+    let cut: String = trimmed.chars().take(max_chars).collect();
+    format!("{}…", cut.trim_end())
+}
+
+/// The closest comparable page's level-2 headings in document order.
+fn build_closest_comparable_outline(
+    pack: &AuthoringKnowledgePackResult,
+) -> Option<crate::authoring::model::ComparableOutline> {
+    let closest = pack.related_pages.first()?;
+    let ordered_headings: Vec<String> = pack
+        .comparable_page_headings
+        .iter()
+        .filter(|heading| heading.source_title == closest.title)
+        .map(|heading| heading.section_heading.clone())
+        .collect();
+    if ordered_headings.is_empty() {
+        return None;
+    }
+    Some(crate::authoring::model::ComparableOutline {
+        title: closest.title.clone(),
+        ordered_headings,
+    })
 }
 
 fn build_subject_type_hints(
@@ -505,6 +578,7 @@ fn build_subject_type_hints(
 fn build_available_infoboxes(
     pack: &AuthoringKnowledgePackResult,
     overlay: &ProfileOverlay,
+    contract_parameter_keys: &BTreeMap<String, Vec<String>>,
 ) -> Vec<TemplateSurfaceEntry> {
     let profile_mappings = overlay_infobox_subject_type_map(overlay);
     let mut out = collect_template_entries(
@@ -547,7 +621,14 @@ fn build_available_infoboxes(
                 .get(&normalized.to_ascii_lowercase())
                 .cloned(),
             supporting_pages: dedup_sorted(contract.example_titles.clone()),
+            parameter_keys: contract.parameter_keys.clone(),
         });
+    }
+    for entry in &mut out {
+        if entry.parameter_keys.is_empty() {
+            entry.parameter_keys =
+                lookup_parameter_keys(contract_parameter_keys, &entry.template_title);
+        }
     }
     out
 }
@@ -555,6 +636,7 @@ fn build_available_infoboxes(
 fn build_citation_templates(
     pack: &AuthoringKnowledgePackResult,
     overlay: &ProfileOverlay,
+    contract_parameter_keys: &BTreeMap<String, Vec<String>>,
 ) -> Vec<TemplateSurfaceEntry> {
     let mut comparable_entries = BTreeMap::<String, TemplateSurfaceEntry>::new();
     for reference in &pack.suggested_references {
@@ -571,10 +653,11 @@ fn build_citation_templates(
         let entry = comparable_entries
             .entry(key)
             .or_insert_with(|| TemplateSurfaceEntry {
-                template_title: template_title.clone(),
                 source: ContextSurfaceSource::Comparables,
                 mapped_subject_type: None,
                 supporting_pages: Vec::new(),
+                parameter_keys: lookup_parameter_keys(contract_parameter_keys, &template_title),
+                template_title: template_title.clone(),
             });
         extend_sorted_unique(&mut entry.supporting_pages, &reference.example_pages);
     }
@@ -592,6 +675,10 @@ fn build_citation_templates(
                 source: ContextSurfaceSource::Profile,
                 mapped_subject_type: None,
                 supporting_pages: Vec::new(),
+                parameter_keys: lookup_parameter_keys(
+                    contract_parameter_keys,
+                    &rule.template_title,
+                ),
             },
         );
     }
@@ -602,6 +689,7 @@ fn build_citation_templates(
 fn build_template_surface(
     pack: &AuthoringKnowledgePackResult,
     overlay: &ProfileOverlay,
+    contract_parameter_keys: &BTreeMap<String, Vec<String>>,
 ) -> Vec<TemplateSurfaceEntry> {
     let profile_templates = overlay
         .profile_template_titles()
@@ -612,15 +700,20 @@ fn build_template_surface(
         .suggested_templates
         .iter()
         .filter(|template| !template_is_infobox(&template.template_title))
-        .map(|template| TemplateSurfaceEntry {
-            template_title: normalize_template_title(&template.template_title),
-            source: if profile_templates.contains(&template.template_title.to_ascii_lowercase()) {
-                ContextSurfaceSource::Both
-            } else {
-                ContextSurfaceSource::Comparables
-            },
-            mapped_subject_type: None,
-            supporting_pages: dedup_sorted(template.example_pages.clone()),
+        .map(|template| {
+            let template_title = normalize_template_title(&template.template_title);
+            TemplateSurfaceEntry {
+                source: if profile_templates.contains(&template.template_title.to_ascii_lowercase())
+                {
+                    ContextSurfaceSource::Both
+                } else {
+                    ContextSurfaceSource::Comparables
+                },
+                mapped_subject_type: None,
+                supporting_pages: dedup_sorted(template.example_pages.clone()),
+                parameter_keys: lookup_parameter_keys(contract_parameter_keys, &template_title),
+                template_title,
+            }
         })
         .collect::<Vec<_>>();
     for contract in &pack
@@ -641,6 +734,7 @@ fn build_template_surface(
             },
             mapped_subject_type: None,
             supporting_pages: dedup_sorted(contract.example_titles.clone()),
+            parameter_keys: contract.parameter_keys.clone(),
         });
     }
     out.sort_by(|left, right| left.template_title.cmp(&right.template_title));
@@ -733,6 +827,41 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
         }
     }
 
+    // Preserve document order: rank each heading by its earliest position on the
+    // closest comparable page that carries it, so the skeleton reads like a real
+    // article outline instead of an alphabetized set.
+    let mut page_rank = BTreeMap::<String, usize>::new();
+    for (rank, page) in pack.related_pages.iter().enumerate() {
+        page_rank.entry(page.title.clone()).or_insert(rank);
+    }
+    let mut heading_order = BTreeMap::<String, (usize, usize)>::new();
+    let mut per_page_position = BTreeMap::<String, usize>::new();
+    for cph in &pack.comparable_page_headings {
+        let normalized = normalize_heading(&cph.section_heading);
+        if normalized.is_empty() || heading_is_low_signal(&normalized) {
+            continue;
+        }
+        let position_entry = per_page_position
+            .entry(cph.source_title.clone())
+            .or_insert(0);
+        let position = *position_entry;
+        *position_entry += 1;
+        let rank = page_rank
+            .get(&cph.source_title)
+            .copied()
+            .unwrap_or(usize::MAX);
+        let key = normalized.to_ascii_lowercase();
+        let candidate = (rank, position);
+        heading_order
+            .entry(key)
+            .and_modify(|existing| {
+                if candidate < *existing {
+                    *existing = candidate;
+                }
+            })
+            .or_insert(candidate);
+    }
+
     let min_support = if pack.related_pages.len() > 1 { 2 } else { 1 };
     let mut headings = heading_support
         .into_values()
@@ -754,7 +883,19 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
             }
         })
         .collect::<Vec<_>>();
-    headings.sort_by(|left, right| left.heading.cmp(&right.heading));
+    headings.sort_by(|left, right| {
+        let left_order = heading_order
+            .get(&left.heading.to_ascii_lowercase())
+            .copied()
+            .unwrap_or((usize::MAX, usize::MAX));
+        let right_order = heading_order
+            .get(&right.heading.to_ascii_lowercase())
+            .copied()
+            .unwrap_or((usize::MAX, usize::MAX));
+        left_order
+            .cmp(&right_order)
+            .then_with(|| left.heading.cmp(&right.heading))
+    });
     sections.extend(headings);
     sections.push(SectionSkeleton {
         heading: "References".to_string(),
@@ -836,6 +977,7 @@ where
             },
             mapped_subject_type: mapped_subject_type.clone(),
             supporting_pages: Vec::new(),
+            parameter_keys: Vec::new(),
         });
         if entry.mapped_subject_type.is_none() {
             entry.mapped_subject_type = mapped_subject_type.clone();

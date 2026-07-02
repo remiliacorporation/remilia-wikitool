@@ -221,6 +221,12 @@ fn merge_parameters(
             example_values: usage_parameter
                 .map(|item| item.example_values.clone())
                 .unwrap_or_default(),
+            example: templatedata_parameter.and_then(|item| item.example.clone()),
+            default_value: templatedata_parameter.and_then(|item| item.default_value.clone()),
+            suggested_values: templatedata_parameter
+                .map(|item| item.suggested_values.clone())
+                .unwrap_or_default(),
+            auto_value: templatedata_parameter.and_then(|item| item.auto_value.clone()),
         });
     }
     out

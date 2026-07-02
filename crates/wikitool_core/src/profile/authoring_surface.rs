@@ -23,14 +23,14 @@ mod modules;
 pub use assets::{AuthoringAssetSurface, normalize_asset_title, scan_local_asset_titles};
 use assets::{LocalAssetRecord, build_asset_surfaces, scan_local_assets};
 pub use modules::{
-    AuthoringModuleSurface, normalize_module_title, scan_local_module_titles,
-    supports_invoke_function,
+    AuthoringModuleSurface, normalize_module_title, scan_local_module_functions,
+    scan_local_module_titles, supports_invoke_function,
 };
 use modules::{
     LocalModuleRecord, build_module_surfaces, count_distinct_modules, scan_local_modules,
 };
 
-const AUTHORING_SURFACE_SCHEMA_VERSION: &str = "authoring_surface_v2";
+const AUTHORING_SURFACE_SCHEMA_VERSION: &str = "authoring_surface_v3";
 
 pub const SOURCE_HTML_TAGS: &[&str] = &[
     "abbr",
@@ -101,6 +101,7 @@ pub struct AuthoringSurfaceOptions {
     pub asset_limit: usize,
     pub extension_limit: usize,
     pub extension_tag_limit: usize,
+    pub parser_function_limit: usize,
 }
 
 impl Default for AuthoringSurfaceOptions {
@@ -112,6 +113,7 @@ impl Default for AuthoringSurfaceOptions {
             asset_limit: 128,
             extension_limit: 128,
             extension_tag_limit: 128,
+            parser_function_limit: 128,
         }
     }
 }
@@ -136,11 +138,14 @@ pub struct AuthoringSurface {
     pub extension_count_returned: usize,
     pub extension_tag_count_total: usize,
     pub extension_tag_count_returned: usize,
+    pub parser_function_count_total: usize,
+    pub parser_function_count_returned: usize,
     pub templates: Vec<AuthoringTemplateSurface>,
     pub modules: Vec<AuthoringModuleSurface>,
     pub assets: Vec<AuthoringAssetSurface>,
     pub extensions: Vec<AuthoringExtensionSurface>,
     pub extension_tags: Vec<AuthoringExtensionTagSurface>,
+    pub parser_functions: Vec<AuthoringParserFunctionSurface>,
     pub source_html_tags: Vec<String>,
     pub warnings: Vec<String>,
 }
@@ -197,6 +202,14 @@ pub struct AuthoringExtensionTagSurface {
     pub docs_query: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuthoringParserFunctionSurface {
+    pub function_name: String,
+    pub call_syntax: String,
+    pub source: String,
+    pub docs_query: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtensionTagPolicy {
     supported_extension_tags: BTreeSet<String>,
@@ -240,12 +253,14 @@ pub fn build_authoring_surface_with_config(
         None => Some(build_template_catalog_with_overlay(paths, &overlay)?),
     };
     let local_modules = scan_local_modules(paths)?;
+    let local_module_functions = scan_local_module_functions(paths)?;
     let local_assets = scan_local_assets(paths)?;
     Ok(build_authoring_surface_from_parts(
         &overlay.profile_id,
         capabilities.as_ref(),
         catalog.as_ref(),
         Some(&local_modules),
+        Some(&local_module_functions),
         Some(&local_assets),
         options,
     ))
@@ -260,12 +275,14 @@ pub fn sync_authoring_surface_with_config(
     let capabilities = sync_wiki_capabilities_with_config(paths, config)?;
     let catalog = sync_template_catalog_with_overlay(paths, &overlay)?;
     let local_modules = scan_local_modules(paths)?;
+    let local_module_functions = scan_local_module_functions(paths)?;
     let local_assets = scan_local_assets(paths)?;
     Ok(build_authoring_surface_from_parts(
         &overlay.profile_id,
         Some(&capabilities),
         Some(&catalog),
         Some(&local_modules),
+        Some(&local_module_functions),
         Some(&local_assets),
         options,
     ))
@@ -277,7 +294,7 @@ pub fn build_authoring_surface(
     catalog: Option<&TemplateCatalog>,
     options: AuthoringSurfaceOptions,
 ) -> AuthoringSurface {
-    build_authoring_surface_from_parts(profile_id, capabilities, catalog, None, None, options)
+    build_authoring_surface_from_parts(profile_id, capabilities, catalog, None, None, None, options)
 }
 
 fn build_authoring_surface_from_parts(
@@ -285,6 +302,7 @@ fn build_authoring_surface_from_parts(
     capabilities: Option<&WikiCapabilityManifest>,
     catalog: Option<&TemplateCatalog>,
     local_modules: Option<&BTreeMap<String, LocalModuleRecord>>,
+    local_module_functions: Option<&BTreeMap<String, BTreeSet<String>>>,
     local_assets: Option<&BTreeMap<String, LocalAssetRecord>>,
     options: AuthoringSurfaceOptions,
 ) -> AuthoringSurface {
@@ -312,13 +330,23 @@ fn build_authoring_surface_from_parts(
     let templates = catalog
         .map(|catalog| build_template_surfaces(catalog, options))
         .unwrap_or_default();
-    let modules = build_module_surfaces(catalog, local_modules, options.module_limit);
+    let modules = build_module_surfaces(
+        catalog,
+        local_modules,
+        local_module_functions,
+        options.module_limit,
+    );
     let assets = build_asset_surfaces(local_assets, options.asset_limit);
     let extensions = capabilities
         .map(|capabilities| build_extension_surfaces(capabilities, options.extension_limit))
         .unwrap_or_default();
     let extension_tags = capabilities
         .map(|capabilities| build_extension_tag_surfaces(capabilities, options.extension_tag_limit))
+        .unwrap_or_default();
+    let parser_functions = capabilities
+        .map(|capabilities| {
+            build_parser_function_surfaces(capabilities, options.parser_function_limit)
+        })
         .unwrap_or_default();
 
     AuthoringSurface {
@@ -346,11 +374,16 @@ fn build_authoring_surface_from_parts(
             .map(|manifest| manifest.parser_extension_tags.len())
             .unwrap_or(0),
         extension_tag_count_returned: extension_tags.len(),
+        parser_function_count_total: capabilities
+            .map(|manifest| manifest.parser_function_hooks.len())
+            .unwrap_or(0),
+        parser_function_count_returned: parser_functions.len(),
         templates,
         modules,
         assets,
         extensions,
         extension_tags,
+        parser_functions,
         source_html_tags: SOURCE_HTML_TAGS
             .iter()
             .map(|tag| (*tag).to_string())
@@ -543,6 +576,40 @@ fn build_extension_tag_surfaces(
         .collect()
 }
 
+/// Manifest hook names may or may not carry a leading `#` depending on whether they came
+/// from the siteinfo `functionhooks` list (bare names) or Special:Version (literal labels).
+/// Strip it so the call-syntax hint renders exactly one `#`. The siteinfo lane also
+/// rewrites `_` to a space (`clean_label`), but hook identifiers never contain spaces,
+/// so restore underscores to keep the hint callable (e.g. `{{#cargo_query:...}}`).
+pub fn normalize_parser_function_name(hook: &str) -> String {
+    hook.trim()
+        .trim_start_matches('#')
+        .trim()
+        .replace(' ', "_")
+        .to_ascii_lowercase()
+}
+
+fn build_parser_function_surfaces(
+    capabilities: &WikiCapabilityManifest,
+    limit: usize,
+) -> Vec<AuthoringParserFunctionSurface> {
+    capabilities
+        .parser_function_hooks
+        .iter()
+        .map(|hook| normalize_parser_function_name(hook))
+        .filter(|name| !name.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(limit)
+        .map(|name| AuthoringParserFunctionSurface {
+            call_syntax: format!("{{{{#{name}:...}}}}"),
+            source: "live wiki capability manifest".to_string(),
+            docs_query: format!("{name} parser function"),
+            function_name: name,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -584,6 +651,10 @@ mod tests {
                 deprecated: false,
                 usage_count: 2,
                 example_values: Vec::new(),
+                example: None,
+                default_value: None,
+                suggested_values: Vec::new(),
+                auto_value: None,
             }],
             examples: Vec::new(),
             recommendation_tags: Vec::new(),
@@ -628,9 +699,11 @@ mod tests {
         assert_eq!(unknown, vec!["made up"]);
     }
 
-    #[test]
-    fn extension_tag_policy_combines_live_tags_and_source_html() {
-        let manifest = WikiCapabilityManifest {
+    fn sample_manifest(
+        parser_extension_tags: Vec<String>,
+        parser_function_hooks: Vec<String>,
+    ) -> WikiCapabilityManifest {
+        WikiCapabilityManifest {
             schema_version: "wiki_capabilities_v1".to_string(),
             wiki_id: "example.org".to_string(),
             wiki_url: "https://example.org".to_string(),
@@ -644,8 +717,8 @@ mod tests {
                 display_name: "Main".to_string(),
             }],
             extensions: Vec::new(),
-            parser_extension_tags: vec!["<math>".to_string()],
-            parser_function_hooks: Vec::new(),
+            parser_extension_tags,
+            parser_function_hooks,
             special_pages: Vec::new(),
             search_backend_hint: None,
             has_visual_editor: false,
@@ -660,7 +733,12 @@ mod tests {
             supports_rest_html: false,
             rest_html_path_template: None,
             refreshed_at: "2026-04-16T00:00:00Z".to_string(),
-        };
+        }
+    }
+
+    #[test]
+    fn extension_tag_policy_combines_live_tags_and_source_html() {
+        let manifest = sample_manifest(vec!["<math>".to_string()], Vec::new());
         let policy = ExtensionTagPolicy::from_capabilities(&manifest);
 
         assert!(policy.supports_source_tag("math"));
@@ -669,9 +747,46 @@ mod tests {
     }
 
     #[test]
+    fn authoring_surface_surfaces_parser_functions_from_manifest() {
+        let manifest = sample_manifest(
+            Vec::new(),
+            vec![
+                "#cargo_query".to_string(),
+                "cargo query".to_string(),
+                "invoke".to_string(),
+                "if".to_string(),
+                "#if".to_string(),
+            ],
+        );
+
+        let surface = build_authoring_surface_from_parts(
+            "remilia",
+            Some(&manifest),
+            None,
+            None,
+            None,
+            None,
+            AuthoringSurfaceOptions::default(),
+        );
+
+        assert_eq!(surface.parser_function_count_total, 5);
+        assert_eq!(surface.parser_function_count_returned, 3);
+        let names = surface
+            .parser_functions
+            .iter()
+            .map(|function| function.function_name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["cargo_query", "if", "invoke"]);
+        let cargo_query = &surface.parser_functions[0];
+        assert_eq!(cargo_query.call_syntax, "{{#cargo_query:...}}");
+        assert_eq!(cargo_query.docs_query, "cargo_query parser function");
+        assert_eq!(cargo_query.source, "live wiki capability manifest");
+    }
+
+    #[test]
     fn authoring_surface_combines_local_and_template_referenced_modules() {
         let catalog = TemplateCatalog {
-            schema_version: "template_catalog_v2".to_string(),
+            schema_version: "template_catalog_v3".to_string(),
             profile_id: "remilia".to_string(),
             refreshed_at: "1".to_string(),
             template_count: 1,
@@ -690,12 +805,20 @@ mod tests {
                 redirect_target: None,
             },
         );
+        let mut local_module_functions = BTreeMap::new();
+        local_module_functions.insert(
+            "Module:Sidebar".to_string(),
+            ["render".to_string(), "collapsible".to_string()]
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+        );
 
         let surface = build_authoring_surface_from_parts(
             "remilia",
             None,
             Some(&catalog),
             Some(&local_modules),
+            Some(&local_module_functions),
             None,
             AuthoringSurfaceOptions::default(),
         );
@@ -706,21 +829,24 @@ mod tests {
                 .modules
                 .iter()
                 .any(|module| module.module_title == "Module:Sidebar"
-                    && module.sources == vec!["local_module_file".to_string()])
+                    && module.sources == vec!["local_module_file".to_string()]
+                    && module.exported_functions
+                        == vec!["collapsible".to_string(), "render".to_string()])
         );
         assert!(
             surface
                 .modules
                 .iter()
                 .any(|module| module.module_title == "Module:Infobox person"
-                    && module.used_by_templates == vec!["Template:Infobox person".to_string()])
+                    && module.used_by_templates == vec!["Template:Infobox person".to_string()]
+                    && module.exported_functions.is_empty())
         );
     }
 
     #[test]
     fn authoring_surface_keeps_module_assets_out_of_module_surface() {
         let catalog = TemplateCatalog {
-            schema_version: "template_catalog_v2".to_string(),
+            schema_version: "template_catalog_v3".to_string(),
             profile_id: "remilia".to_string(),
             refreshed_at: "1".to_string(),
             template_count: 1,
@@ -760,6 +886,7 @@ mod tests {
             None,
             Some(&catalog),
             Some(&local_modules),
+            None,
             None,
             AuthoringSurfaceOptions::default(),
         );
@@ -802,11 +929,12 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(&local_assets),
             AuthoringSurfaceOptions::default(),
         );
 
-        assert_eq!(surface.schema_version, "authoring_surface_v2");
+        assert_eq!(surface.schema_version, "authoring_surface_v3");
         assert_eq!(surface.asset_count_total, 2);
         assert!(
             surface

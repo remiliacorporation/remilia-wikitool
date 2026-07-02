@@ -1,10 +1,9 @@
 use super::prelude::*;
 
 pub use super::model::{
-    LocalMediaUsage, LocalReferenceUsage, MediaUsageExample, MediaUsageSummary,
-    ReferenceAuditFilters, ReferenceAuditSummaryReport, ReferenceDuplicateGroup,
-    ReferenceDuplicateKind, ReferenceDuplicatesReport, ReferenceListItem, ReferenceListReport,
-    ReferenceUsageExample, ReferenceUsageSummary,
+    LocalMediaUsage, LocalReferenceUsage, ReferenceAuditFilters, ReferenceAuditSummaryReport,
+    ReferenceDuplicateGroup, ReferenceDuplicateKind, ReferenceDuplicatesReport, ReferenceListItem,
+    ReferenceListReport, ReferenceUsageExample, ReferenceUsageSummary,
 };
 
 const REFERENCE_AUDIT_TOP_LIMIT: usize = 12;
@@ -678,141 +677,6 @@ where
 
 fn normalize_reference_wikitext(value: &str) -> String {
     normalize_spaces(value)
-}
-
-#[derive(Default)]
-struct MediaUsageAccumulator {
-    usage_count: usize,
-    source_pages: BTreeSet<String>,
-    examples: Vec<MediaUsageExample>,
-}
-
-#[derive(Debug, Clone)]
-struct IndexedMediaUsageRow {
-    source_title: String,
-    source_relative_path: String,
-    section_heading: Option<String>,
-    file_title: String,
-    media_kind: String,
-    caption_text: String,
-    options: Vec<String>,
-    token_estimate: usize,
-}
-
-pub(crate) fn summarize_media_usage_for_sources(
-    connection: &Connection,
-    source_titles: &[String],
-    limit: usize,
-) -> Result<Vec<MediaUsageSummary>> {
-    if limit == 0 || source_titles.is_empty() || !table_exists(connection, "indexed_page_media")? {
-        return Ok(Vec::new());
-    }
-
-    let rows = load_media_rows_for_sources(connection, source_titles)?;
-    let mut grouped = BTreeMap::<String, MediaUsageAccumulator>::new();
-    let mut file_titles = BTreeMap::<String, String>::new();
-    let mut media_kinds = BTreeMap::<String, String>::new();
-    for row in rows {
-        let key = format!("{}\u{1f}{}", row.file_title, row.media_kind);
-        file_titles.insert(key.clone(), row.file_title.clone());
-        media_kinds.insert(key.clone(), row.media_kind.clone());
-        let entry = grouped.entry(key).or_default();
-        entry.usage_count = entry.usage_count.saturating_add(1);
-        entry.source_pages.insert(row.source_title.clone());
-        entry.examples.push(MediaUsageExample {
-            source_title: row.source_title,
-            source_relative_path: row.source_relative_path,
-            section_heading: row.section_heading,
-            caption_text: row.caption_text,
-            options: row.options,
-            token_estimate: row.token_estimate,
-        });
-    }
-
-    let mut ranked = grouped.into_iter().collect::<Vec<_>>();
-    ranked.sort_by(|(left_key, left), (right_key, right)| {
-        right
-            .usage_count
-            .cmp(&left.usage_count)
-            .then_with(|| right.source_pages.len().cmp(&left.source_pages.len()))
-            .then_with(|| left_key.cmp(right_key))
-    });
-    ranked.truncate(limit);
-
-    ranked
-        .into_iter()
-        .map(|(key, mut accumulator)| {
-            accumulator.examples.sort_by(|left, right| {
-                let left_has_caption = !left.caption_text.is_empty();
-                let right_has_caption = !right.caption_text.is_empty();
-                right_has_caption
-                    .cmp(&left_has_caption)
-                    .then_with(|| left.token_estimate.cmp(&right.token_estimate))
-                    .then_with(|| left.source_title.cmp(&right.source_title))
-            });
-            accumulator.examples.truncate(AUTHORING_MEDIA_EXAMPLE_LIMIT);
-            Ok(MediaUsageSummary {
-                file_title: file_titles.get(&key).cloned().unwrap_or_default(),
-                media_kind: media_kinds
-                    .get(&key)
-                    .cloned()
-                    .unwrap_or_else(|| "inline".to_string()),
-                usage_count: accumulator.usage_count,
-                distinct_page_count: accumulator.source_pages.len(),
-                example_pages: accumulator
-                    .source_pages
-                    .iter()
-                    .take(AUTHORING_MEDIA_EXAMPLE_LIMIT)
-                    .cloned()
-                    .collect(),
-                example_usages: accumulator.examples,
-            })
-        })
-        .collect()
-}
-
-fn load_media_rows_for_sources(
-    connection: &Connection,
-    source_titles: &[String],
-) -> Result<Vec<IndexedMediaUsageRow>> {
-    let placeholders = std::iter::repeat_n("?", source_titles.len())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "SELECT source_title, source_relative_path, section_heading, file_title, media_kind,
-                caption_text, options_text, token_estimate
-         FROM indexed_page_media
-         WHERE source_title IN ({placeholders})"
-    );
-    let values = source_titles
-        .iter()
-        .cloned()
-        .map(rusqlite::types::Value::from)
-        .collect::<Vec<_>>();
-    let mut statement = connection
-        .prepare(&sql)
-        .context("failed to prepare media summary query")?;
-    let rows = statement
-        .query_map(params_from_iter(values), |row| {
-            let token_estimate_i64: i64 = row.get(7)?;
-            Ok(IndexedMediaUsageRow {
-                source_title: row.get(0)?,
-                source_relative_path: row.get(1)?,
-                section_heading: row.get(2)?,
-                file_title: row.get(3)?,
-                media_kind: row.get(4)?,
-                caption_text: row.get(5)?,
-                options: parse_string_list(&row.get::<_, String>(6)?),
-                token_estimate: usize::try_from(token_estimate_i64).unwrap_or(0),
-            })
-        })
-        .context("failed to run media summary query")?;
-
-    let mut out = Vec::new();
-    for row in rows {
-        out.push(row.context("failed to decode media summary row")?);
-    }
-    Ok(out)
 }
 
 pub(crate) fn top_counted_keys(counts: &BTreeMap<String, usize>, limit: usize) -> Vec<String> {

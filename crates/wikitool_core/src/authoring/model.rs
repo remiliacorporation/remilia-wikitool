@@ -37,7 +37,13 @@ pub struct EvidenceRef {
     pub source_kind: String,
     pub source_title: String,
     pub locator: Option<String>,
-    pub score: u32,
+    /// Approximate chunk size in tokens. This is a size, not a relevance rank;
+    /// it was previously (mis)named `score`.
+    pub token_estimate: u32,
+    /// Leading excerpt of the chunk so the reference is usable without a
+    /// follow-up `knowledge inspect chunks` call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_preview: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -58,6 +64,8 @@ pub struct RecommendedAction {
 pub struct RequiredTemplate {
     pub template_title: String,
     pub reason: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parameter_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -75,6 +83,10 @@ pub struct TemplateSurfaceEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mapped_subject_type: Option<String>,
     pub supporting_pages: Vec<String>,
+    /// Known parameter keys from the contract index, inlined so drafting does
+    /// not require a second `templates show` round-trip.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parameter_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -104,10 +116,17 @@ pub struct SectionSkeleton {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SubjectResearchLane {
-    pub summary: Option<String>,
+    /// Top retrieved chunk text. For a subject with no local page this is
+    /// prose from *other* pages, not facts about the subject.
+    pub top_local_excerpt: Option<String>,
     pub evidence: Vec<EvidenceRef>,
-    pub candidate_facts: Vec<String>,
-    pub external_sources_shortlist: Vec<String>,
+    /// Verbatim chunk texts from comparable pages. Context to mine, not
+    /// assertions about the subject; previously (mis)named `candidate_facts`.
+    pub comparable_page_excerpts: Vec<String>,
+    /// Citation template families observed locally (e.g. "cite web / web");
+    /// previously (mis)named `external_sources_shortlist`, which suggested
+    /// followable sources.
+    pub citation_template_families: Vec<String>,
     pub ambiguity_notes: Vec<String>,
 }
 
@@ -146,8 +165,19 @@ pub struct ArticleEvidenceProfile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ComparableOutline {
+    pub title: String,
+    /// The page's level-2 headings in document order.
+    pub ordered_headings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalIntegrationLane {
     pub comparable_pages: Vec<String>,
+    /// The closest comparable page's section sequence in document order — the
+    /// strongest single structural model for a new draft.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closest_comparable_outline: Option<ComparableOutline>,
     pub required_templates: Vec<RequiredTemplate>,
     pub subject_type_hints: Vec<SubjectTypeHint>,
     pub available_infoboxes: Vec<TemplateSurfaceEntry>,

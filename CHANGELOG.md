@@ -4,6 +4,29 @@ All notable changes to wikitool are documented here. The format follows [Keep a 
 
 The release workflow extracts the section for the requested version and fails if it is missing, so land notes here (staged under Unreleased, then retitled) before dispatching a release. Write one line per paragraph or bullet: GitHub release bodies render every newline as a line break, so hard-wrapped prose comes out ragged.
 
+## [Unreleased]
+
+### Added
+
+- `wikitool contextmink install` performs a deterministic contextmink setup in a wikitool project: it finds the pack shipped next to the wikitool binary (or takes `--from`), places the platform binaries, launcher, and guidance templates, generates a wikitool-tailored `.contextmink.toml` (broad scans skip `.wikitool/**`; explicit paths still work), and verifies the installed binary against the pack manifest. Standalone contextmink stays doc-driven because arbitrary repository layouts cannot be assumed; wikitool projects have a known layout, so the install is exact every time. Packaged guidance now routes agents through the installer with `contextmink/SETUP.md` as the manual fallback.
+- `wiki cargo tables`, `wiki cargo fields <table>`, and `wiki cargo rows <table>` open the live Cargo lane an authoring agent was blind to: table list, typed field schema (with list markers and delimiters), and filtered row samples (`--field`, `--where`, `--order-by`, `--limit`, `--offset`). Row keys are aliased to match schema field names exactly.
+- The article-start brief now carries the closest comparable page's section sequence in document order (`closest_comparable_outline`), template parameter keys inlined on infobox/template/required-template cards, and a `text_preview` on top evidence cards, so drafting starts without extra drill-down calls.
+- `wiki surface` now surfaces the live wiki's parser functions (`{{#cargo_query:...}}`-style call hints plus docs queries) — they were synced into the capability manifest but invisible in every curated view — and each local module's source-declared exported functions, which previously only lint could see.
+- Template parameter cards now carry TemplateData `example`, `default_value`, `suggested_values`, and `auto_value` where declared; these were parsed and then dropped at the catalog boundary.
+- Extension tags in the surface brief carry their wrap syntax and docs query instead of bare names; the 60-entry static HTML-tag allow-list no longer pads every brief payload.
+
+### Changed
+
+- Every FTS MATCH expression built from arbitrary query text now goes through one shared sanitizing builder: multi-word topics match as all-tokens-as-prefixes with the exact phrase as an OR branch instead of an inert exact phrase, and a double quote in a topic can no longer produce a SQL syntax error (previously it could fail `article-start` outright).
+- The consensus section skeleton in `article-start` follows the document order of the closest comparable pages instead of alphabetizing headings.
+- Misleading article-start fields renamed to what they are: `EvidenceRef.score` is now `token_estimate` (it was a size, not a rank), `candidate_facts` is now `comparable_page_excerpts` (verbatim prose from other pages, not subject facts), `external_sources_shortlist` is now `citation_template_families` (template type labels, not followable sources), and the subject lane's `summary` is now `top_local_excerpt`.
+- The article-start brief drops its `counts` block (it restated the lengths of the arrays beside it), and the pack no longer computes the ~16-query inventory sweep or media summaries that no command ever surfaced.
+- Retrieval labels stop overselling: the page-relatedness prior built from a page's structural vocabulary is now called a term profile (`term-profile` retrieval mode and related-page source) instead of "semantic".
+
+### Removed
+
+- Schema autophagy, each item verified against actual read sites: four write-only FTS tables (template examples, module invocations, page references, page media) that were rebuilt on every index pass but never queried; the write-only `docs_links` table and its parser lane; the 14 JSON-list columns on the page term-profile table that duplicated seven relational tables and were never deserialized; `sync_snapshots.content_hash` and `synced_at_unix` (written, never read); the empty `src/index/` module directory. Table renames: `indexed_page_semantics` -> `indexed_page_term_profiles`, `indexed_authoring_contracts` -> `authoring_contracts` (it is catalog-owned, not a page-index child), `knowledge_artifacts` -> `runtime_artifacts` (a cross-module runtime KV store). Existing databases re-bootstrap automatically via the schema fingerprint; run `wikitool knowledge warm` (or `workflow session-refresh`) once after upgrading to repopulate the index.
+
 ## [0.5.0] - 2026-07-02
 
 This release is a measured performance pass plus write-API completion. A new benchmark harness recorded a baseline for the heavy CLI lanes, and every optimization shipped here is justified by its before/after on that table; the headline is full-corpus `article lint` dropping from minutes to about a second.
