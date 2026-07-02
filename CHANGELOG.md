@@ -4,7 +4,9 @@ All notable changes to wikitool are documented here. The format follows [Keep a 
 
 The release workflow extracts the section for the requested version and fails if it is missing, so land notes here (staged under Unreleased, then retitled) before dispatching a release. Write one line per paragraph or bullet: GitHub release bodies render every newline as a line break, so hard-wrapped prose comes out ragged.
 
-## [Unreleased]
+## [0.5.0] - 2026-07-02
+
+This release is a measured performance pass plus write-API completion. A new benchmark harness recorded a baseline for the heavy CLI lanes, and every optimization shipped here is justified by its before/after on that table; the headline is full-corpus `article lint` dropping from minutes to about a second.
 
 ### Added
 
@@ -60,9 +62,7 @@ While this is not uncommon for subcultural and gaming-related MediaWikis either,
 
 ## [0.3.1] - 2026-05-29
 
-A follow-up to 0.3.0 that makes the wiki target durable and explicit, removes ambiguous
-overrides and vestigial flags, and tightens the agent-facing command contract. 0.3.0
-reorganized the public surface; 0.3.1 makes the tool behave the way that surface implies.
+A follow-up to 0.3.0 that makes the wiki target durable and explicit, removes ambiguous overrides and vestigial flags, and tightens the agent-facing command contract. 0.3.0 reorganized the public surface; 0.3.1 makes the tool behave the way that surface implies.
 
 ### Breaking changes
 
