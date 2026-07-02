@@ -109,6 +109,10 @@ fn run(args: Vec<String>) -> Result<i32, BridgeError> {
                 print!("{}", usage());
                 return Ok(0);
             }
+            "--version" | "-V" => {
+                println!("contextmink-bridge {}", env!("CARGO_PKG_VERSION"));
+                return Ok(0);
+            }
             "--" | "--script" | "--argfile" | "--argv-b64" => {
                 command_form = Some((arg, iter.collect()));
                 break;

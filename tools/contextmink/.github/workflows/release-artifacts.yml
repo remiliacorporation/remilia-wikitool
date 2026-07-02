@@ -165,6 +165,7 @@ jobs:
           if (!(Test-Path $binary)) { throw "release binary missing" }
           $bridge = "$bundle/${{ matrix.bridge_binary_name }}"
           if (!(Test-Path $bridge)) { throw "bridge binary missing" }
+          & $bridge --version
           $bridgeHelp = & $bridge --help | Out-String
           if ($bridgeHelp -notmatch "argv-b64") { throw "bridge help missing argv-b64" }
           if (!(Test-Path "$bundle/README.md")) { throw "README.md missing" }

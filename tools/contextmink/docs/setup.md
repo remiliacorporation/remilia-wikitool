@@ -168,8 +168,10 @@ $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($argv -join [ch
 `--print-argv` shows exactly what survived the PowerShell boundary;
 `--argfile <file>` (one argument per line) is the file-based alternative;
 `--cwd` and `--login` work as in the script bridge. Relative paths resolve
-from `CONTEXTMINK_BRIDGE_ROOT`, else the first ancestor of the binary with
-`.git` or `.contextmink.toml`.
+from `CONTEXTMINK_BRIDGE_ROOT`; else the nearest ancestor of the binary with
+`.contextmink.toml` — the policy root — so a vendored contextmink checkout
+(which is its own git repository) anchors to the workspace it serves; else
+the nearest ancestor with `.git`.
 
 **Script launcher (bash-first setups).** Install the template when the
 repository prefers a shell entrypoint or must not carry a second binary:

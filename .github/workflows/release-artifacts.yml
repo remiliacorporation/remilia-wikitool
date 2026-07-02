@@ -112,6 +112,7 @@ jobs:
           if (!(Test-Path "$env:BUNDLE/manifest.json")) { throw "manifest.json missing" }
           if (!(Test-Path "$env:BUNDLE/contextmink/contextmink.exe")) { throw "contextmink binary missing" }
           if (!(Test-Path "$env:BUNDLE/contextmink/contextmink-bridge.exe")) { throw "contextmink-bridge binary missing" }
+          & "$env:BUNDLE/contextmink/contextmink-bridge.exe" --version
           if (!(Test-Path "$env:BUNDLE/contextmink/README.md")) { throw "contextmink README missing" }
           if (!(Test-Path "$env:BUNDLE/contextmink/templates")) { throw "contextmink templates missing" }
           & "$env:BUNDLE/contextmink/contextmink.exe" --version

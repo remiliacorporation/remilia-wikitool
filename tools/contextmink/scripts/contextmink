@@ -60,7 +60,7 @@ if [[ -f "$tool/Cargo.toml" ]]; then
     needs_build=1
   elif [[ -n "$(find "$tool/src" "$tool/Cargo.lock" -newer "$bin" -print -quit 2>/dev/null)" || -n "$(find "$tool/src" "$tool/Cargo.lock" -newer "$bridge_bin" -print -quit 2>/dev/null)" ]]; then
     needs_build=1
-  elif [[ -n "$(find "$tool/Cargo.toml" -newer "$bin" -print -quit 2>/dev/null)" ]] && command -v cargo >/dev/null 2>&1; then
+  elif [[ -n "$(find "$tool/Cargo.toml" -newer "$bin" -print -quit 2>/dev/null)" || -n "$(find "$tool/Cargo.toml" -newer "$bridge_bin" -print -quit 2>/dev/null)" ]] && command -v cargo >/dev/null 2>&1; then
     needs_build=1
   fi
 fi

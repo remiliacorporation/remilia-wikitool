@@ -117,6 +117,21 @@ fn slash_bearing_arguments_reach_native_children_verbatim() {
 }
 
 #[test]
+fn version_and_help_identify_the_bridge() {
+    let version = run_bridge(&["--version"]);
+    assert!(version.status.success());
+    assert!(
+        String::from_utf8_lossy(&version.stdout).starts_with("contextmink-bridge 0."),
+        "stdout: {}",
+        String::from_utf8_lossy(&version.stdout)
+    );
+
+    let help = run_bridge(&["--help"]);
+    assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("argv-b64"));
+}
+
+#[test]
 fn guards_fail_fast_with_usage_exit_codes() {
     let unknown = run_bridge(&["stray-arg"]);
     assert_eq!(unknown.status.code(), Some(64));
