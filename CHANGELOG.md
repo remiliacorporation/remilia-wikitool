@@ -1,24 +1,16 @@
 # Changelog
 
-All notable changes to wikitool are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
-[Semantic Versioning](https://semver.org/).
+All notable changes to wikitool are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/).
 
-The release workflow extracts the section for the requested version and fails
-if it is missing, so land notes here (staged under Unreleased, then retitled)
-before dispatching a release.
+The release workflow extracts the section for the requested version and fails if it is missing, so land notes here (staged under Unreleased, then retitled) before dispatching a release. Write one line per paragraph or bullet: GitHub release bodies render every newline as a line break, so hard-wrapped prose comes out ragged.
 
 ## [Unreleased]
 
 ### Added
 
-- Release bundles ship the contextmink transcript guard in a `contextmink/`
-  directory: the pinned release binary (plus `contextmink-bridge.exe` on
-  Windows), instruction templates, and setup docs. contextmink stays a
-  separate binary; nothing routes through wikitool. The pin lives in
-  `config/contextmink.version` and bundles are fetched from contextmink's
-  own GitHub releases at build time.
-- `upload` and `purge` API commands.
+- Release bundles ship the contextmink transcript guard in a `contextmink/` directory: the pinned release binary (plus `contextmink-bridge.exe` on Windows), instruction templates, and setup docs. contextmink stays a separate binary; nothing routes through wikitool. The pin lives in `config/contextmink.version` and bundles are fetched from contextmink's own GitHub releases at build time.
+- `upload`, `purge`, and `move` API commands; `move` preflights the bot account's rights and supports `--no-redirect`, `--move-talk`, `--move-subpages`, and `--dry-run`.
+- Library support for MediaWiki Cargo row counts (`cargo_count_rows`), ahead of a CLI surface.
 
 ### Changed
 

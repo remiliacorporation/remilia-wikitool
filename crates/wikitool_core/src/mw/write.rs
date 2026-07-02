@@ -127,6 +127,91 @@ struct UploadPayload {
     imageinfo: Option<Value>,
 }
 
+#[derive(Debug, Clone)]
+pub struct MovePageOptions {
+    pub from: String,
+    pub to: String,
+    pub reason: String,
+    pub no_redirect: bool,
+    pub move_talk: bool,
+    pub move_subpages: bool,
+    pub ignore_warnings: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MoveReport {
+    pub requested_from: String,
+    pub requested_to: String,
+    pub from: String,
+    pub to: String,
+    pub reason: String,
+    pub redirect_created: bool,
+    pub ignore_warnings: bool,
+    pub talk_moved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub talk_from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub talk_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Value>,
+    pub request_count: usize,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct MoveResponse {
+    #[serde(rename = "move")]
+    move_: Option<MovePayload>,
+    warnings: Option<Value>,
+}
+
+// Mirrors the MediaWiki action=move response shape; not every field is consumed.
+#[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)]
+struct MovePayload {
+    from: Option<String>,
+    to: Option<String>,
+    reason: Option<String>,
+    redirectcreated: Option<Value>,
+    talkfrom: Option<String>,
+    talkto: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UserInfoResponse {
+    #[serde(default)]
+    query: UserInfoQuery,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UserInfoQuery {
+    #[serde(default)]
+    userinfo: UserInfoPayload,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UserInfoPayload {
+    #[serde(default)]
+    rights: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UserGroupsResponse {
+    #[serde(default)]
+    query: UserGroupsQuery,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UserGroupsQuery {
+    #[serde(default)]
+    usergroups: Vec<UserGroupPayload>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct UserGroupPayload {
+    #[serde(default)]
+    rights: Vec<String>,
+}
+
 impl WikiWriteApi for MediaWikiClient {
     fn login(&mut self, username: &str, password: &str) -> Result<()> {
         let token_response = self.request_json_get(&[
@@ -384,5 +469,255 @@ impl MediaWikiClient {
             warnings: upload.warnings,
             image_info: upload.imageinfo,
         })
+    }
+
+    pub fn move_page(&mut self, options: &MovePageOptions) -> Result<MoveReport> {
+        let from = options.from.replace('_', " ").trim().to_string();
+        let to = options.to.replace('_', " ").trim().to_string();
+        if from.is_empty() || to.is_empty() {
+            bail!("move requires non-empty from and to titles");
+        }
+        let reason = options.reason.trim().to_string();
+
+        let rights = self.current_user_rights()?;
+        require_move_right(&rights, "move")?;
+        if self.site_exposes_right("skip-move-moderation")? {
+            require_move_right(&rights, "skip-move-moderation")?;
+        }
+        if options.no_redirect {
+            require_move_right(&rights, "suppressredirect")?;
+        }
+        if options.move_subpages {
+            require_move_right(&rights, "move-subpages")?;
+        }
+
+        let token = self.ensure_csrf_token()?;
+
+        let mut params = vec![
+            ("action", "move".to_string()),
+            ("from", from.clone()),
+            ("to", to.clone()),
+            ("reason", reason.clone()),
+            ("watchlist", "nochange".to_string()),
+            ("token", token),
+        ];
+        if options.no_redirect {
+            params.push(("noredirect", "1".to_string()));
+        }
+        if options.move_talk {
+            params.push(("movetalk", "1".to_string()));
+        }
+        if options.move_subpages {
+            params.push(("movesubpages", "1".to_string()));
+        }
+        if options.ignore_warnings {
+            params.push(("ignorewarnings", "1".to_string()));
+        }
+
+        let response = self.request_json_post(&params, true)?;
+        decode_move_response(
+            from,
+            to,
+            reason,
+            options.ignore_warnings,
+            response,
+            self.request_count(),
+        )
+    }
+
+    fn current_user_rights(&mut self) -> Result<Vec<String>> {
+        let response = self.request_json_get(&[
+            ("action", "query".to_string()),
+            ("meta", "userinfo".to_string()),
+            ("uiprop", "rights".to_string()),
+        ])?;
+        decode_current_user_rights(response)
+    }
+
+    fn site_exposes_right(&mut self, right: &str) -> Result<bool> {
+        let response = self.request_json_get(&[
+            ("action", "query".to_string()),
+            ("meta", "siteinfo".to_string()),
+            ("siprop", "usergroups".to_string()),
+        ])?;
+        decode_site_exposes_right(response, right)
+    }
+}
+
+fn decode_current_user_rights(response: Value) -> Result<Vec<String>> {
+    let parsed: UserInfoResponse =
+        serde_json::from_value(response).context("failed to decode user rights response")?;
+    Ok(parsed.query.userinfo.rights)
+}
+
+fn decode_site_exposes_right(response: Value, right: &str) -> Result<bool> {
+    let parsed: UserGroupsResponse =
+        serde_json::from_value(response).context("failed to decode site user groups response")?;
+    Ok(parsed
+        .query
+        .usergroups
+        .iter()
+        .any(|group| group.rights.iter().any(|candidate| candidate == right)))
+}
+
+fn require_move_right(rights: &[String], right: &str) -> Result<()> {
+    if rights.iter().any(|candidate| candidate == right) {
+        return Ok(());
+    }
+    bail!(
+        "current MediaWiki user lacks `{right}` right; refusing action=move because it would not complete immediately"
+    );
+}
+
+fn decode_move_response(
+    requested_from: String,
+    requested_to: String,
+    reason: String,
+    ignore_warnings: bool,
+    response: Value,
+    request_count: usize,
+) -> Result<MoveReport> {
+    let parsed: MoveResponse =
+        serde_json::from_value(response).context("failed to decode move response")?;
+    let payload = parsed
+        .move_
+        .ok_or_else(|| anyhow::anyhow!("missing move payload in API response"))?;
+    let redirect_created = match payload.redirectcreated {
+        Some(Value::Bool(value)) => value,
+        Some(_) => true,
+        None => false,
+    };
+    let talk_moved = payload.talkto.is_some();
+    let from = payload.from.unwrap_or_else(|| requested_from.clone());
+    let to = payload.to.unwrap_or_else(|| requested_to.clone());
+
+    Ok(MoveReport {
+        requested_from,
+        requested_to,
+        from,
+        to,
+        reason: payload.reason.unwrap_or(reason),
+        redirect_created,
+        ignore_warnings,
+        talk_moved,
+        talk_from: payload.talkfrom,
+        talk_to: payload.talkto,
+        warnings: parsed.warnings,
+        request_count,
+    })
+}
+
+#[cfg(test)]
+mod move_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn decodes_move_response_using_api_normalized_titles() {
+        let report = decode_move_response(
+            "user:codex move test".to_string(),
+            "user:codex move target".to_string(),
+            "requested reason".to_string(),
+            false,
+            json!({
+                "move": {
+                    "from": "User:Codex move test",
+                    "to": "User:Codex move target",
+                    "reason": "api reason",
+                    "redirectcreated": ""
+                }
+            }),
+            4,
+        )
+        .unwrap();
+
+        assert_eq!(report.requested_from, "user:codex move test");
+        assert_eq!(report.requested_to, "user:codex move target");
+        assert_eq!(report.from, "User:Codex move test");
+        assert_eq!(report.to, "User:Codex move target");
+        assert_eq!(report.reason, "api reason");
+        assert!(report.redirect_created);
+        assert!(!report.talk_moved);
+        assert_eq!(report.request_count, 4);
+    }
+
+    #[test]
+    fn decodes_move_response_talk_and_warnings() {
+        let report = decode_move_response(
+            "User:Source".to_string(),
+            "User:Target".to_string(),
+            "reason".to_string(),
+            true,
+            json!({
+                "warnings": {
+                    "move": {
+                        "*": "warning text"
+                    }
+                },
+                "move": {
+                    "from": "User:Source",
+                    "to": "User:Target",
+                    "talkfrom": "User talk:Source",
+                    "talkto": "User talk:Target"
+                }
+            }),
+            7,
+        )
+        .unwrap();
+
+        assert!(report.ignore_warnings);
+        assert!(report.talk_moved);
+        assert_eq!(report.talk_from.as_deref(), Some("User talk:Source"));
+        assert_eq!(report.talk_to.as_deref(), Some("User talk:Target"));
+        assert!(report.warnings.is_some());
+    }
+
+    #[test]
+    fn decodes_current_user_rights() {
+        let rights = decode_current_user_rights(json!({
+            "query": {
+                "userinfo": {
+                    "rights": ["read", "edit", "move"]
+                }
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(rights, vec!["read", "edit", "move"]);
+        assert!(require_move_right(&rights, "move").is_ok());
+        assert!(require_move_right(&rights, "suppressredirect").is_err());
+    }
+
+    #[test]
+    fn decodes_site_exposed_rights() {
+        let has_right = decode_site_exposes_right(
+            json!({
+                "query": {
+                    "usergroups": [
+                        { "name": "user", "rights": ["read", "edit"] },
+                        { "name": "bot", "rights": ["skip-move-moderation"] }
+                    ]
+                }
+            }),
+            "skip-move-moderation",
+        )
+        .unwrap();
+
+        assert!(has_right);
+
+        let missing = decode_site_exposes_right(
+            json!({
+                "query": {
+                    "usergroups": [
+                        { "name": "user", "rights": ["read", "edit"] }
+                    ]
+                }
+            }),
+            "skip-move-moderation",
+        )
+        .unwrap();
+
+        assert!(!missing);
     }
 }

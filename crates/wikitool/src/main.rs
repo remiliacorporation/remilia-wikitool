@@ -101,6 +101,8 @@ enum Commands {
     Purge(ops_cli::PurgeArgs),
     #[command(about = "Upload a local file through the MediaWiki API")]
     Upload(ops_cli::UploadArgs),
+    #[command(about = "Move (rename) a page through the MediaWiki API")]
+    Move(ops_cli::MoveArgs),
     #[command(about = "Inspect or reset the local runtime database")]
     Db(db_cli::DbArgs),
     #[command(about = "Manage and query pinned MediaWiki docs corpora")]
@@ -161,6 +163,7 @@ fn main() -> Result<()> {
         Some(Commands::Delete(args)) => sync_cli::run_delete(&runtime, args),
         Some(Commands::Purge(args)) => ops_cli::run_purge(&runtime, args),
         Some(Commands::Upload(args)) => ops_cli::run_upload(&runtime, args),
+        Some(Commands::Move(args)) => ops_cli::run_move(&runtime, args),
         Some(Commands::Db(args)) => db_cli::run_db(&runtime, args),
         Some(Commands::Docs(args)) => docs_cli::run_docs(&runtime, args),
         Some(Commands::Import(args)) => import_cli::run_import(&runtime, args),
@@ -468,5 +471,23 @@ mod tests {
         ])
         .expect("upload should parse");
         assert!(matches!(upload.command, Some(Commands::Upload(_))));
+
+        let move_page = Cli::try_parse_from([
+            "wikitool",
+            "move",
+            "Old Title",
+            "New Title",
+            "--reason",
+            "test",
+            "--no-redirect",
+            "--move-talk",
+            "--move-subpages",
+            "--ignore-warnings",
+            "--dry-run",
+            "--format",
+            "json",
+        ])
+        .expect("move should parse");
+        assert!(matches!(move_page.command, Some(Commands::Move(_))));
     }
 }

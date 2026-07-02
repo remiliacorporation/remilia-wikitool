@@ -31,6 +31,7 @@ Commands:
   delete     Delete a page from the live wiki
   purge      Purge pages through the MediaWiki API
   upload     Upload a local file through the MediaWiki API
+  move       Move (rename) a page through the MediaWiki API
   db         Inspect or reset the local runtime database
   docs       Manage and query pinned MediaWiki docs corpora
   import     Import content from external sources
@@ -386,6 +387,32 @@ Options:
       --diagnostics          Print resolved runtime diagnostics
       --ignore-warnings      Pass ignorewarnings=1 to MediaWiki upload
       --dry-run              Preview upload without writing to the wiki
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+  -h, --help                 Print help
+```
+
+## move
+
+```text
+Move (rename) a page through the MediaWiki API
+
+Usage: wikitool move [OPTIONS] <FROM> <TO>
+
+Arguments:
+  <FROM>
+  <TO>
+
+Options:
+      --project-root <PATH>
+      --reason <TEXT>        Move reason [default: "Move via wikitool"]
+      --data-dir <PATH>
+      --no-redirect          Do not leave a redirect at the old title (default leaves one)
+      --config <PATH>
+      --move-talk            Also move the associated talk page
+      --diagnostics          Print resolved runtime diagnostics
+      --move-subpages        Also move subpages (up to the API limit)
+      --ignore-warnings      Pass ignorewarnings=1 to MediaWiki move
+      --dry-run              Preview move without writing to the wiki
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
   -h, --help                 Print help
 ```

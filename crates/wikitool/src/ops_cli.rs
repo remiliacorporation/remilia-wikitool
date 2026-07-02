@@ -7,7 +7,8 @@ use clap::Args;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use wikitool_core::mw::{
-    MediaWikiClient, PurgeOptions, PurgeReport, UploadOptions, UploadReport, WikiWriteApi,
+    MediaWikiClient, MovePageOptions, MoveReport, PurgeOptions, PurgeReport, UploadOptions,
+    UploadReport, WikiWriteApi,
 };
 
 use crate::RuntimeOptions;
@@ -70,11 +71,62 @@ pub(crate) struct UploadArgs {
     pub(crate) format: OutputFormat,
 }
 
+#[derive(Debug, Args)]
+pub(crate) struct MoveArgs {
+    #[arg(value_name = "FROM")]
+    pub(crate) from: String,
+    #[arg(value_name = "TO")]
+    pub(crate) to: String,
+    #[arg(
+        long,
+        value_name = "TEXT",
+        default_value = "Move via wikitool",
+        help = "Move reason"
+    )]
+    pub(crate) reason: String,
+    #[arg(
+        long = "no-redirect",
+        help = "Do not leave a redirect at the old title (default leaves one)"
+    )]
+    pub(crate) no_redirect: bool,
+    #[arg(long = "move-talk", help = "Also move the associated talk page")]
+    pub(crate) move_talk: bool,
+    #[arg(
+        long = "move-subpages",
+        help = "Also move subpages (up to the API limit)"
+    )]
+    pub(crate) move_subpages: bool,
+    #[arg(long, help = "Pass ignorewarnings=1 to MediaWiki move")]
+    pub(crate) ignore_warnings: bool,
+    #[arg(long, help = "Preview move without writing to the wiki")]
+    pub(crate) dry_run: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    pub(crate) format: OutputFormat,
+}
+
 #[derive(Debug, Serialize)]
 struct PurgeDryRunReport {
     titles: Vec<String>,
     forcelinkupdate: bool,
     forcerecursivelinkupdate: bool,
+    dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct MoveDryRunReport {
+    from: String,
+    to: String,
+    reason: String,
+    no_redirect: bool,
+    move_talk: bool,
+    move_subpages: bool,
+    ignore_warnings: bool,
     dry_run: bool,
 }
 
@@ -163,6 +215,53 @@ pub(crate) fn run_upload(runtime: &RuntimeOptions, args: UploadArgs) -> Result<(
     Ok(())
 }
 
+pub(crate) fn run_move(runtime: &RuntimeOptions, args: MoveArgs) -> Result<()> {
+    let (_paths, config) = resolve_runtime_with_config(runtime)?;
+    let from = args.from.replace('_', " ").trim().to_string();
+    let to = args.to.replace('_', " ").trim().to_string();
+    if from.is_empty() || to.is_empty() {
+        bail!("move requires non-empty FROM and TO titles");
+    }
+
+    if args.dry_run {
+        let report = MoveDryRunReport {
+            from,
+            to,
+            reason: args.reason.clone(),
+            no_redirect: args.no_redirect,
+            move_talk: args.move_talk,
+            move_subpages: args.move_subpages,
+            ignore_warnings: args.ignore_warnings,
+            dry_run: true,
+        };
+        if args.format.is_json() {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            print_move_dry_run(&report);
+        }
+        return Ok(());
+    }
+
+    let options = MovePageOptions {
+        from,
+        to,
+        reason: args.reason.clone(),
+        no_redirect: args.no_redirect,
+        move_talk: args.move_talk,
+        move_subpages: args.move_subpages,
+        ignore_warnings: args.ignore_warnings,
+    };
+    let mut client = MediaWikiClient::from_config(&config)?;
+    login_with_bot_credentials(&mut client, "move")?;
+    let report = client.move_page(&options)?;
+    if args.format.is_json() {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_move_report(&report);
+    }
+    Ok(())
+}
+
 fn collect_titles(args: &PurgeArgs) -> Result<Vec<String>> {
     let mut titles = Vec::new();
     titles.extend(args.positional_titles.iter().cloned());
@@ -232,6 +331,40 @@ fn login_with_bot_credentials(client: &mut MediaWikiClient, action: &str) -> Res
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow::anyhow!("{action} requires WIKITOOL_BOT_PASS"))?;
     client.login(&username, &password)
+}
+
+fn print_move_dry_run(report: &MoveDryRunReport) {
+    println!("move");
+    println!("dry_run: true");
+    println!("from: {}", report.from);
+    println!("to: {}", report.to);
+    println!("reason: {}", report.reason);
+    println!("no_redirect: {}", report.no_redirect);
+    println!("move_talk: {}", report.move_talk);
+    println!("move_subpages: {}", report.move_subpages);
+    println!("ignore_warnings: {}", report.ignore_warnings);
+}
+
+fn print_move_report(report: &MoveReport) {
+    println!("move");
+    println!("requested_from: {}", report.requested_from);
+    println!("requested_to: {}", report.requested_to);
+    println!("from: {}", report.from);
+    println!("to: {}", report.to);
+    println!("reason: {}", report.reason);
+    println!("redirect_created: {}", report.redirect_created);
+    println!("ignore_warnings: {}", report.ignore_warnings);
+    println!("talk_moved: {}", report.talk_moved);
+    if let Some(talk_from) = &report.talk_from {
+        println!("talk_from: {talk_from}");
+    }
+    if let Some(talk_to) = &report.talk_to {
+        println!("talk_to: {talk_to}");
+    }
+    if let Some(warnings) = &report.warnings {
+        println!("warnings: {warnings}");
+    }
+    println!("request_count: {}", report.request_count);
 }
 
 fn print_purge_dry_run(report: &PurgeDryRunReport) {
