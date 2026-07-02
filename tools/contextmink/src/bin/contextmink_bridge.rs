@@ -40,9 +40,11 @@ fn usage() -> String {
      \n\
      Flags (must precede the command form):\n\
      \x20 --cwd <dir>     Working directory; relative paths resolve from the\n\
-     \x20                 bridge root (CONTEXTMINK_BRIDGE_ROOT, else the first\n\
-     \x20                 ancestor of the bridge binary with .git or\n\
-     \x20                 .contextmink.toml, else the current directory).\n\
+     \x20                 bridge root (CONTEXTMINK_BRIDGE_ROOT; else the\n\
+     \x20                 nearest ancestor of the bridge binary with\n\
+     \x20                 .contextmink.toml, so a vendored checkout anchors to\n\
+     \x20                 the workspace it serves; else the nearest ancestor\n\
+     \x20                 with .git; else the current directory).\n\
      \x20 --login         Run the command through a Git Bash login shell\n\
      \x20                 (argv-safe; no command text is shell-reparsed).\n\
      \x20 --print-argv    Print the assembled argv one entry per line and exit.\n\
@@ -336,22 +338,40 @@ fn exit_code(status: std::process::ExitStatus) -> i32 {
 }
 
 /// Root for resolving relative `--cwd`, `--script`, and `--argfile` paths:
-/// explicit env override, else the first ancestor of the bridge binary that
-/// looks like a repository root, else the current directory.
+/// explicit env override, else the workspace root derived from the bridge
+/// binary's location, else the current directory.
 fn bridge_root() -> PathBuf {
     if let Some(root) = std::env::var_os("CONTEXTMINK_BRIDGE_ROOT") {
         return PathBuf::from(root);
     }
-    if let Ok(exe) = std::env::current_exe() {
-        let mut candidate = exe.parent();
-        while let Some(dir) = candidate {
-            if dir.join(".git").exists() || dir.join(".contextmink.toml").is_file() {
-                return dir.to_path_buf();
-            }
-            candidate = dir.parent();
+    std::env::current_exe()
+        .ok()
+        .as_deref()
+        .and_then(Path::parent)
+        .and_then(resolve_root_from_exe_dir)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+/// The nearest ancestor carrying `.contextmink.toml` (the contextmink policy
+/// root) wins over the nearest `.git`: a vendored contextmink checkout is its
+/// own git repository nested inside the workspace it serves, so `.git` alone
+/// would anchor relative paths to the vendored tree instead of the workspace.
+fn resolve_root_from_exe_dir(exe_dir: &Path) -> Option<PathBuf> {
+    let mut cursor = Some(exe_dir);
+    while let Some(dir) = cursor {
+        if dir.join(".contextmink.toml").is_file() {
+            return Some(dir.to_path_buf());
         }
+        cursor = dir.parent();
     }
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    let mut cursor = Some(exe_dir);
+    while let Some(dir) = cursor {
+        if dir.join(".git").exists() {
+            return Some(dir.to_path_buf());
+        }
+        cursor = dir.parent();
+    }
+    None
 }
 
 fn resolve_from_root(root: &Path, raw: &str) -> PathBuf {

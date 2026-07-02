@@ -1,4 +1,48 @@
-use super::{decode_base64, sed_window_span};
+use std::fs;
+use std::path::PathBuf;
+
+use super::{decode_base64, resolve_root_from_exe_dir, sed_window_span};
+
+fn temp_tree(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("bridge-root-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root); // guardrail: allow-ignore-result cleanup is best-effort for reused test temp dirs
+    fs::create_dir_all(&root).unwrap();
+    root
+}
+
+#[test]
+fn root_resolution_prefers_policy_root_over_nested_vendored_git() {
+    // Workspace layout: <ws>/.contextmink.toml with a vendored contextmink
+    // checkout (its own .git) at <ws>/tools/contextmink and the bridge binary
+    // under its target/release. Relative paths must anchor to <ws>.
+    let workspace = temp_tree("policy");
+    fs::write(workspace.join(".contextmink.toml"), "profile = \"t\"\n").unwrap();
+    let exe_dir = workspace.join("tools/contextmink/target/release");
+    fs::create_dir_all(&exe_dir).unwrap();
+    fs::create_dir_all(workspace.join("tools/contextmink/.git")).unwrap();
+    assert_eq!(resolve_root_from_exe_dir(&exe_dir), Some(workspace.clone()));
+
+    // Standalone clone: no policy file anywhere, nearest .git wins.
+    let clone = temp_tree("standalone");
+    fs::create_dir_all(clone.join(".git")).unwrap();
+    let exe_dir = clone.join("target/release");
+    fs::create_dir_all(&exe_dir).unwrap();
+    assert_eq!(resolve_root_from_exe_dir(&exe_dir), Some(clone.clone()));
+
+    // Neither marker inside our tree: resolution must not invent a root
+    // within it (a host-level ancestor .git outside the temp tree may still
+    // resolve, so only the absence of a false positive is asserted).
+    let bare = temp_tree("bare");
+    let exe_dir = bare.join("bin");
+    fs::create_dir_all(&exe_dir).unwrap();
+    let resolved = resolve_root_from_exe_dir(&exe_dir);
+    assert!(
+        resolved
+            .as_deref()
+            .is_none_or(|root| !root.starts_with(&bare)),
+        "resolved: {resolved:?}"
+    );
+}
 
 #[test]
 fn base64_decodes_standard_urlsafe_and_padded_forms() {
