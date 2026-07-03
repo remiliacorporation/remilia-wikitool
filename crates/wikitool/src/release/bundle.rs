@@ -303,7 +303,10 @@ fn release_binary_path_for_target(repo_root: &Path, target: &str) -> PathBuf {
 /// contextmink's own published release archives at the version pinned in
 /// `config/contextmink.version`; `scripts/fetch_contextmink.sh` downloads,
 /// checksum-verifies, and unpacks one bundle per platform slug into the
-/// directory passed as `--contextmink-dist`.
+/// directory passed as `--contextmink-dist`. For local development its
+/// `--local <checkout>` builds the same layout from a contextmink source
+/// checkout; the manifest then carries the checkout's actual version, so
+/// the pin equality below still gates what a release can ship.
 fn read_contextmink_pin(repo_root: &Path) -> Result<String> {
     let path = repo_root.join("config/contextmink.version");
     let raw = fs::read_to_string(&path)
