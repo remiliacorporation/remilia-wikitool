@@ -106,7 +106,7 @@ struct ReleaseBuildMatrixArgs {
     #[arg(
         long,
         value_name = "LABEL",
-        help = "Version label used in bundle names (default: v<CARGO_PKG_VERSION>)"
+        help = "Version label used in bundle names (default: CARGO_PKG_VERSION; a leading v is stripped)"
     )]
     artifact_version: Option<String>,
     #[arg(

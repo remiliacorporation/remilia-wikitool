@@ -6,12 +6,12 @@ This project uses SemVer for human-facing releases and separate schema versions 
 
 Format:
 
-1. `vX.Y.Z` for git tags and release notes
+1. `X.Y.Z` for git tags and release notes
 2. `X.Y.Z` in Cargo manifests
 
 Artifact naming:
 
-1. `wikitool-vX.Y.Z-<target>.zip`
+1. `wikitool-X.Y.Z-<target>.zip`
 2. Use `--unversioned-names` only for ephemeral CI/non-release artifacts.
 
 ## SemVer bump rules
@@ -38,7 +38,7 @@ Patch (`Z`):
 
 Current series is `0.y.z`. Before `1.0.0`, breaking changes may happen in minor bumps.
 
-Example: `v0.2.0` is a minor bump that intentionally removed legacy retrieval commands in favor of the `knowledge` command family.
+Example: `0.2.0` is a minor bump that intentionally removed legacy retrieval commands in favor of the `knowledge` command family.
 
 When CLI and bundle contracts stabilize, cut `1.0.0` and enforce strict SemVer from that point onward.
 
@@ -49,7 +49,7 @@ Schema versions are independent from SemVer and must be bumped only when their s
 1. `manifest.schema_version`
 2. `ai/docs-bundle-vN.json`
 
-Local retrieval state is intentionally disposable. Starting with `v0.2.0`, readiness is surfaced through manifest-backed `knowledge_artifacts` rows and the operator-facing `knowledge_generation` contract.
+Local retrieval state is intentionally disposable. Starting with `0.2.0`, readiness is surfaced through manifest-backed `knowledge_artifacts` rows and the operator-facing `knowledge_generation` contract.
 
 Cutover rule:
 
@@ -98,12 +98,16 @@ Packaged / distributable:
    - `cargo run --package wikitool --features maintainer -- docs generate-reference`
 6. Build release bundles:
    - `cargo run --package wikitool --features maintainer -- release build-matrix --targets <triple>`
-   - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=vX.Y.Z` for per-platform artifacts
+   - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=X.Y.Z` for per-platform artifacts
 7. Verify each zip contains:
    - `wikitool` or `wikitool.exe`
    - `AGENTS.md`, `CLAUDE.md`, `README.md`
    - `.claude/rules/`, `.claude/skills/`
    - `writing_context/`
    - `codex_skills/`
+   - `docs/wikitool/`
+   - `contextmink/` with `contextmink` or `contextmink.exe`
+   - `contextmink/contextmink-bridge.exe` in the Windows bundle only
    - `manifest.json`
-8. Create tag `vX.Y.Z`.
+8. Verify `SHA256SUMS.txt` matches the uploaded zip assets.
+9. Create tag `X.Y.Z`.

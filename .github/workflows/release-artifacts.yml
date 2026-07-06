@@ -78,12 +78,14 @@ jobs:
           BUNDLE: dist/release-matrix/${{ steps.names.outputs.bundle }}
         run: |
           test -f "$BUNDLE/${{ matrix.binary_name }}"
+          "$BUNDLE/${{ matrix.binary_name }}" --version
           test -f "$BUNDLE/AGENTS.md"
           test -f "$BUNDLE/CLAUDE.md"
           test -d "$BUNDLE/.claude/rules"
           test -d "$BUNDLE/.claude/skills"
           cmp -s "$BUNDLE/AGENTS.md" "$BUNDLE/CLAUDE.md"
           test -d "$BUNDLE/writing_context"
+          test -d "$BUNDLE/docs/wikitool"
           test ! -e "$BUNDLE/llm_instructions"
           test ! -e "$BUNDLE/SETUP.md"
           test -f "$BUNDLE/manifest.json"
@@ -101,6 +103,7 @@ jobs:
           BUNDLE: dist/release-matrix/${{ steps.names.outputs.bundle }}
         run: |
           if (!(Test-Path "$env:BUNDLE/${{ matrix.binary_name }}")) { throw "release binary missing" }
+          & "$env:BUNDLE/${{ matrix.binary_name }}" --version
           if (!(Test-Path "$env:BUNDLE/AGENTS.md")) { throw "AGENTS.md missing" }
           if (!(Test-Path "$env:BUNDLE/CLAUDE.md")) { throw "CLAUDE.md missing" }
           if (!(Test-Path "$env:BUNDLE/.claude/rules")) { throw ".claude/rules missing" }
@@ -109,6 +112,7 @@ jobs:
           $claudeHash = (Get-FileHash -Path "$env:BUNDLE/CLAUDE.md" -Algorithm SHA256).Hash
           if ($agentsHash -ne $claudeHash) { throw "AGENTS.md and CLAUDE.md mismatch" }
           if (!(Test-Path "$env:BUNDLE/writing_context")) { throw "writing_context missing" }
+          if (!(Test-Path "$env:BUNDLE/docs/wikitool")) { throw "docs/wikitool missing" }
           if (Test-Path "$env:BUNDLE/llm_instructions") { throw "legacy llm_instructions directory must not ship" }
           if (Test-Path "$env:BUNDLE/SETUP.md") { throw "SETUP.md must not ship" }
           if (!(Test-Path "$env:BUNDLE/manifest.json")) { throw "manifest.json missing" }
@@ -151,6 +155,12 @@ jobs:
       - name: List downloaded assets
         run: ls -lh release-zips/
 
+      - name: Generate release checksums
+        run: |
+          cd release-zips
+          sha256sum *.zip | sort -k2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Extract release notes from CHANGELOG.md
         run: |
           set -euo pipefail
@@ -177,4 +187,5 @@ jobs:
           gh release create "${{ steps.ver.outputs.version }}" \
             --title "wikitool ${{ steps.ver.outputs.version }}" \
             --notes-file release_body.md \
-            release-zips/*.zip
+            release-zips/*.zip \
+            release-zips/SHA256SUMS.txt

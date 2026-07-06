@@ -28,6 +28,8 @@ manifest.json LICENSE*
 ```
 
 Put `wikitool` on your `PATH`, or run it from the unpacked folder.
+For GitHub releases, verify the downloaded zip against the published `SHA256SUMS.txt`
+before unpacking when you need a reproducible provenance check.
 
 ## First run
 

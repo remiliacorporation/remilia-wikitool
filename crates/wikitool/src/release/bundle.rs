@@ -1,9 +1,10 @@
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 use anyhow::{Context, Result, bail};
+use sha2::{Digest, Sha256};
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
@@ -134,6 +135,9 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
         });
     }
 
+    let checksums_path = output_dir.join("SHA256SUMS.txt");
+    write_release_checksums(&artifacts, &checksums_path)?;
+
     if ai_pack_dir.exists() {
         fs::remove_dir_all(&ai_pack_dir)
             .with_context(|| format!("failed to remove {}", normalize_path(&ai_pack_dir)))?;
@@ -147,6 +151,7 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
         artifact_version.as_deref().unwrap_or("<none>")
     );
     println!("target_count: {}", artifacts.len());
+    println!("checksums_path: {}", normalize_path(&checksums_path));
     print_ai_pack_build_flags(&ai_pack_result);
     for artifact in &artifacts {
         println!("artifact.target: {}", artifact.target);
@@ -225,7 +230,19 @@ fn resolve_release_artifact_version(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("v{}", env!("CARGO_PKG_VERSION")));
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let label = match label.strip_prefix('v') {
+        Some(stripped)
+            if stripped
+                .chars()
+                .next()
+                .map(|ch| ch.is_ascii_digit())
+                .unwrap_or(false) =>
+        {
+            stripped.to_string()
+        }
+        _ => label,
+    };
 
     if !label
         .chars()
@@ -680,6 +697,47 @@ fn zip_release_bundle(source_dir: &Path, zip_path: &Path, bundle_name: &str) -> 
     Ok(())
 }
 
+fn write_release_checksums(artifacts: &[ReleaseMatrixArtifact], output_path: &Path) -> Result<()> {
+    let mut lines = Vec::new();
+    for artifact in artifacts {
+        let file_name = artifact
+            .zip_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "release zip path has no UTF-8 file name: {}",
+                    normalize_path(&artifact.zip_path)
+                )
+            })?;
+        let digest = sha256_file(&artifact.zip_path)?;
+        lines.push(format!("{digest}  {file_name}"));
+    }
+    lines.sort();
+    let mut output = lines.join("\n");
+    output.push('\n');
+    fs::write(output_path, output)
+        .with_context(|| format!("failed to write {}", normalize_path(output_path)))?;
+    Ok(())
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    let mut file =
+        fs::File::open(path).with_context(|| format!("failed to open {}", normalize_path(path)))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .with_context(|| format!("failed to read {}", normalize_path(path)))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
 fn collect_relative_file_paths(root: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     collect_relative_file_paths_recursive(root, root, &mut files)?;
@@ -735,7 +793,7 @@ mod tests {
         contextmink_version_from_pkgid, host_platform_slug, is_release_binary_entry,
         parse_contextmink_pin, release_binary_name_for_target, release_bundle_name,
         release_platform_slug, resolve_release_artifact_version, resolve_release_targets,
-        validate_contextmink_manifest,
+        sha256_file, validate_contextmink_manifest,
     };
 
     #[test]
@@ -766,7 +824,15 @@ mod tests {
     fn release_artifact_version_validates_flags_and_characters() {
         assert_eq!(
             resolve_release_artifact_version(Some("v1.2.3"), false).expect("version"),
-            Some("v1.2.3".to_string())
+            Some("1.2.3".to_string())
+        );
+        assert_eq!(
+            resolve_release_artifact_version(None, false).expect("version"),
+            Some(env!("CARGO_PKG_VERSION").to_string())
+        );
+        assert_eq!(
+            resolve_release_artifact_version(Some("vendor-smoke"), false).expect("version"),
+            Some("vendor-smoke".to_string())
         );
         assert_eq!(
             resolve_release_artifact_version(None, true).expect("unversioned"),
@@ -859,6 +925,21 @@ mod tests {
         assert!(!is_release_binary_entry(std::path::Path::new(
             "contextmink/README.md"
         )));
+    }
+
+    #[test]
+    fn release_sha256_file_uses_standard_hex_digest() {
+        let path = std::env::temp_dir().join(format!(
+            "wikitool-release-sha256-test-{}.txt",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"abc").expect("write temp file");
+        let digest = sha256_file(&path).expect("hash temp file");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(
+            digest,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

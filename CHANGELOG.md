@@ -6,6 +6,10 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+### Changed
+
+- Release artifact builds now normalize artifact labels to bare semver, emit `SHA256SUMS.txt`, run the packaged `wikitool` binary during CI release verification, and publish checksums with GitHub release assets.
+
 ## [0.6.0] - 2026-07-06
 
 This release consolidates the latest authoring, review, documentation, and release-bundling work into a public-ready wikitool package. The release artifacts are now self-contained: wikitool builds the vendored Contextmink 0.6.0 source for each target, including the Windows bridge, instead of depending on a post-release fetch script.
