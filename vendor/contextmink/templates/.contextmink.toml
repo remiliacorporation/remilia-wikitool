@@ -1,0 +1,14 @@
+profile = "repo-name"
+
+exclude_globs = [
+  "target/**",
+  "**/target/**",
+  "node_modules/**",
+  "**/node_modules/**",
+  ".venv/**",
+  "**/.venv/**",
+]
+
+# Optional spawn safety for repository-owned critical paths:
+# destructive_guard_recursive_delete_fragments = ["protected_cache"]
+# destructive_guard_delete_fragments = ["critical.sqlite"]

@@ -24,11 +24,13 @@ jobs:
             target: x86_64-unknown-linux-gnu
             platform: linux-x86_64
             binary_name: wikitool
-          - os: macos-latest
+          # macos-26 is arm64; macos-26-intel is x64. Keep these explicit so
+          # each artifact is built on the native architecture it ships for.
+          - os: macos-26-intel
             target: x86_64-apple-darwin
             platform: macos-x86_64
             binary_name: wikitool
-          - os: macos-latest
+          - os: macos-26
             target: aarch64-apple-darwin
             platform: macos-arm64
             binary_name: wikitool
@@ -62,12 +64,6 @@ jobs:
         env:
           RAW: ${{ inputs.artifact_version }}
 
-      - name: Fetch pinned contextmink release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/fetch_contextmink.sh --platform ${{ matrix.platform }} --dest dist/contextmink-dist
-
       - name: Build + package versioned release bundle
         run: >
           cargo run --quiet --package wikitool --features maintainer --
@@ -75,7 +71,6 @@ jobs:
           --targets ${{ matrix.target }}
           --artifact-version ${{ steps.names.outputs.version }}
           --output-dir dist/release-matrix
-          --contextmink-dist dist/contextmink-dist
 
       - name: Verify packaged release (Unix)
         if: runner.os != 'Windows'

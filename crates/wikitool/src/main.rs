@@ -108,7 +108,7 @@ enum Commands {
     Protect(ops_cli::ProtectArgs),
     #[command(about = "Restore a deleted page through the MediaWiki API")]
     Undelete(ops_cli::UndeleteArgs),
-    #[command(about = "Install the bundled contextmink transcript guard into this project")]
+    #[command(about = "Install the bundled contextmink transcript guard into a project directory")]
     Contextmink(contextmink_cli::ContextminkArgs),
     #[command(about = "Inspect or reset the local runtime database")]
     Db(db_cli::DbArgs),

@@ -77,7 +77,7 @@ struct ReleasePackageArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Directory of unpacked contextmink release bundles, one subdirectory per platform slug (fetch with scripts/fetch_contextmink.sh)"
+        help = "Optional prebuilt contextmink pack override; default builds vendor/contextmink from source"
     )]
     contextmink_dist: Option<PathBuf>,
 }
@@ -135,7 +135,7 @@ struct ReleaseBuildMatrixArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Directory of unpacked contextmink release bundles, one subdirectory per platform slug (fetch with scripts/fetch_contextmink.sh)"
+        help = "Optional prebuilt contextmink pack override; default builds vendor/contextmink from source"
     )]
     contextmink_dist: Option<PathBuf>,
 }

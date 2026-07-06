@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Thin launcher for the contextmink transcript guard. It works from a standalone
+# contextmink clone, a repository that vendors the crate at tools/contextmink,
+# or a repository that carries a prebuilt tools/contextmink/bin/contextmink
+# binary. Build chatter goes to stderr so stdout remains parseable.
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -f "$root/Cargo.toml" ]] && grep -q '^name = "contextmink"$' "$root/Cargo.toml"; then
+  tool="$root"
+else
+  tool="$root/tools/contextmink"
+fi
+
+exe=""
+case "${OS:-}:$(uname -s 2>/dev/null || true)" in
+  Windows_NT:* | *:MINGW* | *:MSYS* | *:CYGWIN*)
+    exe=".exe"
+    ;;
+esac
+
+prebuilt=""
+for candidate in \
+  "$tool/bin/contextmink$exe" \
+  "$tool/bin/contextmink.exe" \
+  "$tool/bin/contextmink" \
+  "$tool/contextmink$exe" \
+  "$tool/contextmink.exe" \
+  "$tool/contextmink"
+do
+  if [[ -f "$candidate" ]]; then
+    prebuilt="$candidate"
+    break
+  fi
+done
+
+target_bin="$tool/target/release/contextmink$exe"
+bin="$target_bin"
+if [[ ! -f "$bin" && -n "$prebuilt" ]]; then
+  bin="$prebuilt"
+elif [[ ! -f "$bin" && -f "$tool/target/release/contextmink.exe" ]]; then
+  bin="$tool/target/release/contextmink.exe"
+elif [[ ! -f "$bin" && -f "$tool/target/release/contextmink" ]]; then
+  bin="$tool/target/release/contextmink"
+fi
+
+if [[ ! -f "$tool/Cargo.toml" && ! -f "$bin" ]]; then
+  echo "contextmink binary or Cargo.toml not found at $tool" >&2
+  exit 2
+fi
+
+needs_build=0
+if [[ -f "$tool/Cargo.toml" ]]; then
+  # contextmink-bridge builds from the same crate; a missing or stale bridge
+  # binary must trigger the rebuild even when the main binary is fresh.
+  bridge_bin="$tool/target/release/contextmink-bridge$exe"
+  if [[ ! -f "$bin" || ! -f "$bridge_bin" ]]; then
+    needs_build=1
+  elif [[ -n "$(find "$tool/src" "$tool/Cargo.lock" -newer "$bin" -print -quit 2>/dev/null)" || -n "$(find "$tool/src" "$tool/Cargo.lock" -newer "$bridge_bin" -print -quit 2>/dev/null)" ]]; then
+    needs_build=1
+  elif [[ -n "$(find "$tool/Cargo.toml" -newer "$bin" -print -quit 2>/dev/null)" || -n "$(find "$tool/Cargo.toml" -newer "$bridge_bin" -print -quit 2>/dev/null)" ]] && command -v cargo >/dev/null 2>&1; then
+    needs_build=1
+  fi
+fi
+
+if [[ "$needs_build" -eq 1 ]]; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    if [[ -f "$bin" ]]; then
+      echo "contextmink: Cargo is not on PATH; using existing release binary at $bin" >&2
+    else
+      echo "contextmink: Cargo is required to build $tool, but was not found on PATH" >&2
+      exit 2
+    fi
+  else
+    cargo build --quiet --release --manifest-path "$tool/Cargo.toml" 1>&2
+    bin="$target_bin"
+  fi
+fi
+
+case "${OS:-}:$(uname -s 2>/dev/null || true)" in
+  Windows_NT:* | *:MINGW* | *:MSYS* | *:CYGWIN*)
+    if command -v bash >/dev/null 2>&1; then
+      bash_path="$(command -v bash)"
+      if command -v cygpath >/dev/null 2>&1; then
+        bash_path="$(cygpath -w "$bash_path")"
+      fi
+      export CONTEXTMINK_BASH="$bash_path"
+    fi
+    # JSON Pointer selectors begin with '/', and regex/term/filter values can
+    # carry '/' or '//' anywhere; MSYS would otherwise rewrite the former as
+    # Windows paths and collapse doubled slashes in the latter before the
+    # native contextmink.exe sees them.
+    conv_excl=()
+    next_selector=0
+    next_slash_value=0
+    for arg in "$@"; do
+      if [[ "$next_selector" -eq 1 ]]; then
+        case "$arg" in
+          /*) conv_excl+=("$arg") ;;
+        esac
+        next_selector=0
+        continue
+      fi
+      if [[ "$next_slash_value" -eq 1 ]]; then
+        case "$arg" in
+          */*) conv_excl+=("$arg") ;;
+        esac
+        next_slash_value=0
+        continue
+      fi
+      case "$arg" in
+        --array | --field)
+          next_selector=1
+          ;;
+        --array=/* | --field=/*)
+          conv_excl+=("$arg")
+          ;;
+        --pattern | --prefix | --contains | --term)
+          next_slash_value=1
+          ;;
+        --pattern=*/* | --prefix=*/* | --contains=*/* | --term=*/*)
+          conv_excl+=("$arg")
+          ;;
+      esac
+    done
+    if [[ "${#conv_excl[@]}" -gt 0 ]]; then
+      joined="$(IFS=';'; printf '%s' "${conv_excl[*]}")"
+      if [[ -n "${MSYS2_ARG_CONV_EXCL:-}" ]]; then
+        export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL};${joined}"
+      else
+        export MSYS2_ARG_CONV_EXCL="$joined"
+      fi
+    fi
+    ;;
+esac
+
+exec "$bin" "$@"

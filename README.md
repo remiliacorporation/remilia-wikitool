@@ -76,6 +76,10 @@ before a push.
 
 Every command has `--help`, and `docs/wikitool/reference.md` is the full generated reference.
 
+Release bundles also include a `contextmink/` pack. From the project or agent
+working directory, run `wikitool contextmink install`; the installer writes
+relative to the current directory unless `--project-root <dir>` is explicit.
+
 ## Documentation
 
 | File | Role |

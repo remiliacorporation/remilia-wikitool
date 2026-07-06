@@ -63,9 +63,9 @@ scoped here.
 
 ## Bounded Output
 
-Bootstrap once per checkout with `bash scripts/fetch_contextmink.sh --install` (fetches the pinned
-contextmink release, installs `tools/contextmink/bin/` and the `scripts/contextmink` launcher; both
-are gitignored). Then:
+Bootstrap once per checkout with `bash scripts/fetch_contextmink.sh --install` (builds the vendored
+`vendor/contextmink` source pinned by `config/contextmink.version`, installs `tools/contextmink/bin/`
+and the `scripts/contextmink` launcher; both are gitignored). Then:
 
 Use `scripts/contextmink` when a file/text/JSON/SQLite/command-output read may
 produce more output than the transcript should carry.

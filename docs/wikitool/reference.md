@@ -34,7 +34,7 @@ Commands:
   move         Move (rename) a page through the MediaWiki API
   protect      Protect or unprotect a page through the MediaWiki API
   undelete     Restore a deleted page through the MediaWiki API
-  contextmink  Install the bundled contextmink transcript guard into this project
+  contextmink  Install the bundled contextmink transcript guard into a project directory
   db           Inspect or reset the local runtime database
   docs         Manage and query pinned MediaWiki docs corpora
   import       Import content from external sources
@@ -467,12 +467,12 @@ Options:
 ## contextmink
 
 ```text
-Install the bundled contextmink transcript guard into this project
+Install the bundled contextmink transcript guard into a project directory
 
 Usage: wikitool contextmink [OPTIONS] <COMMAND>
 
 Commands:
-  install  Install the bundled contextmink pack into this project
+  install  Install the bundled contextmink pack into the current directory or --project-root
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -486,7 +486,7 @@ Options:
 ## contextmink install
 
 ```text
-Install the bundled contextmink pack into this project
+Install the bundled contextmink pack into the current directory or --project-root
 
 Usage: wikitool contextmink install [OPTIONS]
 

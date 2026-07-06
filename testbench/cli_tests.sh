@@ -743,7 +743,7 @@ for candidate in "$SCRIPT_DIR/../dist/contextmink-dist"/*/; do
     fi
 done
 if [ -z "$REAL_PACK" ]; then
-    skip "contextmink install verified run (no fetched pack under dist/contextmink-dist)"
+    skip "contextmink install verified run (no staged pack under dist/contextmink-dist)"
 else
     PROJ_MINK=$(setup_project contextmink-install)
     OUTPUT=$(wt "$PROJ_MINK" contextmink install --from "$(to_wikitool_path "$REAL_PACK")" --format json 2>&1 || true)

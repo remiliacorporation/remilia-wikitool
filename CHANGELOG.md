@@ -6,6 +6,10 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-06
+
+This release consolidates the latest authoring, review, documentation, and release-bundling work into a public-ready wikitool package. The release artifacts are now self-contained: wikitool builds the vendored Contextmink 0.6.0 source for each target, including the Windows bridge, instead of depending on a post-release fetch script.
+
 ### Added
 
 - Extension-tag contracts are now one data model instead of three drifting copies: `writing_context/extensions.md` carries a machine-readable `Contract:` line per content mechanism (tag, parser function, template, module) that the profile overlay parses, the authoring surface consumes (tags gain `documented`, `body_required`, and `attributes`, plus a drift warning when the doc teaches a tag the live wiki does not expose), and lint consumes (every body-required tag contract gains an empty-body check with no tag-specific code; documenting a new tag now documents, surfaces, and lints it in one edit).
@@ -24,12 +28,16 @@ The release workflow extracts the section for the requested version and fails if
 
 ### Fixed
 
+- `wikitool contextmink install` now writes relative to the current project/agent working directory unless `--project-root` is explicit, so a first-run install inside an unmarked directory cannot be captured by an unrelated initialized ancestor.
+- Local contextmink staging now skips identical binary installs before copying, so reinstalling through `contextmink-bridge.exe` on Windows no longer trips over its own running executable.
 - Blocking evidence gaps recorded in an interview brief now surface as blocking open questions in `article-start --brief-path`, forcing readiness to `not_ready` until resolved or deferred; previously they were only warnings, which readiness ignored - "blocking" did not block.
 - Ubiquitous tags (`ref`, `nowiki`, `noinclude`, ...) no longer spend the docs bridge's four capped query slots; slots go to the tags and parser functions an agent actually needs documentation for.
 - Extension and technical docs subpage listing passed the namespaced title as `apprefix` while also setting `apnamespace`, which silently matched nothing: every extension corpus was main-page-only and the technical sweeps (`Manual:Hooks/*`, `Manual:$wg*`, `API:*`, `Help:*`) could never enumerate. With the fix the Cargo corpus alone goes from 1 page to 31 pages, 109 sections, and 557 usage examples; re-run `wikitool docs import <Extension>` or `docs update` after upgrading to rehydrate. Redirect-resolved duplicate pages no longer abort an import, and talk-page and archive titles are filtered out of documentation corpora.
 
 ### Changed
 
+- The bundled contextmink pin is now `0.6.0`, bringing the release pack up to the current transcript-guard surface (`dirs`, `outline`, `json-select`, `capture`/`run`, and hook-guard helpers) that the ai-pack guidance already teaches.
+- Contextmink release staging is now source-owned by wikitool: public release builds compile the vendored `vendor/contextmink` source for each release target, while `--contextmink-dist` remains only an explicit prebuilt-pack override. The release validator rejects platform/binary/bridge mismatches before packaging.
 - Every FTS MATCH expression built from arbitrary query text now goes through one shared sanitizing builder: multi-word topics match as all-tokens-as-prefixes with the exact phrase as an OR branch instead of an inert exact phrase, and a double quote in a topic can no longer produce a SQL syntax error (previously it could fail `article-start` outright).
 - The consensus section skeleton in `article-start` follows the document order of the closest comparable pages instead of alphabetizing headings.
 - Misleading article-start fields renamed to what they are: `EvidenceRef.score` is now `token_estimate` (it was a size, not a rank), `candidate_facts` is now `comparable_page_excerpts` (verbatim prose from other pages, not subject facts), `external_sources_shortlist` is now `citation_template_families` (template type labels, not followable sources), and the subject lane's `summary` is now `top_local_excerpt`.

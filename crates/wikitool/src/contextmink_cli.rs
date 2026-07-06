@@ -8,7 +8,7 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::RuntimeOptions;
-use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_paths};
+use crate::cli_support::{OutputFormat, normalize_path};
 
 /// Configuration written into wikitool projects. Unlike a standalone contextmink
 /// install into an arbitrary repository, the wikitool project layout is known, so
@@ -25,7 +25,9 @@ pub(crate) struct ContextminkArgs {
 
 #[derive(Debug, Subcommand)]
 enum ContextminkSubcommand {
-    #[command(about = "Install the bundled contextmink pack into this project")]
+    #[command(
+        about = "Install the bundled contextmink pack into the current directory or --project-root"
+    )]
     Install(ContextminkInstallArgs),
 }
 
@@ -90,7 +92,7 @@ pub(crate) fn run_contextmink(runtime: &RuntimeOptions, args: ContextminkArgs) -
 }
 
 fn run_contextmink_install(runtime: &RuntimeOptions, args: ContextminkInstallArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let project_root = resolve_install_project_root(runtime)?;
     let pack_dir = resolve_pack_dir(args.from.as_deref())?;
     let manifest = read_pack_manifest(&pack_dir)?;
 
@@ -145,7 +147,7 @@ fn run_contextmink_install(runtime: &RuntimeOptions, args: ContextminkInstallArg
 
     let mut actions = Vec::new();
     for item in &planned {
-        let target = paths.project_root.join(item.target_relative);
+        let target = project_root.join(item.target_relative);
         let status = if args.dry_run {
             if target.exists() && !args.force {
                 "would_skip_exists"
@@ -174,7 +176,7 @@ fn run_contextmink_install(runtime: &RuntimeOptions, args: ContextminkInstallArg
     let (installed_version, verified) = if args.dry_run {
         (None, false)
     } else {
-        let version = verify_installed_binary(&paths.project_root.join(binary_target))?;
+        let version = verify_installed_binary(&project_root.join(binary_target))?;
         let verified = version == manifest.version;
         if !verified {
             bail!(
@@ -193,7 +195,7 @@ fn run_contextmink_install(runtime: &RuntimeOptions, args: ContextminkInstallArg
     let report = ContextminkInstallReport {
         pack_dir: normalize_path(&pack_dir),
         pack_version: manifest.version,
-        project_root: normalize_path(&paths.project_root),
+        project_root: normalize_path(&project_root),
         dry_run: args.dry_run,
         actions,
         installed_version,
@@ -222,7 +224,15 @@ fn run_contextmink_install(runtime: &RuntimeOptions, args: ContextminkInstallArg
         println!("next: {step}");
     }
     if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
+        let source = if runtime.project_root.is_some() {
+            "flag"
+        } else {
+            "current-dir"
+        };
+        println!(
+            "\n[diagnostics]\nproject_root={} ({source})",
+            normalize_path(&project_root)
+        );
     }
     Ok(())
 }
@@ -231,6 +241,22 @@ struct PackManifest {
     version: String,
     binary: String,
     bridge_binary: Option<String>,
+}
+
+fn resolve_install_project_root(runtime: &RuntimeOptions) -> Result<PathBuf> {
+    let cwd = env::current_dir().context("failed to resolve current directory")?;
+    Ok(resolve_install_project_root_from_cwd(
+        &cwd,
+        runtime.project_root.as_deref(),
+    ))
+}
+
+fn resolve_install_project_root_from_cwd(cwd: &Path, project_root: Option<&Path>) -> PathBuf {
+    match project_root {
+        Some(path) if path.is_absolute() => path.to_path_buf(),
+        Some(path) => cwd.join(path),
+        None => cwd.to_path_buf(),
+    }
 }
 
 fn resolve_pack_dir(from: Option<&Path>) -> Result<PathBuf> {
@@ -363,4 +389,61 @@ fn verify_installed_binary(binary: &Path) -> Result<String> {
         })?
         .to_string();
     Ok(version)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::resolve_install_project_root_from_cwd;
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(label: &str) -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "wikitool-contextmink-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temp test dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn install_root_defaults_to_cwd_even_under_existing_project_marker() {
+        let temp = TestDir::new("marker-parent");
+        let parent = temp.path.join("wiki");
+        let cwd = parent.join("agent-workdir");
+        fs::create_dir_all(parent.join(".wikitool")).expect("marker");
+        fs::create_dir_all(&cwd).expect("cwd");
+
+        assert_eq!(resolve_install_project_root_from_cwd(&cwd, None), cwd);
+    }
+
+    #[test]
+    fn install_root_respects_relative_project_root_flag() {
+        let temp = TestDir::new("relative-root");
+        let cwd = temp.path.join("cwd");
+        fs::create_dir_all(&cwd).expect("cwd");
+
+        assert_eq!(
+            resolve_install_project_root_from_cwd(&cwd, Some(Path::new("project"))),
+            cwd.join("project")
+        );
+    }
 }

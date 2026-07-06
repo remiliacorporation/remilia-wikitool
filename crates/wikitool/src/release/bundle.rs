@@ -42,8 +42,11 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
     stage_contextmink_pack(
         &repo_root,
         &output_dir,
+        None,
         host_platform_slug(),
         args.contextmink_dist.as_deref(),
+        &PathBuf::from("cargo"),
+        true,
     )?;
     if staging_dir.exists() {
         fs::remove_dir_all(&staging_dir)
@@ -113,8 +116,11 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
         stage_contextmink_pack(
             &repo_root,
             &bundle_dir,
+            Some(target),
             release_platform_slug(target),
             args.contextmink_dist.as_deref(),
+            &cargo_bin,
+            use_locked,
         )?;
 
         let zip_path = output_dir.join(format!("{bundle_name}.zip"));
@@ -177,10 +183,11 @@ fn stage_release_bundle(
     Ok(())
 }
 
-const DEFAULT_RELEASE_MATRIX_TARGETS: [&str; 3] = [
+const DEFAULT_RELEASE_MATRIX_TARGETS: [&str; 4] = [
     "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
     "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
 ];
 
 fn resolve_release_targets(raw_targets: &[String]) -> Vec<String> {
@@ -299,14 +306,10 @@ fn release_binary_path_for_target(repo_root: &Path, target: &str) -> PathBuf {
 /// Release bundles ship contextmink in a `contextmink/` subdirectory so
 /// wikitool users get bounded-read tooling without a separate install. It
 /// stays a separate binary: contextmink is project-generic, and agents must
-/// not have to route bounded reads through wikitool. The pack comes from
-/// contextmink's own published release archives at the version pinned in
-/// `config/contextmink.version`; `scripts/fetch_contextmink.sh` downloads,
-/// checksum-verifies, and unpacks one bundle per platform slug into the
-/// directory passed as `--contextmink-dist`. For local development its
-/// `--local <checkout>` builds the same layout from a contextmink source
-/// checkout; the manifest then carries the checkout's actual version, so
-/// the pin equality below still gates what a release can ship.
+/// not have to route bounded reads through wikitool. The default release path
+/// builds the vendored `vendor/contextmink` source at the version pinned in
+/// `config/contextmink.version`; `--contextmink-dist` is only an explicit
+/// prebuilt-pack override.
 fn read_contextmink_pin(repo_root: &Path) -> Result<String> {
     let path = repo_root.join("config/contextmink.version");
     let raw = fs::read_to_string(&path)
@@ -347,20 +350,37 @@ fn host_platform_slug() -> &'static str {
 fn stage_contextmink_pack(
     repo_root: &Path,
     bundle_dir: &Path,
+    target: Option<&str>,
     platform_slug: &str,
     contextmink_dist: Option<&Path>,
+    cargo_bin: &Path,
+    use_locked: bool,
+) -> Result<()> {
+    if let Some(dist) = contextmink_dist {
+        return stage_prebuilt_contextmink_pack(repo_root, bundle_dir, platform_slug, dist);
+    }
+    stage_vendored_contextmink_pack(
+        repo_root,
+        bundle_dir,
+        target,
+        platform_slug,
+        cargo_bin,
+        use_locked,
+    )
+}
+
+fn stage_prebuilt_contextmink_pack(
+    repo_root: &Path,
+    bundle_dir: &Path,
+    platform_slug: &str,
+    dist: &Path,
 ) -> Result<()> {
     let pin = read_contextmink_pin(repo_root)?;
-    let Some(dist) = contextmink_dist else {
-        bail!(
-            "--contextmink-dist is required; fetch contextmink {pin} with `bash scripts/fetch_contextmink.sh --platform {platform_slug}` and pass --contextmink-dist dist/contextmink-dist"
-        );
-    };
     let source = dist.join(platform_slug);
     let manifest_path = source.join("manifest.json");
     let manifest_text = fs::read_to_string(&manifest_path).with_context(|| {
         format!(
-            "missing contextmink bundle for {platform_slug}: {} (run scripts/fetch_contextmink.sh --platform {platform_slug})",
+            "missing prebuilt contextmink bundle for {platform_slug}: {}",
             normalize_path(&manifest_path)
         )
     })?;
@@ -384,6 +404,169 @@ fn stage_contextmink_pack(
     Ok(())
 }
 
+fn stage_vendored_contextmink_pack(
+    repo_root: &Path,
+    bundle_dir: &Path,
+    target: Option<&str>,
+    platform_slug: &str,
+    cargo_bin: &Path,
+    use_locked: bool,
+) -> Result<()> {
+    let pin = read_contextmink_pin(repo_root)?;
+    let source_root = repo_root.join("vendor/contextmink");
+    let manifest_path = source_root.join("Cargo.toml");
+    if !manifest_path.is_file() {
+        bail!(
+            "vendored contextmink source is missing: {}",
+            normalize_path(&manifest_path)
+        );
+    }
+    let source_version = read_contextmink_source_version(cargo_bin, &manifest_path)?;
+    if source_version != pin {
+        bail!(
+            "vendored contextmink version {source_version:?} does not match the pin {pin} in config/contextmink.version"
+        );
+    }
+
+    run_cargo_contextmink_build_for_target(&source_root, cargo_bin, target, use_locked)?;
+
+    let (binary_name, bridge_name) = expected_contextmink_pack_layout(platform_slug)?;
+    let binary_path = contextmink_build_binary_path(&source_root, target, binary_name);
+    if !binary_path.is_file() {
+        bail!(
+            "missing built contextmink binary for {platform_slug}: {}",
+            normalize_path(&binary_path)
+        );
+    }
+
+    let pack_dir = bundle_dir.join("contextmink");
+    reset_directory(&pack_dir)?;
+    copy_file(&binary_path, &pack_dir.join(binary_name))?;
+    if let Some(bridge) = bridge_name {
+        let bridge_path = contextmink_build_binary_path(&source_root, target, bridge);
+        if !bridge_path.is_file() {
+            bail!(
+                "missing built contextmink bridge for {platform_slug}: {}",
+                normalize_path(&bridge_path)
+            );
+        }
+        copy_file(&bridge_path, &pack_dir.join(bridge))?;
+    }
+
+    for file in [
+        "README.md",
+        "SETUP.md",
+        "LICENSE",
+        "LICENSE-SSL",
+        "LICENSE-VPL",
+    ] {
+        copy_file(&source_root.join(file), &pack_dir.join(file))?;
+    }
+    copy_dir_contents(&source_root.join("docs"), &pack_dir.join("docs"))?;
+    copy_dir_contents(&source_root.join("templates"), &pack_dir.join("templates"))?;
+
+    let mut manifest = serde_json::json!({
+        "name": "contextmink",
+        "version": source_version,
+        "target": target.unwrap_or("host"),
+        "platform": platform_slug,
+        "binary": binary_name,
+        "archive": "vendored-source"
+    });
+    if let Some(bridge) = bridge_name {
+        manifest["bridge_binary"] = serde_json::Value::String(bridge.to_string());
+    }
+    validate_contextmink_manifest(&manifest, &pin, platform_slug)?;
+    fs::write(
+        pack_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest)?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to write {}",
+            normalize_path(pack_dir.join("manifest.json"))
+        )
+    })?;
+    Ok(())
+}
+
+fn read_contextmink_source_version(cargo_bin: &Path, manifest_path: &Path) -> Result<String> {
+    let output = ProcessCommand::new(cargo_bin)
+        .arg("pkgid")
+        .arg("--manifest-path")
+        .arg(manifest_path)
+        .output()
+        .with_context(|| {
+            format!(
+                "failed to execute {} pkgid for vendored contextmink",
+                normalize_path(cargo_bin)
+            )
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("cargo pkgid failed for vendored contextmink: {stderr}");
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    contextmink_version_from_pkgid(&stdout)
+}
+
+fn contextmink_version_from_pkgid(raw: &str) -> Result<String> {
+    let pkgid = raw.trim();
+    let Some(index) = pkgid.rfind('@').or_else(|| pkgid.rfind('#')) else {
+        bail!("unexpected cargo pkgid for vendored contextmink: {pkgid:?}");
+    };
+    let version = &pkgid[index + 1..];
+    parse_contextmink_pin(version)
+}
+
+fn run_cargo_contextmink_build_for_target(
+    source_root: &Path,
+    cargo_bin: &Path,
+    target: Option<&str>,
+    use_locked: bool,
+) -> Result<()> {
+    let manifest_path = source_root.join("Cargo.toml");
+    let mut command = ProcessCommand::new(cargo_bin);
+    command
+        .current_dir(source_root)
+        .arg("build")
+        .arg("--release")
+        .arg("--bins")
+        .arg("--manifest-path")
+        .arg(&manifest_path);
+    if let Some(target) = target {
+        command.arg("--target").arg(target);
+    }
+    if use_locked {
+        command.arg("--locked");
+    }
+    let status = command.status().with_context(|| {
+        format!(
+            "failed to execute {} for vendored contextmink",
+            normalize_path(cargo_bin)
+        )
+    })?;
+    if !status.success() {
+        match target {
+            Some(target) => bail!("cargo build failed for vendored contextmink target {target}"),
+            None => bail!("cargo build failed for vendored contextmink"),
+        }
+    }
+    Ok(())
+}
+
+fn contextmink_build_binary_path(
+    source_root: &Path,
+    target: Option<&str>,
+    binary_name: &str,
+) -> PathBuf {
+    let mut path = source_root.join("target");
+    if let Some(target) = target {
+        path = path.join(target);
+    }
+    path.join("release").join(binary_name)
+}
+
 fn validate_contextmink_manifest(
     manifest: &serde_json::Value,
     pin: &str,
@@ -396,21 +579,48 @@ fn validate_contextmink_manifest(
     let version = manifest.get("version").and_then(serde_json::Value::as_str);
     if version != Some(pin) {
         bail!(
-            "contextmink bundle version {version:?} does not match the pin {pin} in config/contextmink.version; re-run scripts/fetch_contextmink.sh"
+            "contextmink bundle version {version:?} does not match the pin {pin} in config/contextmink.version"
         );
     }
     let platform = manifest.get("platform").and_then(serde_json::Value::as_str);
     if platform != Some(platform_slug) {
         bail!("contextmink bundle platform {platform:?} does not match requested {platform_slug}");
     }
-    if manifest
+    let binary = manifest
         .get("binary")
         .and_then(serde_json::Value::as_str)
-        .is_none()
-    {
-        bail!("contextmink manifest is missing the binary field");
+        .ok_or_else(|| anyhow::anyhow!("contextmink manifest is missing the binary field"))?;
+    let (expected_binary, expected_bridge) = expected_contextmink_pack_layout(platform_slug)?;
+    if binary != expected_binary {
+        bail!(
+            "contextmink manifest binary {binary:?} does not match expected {expected_binary:?} for {platform_slug}"
+        );
+    }
+    let bridge = manifest
+        .get("bridge_binary")
+        .and_then(serde_json::Value::as_str);
+    match expected_bridge {
+        Some(expected) if bridge != Some(expected) => {
+            bail!(
+                "contextmink manifest bridge_binary {bridge:?} does not match expected {expected:?} for {platform_slug}"
+            );
+        }
+        None if bridge.is_some() => {
+            bail!("contextmink manifest unexpectedly includes bridge_binary for {platform_slug}");
+        }
+        _ => {}
     }
     Ok(())
+}
+
+fn expected_contextmink_pack_layout(
+    platform_slug: &str,
+) -> Result<(&'static str, Option<&'static str>)> {
+    match platform_slug {
+        "windows-x86_64" => Ok(("contextmink.exe", Some("contextmink-bridge.exe"))),
+        "linux-x86_64" | "macos-x86_64" | "macos-arm64" => Ok(("contextmink", None)),
+        other => bail!("unsupported contextmink platform slug {other:?}"),
+    }
 }
 
 fn zip_release_bundle(source_dir: &Path, zip_path: &Path, bundle_name: &str) -> Result<()> {
@@ -522,9 +732,10 @@ fn is_release_binary_entry(relative_path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        host_platform_slug, is_release_binary_entry, parse_contextmink_pin,
-        release_binary_name_for_target, release_bundle_name, release_platform_slug,
-        resolve_release_artifact_version, resolve_release_targets, validate_contextmink_manifest,
+        contextmink_version_from_pkgid, host_platform_slug, is_release_binary_entry,
+        parse_contextmink_pin, release_binary_name_for_target, release_bundle_name,
+        release_platform_slug, resolve_release_artifact_version, resolve_release_targets,
+        validate_contextmink_manifest,
     };
 
     #[test]
@@ -534,7 +745,8 @@ mod tests {
             vec![
                 "x86_64-pc-windows-msvc".to_string(),
                 "x86_64-unknown-linux-gnu".to_string(),
-                "x86_64-apple-darwin".to_string()
+                "x86_64-apple-darwin".to_string(),
+                "aarch64-apple-darwin".to_string()
             ]
         );
         assert_eq!(
@@ -590,6 +802,10 @@ mod tests {
         assert!(parse_contextmink_pin("").is_err());
         assert!(parse_contextmink_pin("v0.3.0").is_err());
         assert!(parse_contextmink_pin("0.3").is_err());
+        assert_eq!(
+            contextmink_version_from_pkgid("path+file:///repo/vendor/contextmink#0.6.0\n").unwrap(),
+            "0.6.0"
+        );
 
         let manifest: serde_json::Value = serde_json::json!({
             "name": "contextmink",
@@ -601,6 +817,40 @@ mod tests {
         assert!(validate_contextmink_manifest(&manifest, "0.3.0", "windows-x86_64").is_ok());
         assert!(validate_contextmink_manifest(&manifest, "0.4.0", "windows-x86_64").is_err());
         assert!(validate_contextmink_manifest(&manifest, "0.3.0", "linux-x86_64").is_err());
+        let linux_manifest: serde_json::Value = serde_json::json!({
+            "name": "contextmink",
+            "version": "0.3.0",
+            "platform": "linux-x86_64",
+            "binary": "contextmink",
+        });
+        assert!(validate_contextmink_manifest(&linux_manifest, "0.3.0", "linux-x86_64").is_ok());
+        let linux_with_bridge: serde_json::Value = serde_json::json!({
+            "name": "contextmink",
+            "version": "0.3.0",
+            "platform": "linux-x86_64",
+            "binary": "contextmink",
+            "bridge_binary": "contextmink-bridge.exe",
+        });
+        assert!(
+            validate_contextmink_manifest(&linux_with_bridge, "0.3.0", "linux-x86_64").is_err()
+        );
+        let windows_without_bridge: serde_json::Value = serde_json::json!({
+            "name": "contextmink",
+            "version": "0.3.0",
+            "platform": "windows-x86_64",
+            "binary": "contextmink.exe",
+        });
+        assert!(
+            validate_contextmink_manifest(&windows_without_bridge, "0.3.0", "windows-x86_64")
+                .is_err()
+        );
+        let wrong_binary: serde_json::Value = serde_json::json!({
+            "name": "contextmink",
+            "version": "0.3.0",
+            "platform": "linux-x86_64",
+            "binary": "contextmink.exe",
+        });
+        assert!(validate_contextmink_manifest(&wrong_binary, "0.3.0", "linux-x86_64").is_err());
 
         assert!(!host_platform_slug().is_empty());
         for binary in ["wikitool", "contextmink", "contextmink-bridge"] {

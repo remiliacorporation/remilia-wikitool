@@ -3,12 +3,15 @@ members = [
   "crates/wikitool",
   "crates/wikitool_core",
 ]
+exclude = [
+  "vendor/contextmink",
+]
 resolver = "2"
 
 [workspace.package]
 edition = "2024"
 license = "AGPL-3.0-only"
-version = "0.5.0"
+version = "0.6.0"
 
 [workspace.dependencies]
 anyhow = "1.0.101"
