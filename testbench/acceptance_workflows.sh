@@ -179,7 +179,7 @@ WIKIEOF
 write_live_env() {
     local root="$1"
     cat > "$root/.env" << 'ENVEOF'
-WIKITOOL_WIKI_URL=https://wiki.remilia.org/
+WIKITOOL_WIKI_URL=https://wiki.remilia.org
 WIKITOOL_WIKI_API_URL=https://wiki.remilia.org/api.php
 ENVEOF
 }
@@ -281,7 +281,7 @@ fi
 
 section "research-fetch"
 OUTPUT=$(wt "$LIVE_PROJ" research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"schema_version": "research_document_v1"' && echo "$OUTPUT" | grep -q '"rendered_fetch_mode": "parse_api"' && echo "$OUTPUT" | grep -q '"revision_id":'; then
+if echo "$OUTPUT" | grep -q '"schema_version": "research_document_v2"' && echo "$OUTPUT" | grep -q '"rendered_fetch_mode": "parse_api"' && echo "$OUTPUT" | grep -q '"revision_id":'; then
     pass "research fetch returns rendered live wiki content with metadata"
 else
     fail "research fetch returns rendered live wiki content with metadata (got: $OUTPUT)"

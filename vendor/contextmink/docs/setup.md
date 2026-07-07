@@ -18,8 +18,18 @@ replacement for project-native tools.
 - A POSIX-compatible shell is needed only for the optional `scripts/contextmink`
   launcher. On Windows, Git Bash works. Without Bash, call the release binary
   directly or use `cargo run --manifest-path tools/contextmink/Cargo.toml -- ...`.
-  For `capture` of extensionless repository scripts on Windows, use the launcher;
-  it supplies the Bash interpreter needed for script fallback.
+  Choose invocation by the active shell:
+
+  | Active shell | Command form |
+  | --- | --- |
+  | Bash-hosted session (macOS, Linux, Git Bash, WSL, Claude Code) | `scripts/contextmink ...` |
+  | Windows PowerShell with Bash available | `bash scripts/contextmink ...` |
+  | Native binary path | `tools/contextmink/bin/contextmink(.exe) ...` |
+
+  Do not rely on Windows to open the extensionless `scripts/contextmink` path
+  directly from PowerShell. For `capture` of extensionless repository scripts on
+  Windows, use the launcher; it supplies the Bash interpreter needed for script
+  fallback.
 
 ## Release Archives
 

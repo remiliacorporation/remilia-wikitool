@@ -21,6 +21,35 @@ case "${OS:-}:$(uname -s 2>/dev/null || true)" in
     ;;
 esac
 
+find_cargo() {
+  local found candidate home_dir
+  found="$(command -v cargo 2>/dev/null || true)"
+  if [[ -n "$found" ]]; then
+    printf '%s\n' "$found"
+    return 0
+  fi
+
+  home_dir="${HOME:-}"
+  if [[ -n "$home_dir" ]]; then
+    for candidate in "$home_dir/.cargo/bin/cargo" "$home_dir/.cargo/bin/cargo.exe"; do
+      if [[ -x "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
+  fi
+
+  if command -v bash >/dev/null 2>&1; then
+    found="$(bash -lc 'command -v cargo' 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$found" ]]; then
+      printf '%s\n' "$found"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 prebuilt=""
 for candidate in \
   "$tool/bin/contextmink$exe" \
@@ -60,13 +89,14 @@ if [[ -f "$tool/Cargo.toml" ]]; then
     needs_build=1
   elif [[ -n "$(find "$tool/src" "$tool/Cargo.lock" -newer "$bin" -print -quit 2>/dev/null)" || -n "$(find "$tool/src" "$tool/Cargo.lock" -newer "$bridge_bin" -print -quit 2>/dev/null)" ]]; then
     needs_build=1
-  elif [[ -n "$(find "$tool/Cargo.toml" -newer "$bin" -print -quit 2>/dev/null)" || -n "$(find "$tool/Cargo.toml" -newer "$bridge_bin" -print -quit 2>/dev/null)" ]] && command -v cargo >/dev/null 2>&1; then
+  elif [[ -n "$(find "$tool/Cargo.toml" -newer "$bin" -print -quit 2>/dev/null)" || -n "$(find "$tool/Cargo.toml" -newer "$bridge_bin" -print -quit 2>/dev/null)" ]] && find_cargo >/dev/null 2>&1; then
     needs_build=1
   fi
 fi
 
 if [[ "$needs_build" -eq 1 ]]; then
-  if ! command -v cargo >/dev/null 2>&1; then
+  cargo_bin="$(find_cargo || true)"
+  if [[ -z "$cargo_bin" ]]; then
     if [[ -f "$bin" ]]; then
       echo "contextmink: Cargo is not on PATH; using existing release binary at $bin" >&2
     else
@@ -74,7 +104,7 @@ if [[ "$needs_build" -eq 1 ]]; then
       exit 2
     fi
   else
-    cargo build --quiet --release --manifest-path "$tool/Cargo.toml" 1>&2
+    "$cargo_bin" build --quiet --release --manifest-path "$tool/Cargo.toml" 1>&2
     bin="$target_bin"
   fi
 fi

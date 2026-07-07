@@ -6,6 +6,10 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+### Fixed
+
+- The Bash launcher now finds Cargo in common Windows/WSL layouts (`$HOME/.cargo/bin` and a login-Bash lookup) instead of relying only on non-login `PATH`, and the installed launcher template is tested against the repo launcher so the two cannot drift.
+
 ## [0.6.0] - 2026-07-06
 
 ### Added

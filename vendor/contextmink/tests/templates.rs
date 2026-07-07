@@ -20,3 +20,26 @@ fn setup_points_to_templates_instead_of_duplicating_policy() {
         "setup.md should point to templates instead of duplicating snippet prose"
     );
 }
+
+#[test]
+fn launcher_template_matches_repo_launcher() {
+    let repo_launcher = include_str!("../scripts/contextmink");
+    let template_launcher = include_str!("../templates/scripts/contextmink");
+
+    assert_eq!(
+        repo_launcher, template_launcher,
+        "the installed launcher template must match scripts/contextmink"
+    );
+}
+
+#[test]
+fn launcher_finds_cargo_outside_non_login_path() {
+    let launcher = include_str!("../templates/scripts/contextmink");
+
+    assert!(launcher.contains("find_cargo()"));
+    assert!(launcher.contains("\"$home_dir/.cargo/bin/cargo\""));
+    assert!(launcher.contains("\"$home_dir/.cargo/bin/cargo.exe\""));
+    assert!(launcher.contains("bash -lc 'command -v cargo'"));
+    assert!(launcher.contains("cargo_bin=\"$(find_cargo || true)\""));
+    assert!(launcher.contains("\"$cargo_bin\" build --quiet --release"));
+}

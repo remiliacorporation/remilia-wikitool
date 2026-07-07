@@ -158,14 +158,22 @@ keep Bash-first scripts; nothing in contextmink requires it.
 
 Install it with `wikitool contextmink install` from the project/agent working
 directory; the command writes relative to the current directory unless
-`--project-root <dir>` is explicit. It finds the pack next to the wikitool
-binary (or takes `--from <pack-dir>`), places the binaries, launcher, and a
-wikitool-tailored `.contextmink.toml`, and verifies the installed binary against
-the pack manifest. Then merge
+`--project-root <dir>` is explicit. It finds the release pack next to the
+wikitool binary, falls back to the vendored `vendor/contextmink` source checkout
+when wikitool is source-built, or takes `--from <pack-or-source-dir>`. It places
+the binaries, launcher, and a wikitool-tailored `.contextmink.toml`, then
+verifies the installed binary. Then merge
 `tools/contextmink/templates/CLAUDE.contextmink.md` (Claude) or
 `AGENTS.contextmink.md` (Codex) into project guidance. `contextmink/SETUP.md`
 remains the manual path for nonstandard layouts. The core habits:
 
+- Choose contextmink invocation by the active shell: use `scripts/contextmink ...`
+  from Bash-hosted sessions such as macOS, Linux, Git Bash, WSL, or Claude Code;
+  use `bash scripts/contextmink ...` only on Windows when the active agent shell
+  is PowerShell. Use the project-local `tools/contextmink/bin/contextmink(.exe)`
+  directly when you want the native binary path instead. `contextmink-bridge.exe`
+  is only for Windows-native shells that need to spawn Bash-first repository
+  scripts without an already selected Bash.
 - Orient with `dirs`, discover with `files`/`grep`/`grep-terms`, and read
   known files through `outline` (declaration map with line numbers; wikitext
   headings are a built-in language) then `slice --range START:END` — not

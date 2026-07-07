@@ -39,7 +39,13 @@ Copy from the unpacked archive into the target repository:
 4. `templates/AGENTS.contextmink.md` into `AGENTS.md` (Codex) and/or
    `templates/CLAUDE.contextmink.md` into `CLAUDE.md` (Claude). These carry
    the usage policy agents follow.
-5. Verify: `scripts/contextmink files --path . --max 20`
+5. Verify with the invocation for the active shell:
+
+   | Active shell | Command |
+   | --- | --- |
+   | Bash-hosted session (macOS, Linux, Git Bash, WSL, Claude Code) | `scripts/contextmink files --path . --max 20` |
+   | Windows PowerShell with Bash available | `bash scripts/contextmink files --path . --max 20` |
+   | Native binary path | `tools/contextmink/bin/contextmink(.exe) files --path . --max 20` |
 
 Variants (standalone binary, vendored source, delegated setup) and the
 Windows bridge are covered in [docs/setup.md](docs/setup.md).

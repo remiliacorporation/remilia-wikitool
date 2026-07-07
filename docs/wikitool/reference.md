@@ -472,7 +472,7 @@ Install the bundled contextmink transcript guard into a project directory
 Usage: wikitool contextmink [OPTIONS] <COMMAND>
 
 Commands:
-  install  Install the bundled contextmink pack into the current directory or --project-root
+  install  Install bundled or source-built contextmink into the current directory or --project-root
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -486,12 +486,12 @@ Options:
 ## contextmink install
 
 ```text
-Install the bundled contextmink pack into the current directory or --project-root
+Install bundled or source-built contextmink into the current directory or --project-root
 
 Usage: wikitool contextmink install [OPTIONS]
 
 Options:
-      --from <DIR>           Contextmink pack directory (default: the contextmink/ directory next to the wikitool binary)
+      --from <DIR>           Contextmink release pack or source checkout (default: sibling contextmink/ pack, then vendored source)
       --project-root <PATH>
       --data-dir <PATH>
       --force                Overwrite files that already exist in the project

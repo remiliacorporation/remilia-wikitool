@@ -81,6 +81,10 @@ Every command has `--help`, and `docs/wikitool/reference.md` is the full generat
 Release bundles also include a `contextmink/` pack. From the project or agent
 working directory, run `wikitool contextmink install`; the installer writes
 relative to the current directory unless `--project-root <dir>` is explicit.
+When `wikitool` is source-built instead of run from an unpacked release bundle,
+the installer falls back to the vendored `vendor/contextmink` source checkout
+and builds its binaries only for a real install. Use `--from <dir>` to point at
+an explicit release pack or contextmink source checkout.
 
 ## Documentation
 
