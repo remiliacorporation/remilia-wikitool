@@ -167,13 +167,14 @@ verifies the installed binary. Then merge
 `AGENTS.contextmink.md` (Codex) into project guidance. `contextmink/SETUP.md`
 remains the manual path for nonstandard layouts. The core habits:
 
-- Choose contextmink invocation by the active shell: use `scripts/contextmink ...`
-  from Bash-hosted sessions such as macOS, Linux, Git Bash, WSL, or Claude Code;
-  use `bash scripts/contextmink ...` only on Windows when the active agent shell
-  is PowerShell. Use the project-local `tools/contextmink/bin/contextmink(.exe)`
-  directly when you want the native binary path instead. `contextmink-bridge.exe`
-  is only for Windows-native shells that need to spawn Bash-first repository
-  scripts without an already selected Bash.
+- Choose contextmink invocation by active shell and target: use
+  `scripts/contextmink ...` from Bash-hosted sessions such as macOS, Linux, Git
+  Bash, WSL, or Claude Code; use the project-local
+  `tools/contextmink/bin/contextmink(.exe) ...` directly from Windows PowerShell
+  for contextmink commands; use
+  `tools/contextmink/bin/contextmink-bridge.exe --script scripts/contextmink ...`
+  when a PowerShell-hosted Windows session needs the Bash launcher or another
+  Bash-first repository script.
 - Orient with `dirs`, discover with `files`/`grep`/`grep-terms`, and read
   known files through `outline` (declaration map with line numbers; wikitext
   headings are a built-in language) then `slice --range START:END` — not

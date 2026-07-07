@@ -23,13 +23,15 @@ replacement for project-native tools.
   | Active shell | Command form |
   | --- | --- |
   | Bash-hosted session (macOS, Linux, Git Bash, WSL, Claude Code) | `scripts/contextmink ...` |
-  | Windows PowerShell with Bash available | `bash scripts/contextmink ...` |
-  | Native binary path | `tools/contextmink/bin/contextmink(.exe) ...` |
+  | Windows PowerShell, direct contextmink command | `tools\contextmink\bin\contextmink.exe ...` |
+  | Windows PowerShell, Bash launcher path | `tools\contextmink\bin\contextmink-bridge.exe --script scripts/contextmink ...` |
 
   Do not rely on Windows to open the extensionless `scripts/contextmink` path
-  directly from PowerShell. For `capture` of extensionless repository scripts on
-  Windows, use the launcher; it supplies the Bash interpreter needed for script
-  fallback.
+  directly from PowerShell. `contextmink-bridge.exe` is the preferred
+  PowerShell-to-Git-Bash bridge when a Windows-native session needs the Bash
+  launcher or another Bash-first repository script. For `capture` of
+  extensionless repository scripts on Windows, use the launcher; it supplies the
+  Bash interpreter needed for script fallback.
 
 ## Release Archives
 
@@ -158,10 +160,14 @@ Set up contextmink in <target-repo> from the unpacked release at <path>. Use
 the release binary, not a source build. Install
 tools/contextmink/bin/contextmink(.exe), scripts/contextmink, and
 .contextmink.toml with repo-appropriate high-output excludes. Merge the
-AGENTS/CLAUDE contextmink snippet into the project guidance. Verify with
-scripts/contextmink files --path . --max 20. If Claude PreToolUse protection is
-wanted, generate the .claude/settings.json hook fragment with
-scripts/contextmink hook-snippet instead of hand-writing command paths.
+AGENTS/CLAUDE contextmink snippet into the project guidance. Verify with the
+active-shell invocation from this guide, for example:
+- Bash-hosted: scripts/contextmink files --path . --max 20
+- Windows PowerShell direct: tools\contextmink\bin\contextmink.exe files --path . --max 20
+- Windows PowerShell bridge: tools\contextmink\bin\contextmink-bridge.exe --script scripts/contextmink files --path . --max 20
+If Claude PreToolUse protection is wanted, generate the .claude/settings.json
+hook fragment with contextmink hook-snippet instead of hand-writing command
+paths.
 ```
 
 ## Optional: Claude PreToolUse Hook Guard
@@ -360,10 +366,13 @@ guidance:
 Tests keep the two snippets equivalent so Codex and Claude guidance do not
 drift.
 
-The snippets invoke the repo-local `scripts/contextmink` launcher form.
-Repositories that skip the Bash launcher (pure PowerShell or WSL setups)
-should replace those references with direct `contextmink` binary invocation
-when merging; the policy content is shell-agnostic.
+The snippets include active-shell invocation guidance. Keep that split when
+merging: Bash-hosted sessions use the repo-local `scripts/contextmink`
+launcher, Windows PowerShell sessions use the installed native binary for
+direct contextmink commands, and
+`contextmink-bridge.exe --script scripts/contextmink ...` is the PowerShell
+bridge for the Bash launcher or other Bash-first repository scripts. The policy
+content is otherwise shell-agnostic.
 
 Do not create a separate contextmink skill or slash command by default.
 Put the bounded-output rule in always-loaded project guidance so it applies

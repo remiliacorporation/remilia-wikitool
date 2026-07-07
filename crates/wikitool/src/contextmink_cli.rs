@@ -247,7 +247,7 @@ fn run_contextmink_install(runtime: &RuntimeOptions, args: ContextminkInstallArg
 
     let next_steps = vec![
         "merge tools/contextmink/templates/CLAUDE.contextmink.md (Claude) or AGENTS.contextmink.md (Codex) into this project's agent guidance".to_string(),
-        "verify from an agent shell: use `scripts/contextmink files --path . --max 20` from Bash-hosted sessions, or `bash scripts/contextmink files --path . --max 20` on Windows when the active shell is PowerShell".to_string(),
+        "verify from an agent shell: use `scripts/contextmink files --path . --max 20` from Bash-hosted sessions; from Windows PowerShell use `tools\\contextmink\\bin\\contextmink.exe files --path . --max 20` for the native binary or `tools\\contextmink\\bin\\contextmink-bridge.exe --script scripts/contextmink files --path . --max 20` for the Bash launcher".to_string(),
     ];
 
     let report = ContextminkInstallReport {

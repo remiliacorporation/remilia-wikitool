@@ -63,12 +63,20 @@ scoped here.
 
 ## Bounded Output
 
-Bootstrap once per checkout with `bash scripts/fetch_contextmink.sh --install` (builds the vendored
-`vendor/contextmink` source pinned by `config/contextmink.version`, installs `tools/contextmink/bin/`
-and the `scripts/contextmink` launcher; both are gitignored). Then:
+Bootstrap once per checkout from a Bash shell with
+`bash scripts/fetch_contextmink.sh --install` (builds the vendored
+`vendor/contextmink` source pinned by `config/contextmink.version`, installs
+`tools/contextmink/bin/` and the `scripts/contextmink` launcher; both are
+gitignored). Then use contextmink when a file/text/JSON/SQLite/command-output
+read may produce more output than the transcript should carry.
 
-Use `scripts/contextmink` when a file/text/JSON/SQLite/command-output read may
-produce more output than the transcript should carry.
+- Choose invocation by the active shell and target: use `scripts/contextmink ...`
+  from Bash-hosted sessions such as macOS, Linux, Git Bash, WSL, or Claude Code;
+  use `tools/contextmink/bin/contextmink(.exe) ...` directly from Windows
+  PowerShell for contextmink commands; use
+  `tools/contextmink/bin/contextmink-bridge.exe --script scripts/contextmink ...`
+  when a PowerShell-hosted Windows session needs the Bash launcher or another
+  Bash-first repository script.
 
 - Start with `dirs` to orient in an unfamiliar tree, then `files` or `grep`
   for candidate discovery. Prefer `files --ext json` / `--extension jsonl`

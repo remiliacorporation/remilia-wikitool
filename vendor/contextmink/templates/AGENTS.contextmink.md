@@ -1,13 +1,14 @@
 ### Bounded Output
 
-Use `scripts/contextmink` when a file/text/JSON/SQLite/command-output read may
-produce more output than the transcript should carry.
+Use contextmink when a file/text/JSON/SQLite/command-output read may produce
+more output than the transcript should carry.
 
-- Choose invocation by the active shell: use `scripts/contextmink ...` from
-  Bash-hosted sessions such as macOS, Linux, Git Bash, WSL, or Claude Code; use
-  `bash scripts/contextmink ...` only on Windows when the active agent shell is
-  PowerShell. Use `tools/contextmink/bin/contextmink(.exe)` directly when you
-  want the native binary path instead.
+- Choose invocation by the active shell and target: use `scripts/contextmink ...`
+  from Bash-hosted sessions such as macOS, Linux, Git Bash, WSL, or Claude Code;
+  use `tools/contextmink/bin/contextmink(.exe) ...` directly from Windows
+  PowerShell for contextmink commands; use
+  `tools/contextmink/bin/contextmink-bridge.exe --script scripts/contextmink ...`
+  when a PowerShell-hosted Windows session needs the Bash launcher.
 - Start with `dirs` to orient in an unfamiliar tree, then `files` or `grep`
   for candidate discovery. Prefer `files --ext json` / `--extension jsonl`
   (comma-separated lists work: `--ext rs,toml`) across Windows-to-Bash

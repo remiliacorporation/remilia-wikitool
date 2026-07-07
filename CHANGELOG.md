@@ -11,7 +11,7 @@ The release workflow extracts the section for the requested version and fails if
 ### Changed
 
 - Release artifact builds now normalize artifact labels to bare semver, emit `SHA256SUMS.txt`, run the packaged `wikitool` binary during CI release verification, and publish checksums with GitHub release assets.
-- Contextmink setup guidance now explains invocation by active shell: Bash-hosted sessions use `scripts/contextmink ...`, while Windows PowerShell sessions with Bash available use `bash scripts/contextmink ...`.
+- Contextmink setup guidance now explains invocation by active shell and target: Bash-hosted sessions use `scripts/contextmink ...`, Windows PowerShell uses the native `contextmink.exe` for direct contextmink commands, and `contextmink-bridge.exe --script scripts/contextmink ...` is the PowerShell-to-Git-Bash path for the Bash launcher.
 
 ### Fixed
 
