@@ -95,6 +95,12 @@ jobs:
           test -d "$BUNDLE/contextmink/templates"
           test ! -e "$BUNDLE/contextmink/contextmink-bridge"
           "$BUNDLE/contextmink/contextmink" --version
+          smoke="$RUNNER_TEMP/wikitool-contextmink-install"
+          rm -rf "$smoke"
+          mkdir -p "$smoke"
+          "$BUNDLE/${{ matrix.binary_name }}" contextmink install --project-root "$smoke" --format json
+          test -f "$smoke/tools/contextmink/bin/contextmink"
+          "$smoke/tools/contextmink/bin/contextmink" --version
           test -f "${BUNDLE}.zip"
 
       - name: Verify packaged release (Windows)
@@ -122,6 +128,19 @@ jobs:
           if (!(Test-Path "$env:BUNDLE/contextmink/README.md")) { throw "contextmink README missing" }
           if (!(Test-Path "$env:BUNDLE/contextmink/templates")) { throw "contextmink templates missing" }
           & "$env:BUNDLE/contextmink/contextmink.exe" --version
+          $smoke = Join-Path $env:RUNNER_TEMP "wikitool-contextmink-install"
+          if (Test-Path $smoke) { Remove-Item -LiteralPath $smoke -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $smoke | Out-Null
+          & "$env:BUNDLE/${{ matrix.binary_name }}" contextmink install --project-root $smoke --format json
+          if (!(Test-Path "$smoke/tools/contextmink/bin/contextmink.exe")) { throw "installed contextmink missing" }
+          if (!(Test-Path "$smoke/tools/contextmink/bin/contextmink-bridge.exe")) { throw "installed contextmink bridge missing" }
+          & "$smoke/tools/contextmink/bin/contextmink.exe" --version
+          Push-Location $smoke
+          try {
+            & ".\tools\contextmink\bin\contextmink-bridge.exe" --script scripts/contextmink --version
+          } finally {
+            Pop-Location
+          }
           if (!(Test-Path "${env:BUNDLE}.zip")) { throw "zip artifact missing" }
 
       - uses: actions/upload-artifact@v7

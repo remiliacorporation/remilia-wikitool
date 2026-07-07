@@ -110,11 +110,7 @@ struct ResolvedContextminkSource {
 
 impl ResolvedContextminkSource {
     fn file_source(&self, relative: &str) -> InstallSource {
-        let path = match self.kind {
-            ContextminkSourceKind::ReleasePack => self.dir.join(relative),
-            ContextminkSourceKind::SourceCheckout => self.dir.join(relative),
-        };
-        InstallSource::PackFile(path)
+        InstallSource::PackFile(self.dir.join(relative))
     }
 
     fn binary_source(&self, binary: &str) -> InstallSource {
@@ -185,9 +181,11 @@ fn run_contextmink_install(runtime: &RuntimeOptions, args: ContextminkInstallArg
     }
 
     for item in &planned {
+        let dry_run_can_defer_missing_source =
+            dry_run_can_defer_missing_source(&item.source, source.kind);
         if let Some(source_path) = required_source_path(&item.source)
             && !source_path.is_file()
-            && !(args.dry_run && source.kind == ContextminkSourceKind::SourceCheckout)
+            && !(args.dry_run && dry_run_can_defer_missing_source)
         {
             bail!(
                 "contextmink install source is missing {}; expected a release pack laid out per contextmink/SETUP.md or a built contextmink source checkout",
@@ -199,11 +197,12 @@ fn run_contextmink_install(runtime: &RuntimeOptions, args: ContextminkInstallArg
     let mut actions = Vec::new();
     for item in &planned {
         let target = project_root.join(item.target_relative);
-        let source_missing = required_source_path(&item.source).is_some_and(|path| !path.is_file());
+        let dry_run_can_defer_missing_source =
+            dry_run_can_defer_missing_source(&item.source, source.kind);
         let status = if args.dry_run {
             if target.exists() && !args.force {
                 "would_skip_exists"
-            } else if source.kind == ContextminkSourceKind::SourceCheckout && source_missing {
+            } else if dry_run_can_defer_missing_source {
                 "would_build_then_install"
             } else {
                 "would_install"
@@ -528,6 +527,14 @@ fn required_source_path(source: &InstallSource) -> Option<&Path> {
     }
 }
 
+fn dry_run_can_defer_missing_source(
+    source: &InstallSource,
+    source_kind: ContextminkSourceKind,
+) -> bool {
+    source_kind == ContextminkSourceKind::SourceCheckout
+        && matches!(source, InstallSource::SourceBinary(path) if !path.is_file())
+}
+
 fn install_file(source: &Path, target: &Path, executable: bool) -> Result<()> {
     ensure_target_parent(target)?;
     fs::copy(source, target).with_context(|| {
@@ -611,8 +618,9 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        ContextminkSourceKind, parse_package_field, read_source_manifest,
-        resolve_explicit_contextmink_source, resolve_install_project_root_from_cwd,
+        ContextminkSourceKind, InstallSource, dry_run_can_defer_missing_source,
+        parse_package_field, read_source_manifest, resolve_explicit_contextmink_source,
+        resolve_install_project_root_from_cwd,
     };
 
     struct TestDir {
@@ -702,6 +710,28 @@ version = "0.6.0"
             source.manifest.binary,
             format!("contextmink{}", std::env::consts::EXE_SUFFIX)
         );
+    }
+
+    #[test]
+    fn source_checkout_dry_run_defers_only_missing_binaries() {
+        let temp = TestDir::new("dry-run-source-kind");
+        let missing = temp.path.join("target/release/contextmink");
+        let existing = temp.path.join("templates/scripts/contextmink");
+        fs::create_dir_all(existing.parent().expect("parent")).expect("parent");
+        fs::write(&existing, "").expect("existing");
+
+        assert!(dry_run_can_defer_missing_source(
+            &InstallSource::SourceBinary(missing.clone()),
+            ContextminkSourceKind::SourceCheckout
+        ));
+        assert!(!dry_run_can_defer_missing_source(
+            &InstallSource::PackFile(missing),
+            ContextminkSourceKind::SourceCheckout
+        ));
+        assert!(!dry_run_can_defer_missing_source(
+            &InstallSource::SourceBinary(existing),
+            ContextminkSourceKind::SourceCheckout
+        ));
     }
 
     #[test]

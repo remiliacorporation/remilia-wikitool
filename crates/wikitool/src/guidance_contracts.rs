@@ -49,6 +49,33 @@ fn markdown_files_under(relative_dir: &str) -> Vec<String> {
     files
 }
 
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn assert_contextmink_shell_routing_contract(label: &str, body: &str) {
+    let body = collapse_whitespace(body);
+    for needle in [
+        "active shell",
+        "scripts/contextmink",
+        "Windows PowerShell",
+        "contextmink-bridge.exe --script scripts/contextmink",
+    ] {
+        assert!(
+            body.contains(needle),
+            "{label} must preserve contextmink shell-routing guidance: missing {needle:?}"
+        );
+    }
+    assert!(
+        body.contains("contextmink.exe") || body.contains("contextmink(.exe)"),
+        "{label} must name the native Windows contextmink binary path"
+    );
+    assert!(
+        body.contains("extensionless") || body.contains("directly from Windows PowerShell"),
+        "{label} must warn against direct PowerShell invocation of scripts/contextmink"
+    );
+}
+
 #[test]
 fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
     let claude = read_repo_file("ai-pack/CLAUDE.md");
@@ -128,6 +155,25 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
             body.contains("those files become the packaged writing context"),
             "packaged guidance must document host writing context overlay behavior"
         );
+    }
+}
+
+#[test]
+fn contextmink_shell_routing_guidance_stays_aligned_across_surfaces() {
+    for path in [
+        "ai-pack/AGENTS.md",
+        "ai-pack/CLAUDE.md",
+        "vendor/contextmink/templates/AGENTS.contextmink.md",
+        "vendor/contextmink/templates/CLAUDE.contextmink.md",
+        "vendor/contextmink/docs/setup.md",
+    ] {
+        assert_contextmink_shell_routing_contract(path, &read_repo_file(path));
+    }
+
+    if let Some(host_claude) = read_host_repo_file("CLAUDE.md") {
+        let host_agents = read_host_repo_file("AGENTS.md").expect("host repo already detected");
+        assert_contextmink_shell_routing_contract("host CLAUDE.md", &host_claude);
+        assert_contextmink_shell_routing_contract("host AGENTS.md", &host_agents);
     }
 }
 
