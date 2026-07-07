@@ -11,12 +11,14 @@ The release workflow extracts the section for the requested version and fails if
 ### Changed
 
 - Release artifact builds now normalize artifact labels to bare semver, emit `SHA256SUMS.txt`, run the packaged `wikitool` binary during CI release verification, and publish checksums with GitHub release assets.
+- Release artifact verification now smoke-tests `wikitool contextmink install` from the packaged sibling `contextmink/` release pack on Unix and Windows, including the installed Windows bridge path.
 - Contextmink setup guidance now explains invocation by active shell and target: Bash-hosted sessions use `scripts/contextmink ...`, Windows PowerShell uses the native `contextmink.exe` for direct contextmink commands, and `contextmink-bridge.exe --script scripts/contextmink ...` is the PowerShell-to-Git-Bash path for the Bash launcher.
 
 ### Fixed
 
 - `wikitool contextmink install` now treats the vendored Contextmink source checkout as a first-class install source when wikitool is source-built, and `--from` accepts either a release pack or a source checkout.
-- Source-checkout Contextmink installs now build missing `contextmink` binaries during real installs while keeping dry-runs non-mutating and explicit about `source_kind`.
+- Source-checkout Contextmink installs now build missing `contextmink` binaries during real installs while keeping dry-runs non-mutating and explicit about `source_kind`; dry-run build deferral is limited to missing build outputs, so missing templates or launcher files fail instead of being mislabeled as buildable.
+- `docs audit` now treats the live `wikitool contextmink` command as distinct from the retired bare context surface and checks release-note interview framing in `CHANGELOG.md` after the `RELEASE_LOG.md` migration.
 - The vendored Contextmink launcher is synced with the canonical 0.6.0 launcher so it can find Cargo in common Windows and WSL layouts instead of relying only on a non-login `PATH`.
 
 ## [0.6.0] - 2026-07-06

@@ -250,8 +250,13 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
         let Ok(body) = read_to_string(&path) else {
             continue;
         };
+        if contains_retired_wikitool_context(&body) {
+            failures.push(format!(
+                "{} contains retired bare `wikitool context` command",
+                normalize_path(&path)
+            ));
+        }
         for term in [
-            "wikitool context",
             "wikitool search",
             "wikitool fetch",
             "wikitool seo",
@@ -278,6 +283,11 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
             failures.join("; ")
         },
     );
+}
+
+fn contains_retired_wikitool_context(body: &str) -> bool {
+    body.match_indices("wikitool context")
+        .any(|(index, needle)| !body[index + needle.len()..].starts_with("mink"))
 }
 
 fn audit_brief_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
@@ -442,7 +452,7 @@ fn audit_interview_direction_guidance(repo_root: &Path, checks: &mut Vec<DocsAud
             ][..],
         ),
         (
-            "RELEASE_LOG.md",
+            "CHANGELOG.md",
             &[
                 "normal move after the article-start scout",
                 "purpose is direction",
@@ -657,5 +667,20 @@ fn print_docs_audit_report(report: &DocsAuditReport) {
             check.path.as_deref().unwrap_or("<none>"),
             check.message
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::contains_retired_wikitool_context;
+
+    #[test]
+    fn retired_context_audit_allows_live_contextmink_command() {
+        assert!(!contains_retired_wikitool_context(
+            "Install with `wikitool contextmink install`."
+        ));
+        assert!(contains_retired_wikitool_context(
+            "The retired command was `wikitool context`."
+        ));
     }
 }
