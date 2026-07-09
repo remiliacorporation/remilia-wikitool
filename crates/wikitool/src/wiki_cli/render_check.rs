@@ -33,6 +33,7 @@ struct WikiRenderCheckBrief<'a> {
     scope_count: usize,
     literal_wikilink_count: usize,
     parser_error_count: usize,
+    page_image: Option<&'a str>,
     issue_count: usize,
     issue_codes: BTreeMap<&'a str, usize>,
     failed_scope_indices: Vec<usize>,
@@ -56,6 +57,7 @@ pub(super) fn run_wiki_render_check(
             require_interactive_link: args.require_interactive_link,
             required_href_substrings: args.required_href_substrings,
             required_link_classes: args.required_link_classes,
+            required_page_image: args.required_page_image,
             forbid_literal_wikilinks: !args.allow_literal_wikilinks,
         },
     )?;
@@ -104,6 +106,12 @@ pub(super) fn run_wiki_render_check(
             for required_class in &report.required_link_classes {
                 full_args.extend(["--require-link-class".to_string(), required_class.clone()]);
             }
+            if let Some(required_page_image) = &report.required_page_image {
+                full_args.extend([
+                    "--require-page-image".to_string(),
+                    required_page_image.clone(),
+                ]);
+            }
             if !report.forbid_literal_wikilinks {
                 full_args.push("--allow-literal-wikilinks".to_string());
             }
@@ -128,6 +136,7 @@ pub(super) fn run_wiki_render_check(
                     scope_count: report.scope_count,
                     literal_wikilink_count: report.literal_wikilink_count,
                     parser_error_count: report.parser_error_count,
+                    page_image: report.page_image.as_deref(),
                     issue_count: report.issue_count,
                     issue_codes,
                     failed_scope_indices: failed_scope_indices.into_iter().collect(),
@@ -149,6 +158,10 @@ pub(super) fn run_wiki_render_check(
         println!("scope_count: {}", report.scope_count);
         println!("literal_wikilink_count: {}", report.literal_wikilink_count);
         println!("parser_error_count: {}", report.parser_error_count);
+        println!(
+            "page_image: {}",
+            report.page_image.as_deref().unwrap_or("<not checked>")
+        );
         println!("issue_count: {}", report.issue_count);
         for issue in &report.issues {
             println!(

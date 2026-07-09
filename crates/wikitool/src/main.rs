@@ -555,6 +555,8 @@ mod tests {
             "(Remilio_mouth)",
             "--require-link-class",
             "mw-file-description",
+            "--require-page-image",
+            "Remilio_Mouth_Binky_Preview.png",
             "--format",
             "json",
         ])

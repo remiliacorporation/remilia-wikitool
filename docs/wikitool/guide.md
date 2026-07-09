@@ -141,7 +141,7 @@ wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --brief
 wikitool push --dry-run --summary "x"  # remote-safe preflight
 wikitool push --dry-run --title "Title" --summary "x"
 wikitool push --summary "x"            # actual push
-wikitool wiki render-check "Consumer title" --scope-class card --expect-scopes 1 --require-interactive-link --require-href-contains "/File:" --require-link-class mw-file-description --format json
+wikitool wiki render-check "Consumer title" --scope-class card --expect-scopes 1 --require-interactive-link --require-href-contains "/File:" --require-link-class mw-file-description --require-page-image Example_Preview.png --format json
 wikitool delete "Title" --reason "x" --dry-run
 ```
 
@@ -153,6 +153,9 @@ anchors from crawler-only file-source links. Repeat the check for each consumer
 shape whose click or link behavior is part of the cutover contract. Use
 `--require-link-class mw-file-description` to enforce native MediaViewer links
 rather than merely accepting a custom anchor that happens to target a file page.
+Use `--require-page-image FILE` when mouseover previews, search, or other
+PageImages consumers must select an exact representative image; this adds one
+bounded `prop=pageimages` request and reports the selected thumbnail URL.
 
 ## Knowledge and retrieval
 

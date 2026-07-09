@@ -22,6 +22,7 @@ pub struct RenderCheckOptions {
     pub require_interactive_link: bool,
     pub required_href_substrings: Vec<String>,
     pub required_link_classes: Vec<String>,
+    pub required_page_image: Option<String>,
     pub forbid_literal_wikilinks: bool,
 }
 
@@ -38,6 +39,10 @@ pub struct RenderCheckReport {
     pub require_interactive_link: bool,
     pub required_href_substrings: Vec<String>,
     pub required_link_classes: Vec<String>,
+    pub required_page_image: Option<String>,
+    pub page_image_checked: bool,
+    pub page_image: Option<String>,
+    pub page_image_thumbnail_url: Option<String>,
     pub forbid_literal_wikilinks: bool,
     pub literal_wikilink_count: usize,
     pub parser_error_count: usize,
@@ -89,6 +94,35 @@ enum ParseText {
     },
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct PageImageQueryResponse {
+    #[serde(default)]
+    query: Option<PageImageQuery>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct PageImageQuery {
+    #[serde(default)]
+    pages: Vec<PageImagePage>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct PageImagePage {
+    pageimage: Option<String>,
+    thumbnail: Option<PageImageThumbnail>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct PageImageThumbnail {
+    source: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct PageImageSelection {
+    filename: Option<String>,
+    thumbnail_url: Option<String>,
+}
+
 impl ParseText {
     fn into_html(self) -> String {
         match self {
@@ -118,9 +152,39 @@ pub fn render_check_page(
     let request_count_before = client.request_count;
     let rendered = render_page_html(client, &options.title)?
         .with_context(|| format!("page did not return rendered HTML: {}", options.title))?;
-    let mut report = analyze_rendered_page(&rendered, options);
+    let page_image = if options.required_page_image.is_some() {
+        Some(fetch_page_image(client, &options.title)?)
+    } else {
+        None
+    };
+    let mut report = analyze_rendered_page(&rendered, options, page_image.as_ref());
     report.request_count = client.request_count.saturating_sub(request_count_before);
     Ok(report)
+}
+
+fn fetch_page_image(client: &mut MediaWikiClient, title: &str) -> Result<PageImageSelection> {
+    let response = client.request_json_get(&[
+        ("action", "query".to_string()),
+        ("titles", title.to_string()),
+        ("prop", "pageimages".to_string()),
+        ("piprop", "name|thumbnail".to_string()),
+        ("pithumbsize", "320".to_string()),
+    ])?;
+    decode_page_image_payload(response)
+}
+
+fn decode_page_image_payload(response: Value) -> Result<PageImageSelection> {
+    let payload: PageImageQueryResponse =
+        serde_json::from_value(response).context("decode MediaWiki pageimages query response")?;
+    let page = payload
+        .query
+        .and_then(|query| query.pages.into_iter().next());
+    Ok(PageImageSelection {
+        filename: page.as_ref().and_then(|value| value.pageimage.clone()),
+        thumbnail_url: page
+            .and_then(|value| value.thumbnail)
+            .and_then(|thumbnail| thumbnail.source),
+    })
 }
 
 fn validate_render_check_options(options: &RenderCheckOptions) -> Result<()> {
@@ -156,12 +220,20 @@ fn validate_render_check_options(options: &RenderCheckOptions) -> Result<()> {
     {
         anyhow::bail!("--require-link-class values must be one non-empty CSS class");
     }
+    if options
+        .required_page_image
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        anyhow::bail!("--require-page-image requires a non-empty filename");
+    }
     Ok(())
 }
 
 fn analyze_rendered_page(
     rendered: &RenderedPageHtml,
     options: &RenderCheckOptions,
+    page_image: Option<&PageImageSelection>,
 ) -> RenderCheckReport {
     let analysis = scan_rendered_html(&rendered.html, options.scope_class.as_deref());
     let mut issues = Vec::new();
@@ -196,6 +268,20 @@ fn analyze_rendered_page(
             message: format!("rendered output contains parser error class `{error_class}`"),
             scope_index: None,
         });
+    }
+
+    if let Some(required) = &options.required_page_image {
+        let actual = page_image.and_then(|selection| selection.filename.as_deref());
+        if actual.is_none_or(|value| normalize_file_key(value) != normalize_file_key(required)) {
+            issues.push(RenderCheckIssue {
+                code: "page_image_mismatch".to_string(),
+                message: format!(
+                    "expected PageImages file `{required}`, found `{}`",
+                    actual.unwrap_or("<none>")
+                ),
+                scope_index: None,
+            });
+        }
     }
 
     for scope in &analysis.scopes {
@@ -248,6 +334,10 @@ fn analyze_rendered_page(
         require_interactive_link: options.require_interactive_link,
         required_href_substrings: options.required_href_substrings.clone(),
         required_link_classes: options.required_link_classes.clone(),
+        required_page_image: options.required_page_image.clone(),
+        page_image_checked: options.required_page_image.is_some(),
+        page_image: page_image.and_then(|selection| selection.filename.clone()),
+        page_image_thumbnail_url: page_image.and_then(|selection| selection.thumbnail_url.clone()),
         forbid_literal_wikilinks: options.forbid_literal_wikilinks,
         literal_wikilink_count: analysis.literal_wikilinks.len(),
         parser_error_count: analysis.parser_error_classes.len(),
@@ -256,6 +346,14 @@ fn analyze_rendered_page(
         scopes: analysis.scopes,
         request_count: 0,
     }
+}
+
+fn normalize_file_key(value: &str) -> String {
+    let value = value
+        .strip_prefix("File:")
+        .or_else(|| value.strip_prefix("file:"))
+        .unwrap_or(value);
+    value.replace(' ', "_")
 }
 
 #[derive(Debug)]
@@ -682,7 +780,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        RenderCheckOptions, RenderedPageHtml, analyze_rendered_page, decode_rendered_page_payload,
+        PageImageSelection, RenderCheckOptions, RenderedPageHtml, analyze_rendered_page,
+        decode_page_image_payload, decode_rendered_page_payload,
     };
 
     #[test]
@@ -737,6 +836,7 @@ mod tests {
             require_interactive_link: true,
             required_href_substrings: Vec::new(),
             required_link_classes: Vec::new(),
+            required_page_image: None,
             forbid_literal_wikilinks: true,
         }
     }
@@ -757,6 +857,7 @@ mod tests {
                 r#"<div class="trait-item"><a href="/Trait">image</a><div>[[Trait|]]</div></div>"#,
             ),
             &options("trait-item"),
+            None,
         );
 
         assert_eq!(report.status, "failed");
@@ -776,6 +877,7 @@ mod tests {
                 r#"<span class="trait-infobox"><a href="/images/trait.png" class="mw-file-source">source</a></span>"#,
             ),
             &options("trait-infobox"),
+            None,
         );
 
         assert_eq!(report.status, "failed");
@@ -798,6 +900,7 @@ mod tests {
                 r#"<span class="trait-infobox"><a class="mw-file-description" href="/File:Remilio_Mouth_Binky.png"><img alt="Binky"></a><a href="/images/Binky.png" class="mw-file-source">source</a></span>"#,
             ),
             &options,
+            None,
         );
 
         assert_eq!(report.status, "clean");
@@ -821,6 +924,7 @@ mod tests {
                 r#"<span class="trait-infobox"><a href="/File:Remilio_Mouth_Binky.png"><img alt="Binky"></a></span>"#,
             ),
             &options,
+            None,
         );
 
         assert_eq!(report.status, "failed");
@@ -839,6 +943,7 @@ mod tests {
                 r#"<div class="trait-item"><span class="error">bad</span>&#91;&#91;Trait&#93;&#93;</div>"#,
             ),
             &options("trait-item"),
+            None,
         );
 
         assert_eq!(report.literal_wikilink_count, 1);
@@ -854,6 +959,7 @@ mod tests {
         let report = analyze_rendered_page(
             &rendered(r#"<div class="trait-item"><a href="/Other">other</a></div>"#),
             &options,
+            None,
         );
 
         assert!(
@@ -867,6 +973,54 @@ mod tests {
                 .issues
                 .iter()
                 .any(|issue| issue.code == "scope_missing_required_href")
+        );
+    }
+
+    #[test]
+    fn decodes_page_image_filename_and_thumbnail() {
+        let selection = decode_page_image_payload(json!({
+            "query": {
+                "pages": [{
+                    "pageimage": "Remilio_Mouth_Binky_Preview.png",
+                    "thumbnail": { "source": "https://wiki.example/thumb.png" }
+                }]
+            }
+        }))
+        .expect("page image response should decode");
+
+        assert_eq!(
+            selection.filename.as_deref(),
+            Some("Remilio_Mouth_Binky_Preview.png")
+        );
+        assert_eq!(
+            selection.thumbnail_url.as_deref(),
+            Some("https://wiki.example/thumb.png")
+        );
+    }
+
+    #[test]
+    fn render_check_rejects_the_wrong_page_image() {
+        let mut options = options("trait-infobox");
+        options.required_page_image = Some("Remilio_Mouth_Binky_Preview.png".to_string());
+        let selection = PageImageSelection {
+            filename: Some("Remilio_Mannequin.png".to_string()),
+            thumbnail_url: None,
+        };
+        let report = analyze_rendered_page(
+            &rendered(
+                r#"<span class="trait-infobox"><a href="/File:Remilio_Mouth_Binky.png">Binky</a></span>"#,
+            ),
+            &options,
+            Some(&selection),
+        );
+
+        assert_eq!(report.status, "failed");
+        assert_eq!(report.page_image.as_deref(), Some("Remilio_Mannequin.png"));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.code == "page_image_mismatch")
         );
     }
 }

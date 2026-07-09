@@ -15,4 +15,4 @@ Typical gate loop:
 - Targeted integrity follow-up when requested: `wikitool validate --category broken-links --title "<Title>" --limit 20 --verify-live --format json`
 - `wikitool diff`
 - `wikitool push --dry-run --summary "..."`
-- After a live push that changes templates, Cargo output, or other dynamic HTML: `wikitool wiki render-check "<Consumer title>" --scope-class CLASS --expect-scopes N --require-interactive-link --require-href-contains TEXT --format json`; add `--require-link-class mw-file-description` for native MediaViewer links.
+- After a live push that changes templates, Cargo output, or other dynamic HTML: `wikitool wiki render-check "<Consumer title>" --scope-class CLASS --expect-scopes N --require-interactive-link --require-href-contains TEXT --format json`; add `--require-link-class mw-file-description` for native MediaViewer links and `--require-page-image FILE` for PageImages/Popups selection.

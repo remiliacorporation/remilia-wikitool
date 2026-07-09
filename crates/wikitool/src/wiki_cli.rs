@@ -77,6 +77,12 @@ struct WikiRenderCheckArgs {
     )]
     required_link_classes: Vec<String>,
     #[arg(
+        long = "require-page-image",
+        value_name = "FILE",
+        help = "Require the live PageImages/Popups representative file"
+    )]
+    required_page_image: Option<String>,
+    #[arg(
         long,
         help = "Do not fail when rendered page text contains literal [[...]] wikitext"
     )]

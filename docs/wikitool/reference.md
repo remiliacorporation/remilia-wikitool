@@ -1996,6 +1996,7 @@ Options:
       --diagnostics                   Print resolved runtime diagnostics
       --require-href-contains <TEXT>  Require every scope to contain an interactive href with this text (repeatable)
       --require-link-class <CLASS>    Require every scope to contain an interactive link with this CSS class (repeatable)
+      --require-page-image <FILE>     Require the live PageImages/Popups representative file
       --allow-literal-wikilinks       Do not fail when rendered page text contains literal [[...]] wikitext
       --format <FORMAT>               Output format: text|json [default: text] [possible values: text, json]
       --view <VIEW>                   JSON view: brief|full [default: brief] [possible values: brief, full]
