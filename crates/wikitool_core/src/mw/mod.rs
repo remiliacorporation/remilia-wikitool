@@ -17,6 +17,9 @@ pub use client::{
     WikiReadApi, WikiWriteApi,
 };
 pub use namespace::{NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE};
+pub use render::{
+    RenderCheckIssue, RenderCheckOptions, RenderCheckReport, RenderedScopeReport, render_check_page,
+};
 pub use search::{
     ExternalSearchReport, MediaWikiSearchOptions, MediaWikiSearchWhat, search_pages_report,
 };

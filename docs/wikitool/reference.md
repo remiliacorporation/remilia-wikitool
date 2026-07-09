@@ -1734,6 +1734,7 @@ Commands:
   capabilities  Sync and inspect live wiki capability manifests
   cargo         Query the live wiki's Cargo extension tables
   profile       Show the combined live/profile-aware wiki surface
+  render-check  Validate rendered live HTML and scoped link contracts
   rules         Show the structured local editorial rules overlay
   surface       Show the agent-facing template, module, asset, and extension authoring surface
   help          Print this message or the help of the given subcommand(s)
@@ -1973,6 +1974,32 @@ Options:
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
+```
+
+## wiki render-check
+
+```text
+Validate rendered live HTML and scoped link contracts
+
+Usage: wikitool wiki render-check [OPTIONS] <TITLE>
+
+Arguments:
+  <TITLE>  Live wiki page title to render and inspect
+
+Options:
+      --project-root <PATH>
+      --scope-class <CLASS>           Inspect each rendered element carrying this CSS class as one scope
+      --data-dir <PATH>
+      --expect-scopes <N>             Require exactly N matching scope elements
+      --config <PATH>
+      --require-interactive-link      Require every scope to contain a non-crawler interactive link
+      --diagnostics                   Print resolved runtime diagnostics
+      --require-href-contains <TEXT>  Require every scope to contain an interactive href with this text (repeatable)
+      --require-link-class <CLASS>    Require every scope to contain an interactive link with this CSS class (repeatable)
+      --allow-literal-wikilinks       Do not fail when rendered page text contains literal [[...]] wikitext
+      --format <FORMAT>               Output format: text|json [default: text] [possible values: text, json]
+      --view <VIEW>                   JSON view: brief|full [default: brief] [possible values: brief, full]
+  -h, --help                          Print help
 ```
 
 ## wiki rules

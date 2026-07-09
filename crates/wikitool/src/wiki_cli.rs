@@ -9,6 +9,7 @@ mod capabilities;
 mod cargo;
 mod output;
 mod profile;
+mod render_check;
 mod rules;
 mod summary;
 mod surface;
@@ -29,12 +30,73 @@ enum WikiSubcommand {
     Cargo(WikiCargoArgs),
     #[command(about = "Show the combined live/profile-aware wiki surface")]
     Profile(WikiProfileArgs),
+    #[command(about = "Validate rendered live HTML and scoped link contracts")]
+    RenderCheck(WikiRenderCheckArgs),
     #[command(about = "Show the structured local editorial rules overlay")]
     Rules(WikiRulesArgs),
     #[command(
         about = "Show the agent-facing template, module, asset, and extension authoring surface"
     )]
     Surface(WikiSurfaceArgs),
+}
+
+#[derive(Debug, Args)]
+struct WikiRenderCheckArgs {
+    #[arg(
+        value_name = "TITLE",
+        help = "Live wiki page title to render and inspect"
+    )]
+    title: String,
+    #[arg(
+        long,
+        value_name = "CLASS",
+        help = "Inspect each rendered element carrying this CSS class as one scope"
+    )]
+    scope_class: Option<String>,
+    #[arg(
+        long = "expect-scopes",
+        value_name = "N",
+        help = "Require exactly N matching scope elements"
+    )]
+    expected_scope_count: Option<usize>,
+    #[arg(
+        long,
+        help = "Require every scope to contain a non-crawler interactive link"
+    )]
+    require_interactive_link: bool,
+    #[arg(
+        long = "require-href-contains",
+        value_name = "TEXT",
+        help = "Require every scope to contain an interactive href with this text (repeatable)"
+    )]
+    required_href_substrings: Vec<String>,
+    #[arg(
+        long = "require-link-class",
+        value_name = "CLASS",
+        help = "Require every scope to contain an interactive link with this CSS class (repeatable)"
+    )]
+    required_link_classes: Vec<String>,
+    #[arg(
+        long,
+        help = "Do not fail when rendered page text contains literal [[...]] wikitext"
+    )]
+    allow_literal_wikilinks: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = BriefView::Brief,
+        value_name = "VIEW",
+        help = "JSON view: brief|full"
+    )]
+    view: BriefView,
 }
 
 #[derive(Debug, Args)]
@@ -313,6 +375,7 @@ pub(crate) fn run_wiki(runtime: &RuntimeOptions, args: WikiArgs) -> Result<()> {
         WikiSubcommand::Capabilities(args) => capabilities::run_wiki_capabilities(runtime, args),
         WikiSubcommand::Cargo(args) => cargo::run_wiki_cargo(runtime, args),
         WikiSubcommand::Profile(args) => profile::run_wiki_profile(runtime, args),
+        WikiSubcommand::RenderCheck(args) => render_check::run_wiki_render_check(runtime, args),
         WikiSubcommand::Rules(args) => rules::run_wiki_rules(runtime, args),
         WikiSubcommand::Surface(args) => surface::run_wiki_surface(runtime, args),
     }

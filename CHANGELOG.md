@@ -6,6 +6,10 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+### Added
+
+- `wiki render-check` now enforces live rendered-HTML contracts for dynamic template and Cargo cutovers, including parser-error and literal-wikilink rejection, exact component counts, interactive-link requirements that exclude crawler-only anchors, required href fragments, and required interactive-link classes such as MediaViewer's `mw-file-description`.
+
 ## [0.6.1] - 2026-07-07
 
 ### Changed

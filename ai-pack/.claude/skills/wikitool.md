@@ -25,5 +25,6 @@ Use `wikitool knowledge inspect references ...` for indexed citation audits and 
 Use scoped `wikitool validate --category ... --title ... --limit ...` when investigating a specific validation class. Use `--verify-live` for broken-link or redirect findings that need production API corroboration.
 Use scoped `wikitool status`, `wikitool diff`, and `wikitool push --dry-run` selectors when working on a subset of pages.
 Use `wikitool review --format json --view brief --summary "..."` for the pre-push gate; request `--view full` only when the brief points to a needed detail.
+After pushing templates, Cargo queries, or other dynamic rendering changes, use `wikitool wiki render-check "Title" --scope-class CLASS --expect-scopes N --require-interactive-link --require-href-contains TEXT --format json` to verify the live rendered HTML contract. Add `--require-link-class mw-file-description` when native MediaViewer behavior is required. The check rejects parser errors and literal rendered wikilinks by default, and crawler-only file-source anchors do not satisfy the interactive-link requirement.
 
 Reach for `wikitool` when you need wiki-grounded retrieval, template/profile lookup, lint/fix, sync, or guarded push flows.

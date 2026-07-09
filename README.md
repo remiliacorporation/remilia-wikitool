@@ -72,7 +72,8 @@ before a push.
 - **Inspect** — `templates show`, `knowledge inspect chunks/references`, and `wiki surface`
   expose the target wiki's templates, content, and capabilities.
 - **Check** — `article lint`/`fix`, `validate`, `module lint`, and `review` catch structural,
-  citation, and link problems before a push.
+  citation, and link problems before a push; `wiki render-check` enforces live rendered-HTML
+  contracts after dynamic template or Cargo changes.
 - **Sync** — `pull`, `status`, `diff`, and `push --dry-run` keep local files aligned with the
   live wiki. Push detects conflicts against the remote and previews every change first.
 

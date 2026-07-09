@@ -541,6 +541,26 @@ mod tests {
         .expect("wiki cargo count should parse");
         assert!(matches!(cargo_count.command, Some(Commands::Wiki(_))));
 
+        let render_check = Cli::try_parse_from([
+            "wikitool",
+            "wiki",
+            "render-check",
+            "Redacted Remilio Babies Traits",
+            "--scope-class",
+            "trait-composite-gallery__item",
+            "--expect-scopes",
+            "18",
+            "--require-interactive-link",
+            "--require-href-contains",
+            "(Remilio_mouth)",
+            "--require-link-class",
+            "mw-file-description",
+            "--format",
+            "json",
+        ])
+        .expect("wiki render-check should parse");
+        assert!(matches!(render_check.command, Some(Commands::Wiki(_))));
+
         let contextmink_install = Cli::try_parse_from([
             "wikitool",
             "contextmink",

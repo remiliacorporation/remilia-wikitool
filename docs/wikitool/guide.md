@@ -141,8 +141,18 @@ wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --brief
 wikitool push --dry-run --summary "x"  # remote-safe preflight
 wikitool push --dry-run --title "Title" --summary "x"
 wikitool push --summary "x"            # actual push
+wikitool wiki render-check "Consumer title" --scope-class card --expect-scopes 1 --require-interactive-link --require-href-contains "/File:" --require-link-class mw-file-description --format json
 wikitool delete "Title" --reason "x" --dry-run
 ```
+
+Run `wiki render-check` after pushing templates, Cargo queries, or other dynamic
+rendering changes. It checks production parser output rather than source text,
+rejects parser-error markup and literal rendered wikilinks by default, can
+assert an exact number of scoped components, and distinguishes interactive
+anchors from crawler-only file-source links. Repeat the check for each consumer
+shape whose click or link behavior is part of the cutover contract. Use
+`--require-link-class mw-file-description` to enforce native MediaViewer links
+rather than merely accepting a custom anchor that happens to target a file page.
 
 ## Knowledge and retrieval
 
