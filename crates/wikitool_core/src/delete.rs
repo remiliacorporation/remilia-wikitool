@@ -33,6 +33,20 @@ pub fn delete_local_page(
     title: &str,
     options: &DeleteOptions,
 ) -> Result<DeleteReport> {
+    delete_local_page_if_present(paths, title, options)?
+        .ok_or_else(|| anyhow::anyhow!("page not found locally: {}", normalize_title(title)))
+}
+
+/// Remove a page from the local content corpus when it is tracked there.
+///
+/// Remote MediaWiki deletion is not contingent on local tracking. CLI callers
+/// use this variant so namespaces such as File can be deleted normally while
+/// still backing up and removing a corresponding local source when one exists.
+pub fn delete_local_page_if_present(
+    paths: &ResolvedPaths,
+    title: &str,
+    options: &DeleteOptions,
+) -> Result<Option<DeleteReport>> {
     let normalized_title = normalize_title(title);
     if normalized_title.is_empty() {
         bail!("delete requires a non-empty title");
@@ -41,10 +55,12 @@ pub fn delete_local_page(
         bail!("delete requires a non-empty reason");
     }
 
-    let file = scan_files(paths, &ScanOptions::default())?
+    let Some(file) = scan_files(paths, &ScanOptions::default())?
         .into_iter()
         .find(|item| item.title.eq_ignore_ascii_case(&normalized_title))
-        .ok_or_else(|| anyhow::anyhow!("page not found locally: {normalized_title}"))?;
+    else {
+        return Ok(None);
+    };
 
     let absolute_path = absolute_path_from_relative(paths, &file.relative_path);
     validate_scoped_path(paths, &absolute_path)?;
@@ -60,7 +76,7 @@ pub fn delete_local_page(
     };
 
     if options.dry_run {
-        return Ok(DeleteReport {
+        return Ok(Some(DeleteReport {
             title: file.title,
             reason: options.reason.trim().to_string(),
             relative_path: file.relative_path,
@@ -68,7 +84,7 @@ pub fn delete_local_page(
             backup_path: backup_path.as_ref().map(normalize_path),
             deleted_local_file: false,
             deleted_index_rows: 0,
-        });
+        }));
     }
 
     if let Some(backup_path) = &backup_path {
@@ -86,7 +102,7 @@ pub fn delete_local_page(
         .with_context(|| format!("failed to remove local file {}", absolute_path.display()))?;
     let deleted_index_rows = delete_from_index(paths, &file.relative_path)?;
 
-    Ok(DeleteReport {
+    Ok(Some(DeleteReport {
         title: file.title,
         reason: options.reason.trim().to_string(),
         relative_path: file.relative_path,
@@ -94,7 +110,7 @@ pub fn delete_local_page(
         backup_path: backup_path.as_ref().map(normalize_path),
         deleted_local_file: true,
         deleted_index_rows,
-    })
+    }))
 }
 
 fn plan_backup_path(
@@ -181,7 +197,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{DeleteOptions, delete_local_page};
+    use super::{DeleteOptions, delete_local_page, delete_local_page_if_present};
     use crate::filesystem::ScanOptions;
     use crate::knowledge::content_index::{load_stored_index_stats, rebuild_index};
     use crate::runtime::{ResolvedPaths, ValueSource};
@@ -325,5 +341,27 @@ mod tests {
             .expect("stats")
             .expect("stats exist");
         assert_eq!(after.indexed_rows, 1);
+    }
+
+    #[test]
+    fn delete_if_present_skips_pages_outside_local_corpus() {
+        let temp = tempdir().expect("tempdir");
+        let project_root = temp.path().join("project");
+        fs::create_dir_all(&project_root).expect("create root");
+        let paths = paths(&project_root);
+
+        let report = delete_local_page_if_present(
+            &paths,
+            "File:Remote only.png",
+            &DeleteOptions {
+                reason: "obsolete derivative".to_string(),
+                no_backup: false,
+                backup_dir: None,
+                dry_run: false,
+            },
+        )
+        .expect("missing local page is not an error");
+
+        assert!(report.is_none());
     }
 }

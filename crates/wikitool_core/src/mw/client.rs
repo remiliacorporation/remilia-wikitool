@@ -220,14 +220,7 @@ impl MediaWikiClient {
         } else {
             self.config.max_retries
         };
-        let mut pairs = Vec::with_capacity(params.len() + 2);
-        pairs.push(("format".to_string(), "json".to_string()));
-        pairs.push(("formatversion".to_string(), "2".to_string()));
-        for (key, value) in params {
-            if !value.is_empty() {
-                pairs.push(((*key).to_string(), value.clone()));
-            }
-        }
+        let pairs = post_form_pairs(params);
 
         for attempt in 0..=max_retries {
             self.apply_rate_limit(is_write);
@@ -385,4 +378,27 @@ fn is_retryable_status(status: StatusCode) -> bool {
 
 fn is_retryable_error(error: &reqwest::Error) -> bool {
     error.is_timeout() || error.is_connect() || error.is_request()
+}
+
+fn post_form_pairs(params: &[(&str, String)]) -> Vec<(String, String)> {
+    let mut pairs = Vec::with_capacity(params.len() + 2);
+    pairs.push(("format".to_string(), "json".to_string()));
+    pairs.push(("formatversion".to_string(), "2".to_string()));
+    pairs.extend(
+        params
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), value.clone())),
+    );
+    pairs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::post_form_pairs;
+
+    #[test]
+    fn post_form_preserves_explicit_empty_values() {
+        let pairs = post_form_pairs(&[("action", "edit".to_string()), ("text", String::new())]);
+        assert!(pairs.contains(&("text".to_string(), String::new())));
+    }
 }
