@@ -149,6 +149,58 @@ fn has_rule(report: &ArticleLintReport, rule_id: &str) -> bool {
 }
 
 #[test]
+fn detects_and_repairs_mojibake_before_curly_quote_lint() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    let corrupted_dash = "\u{00e2}\u{20ac}\u{201d}";
+    write_file(
+        &article_path,
+        &format!(
+            "{{{{SHORTDESC:Alpha}}}}\n{{{{Article quality|unverified}}}}\n\n'''Alpha''' is a page {corrupted_dash} with corrupted text.\n\n== References ==\n{{{{Reflist}}}}\n"
+        ),
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    assert!(has_rule(&report, "style.mojibake"));
+    assert!(!has_rule(&report, "style.curly_quotes"));
+    assert_eq!(report.errors, 1);
+
+    let fixed = fix_article(&paths, &article_path, ArticleFixApplyMode::Safe).expect("safe fix");
+    assert!(fixed.changed);
+    let content = fs::read_to_string(&article_path).expect("read article");
+    assert!(content.contains("page — with"));
+    assert!(!content.contains(corrupted_dash));
+    assert!(!has_rule(&fixed.remaining_report, "style.mojibake"));
+}
+
+#[test]
+fn flags_replacement_character_without_guessing_at_content() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' has a \u{fffd} character.\n\n== References ==\n{{Reflist}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    let issue = report
+        .issues
+        .iter()
+        .find(|issue| issue.rule_id == "style.mojibake")
+        .expect("mojibake issue");
+    assert_eq!(issue.severity, ArticleLintSeverity::Error);
+    assert!(issue.suggested_fixes.is_empty());
+}
+
+#[test]
 fn detects_markdown_heading_and_applies_safe_fix() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");

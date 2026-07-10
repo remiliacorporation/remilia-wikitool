@@ -8,10 +8,91 @@ use super::common::{safe_fix_for_edit, straight_quote_for};
 use super::{IssueMatch, SafeFixEdit};
 use crate::article_lint::resources::LoadedResources;
 
+const MOJIBAKE_REPLACEMENTS: &[(&str, &str)] = &[
+    ("\u{00e2}\u{20ac}\u{201d}", "—"),
+    ("\u{00e2}\u{20ac}\u{201c}", "–"),
+    ("\u{00e2}\u{20ac}\u{0153}", "“"),
+    ("\u{00e2}\u{20ac}\u{009d}", "”"),
+    ("\u{00e2}\u{20ac}\u{02dc}", "‘"),
+    ("\u{00e2}\u{20ac}\u{2122}", "’"),
+    ("\u{00c2}\u{00a0}", " "),
+];
+
+pub(super) fn lint_mojibake(document: &ParsedArticleDocument, matches: &mut Vec<IssueMatch>) {
+    let mut grouped = BTreeMap::<usize, Vec<TextEdit>>::new();
+    for (encoded, decoded) in MOJIBAKE_REPLACEMENTS {
+        for (start, _) in document.content.match_indices(encoded) {
+            let Some(line) = document.line_for_offset(start) else {
+                continue;
+            };
+            grouped.entry(line.number).or_default().push(TextEdit {
+                start,
+                end: start + encoded.len(),
+                replacement: (*decoded).to_string(),
+            });
+        }
+    }
+
+    for (start, _) in document.content.match_indices('\u{fffd}') {
+        let Some(line) = document.line_for_offset(start) else {
+            continue;
+        };
+        grouped.entry(line.number).or_default();
+    }
+
+    for (line_number, mut edits) in grouped {
+        let Some(line) = document
+            .lines
+            .iter()
+            .find(|candidate| candidate.number == line_number)
+        else {
+            continue;
+        };
+        edits.sort_by_key(|edit| edit.start);
+        edits.dedup_by(|left, right| left.start == right.start && left.end == right.end);
+
+        let mut safe_fixes = Vec::new();
+        let mut suggested_fixes = Vec::new();
+        for edit in edits {
+            safe_fixes.push(SafeFixEdit {
+                rule_id: "style.mojibake".to_string(),
+                label: "Repair misdecoded UTF-8 text".to_string(),
+                line: Some(line.number),
+                edit: edit.clone(),
+            });
+            suggested_fixes.push(safe_fix_for_edit(
+                document,
+                &edit,
+                "Repair misdecoded UTF-8 text",
+            ));
+        }
+
+        matches.push(IssueMatch {
+            issue: ArticleLintIssue {
+                rule_id: "style.mojibake".to_string(),
+                severity: ArticleLintSeverity::Error,
+                message: "Article contains text decoded with the wrong character encoding."
+                    .to_string(),
+                span: document.span_for_line(line),
+                evidence: Some(line.text.clone()),
+                suggested_remediation: Some(
+                    "Restore the intended Unicode text before publishing; do not copy the corrupted characters forward."
+                        .to_string(),
+                ),
+                suggested_fixes,
+            },
+            safe_fixes,
+        });
+    }
+}
+
 pub(super) fn lint_curly_quotes(document: &ParsedArticleDocument, matches: &mut Vec<IssueMatch>) {
     let mut grouped = BTreeMap::<usize, Vec<(usize, char)>>::new();
     for (offset, ch) in document.content.char_indices() {
         if !matches!(ch, '“' | '”' | '‘' | '’') {
+            continue;
+        }
+        if is_inside_known_mojibake(&document.content, offset) {
             continue;
         }
         if let Some(line) = document.line_for_offset(offset) {
@@ -63,6 +144,14 @@ pub(super) fn lint_curly_quotes(document: &ParsedArticleDocument, matches: &mut 
             safe_fixes,
         });
     }
+}
+
+fn is_inside_known_mojibake(content: &str, offset: usize) -> bool {
+    MOJIBAKE_REPLACEMENTS.iter().any(|(encoded, _)| {
+        content
+            .match_indices(encoded)
+            .any(|(start, _)| offset >= start && offset < start + encoded.len())
+    })
 }
 
 pub(super) fn lint_placeholder_fragments(

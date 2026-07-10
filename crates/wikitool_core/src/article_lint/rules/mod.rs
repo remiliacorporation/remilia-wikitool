@@ -49,6 +49,7 @@ pub(super) fn collect_issue_matches(
     structure::lint_missing_references_section(document, resources, &mut matches);
     structure::lint_missing_reflist(document, resources, &mut matches);
     citation::lint_citation_after_punctuation(document, &mut matches);
+    style::lint_mojibake(document, &mut matches);
     style::lint_curly_quotes(document, &mut matches);
     style::lint_placeholder_fragments(document, resources, &mut matches);
     template::lint_citation_needed(document, &mut matches);
