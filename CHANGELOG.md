@@ -8,7 +8,23 @@ The release workflow extracts the section for the requested version and fails if
 
 ### Added
 
+- Evidence-bound coauthoring now has an exact-content acceptance lane: `article accept` records a named human editor, truthful human/agent/collaborative prose origin, lint summary, explicit warning decision, editorial-quality attestation, and full 256-bit SHA-256 receipt; draft promotion and changed Main-namespace pushes consume the accepted snapshot and reject missing or stale receipts, and `--force` cannot bypass the gate.
+- `ai-pack/writing_context/profile.toml` is the typed profile-policy authority for authoring, citations, categories, lint, golden pages, and extension contracts; release packaging now requires and ships the policy instead of deriving machine defaults from prose examples.
+- Article lint reports narrow synthetic/inflated phrases as human-review suggestions and gratuitous relationship framing in headings or subject leads as editorial warnings without mechanical rewrites.
 - `wiki render-check` now enforces live rendered-HTML contracts for dynamic template and Cargo cutovers, including parser-error and literal-wikilink rejection, exact component counts, interactive-link requirements that exclude crawler-only anchors, required href fragments, required interactive-link classes such as MediaViewer's `mw-file-description`, and exact PageImages/Popups representative files via `--require-page-image`.
+
+### Changed
+
+- The authoring surface has been reset around real encyclopedic coauthoring: agents may write article prose from inspected evidence, while shipped guidance requires a claim-source map, subject-derived structure, an adversarial reader edit, truthful provenance, and exact human publication acceptance. Model output and neighboring pages are explicitly not evidence.
+- `article-start_v3` exposes the coauthoring contract, excludes the exact subject from comparable structure, scopes existing-page peers to pages sharing its observed infobox type, filters discouraged relationship headings, labels categories, links, and sections as observations instead of recommendations, and gives context references stable source paths and full SHA-256 hashes.
+- Knowledge readiness now reports `drafting_ready`, checks the current artifact generation, and exposes docs import failures instead of claiming readiness from stale or degraded state; readiness does not claim topic or prose quality.
+- Existing-page edits use MediaWiki `baserevid`, creates use `createonly`, and generic mutation retries are disabled so ambiguous writes are not silently replayed.
+- Research fetches validate and DNS-pin every HTTP redirect against a shared outbound-network policy, cookie matching honors Secure/host-only/path rules, and the v3 cache uses full SHA-256 keys over schema, extractor, user-agent, session fingerprint, and request identity; returned source content also carries a full SHA-256 fingerprint.
+- Release bundles consume Contextmink 0.9.0 from upstream archives verified against repository-pinned SHA-256 values; Contextmink owns project setup through `setup-project` instead of a second wikitool installer.
+
+### Removed
+
+- Removed the stale vendored Contextmink 0.6 source tree and `wikitool contextmink` installer. Wikitool no longer carries a fork or source-build fallback for an independent project.
 
 ## [0.6.1] - 2026-07-07
 

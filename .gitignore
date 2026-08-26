@@ -24,7 +24,7 @@ testbench/.tmp
 dist/
 target/
 
-# Local contextmink install (scripts/fetch_contextmink.sh --install)
+# Local Contextmink project installation (owned by contextmink setup-project)
 tools/contextmink/
 scripts/contextmink
 

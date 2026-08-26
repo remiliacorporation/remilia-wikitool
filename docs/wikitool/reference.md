@@ -18,34 +18,33 @@ Wiki management CLI
 Usage: wikitool [OPTIONS] [COMMAND]
 
 Commands:
-  init         Initialize a new wikitool project
-  config       Show resolved configuration and target-wiki sources
-  pull         Pull wiki content and templates to local files
-  push         Push local changes to the live wiki
-  diff         Show local changes not yet pushed to the wiki
-  status       Show sync status and local project state
-  validate     Run structural and link integrity checks
-  review       Run the structured pre-push review gate
-  module       Run Lua module linting and related checks
-  export       Export a remote wiki page tree to local files
-  delete       Delete a page from the live wiki
-  purge        Purge pages through the MediaWiki API
-  upload       Upload a local file through the MediaWiki API
-  move         Move (rename) a page through the MediaWiki API
-  protect      Protect or unprotect a page through the MediaWiki API
-  undelete     Restore a deleted page through the MediaWiki API
-  contextmink  Install the bundled contextmink transcript guard into a project directory
-  db           Inspect or reset the local runtime database
-  docs         Manage and query pinned MediaWiki docs corpora
-  import       Import content from external sources
-  knowledge    Build and query the local knowledge layer
-  research     Inspect target-wiki evidence and fetch source URLs without mutating the wiki
-  wiki         Sync and inspect live wiki capability metadata
-  templates    Build and inspect the local template catalog
-  article      Lint and mechanically remediate article drafts
-  lsp          Generate parser config and editor integration settings
-  workflow     First-run setup and session/full runtime refresh workflows
-  help         Print this message or the help of the given subcommand(s)
+  init       Initialize a new wikitool project
+  config     Show resolved configuration and target-wiki sources
+  pull       Pull wiki content and templates to local files
+  push       Push local changes to the live wiki
+  diff       Show local changes not yet pushed to the wiki
+  status     Show sync status and local project state
+  validate   Run structural and link integrity checks
+  review     Run the structured pre-push review gate
+  module     Run Lua module linting and related checks
+  export     Export a remote wiki page tree to local files
+  delete     Delete a page from the live wiki
+  purge      Purge pages through the MediaWiki API
+  upload     Upload a local file through the MediaWiki API
+  move       Move (rename) a page through the MediaWiki API
+  protect    Protect or unprotect a page through the MediaWiki API
+  undelete   Restore a deleted page through the MediaWiki API
+  db         Inspect or reset the local runtime database
+  docs       Manage and query pinned MediaWiki docs corpora
+  import     Import content from external sources
+  knowledge  Build and query the local knowledge layer
+  research   Inspect target-wiki evidence and fetch source URLs without mutating the wiki
+  wiki       Sync and inspect live wiki capability metadata
+  templates  Build and inspect the local template catalog
+  article    Lint and mechanically remediate article drafts
+  lsp        Generate parser config and editor integration settings
+  workflow   First-run setup and session/full runtime refresh workflows
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -464,44 +463,6 @@ Options:
   -h, --help                 Print help
 ```
 
-## contextmink
-
-```text
-Install the bundled contextmink transcript guard into a project directory
-
-Usage: wikitool contextmink [OPTIONS] <COMMAND>
-
-Commands:
-  install  Install bundled or source-built contextmink into the current directory or --project-root
-  help     Print this message or the help of the given subcommand(s)
-
-Options:
-      --project-root <PATH>
-      --data-dir <PATH>
-      --config <PATH>
-      --diagnostics          Print resolved runtime diagnostics
-  -h, --help                 Print help
-```
-
-## contextmink install
-
-```text
-Install bundled or source-built contextmink into the current directory or --project-root
-
-Usage: wikitool contextmink install [OPTIONS]
-
-Options:
-      --from <DIR>           Contextmink release pack or source checkout (default: sibling contextmink/ pack, then vendored source)
-      --project-root <PATH>
-      --data-dir <PATH>
-      --force                Overwrite files that already exist in the project
-      --config <PATH>
-      --dry-run              Preview the install without writing files
-      --diagnostics          Print resolved runtime diagnostics
-      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
-  -h, --help                 Print help
-```
-
 ## db
 
 ```text
@@ -824,7 +785,7 @@ Commands:
   build          Rebuild the local content knowledge index
   warm           Build content knowledge and hydrate a docs profile
   status         Report knowledge readiness and degradations
-  article-start  Assemble an interpreted authoring brief for a topic
+  article-start  Assemble an editorial-support evidence brief for a topic
   contracts      Plan and search token-budgeted authoring contracts
   interview      Create, validate, show, and audit knowledge interview briefs
   inspect        Inspect indexed knowledge structures directly
@@ -880,7 +841,7 @@ Report knowledge readiness and degradations
 Usage: wikitool knowledge status [OPTIONS]
 
 Options:
-      --docs-profile <PROFILE>  Docs profile to assess for authoring readiness [default: remilia-wiki]
+      --docs-profile <PROFILE>  Docs profile to assess for editorial-support readiness [default: remilia-wiki]
       --project-root <PATH>
       --data-dir <PATH>
       --format <FORMAT>         Output format: text|json [default: text] [possible values: text, json]
@@ -892,7 +853,7 @@ Options:
 ## knowledge article-start
 
 ```text
-Assemble an interpreted authoring brief for a topic
+Assemble an editorial-support evidence brief for a topic
 
 Usage: wikitool knowledge article-start [OPTIONS] [TOPIC]
 
@@ -902,7 +863,7 @@ Arguments:
 Options:
       --project-root <PATH>
       --stub-path <PATH>            Optional stub wikitext file used for link/template hint extraction
-      --brief-path <PATH>           Optional knowledge interview brief to validate and include in the authoring brief
+      --brief-path <PATH>           Optional knowledge interview brief to validate and include in the editorial-support brief
       --data-dir <PATH>
       --brief-stale-days <DAYS>     Age in days after which an interview brief is considered stale [default: 45]
       --config <PATH>
@@ -2210,9 +2171,10 @@ Lint and mechanically remediate article drafts
 Usage: wikitool article [OPTIONS] <COMMAND>
 
 Commands:
+  accept   Record human acceptance of the exact article prose
   lint     Lint article wikitext against wiki/profile rules
   fix      Apply safe mechanical fixes to article wikitext
-  promote  Copy a reviewed state draft into the sync tree
+  promote  Promote an exactly human-accepted draft into the sync tree
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -2221,6 +2183,29 @@ Options:
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
+```
+
+## article accept
+
+```text
+Record human acceptance of the exact article prose
+
+Usage: wikitool article accept [OPTIONS] --title <TITLE> --human-editor <IDENTITY> --prose-origin <ORIGIN> <PATH>
+
+Arguments:
+  <PATH>  Draft or Main-namespace article path whose exact prose was read
+
+Options:
+      --project-root <PATH>
+      --title <TITLE>            Canonical Main-namespace article title
+      --data-dir <PATH>
+      --human-editor <IDENTITY>  Name or handle of the human editor who read and accepted the exact prose
+      --config <PATH>
+      --prose-origin <ORIGIN>    Prose origin: human-draft|human-revision|agent-draft|collaborative-draft|mechanical-conversion-of-human-prose|human-reviewed-legacy [possible values: human-draft, human-revision, agent-draft, collaborative-draft, mechanical-conversion-of-human-prose, human-reviewed-legacy]
+      --allow-warnings           Record that the human editor explicitly accepted remaining lint warnings
+      --diagnostics              Print resolved runtime diagnostics
+      --format <FORMAT>          Output format: text|json [default: text] [possible values: text, json]
+  -h, --help                     Print help
 ```
 
 ## article lint
@@ -2274,12 +2259,12 @@ Options:
 ## article promote
 
 ```text
-Copy a reviewed state draft into the sync tree
+Promote an exactly human-accepted draft into the sync tree
 
 Usage: wikitool article promote [OPTIONS] --title <TITLE> <PATH>
 
 Arguments:
-  <PATH>  State-draft path under the canonical .wikitool/drafts/ directory
+  <PATH>  Human-accepted state-draft path under the canonical .wikitool/drafts/ directory
 
 Options:
       --project-root <PATH>

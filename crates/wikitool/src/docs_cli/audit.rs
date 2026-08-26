@@ -69,7 +69,7 @@ pub(crate) fn run_docs_audit(args: DocsAuditArgs) -> Result<()> {
     audit_no_retired_public_terms(&repo_root, &mut checks);
     audit_brief_guidance(&repo_root, &mut checks);
     audit_workflow_guidance(&repo_root, &mut checks);
-    audit_interview_direction_guidance(&repo_root, &mut checks);
+    audit_coauthoring_guidance(&repo_root, &mut checks);
     if let Some(host_root) = host_project_root.as_ref() {
         audit_host_project(host_root, &mut checks);
     }
@@ -250,9 +250,12 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
         let Ok(body) = read_to_string(&path) else {
             continue;
         };
-        if contains_retired_wikitool_context(&body) {
+        let is_changelog = path.file_name().is_some_and(|name| name == "CHANGELOG.md");
+        if !is_changelog
+            && (contains_retired_wikitool_context(&body) || body.contains("wikitool contextmink"))
+        {
             failures.push(format!(
-                "{} contains retired bare `wikitool context` command",
+                "{} contains a retired wikitool-owned Contextmink command",
                 normalize_path(&path)
             ));
         }
@@ -300,7 +303,7 @@ fn audit_brief_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
         ),
         ("ai-pack/.claude/skills/wikitool.md", "--view brief"),
         ("docs/wikitool/guide.md", "--view brief"),
-        ("docs/wikitool/architecture.md", "wikitool brief"),
+        ("docs/wikitool/architecture.md", "--view brief"),
     ];
     for (relative, needle) in required {
         let path = repo_root.join(relative);
@@ -401,64 +404,71 @@ fn audit_workflow_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     }
 }
 
-fn audit_interview_direction_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
+fn audit_coauthoring_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     let required = [
         (
             "ai-pack/CLAUDE.md",
             &[
-                "normal move",
-                "intent, scope, and angle",
-                "well-documented subjects",
+                "write genuine encyclopedic prose",
+                "Model memory",
+                "article accept",
+                "never self-attest",
             ][..],
         ),
         (
             "ai-pack/AGENTS.md",
             &[
-                "normal move",
-                "intent, scope, and angle",
-                "well-documented subjects",
+                "write genuine encyclopedic prose",
+                "Model memory",
+                "article accept",
+                "never self-attest",
             ][..],
         ),
         (
             "ai-pack/writing_context/interview_playbook.md",
             &[
-                "normal move, not an exception",
-                "well-documented subjects",
-                "This is framing, not a forced",
+                "agent may draft",
+                "not automatically independent evidence",
+                "article accept",
             ][..],
         ),
         (
             "ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md",
             &[
-                "normal move",
-                "intent, scope, and angle",
-                "well-documented subjects",
+                "draft genuine encyclopedic prose",
+                "not independent evidence",
+                "article accept",
+            ][..],
+        ),
+        (
+            "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
+            &[
+                "Agent authorship is allowed",
+                "article accept",
+                "must not self-attest",
             ][..],
         ),
         (
             "docs/wikitool/guide.md",
             &[
-                "interview by default",
-                "intent, scope, and angle",
-                "well-documented subjects",
+                "external agent may research and write",
+                "drafting_ready",
+                "article accept",
             ][..],
         ),
         (
             "docs/wikitool/architecture.md",
-            &[
-                "knowledge-interview skill by default",
-                "sets article intent, scope, and",
-                "not limited to cases",
-            ][..],
+            &["External agents may", "article_acceptance_v2", "--force"][..],
         ),
         (
-            "CHANGELOG.md",
+            "ai-pack/writing_context/writing_guide.md",
             &[
-                "normal move after the article-start scout",
-                "purpose is direction",
-                "well-documented subject",
+                "An agent may research, select, organize, and draft",
+                "model output is never evidence",
+                "article accept",
             ][..],
         ),
+        ("CHANGELOG.md", &["coauthoring", "article accept"][..]),
     ];
 
     for (relative, needles) in required {
@@ -473,14 +483,14 @@ fn audit_interview_direction_guidance(repo_root: &Path, checks: &mut Vec<DocsAud
                     .collect::<Vec<_>>();
                 push_check(
                     checks,
-                    "guidance.interview_direction",
+                    "guidance.coauthoring",
                     missing.is_empty(),
                     Some(&path),
                     if missing.is_empty() {
-                        format!("{relative} preserves direction-first interview framing")
+                        format!("{relative} preserves the coauthoring and acceptance boundary")
                     } else {
                         format!(
-                            "{relative} is missing direction-first interview term(s): {}",
+                            "{relative} is missing coauthoring contract term(s): {}",
                             missing.join(", ")
                         )
                     },
@@ -488,7 +498,7 @@ fn audit_interview_direction_guidance(repo_root: &Path, checks: &mut Vec<DocsAud
             }
             Err(error) => push_check(
                 checks,
-                "guidance.interview_direction",
+                "guidance.coauthoring",
                 false,
                 Some(&path),
                 format!("failed to read {relative}: {error}"),
@@ -675,9 +685,9 @@ mod tests {
     use super::contains_retired_wikitool_context;
 
     #[test]
-    fn retired_context_audit_allows_live_contextmink_command() {
+    fn retired_context_audit_distinguishes_the_old_bare_command() {
         assert!(!contains_retired_wikitool_context(
-            "Install with `wikitool contextmink install`."
+            "Run `contextmink files`."
         ));
         assert!(contains_retired_wikitool_context(
             "The retired command was `wikitool context`."

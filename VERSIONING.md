@@ -67,7 +67,7 @@ Experimental / top-level steered:
 
 Packaged / distributable:
 
-1. Use `cargo run --package wikitool --features maintainer -- release build-matrix` from a source checkout to emit per-target zip bundles.
+1. Stage the pinned upstream Contextmink packs with `bash scripts/fetch_contextmink.sh --all`, then use `cargo run --package wikitool --features maintainer -- release build-matrix --contextmink-dist dist/contextmink-dist` from a source checkout to emit per-target zip bundles.
 2. Bundles are generic by default, include ai-pack baseline `.claude` + instruction files, and compile the packaged binary without the maintainer surface.
 3. Host context overlay is opt-in via `--host-project-root <PATH>` and uses host `CLAUDE.md`; release bundles still write the same guidance body to both packaged filenames.
 
@@ -97,17 +97,19 @@ Packaged / distributable:
    - `cargo run --package wikitool -- module lint --format text`
    - `cargo run --package wikitool --features maintainer -- docs generate-reference`
 6. Build release bundles:
-   - `cargo run --package wikitool --features maintainer -- release build-matrix --targets <triple>`
+   - `bash scripts/fetch_contextmink.sh --platform <platform> --dest dist/contextmink-dist`
+   - `cargo run --package wikitool --features maintainer -- release build-matrix --targets <triple> --contextmink-dist dist/contextmink-dist`
    - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=X.Y.Z` for per-platform artifacts
 7. Verify each zip contains:
    - `wikitool` or `wikitool.exe`
    - `AGENTS.md`, `CLAUDE.md`, `README.md`
    - `.claude/rules/`, `.claude/skills/`
-   - `writing_context/`
+   - `writing_context/`, including typed `writing_context/profile.toml`
    - `codex_skills/`
    - `docs/wikitool/`
    - `contextmink/` with `contextmink` or `contextmink.exe`
    - `contextmink/contextmink-bridge.exe` in the Windows bundle only
+   - `contextmink/archive.sha256`, matching the repository-pinned upstream archive receipt
    - `manifest.json`
 8. Verify `SHA256SUMS.txt` matches the uploaded zip assets.
 9. Create tag `X.Y.Z`.

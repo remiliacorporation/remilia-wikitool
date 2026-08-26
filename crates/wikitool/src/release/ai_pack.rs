@@ -213,7 +213,7 @@ fn copy_writing_context(
     let context_source = ai_pack_root.join("writing_context");
     require_dir(&context_source, "missing writing_context directory")?;
     let context_output = output_dir.join("writing_context");
-    let context_count = copy_markdown_files(&context_source, &context_output)?;
+    let context_count = copy_writing_context_files(&context_source, &context_output)?;
     if context_count == 0 {
         bail!("no ai-pack/writing_context/*.md files found");
     }
@@ -228,7 +228,7 @@ fn copy_writing_context(
     }
 
     reset_directory(&context_output)?;
-    let host_context_count = copy_markdown_files(&host_context_source, &context_output)?;
+    let host_context_count = copy_writing_context_files(&host_context_source, &context_output)?;
     if host_context_count == 0 {
         bail!(
             "host writing_context directory has no markdown files: {}",
@@ -237,6 +237,19 @@ fn copy_writing_context(
     }
     result.host_writing_context_included = true;
     Ok(())
+}
+
+fn copy_writing_context_files(source: &Path, destination: &Path) -> Result<usize> {
+    let markdown_count = copy_markdown_files(source, destination)?;
+    let policy = source.join("profile.toml");
+    if !policy.is_file() {
+        bail!(
+            "writing_context is missing required typed policy: {}",
+            normalize_path(&policy)
+        );
+    }
+    copy_file(&policy, &destination.join("profile.toml"))?;
+    Ok(markdown_count)
 }
 
 fn copy_markdown_files(source: &Path, destination: &Path) -> Result<usize> {
@@ -366,6 +379,10 @@ mod tests {
             "# Guide\n",
         );
         write_file(
+            &root.join("ai-pack/writing_context/profile.toml"),
+            "schema_version = \"profile_policy_v2\"\n",
+        );
+        write_file(
             &root.join("ai-pack/.claude/rules/wiki-style.md"),
             "# Rule\n",
         );
@@ -405,6 +422,7 @@ mod tests {
         );
         assert!(!output_dir.join("SETUP.md").exists());
         assert!(output_dir.join("writing_context").is_dir());
+        assert!(output_dir.join("writing_context/profile.toml").is_file());
         assert!(!output_dir.join("WIKITOOL_CLAUDE.md").exists());
     }
 
@@ -445,6 +463,10 @@ mod tests {
             &host_root.join("writing_context/site_contract.md"),
             "# Host Contract\n",
         );
+        write_file(
+            &host_root.join("writing_context/profile.toml"),
+            "schema_version = \"host_profile_policy_v1\"\n",
+        );
 
         build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
 
@@ -458,12 +480,36 @@ mod tests {
                 .expect("read host contract"),
             "# Host Contract\n"
         );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("writing_context/profile.toml"))
+                .expect("read host policy"),
+            "schema_version = \"host_profile_policy_v1\"\n"
+        );
         assert!(!output_dir.join("llm_instructions").exists());
         let manifest = fs::read_to_string(output_dir.join("manifest.json")).expect("read manifest");
         assert!(
             manifest.contains("\"host_writing_context_included\": true"),
             "manifest must record host writing context overlay"
         );
+    }
+
+    #[test]
+    fn build_ai_pack_rejects_host_writing_context_without_typed_policy() {
+        let temp = TestDir::new("host-writing-context-without-policy");
+        let repo_root = temp.path.join("repo");
+        let host_root = temp.path.join("host");
+        let output_dir = temp.path.join("out");
+        create_repo(&repo_root);
+        create_host(&host_root, "# Host CLAUDE\n", None);
+        write_file(
+            &host_root.join("writing_context/writing_guide.md"),
+            "# Host Guide\n",
+        );
+
+        let error = build_ai_pack(&repo_root, &output_dir, Some(&host_root))
+            .expect_err("host writing context without profile.toml must fail closed");
+
+        assert!(error.to_string().contains("missing required typed policy"));
     }
 
     #[test]

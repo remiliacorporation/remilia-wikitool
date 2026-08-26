@@ -3,9 +3,6 @@ members = [
   "crates/wikitool",
   "crates/wikitool_core",
 ]
-exclude = [
-  "vendor/contextmink",
-]
 resolver = "2"
 
 [workspace.package]

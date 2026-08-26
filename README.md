@@ -58,14 +58,14 @@ wiki's capability profile. Run it again at the start of any session to refresh s
 
 Run `claude` or `codex` from the unpacked folder. The bundled `CLAUDE.md` / `AGENTS.md` and the
 `.claude/` and `codex_skills/` directories tell the agent which commands to use and in what
-order. The `/wikitool` skill drives retrieval, authoring, and sync; `/review` gates content
+order. The `/wikitool` skill drives retrieval, editorial assistance, and sync; `/review` gates content
 before a push.
 
 ## What it does
 
-- **Author** — `knowledge article-start "Topic" --view brief` returns an interpreted brief:
-  section skeleton from comparable pages, applicable templates and categories, and where the
-  evidence is thin.
+- **Assist editors** — `knowledge article-start "Topic" --view brief` returns an evidence brief:
+  comparable structures, applicable templates, and explicit evidence gaps. A human writes or
+  substantively revises the prose and records acceptance before promotion or push.
 - **Research** — `research wiki-search` queries the wiki API; `research fetch` pulls a URL with
   structured metadata; `research archive` captures a site to disk; `research session` imports
   cookies for session-gated sources.
@@ -79,13 +79,12 @@ before a push.
 
 Every command has `--help`, and `docs/wikitool/reference.md` is the full generated reference.
 
-Release bundles also include a `contextmink/` pack. From the project or agent
-working directory, run `wikitool contextmink install`; the installer writes
-relative to the current directory unless `--project-root <dir>` is explicit.
-When `wikitool` is source-built instead of run from an unpacked release bundle,
-the installer falls back to the vendored `vendor/contextmink` source checkout
-and builds its binaries only for a real install. Use `--from <dir>` to point at
-an explicit release pack or contextmink source checkout.
+Release bundles also include a separately versioned `contextmink/` release
+pack. Run `contextmink/contextmink(.exe) setup-project <project-root>
+--skill-target both --json`; Contextmink owns the installed files and writes an
+exact project receipt. Wikitool neither rebuilds nor installs Contextmink. Its
+release builder accepts only an upstream archive staged by
+`scripts/fetch_contextmink.sh` and verified against repository-pinned hashes.
 
 ## Documentation
 

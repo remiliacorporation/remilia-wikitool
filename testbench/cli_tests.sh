@@ -132,9 +132,13 @@ setup_project() {
 
 resolve_local_binary_candidate() {
     local candidate
+    # Git Bash treats an existing foo.exe as executable when asked about foo,
+    # even though passing the extensionless path to a native process does not
+    # identify the file. Prefer the explicit Windows filename everywhere; it
+    # is absent on Unix, where the extensionless candidate remains canonical.
     for candidate in \
-        "$REPO_ROOT/target/debug/wikitool" \
-        "$REPO_ROOT/target/debug/wikitool.exe"
+        "$REPO_ROOT/target/debug/wikitool.exe" \
+        "$REPO_ROOT/target/debug/wikitool"
     do
         if [ -x "$candidate" ]; then
             printf "%s" "$candidate"
@@ -328,12 +332,13 @@ wt "$ARTICLE_PROJ" init --templates > /dev/null 2>&1
 mkdir -p "$ARTICLE_PROJ/wiki_content/Main"
 mkdir -p "$ARTICLE_PROJ/templates/misc"
 mkdir -p "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context"
+cp "$REPO_ROOT/ai-pack/writing_context/profile.toml" "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/profile.toml"
 cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/article_structure.md" << 'MDEOF'
 {{SHORTDESC:Example}}
 {{Article quality|unverified}}
 == References ==
 {{Reflist}}
-parent_group = Remilia
+Use sections that follow the subject.
 MDEOF
 cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/style_rules.md" << 'MDEOF'
 ### No placeholder content
@@ -343,15 +348,13 @@ MDEOF
 cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/writing_guide.md" << 'MDEOF'
 raw MediaWiki wikitext
 Never output Markdown
-Use 2-4 categories per article
-[[Category:Remilia]]
+Use only categories evidenced by the subject.
 {{Article quality|unverified}}
-parent_group = Remilia
 ### Citation templates
 ```wikitext
 {{Cite web|url=}}
 ```
-## 6. Infobox selection
+## Infobox selection
 | Subject type | Infobox |
 |---|---|
 | NFT Collection | `{{Infobox NFT collection}}` |
@@ -718,23 +721,8 @@ else
     fail "interview validate flags template-state sections advisorily (got: ${OUTPUT:0:300})"
 fi
 
-# --- contextmink install ---
-section "contextmink install"
-FAKE_PACK="$TMPDIR_ROOT/fake-contextmink-pack"
-mkdir -p "$FAKE_PACK/templates/scripts"
-cat > "$FAKE_PACK/manifest.json" << 'JSONEOF'
-{"name": "contextmink", "version": "9.9.9", "platform": "test", "binary": "contextmink.exe", "bridge_binary": "contextmink-bridge.exe"}
-JSONEOF
-touch "$FAKE_PACK/contextmink.exe" "$FAKE_PACK/contextmink-bridge.exe"
-touch "$FAKE_PACK/templates/scripts/contextmink"
-touch "$FAKE_PACK/templates/CLAUDE.contextmink.md" "$FAKE_PACK/templates/AGENTS.contextmink.md"
-OUTPUT=$(wt "$PROJ" contextmink install --from "$(to_wikitool_path "$FAKE_PACK")" --dry-run --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"would_install"' && echo "$OUTPUT" | grep -q '"pack_version": "9.9.9"'; then
-    pass "contextmink install --dry-run plans a full pack install"
-else
-    fail "contextmink install --dry-run plans a full pack install (got: ${OUTPUT:0:300})"
-fi
-
+# --- independent contextmink setup ---
+section "contextmink setup-project"
 REAL_PACK=""
 for candidate in "$SCRIPT_DIR/../dist/contextmink-dist"/*/; do
     if [ -f "$candidate/manifest.json" ]; then
@@ -743,14 +731,31 @@ for candidate in "$SCRIPT_DIR/../dist/contextmink-dist"/*/; do
     fi
 done
 if [ -z "$REAL_PACK" ]; then
-    skip "contextmink install verified run (no staged pack under dist/contextmink-dist)"
+    skip "contextmink setup-project verified run (no staged pack under dist/contextmink-dist)"
 else
-    PROJ_MINK=$(setup_project contextmink-install)
-    OUTPUT=$(wt "$PROJ_MINK" contextmink install --from "$(to_wikitool_path "$REAL_PACK")" --format json 2>&1 || true)
-    if echo "$OUTPUT" | grep -q '"verified": true' && [ -f "$PROJ_MINK/.contextmink.toml" ] && [ -f "$PROJ_MINK/scripts/contextmink" ]; then
-        pass "contextmink install places and verifies the real pack"
+    if [ -f "$REAL_PACK/contextmink.exe" ]; then
+        CONTEXTMINK_BINARY="$REAL_PACK/contextmink.exe"
+        CONTEXTMINK_PROJECT_PATH_MODE="windows"
+    elif [ -f "$REAL_PACK/contextmink" ]; then
+        CONTEXTMINK_BINARY="$REAL_PACK/contextmink"
+        CONTEXTMINK_PROJECT_PATH_MODE="posix"
     else
-        fail "contextmink install places and verifies the real pack (got: ${OUTPUT:0:300})"
+        fail "staged Contextmink pack has no platform binary"
+        CONTEXTMINK_BINARY=""
+    fi
+    PROJ_MINK=$(setup_project contextmink-install)
+    CONTEXTMINK_PROJECT="$PROJ_MINK"
+    if [ "$CONTEXTMINK_PROJECT_PATH_MODE" = "windows" ]; then
+        CONTEXTMINK_PROJECT="$(to_wikitool_path "$PROJ_MINK")"
+    fi
+    OUTPUT=$("$CONTEXTMINK_BINARY" setup-project "$CONTEXTMINK_PROJECT" --skill-target both --json 2>&1 || true)
+    if echo "$OUTPUT" | grep -q '"ready":true' \
+        && [ -f "$PROJ_MINK/tools/contextmink/project-install.json" ] \
+        && [ -f "$PROJ_MINK/.agents/skills/contextmink/SKILL.md" ] \
+        && [ -f "$PROJ_MINK/.claude/skills/contextmink/SKILL.md" ]; then
+        pass "Contextmink owns and receipts its project setup"
+    else
+        fail "Contextmink owns and receipts its project setup (got: ${OUTPUT:0:300})"
     fi
 fi
 

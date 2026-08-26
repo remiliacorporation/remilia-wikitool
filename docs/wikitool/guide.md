@@ -1,6 +1,8 @@
 # Wikitool Guide
 
-Rust CLI that synchronizes MediaWiki content with local files and provides wiki-aware authoring retrieval, draft lint/remediation, docs ingestion, and inspection utilities.
+Rust CLI for evidence-bound MediaWiki coauthoring: wiki-aware retrieval, real prose drafting through
+external agents, mechanical wikitext work, exact-content human acceptance, revision-aware sync,
+docs ingestion, and inspection utilities.
 
 For command flags: `wikitool <command> --help` or `reference.md`.
 
@@ -31,12 +33,15 @@ Use `wikitool workflow full-refresh` for deliberate rebuilds or missing sync sta
 - Pull/push use the MediaWiki API. Local state lives in SQLite under `.wikitool/data/wikitool.db`.
 - The DB is disposable — delete it and repull/rebuild any time.
 - Authoring retrieval uses semantic page profiles, a DB-backed template/module contract graph, normalized source authorities, and bridged MediaWiki docs to narrow context for agents.
-- `knowledge article-start` is the interpreted authoring brief. Use `--contract-query` when the subject and the wiki-contract lookup are different, for example a cheetah article whose contract search should ask for `species infobox taxonomy`.
+- `knowledge article-start` returns a typed coauthoring contract plus evidence and local-fit signals. Agent drafting is allowed, but model output and neighboring pages are not evidence. Use `--contract-query` when the subject and the wiki-contract lookup are different, for example a cheetah article whose contract search should ask for `species infobox taxonomy`.
 - Token-efficient agent workflows should start from wikitool briefs and drill down only as needed. Prefer `knowledge article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, and `review --view brief`; reserve `--view full` for cases where implementation bodies or complete capability arrays are explicitly needed.
 - `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check; use `--summary` for the global signal and scoped `--category`/`--title` slices for targeted investigation. `module lint` is the Lua/module lane.
 - `article lint` / `article fix` accept repeated `--title`, repeated `--path`, `--titles-file`, and `--changed` for batch work.
 - `review` is the structured pre-push gate: status plan, changed article lint, validation summary, and push dry-run in one JSON report.
-- Push flows require `--dry-run` first. Dry-run is the remote-aware preflight. `--force` requires explicit user approval.
+- A named human must accept the exact prose before promotion or any changed Main-namespace push.
+  Acceptance is content-hash-bound; `--force` cannot bypass it.
+- Push flows require `--dry-run` first. Existing-page writes are bound to the observed remote
+  revision and creates use create-only semantics. `--force` requires explicit user approval.
 
 ## Authoring workflow
 
@@ -52,9 +57,11 @@ wikitool templates show "Template:Infobox person" --format json --view brief
 wikitool templates examples "Template:Infobox person" --limit 2
 wikitool wiki profile show --format json
 wikitool wiki profile remote "https://www.mediawiki.org/wiki/Manual:Contents" --format json
-# write the article
+# an agent, human, or both draft evidence-bound encyclopedic prose
 wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
+wikitool article accept .wikitool/drafts/Title.wiki --title "Title" --human-editor "EDITOR" --prose-origin agent-draft --format json
+wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article lint wiki_content/Main/Title.wiki --format json
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --summary "Draft review"
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --brief-path .wikitool/interviews/Title/20260601T172430Z.brief.md --format json --summary "Draft review"
@@ -65,18 +72,29 @@ wikitool validate --summary
 wikitool review --format json --view brief --summary "Summary"
 ```
 
-## Human-in-loop authoring
+## Encyclopedic coauthoring
 
-For new articles and substantial expansions, the recommended agent flow is scout first, then
-interview by default unless the user opts out or the task is mechanical. Start with
-`knowledge article-start --view brief` and a cursory wiki/source search so questions are grounded in
-what wikitool already knows. Then use the packaged knowledge-interview skill and
-`writing_context/interview_playbook.md` to set the article's intent, scope, and angle with the user,
-including well-documented subjects where the value is Remilia Wiki's framing rather than missing
-facts. Read any supplied documents, links, notes, transcripts, screenshots, or source excerpts before
-narrowing the interview. Reflect the emerging article scope and ask adaptive follow-ups where the
-answer changes structure, research targets, terminology, date/order disambiguation, source strategy,
-or risk. There is no fixed round count; continue while new answers materially improve the article.
+An external agent may research and write a new article, substantial section, or source-backed
+rewrite. The target is real encyclopedic prose: direct, neutral, specific, proportionate, coherent,
+and useful to a reader. A named human editor owns the publication decision and accepts the exact
+final bytes.
+
+Start with `knowledge article-start --view brief`. Its `article_start_v3` payload says that agent
+drafting is allowed, model output is not evidence, structure must come from the evidenced factual
+spine, and host-wiki relationships require independent editorial justification. `drafting_ready`
+means current content/docs artifacts are available; it does not mean the topic is researched or a
+draft can be published.
+
+Before prose, build a claim-source map. Inspect the exact source behind load-bearing, sensitive,
+interpretive, quoted, and surprising claims. Treat an exact local page as coverage to audit and a
+neighboring page as local fit context, not independent verification. Write the factual body before
+the lead, then apply `writing_context/style_rules.md` as an adversarial reader review. Delete
+generic padding rather than editing it into smoother padding.
+
+For new articles, substantial revisions, niche history, and unclear framing, use the packaged
+interview skill. Read supplied materials before narrowing questions. Ask only questions that can
+improve the article object, claim-source map, terminology, chronology, emphasis, exclusions, or
+risk. The human does not need to pre-write the article.
 
 Reusable interview distillations should be saved as:
 
@@ -84,14 +102,14 @@ Reusable interview distillations should be saved as:
 .wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md
 ```
 
-The brief is a research artifact, not article prose, not citation evidence, and not proof that the
-interview is complete. Quality-gated human statements can become article prose as reasonable truth;
+The brief is an editorial ledger, not automatic independent evidence, proof, or acceptance.
+Agent- or human-authored prose may use quality-gated firsthand knowledge under the target policy;
 cite when research surfaces a source, when a claim is external or contested, or when a primary
 record exists. For Remilia Wiki, source paths may include target-wiki records, hosted artifacts,
 first-party sources, archived primary records, creator-published statements, or target-wiki source
-notes; they do not have to be outside secondary coverage. Adjacent subjects should not be forced into a "relationship to
-Remilia" frame; ask for the editorial vantage, adjacency, or canon purpose, then write the subject as
-itself unless a direct Remilia/Milady/community relationship is real and article-shaping. Use stable
+notes; they do not have to be outside secondary coverage. Adjacent subjects should be defined on
+their own terms. Include a Remilia or Charlotte Fang relationship only when it is important,
+supported, and proportionate. Use stable
 open-item IDs for unresolved source work, do-not-assert holds, and negative evidence that need
 tracking through research and review.
 
@@ -109,14 +127,14 @@ wikitool knowledge interview audit --view brief --format json
 ```
 
 The conversational interview loop still belongs in the agent skill. The CLI does not infer source
-support from user prose and does not decide that an interview is editorially sufficient; it
+support from user prose, call a model, or decide that an interview is editorially sufficient; it
 validates structured metadata, required sections, sidecars, typed open-items JSONL records,
 negative-evidence counts, and freshness.
 
 Pass the validated brief to `knowledge article-start --brief-path` or `review --brief-path` when
 the interview should shape research planning or gate review. These integrations surface explicit
 brief metadata, do-not-assert holds, open research items, and negative-evidence counts; they do not
-treat mechanical validation as editorial acceptance.
+treat mechanical validation as editorial acceptance or factual support.
 
 For local custom content features, use the deployed target contract rather than raw HTML/JavaScript.
 Remilia's current D3Charts surface is `Module:D3Chart` plus ResourceLoader, so agents should inspect
@@ -211,7 +229,10 @@ When a source returns a browser access challenge, `error.challenge_handoffs` giv
 
 `research fetch` and `export` accept MediaWiki short URLs, `index.php?title=` URLs, and subdirectory installs. `export` defaults to markdown: MediaWiki URLs are fetched as wikitext and rendered into agent-readable markdown, while arbitrary web pages use the research extractor and include source/extraction metadata in frontmatter. Use `--output-dir DIR` with a single URL to write a title-based markdown or wikitext file under that directory. Use `--subpages --limit N` to bound large MediaWiki tree exports. Use `--urls-file PATH --output-dir PATH --format markdown` to create off-wiki source packs; blank lines and `#` comments in the URL file are ignored, and `_index.md` records successes and failures. Wikitext export requires a recognizable MediaWiki URL; blocked arbitrary sources fail explicitly instead of producing challenge-page content.
 
-`review --draft-path PATH --title TITLE` runs the article lint and global readiness parts of the review gate on an off-wiki draft under `.wikitool/drafts/`. It intentionally skips the push dry-run because the draft is not syncable yet. The JSON and text reports include `next_steps`: direct draft lint/fix commands, `wikitool article promote` for copying the accepted draft into `wiki_content/`, and the scoped review/push dry-run commands to run after promotion.
+`review --draft-path PATH --title TITLE` runs article lint and global readiness on an off-wiki draft
+under `.wikitool/drafts/`. It skips push dry-run because the draft is not syncable yet. Its
+`next_steps` require direct lint/fix, exact-content human acceptance, promotion, and scoped
+post-promotion review. An agent must never self-attest as the human editor.
 
 For direct draft iteration, `article lint` and `article fix` accept a single state-draft path plus
 `--title TITLE`. This keeps title-sensitive linting and safe fixes available before the draft is
@@ -220,8 +241,15 @@ promoted into `wiki_content/`.
 ```bash
 wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
+wikitool article accept .wikitool/drafts/Title.wiki --title "Title" --human-editor "EDITOR" --prose-origin agent-draft --format json
 wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
 ```
+
+Acceptance records an asserted editor identity, truthful prose origin, lint summary, warning
+decision, quality attestation, and exact content hash. It is auditable but not cryptographic
+authentication. Any later content change invalidates the receipt. Use `agent-draft`,
+`collaborative-draft`, `human-draft`, `human-revision`,
+`mechanical-conversion-of-human-prose`, or `human-reviewed-legacy` as accurate.
 
 ## Editor integration
 

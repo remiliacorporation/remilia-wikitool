@@ -63,11 +63,13 @@ scoped here.
 
 ## Bounded Output
 
-Bootstrap once per checkout from a Bash shell with
-`bash scripts/fetch_contextmink.sh --install` (builds the vendored
-`vendor/contextmink` source pinned by `config/contextmink.version`, installs
-`tools/contextmink/bin/` and the `scripts/contextmink` launcher; both are
-gitignored). Then use contextmink when a file/text/JSON/SQLite/command-output
+Contextmink is a separately versioned, project-generic tool. A release bundle
+includes its hash-verified upstream pack under `contextmink/`; run
+`contextmink/contextmink(.exe) setup-project <project-root> --skill-target both
+--json` and follow its receipt-backed setup guidance. In this source checkout,
+`bash scripts/fetch_contextmink.sh --platform <platform>` stages the pinned
+upstream release under `dist/contextmink-dist/`; it does not install or rebuild
+Contextmink. Use the installed Contextmink when a file/text/JSON/SQLite/command
 read may produce more output than the transcript should carry.
 
 - Choose invocation by the active shell and target: use `scripts/contextmink ...`

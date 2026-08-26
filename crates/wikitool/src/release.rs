@@ -77,7 +77,7 @@ struct ReleasePackageArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional prebuilt contextmink pack override; default builds vendor/contextmink from source"
+        help = "Hash-verified Contextmink distribution root (default: <repo>/dist/contextmink-dist)"
     )]
     contextmink_dist: Option<PathBuf>,
 }
@@ -135,7 +135,7 @@ struct ReleaseBuildMatrixArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional prebuilt contextmink pack override; default builds vendor/contextmink from source"
+        help = "Hash-verified Contextmink distribution root (default: <repo>/dist/contextmink-dist)"
     )]
     contextmink_dist: Option<PathBuf>,
 }

@@ -1,74 +1,156 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Stage the vendored contextmink source into <dest>/<platform>/ using the same
-# pack layout shipped inside wikitool release bundles. The release builder does
-# this directly in Rust; this helper is for local/manual staging and optional
-# repo-local install.
+# Download a pinned upstream Contextmink release, verify it against
+# repository-owned hashes, and stage its release-pack contents for wikitool's
+# release builder. Contextmink itself owns project installation through
+# `contextmink setup-project`; wikitool does not rebuild or install it.
 
 dest="dist/contextmink-dist"
 platform=""
-target=""
-source="vendor/contextmink"
-install=0
-use_locked=1
+fetch_all=0
+temp_to_cleanup=""
+
+readonly supported_platforms=(
+  "windows-x86_64"
+  "linux-x86_64"
+  "macos-x86_64"
+  "macos-arm64"
+)
+
+cleanup() {
+  if [[ -n "${temp_to_cleanup:-}" && -d "$temp_to_cleanup" ]]; then
+    rm -rf "$temp_to_cleanup"
+  fi
+}
+trap cleanup EXIT
 
 host_platform() {
   case "$(uname -s 2>/dev/null):$(uname -m 2>/dev/null)" in
-    Darwin:arm64) echo "macos-arm64" ;;
+    Darwin:arm64 | Darwin:aarch64) echo "macos-arm64" ;;
     Darwin:*) echo "macos-x86_64" ;;
     Linux:*) echo "linux-x86_64" ;;
-    *) echo "windows-x86_64" ;;
-  esac
-}
-
-default_target_for_platform() {
-  case "$1" in
-    windows-x86_64) echo "x86_64-pc-windows-msvc" ;;
-    linux-x86_64) echo "x86_64-unknown-linux-gnu" ;;
-    macos-x86_64) echo "x86_64-apple-darwin" ;;
-    macos-arm64) echo "aarch64-apple-darwin" ;;
+    MINGW*:* | MSYS*:* | CYGWIN*:*) echo "windows-x86_64" ;;
     *)
-      echo "fetch_contextmink: unsupported platform: $1" >&2
-      echo "expected one of: windows-x86_64 linux-x86_64 macos-x86_64 macos-arm64" >&2
+      echo "fetch_contextmink: cannot infer the host platform; pass --platform" >&2
       exit 64
       ;;
   esac
 }
 
-contextmink_version_from_pkgid() {
-  local pkgid="$1"
-  local version="${pkgid##*@}"
-  if [[ "$version" == "$pkgid" ]]; then
-    version="${pkgid##*#}"
-  fi
-  printf '%s\n' "$version"
+validate_platform() {
+  local candidate="$1"
+  local supported
+  for supported in "${supported_platforms[@]}"; do
+    if [[ "$candidate" == "$supported" ]]; then
+      return 0
+    fi
+  done
+  echo "fetch_contextmink: unsupported platform: $candidate" >&2
+  echo "expected one of: ${supported_platforms[*]}" >&2
+  exit 64
 }
 
-binary_names_for_platform() {
-  case "$1" in
-    windows-x86_64) echo "contextmink.exe contextmink-bridge.exe" ;;
-    linux-x86_64 | macos-x86_64 | macos-arm64) echo "contextmink" ;;
-    *)
-      echo "fetch_contextmink: unsupported platform: $1" >&2
-      exit 64
-      ;;
+archive_name() {
+  local version="$1"
+  local selected_platform="$2"
+  case "$selected_platform" in
+    windows-x86_64) printf 'contextmink-%s-%s.zip\n' "$version" "$selected_platform" ;;
+    *) printf 'contextmink-%s-%s.tar.gz\n' "$version" "$selected_platform" ;;
   esac
 }
 
-install_binary() {
-  local source_file="$1"
-  local target_file="$2"
-  if [[ -f "$target_file" ]] && cmp -s "$source_file" "$target_file"; then
-    chmod +x "$target_file"
-    return 0
-  fi
-  if ! cp "$source_file" "$target_file"; then
-    echo "fetch_contextmink: failed to install $target_file" >&2
-    echo "fetch_contextmink: on Windows this usually means that binary is running; close it or run from Git Bash instead of through contextmink-bridge" >&2
+sha256_of() {
+  local path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print tolower($1)}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print tolower($1)}'
+  else
+    echo "fetch_contextmink: sha256sum or shasum is required" >&2
     exit 69
   fi
-  chmod +x "$target_file"
+}
+
+stage_platform() {
+  local version="$1"
+  local selected_platform="$2"
+  local hashes_file="$3"
+  local archive
+  archive="$(archive_name "$version" "$selected_platform")"
+  local expected
+  expected="$(awk -v name="$archive" '$2 == name { print tolower($1) }' "$hashes_file")"
+  if [[ -z "$expected" ]]; then
+    echo "fetch_contextmink: no pinned SHA-256 for $archive in $hashes_file" >&2
+    exit 65
+  fi
+
+  local temp_root
+  temp_root="$(mktemp -d)"
+  temp_to_cleanup="$temp_root"
+  local archive_path="$temp_root/$archive"
+  local url="https://github.com/remiliacorporation/contextmink/releases/download/v${version}/${archive}"
+  echo "fetch_contextmink: downloading $url"
+  curl --fail --location --proto '=https' --tlsv1.2 --output "$archive_path" "$url"
+
+  local actual
+  actual="$(sha256_of "$archive_path")"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "fetch_contextmink: SHA-256 mismatch for $archive" >&2
+    echo "expected: $expected" >&2
+    echo "actual:   $actual" >&2
+    exit 65
+  fi
+
+  local extract_root="$temp_root/extracted"
+  mkdir -p "$extract_root"
+  case "$archive" in
+    *.zip)
+      if command -v unzip >/dev/null 2>&1; then
+        unzip -q "$archive_path" -d "$extract_root"
+      elif tar -tf "$archive_path" >/dev/null 2>&1; then
+        tar -xf "$archive_path" -C "$extract_root"
+      elif command -v 7z >/dev/null 2>&1; then
+        7z x -y -o"$extract_root" "$archive_path" >/dev/null
+      elif command -v powershell.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        local archive_windows
+        local extract_windows
+        archive_windows="$(cygpath -w "$archive_path")"
+        extract_windows="$(cygpath -w "$extract_root")"
+        MSYS2_ARG_CONV_EXCL='*' powershell.exe -NoProfile -NonInteractive -Command \
+          '& { param([string]$archive, [string]$destination) Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force }' \
+          "$archive_windows" "$extract_windows"
+      else
+        echo "fetch_contextmink: unzip, 7z, a zip-capable tar, or Windows PowerShell is required" >&2
+        exit 69
+      fi
+      ;;
+    *.tar.gz) tar -xzf "$archive_path" -C "$extract_root" ;;
+    *)
+      echo "fetch_contextmink: unsupported archive format: $archive" >&2
+      exit 65
+      ;;
+  esac
+
+  local source_root="$extract_root/contextmink-${version}-${selected_platform}"
+  if [[ ! -f "$source_root/manifest.json" ]]; then
+    echo "fetch_contextmink: release archive lacks expected manifest: $source_root/manifest.json" >&2
+    exit 65
+  fi
+  if ! grep -Eq '"version"[[:space:]]*:[[:space:]]*"'"$version"'"' "$source_root/manifest.json" \
+    || ! grep -Eq '"platform"[[:space:]]*:[[:space:]]*"'"$selected_platform"'"' "$source_root/manifest.json"; then
+    echo "fetch_contextmink: release manifest does not match ${version}/${selected_platform}" >&2
+    exit 65
+  fi
+
+  local out="$dest/$selected_platform"
+  rm -rf "$out"
+  mkdir -p "$out"
+  cp -R "$source_root/." "$out/"
+  printf '%s  %s\n' "$expected" "$archive" > "$out/archive.sha256"
+  echo "contextmink ${version} (${selected_platform}) -> $out"
+  rm -rf "$temp_root"
+  temp_to_cleanup=""
 }
 
 while [[ $# -gt 0 ]]; do
@@ -77,37 +159,19 @@ while [[ $# -gt 0 ]]; do
       platform="${2:?--platform requires a value}"
       shift 2
       ;;
-    --target)
-      target="${2:?--target requires a Rust target triple}"
-      shift 2
+    --all)
+      fetch_all=1
+      shift
       ;;
     --dest)
       dest="${2:?--dest requires a value}"
       shift 2
       ;;
-    --source | --local)
-      source="${2:?--source requires a contextmink source checkout path}"
-      shift 2
-      ;;
-    --install)
-      install=1
-      shift
-      ;;
-    --no-locked)
-      use_locked=0
-      shift
-      ;;
-    --repo)
-      echo "fetch_contextmink: --repo was removed; contextmink is vendored at vendor/contextmink" >&2
-      exit 64
-      ;;
     --help | -h)
-      echo "usage: fetch_contextmink.sh [--platform <windows-x86_64|linux-x86_64|macos-x86_64|macos-arm64>] [--target <triple>] [--dest <dir>] [--source <checkout>] [--install] [--no-locked]"
+      echo "usage: fetch_contextmink.sh [--platform <platform> | --all] [--dest <dir>]"
+      echo "  Downloads the version pinned by config/contextmink.version and verifies"
+      echo "  it against config/contextmink-sha256s.txt before staging release files."
       echo "  --platform defaults to the host platform."
-      echo "  --target defaults from --platform."
-      echo "  --source defaults to vendor/contextmink."
-      echo "  --install additionally places binaries in tools/contextmink/bin/ and the"
-      echo "  launcher at scripts/contextmink for repo-local agent use."
       exit 0
       ;;
     *)
@@ -117,87 +181,28 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$platform" ]]; then
-  platform="$(host_platform)"
+if [[ "$fetch_all" -eq 1 && -n "$platform" ]]; then
+  echo "fetch_contextmink: --all and --platform are mutually exclusive" >&2
+  exit 64
 fi
-if [[ -z "$target" ]]; then
-  target="$(default_target_for_platform "$platform")"
-else
-  # Validate the platform slug even when an explicit Rust target is supplied.
-  default_target_for_platform "$platform" >/dev/null
-fi
-
-if [[ ! -f config/contextmink.version ]]; then
-  echo "fetch_contextmink: run from the wikitool repository root (config/contextmink.version not found)" >&2
+if [[ ! -f config/contextmink.version || ! -f config/contextmink-sha256s.txt ]]; then
+  echo "fetch_contextmink: run from the wikitool repository root (Contextmink pin files not found)" >&2
   exit 65
 fi
 pin="$(tr -d ' \t\r\n' < config/contextmink.version)"
-if [[ -z "$pin" ]]; then
-  echo "fetch_contextmink: config/contextmink.version is empty" >&2
+if [[ ! "$pin" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+  echo "fetch_contextmink: invalid version pin: $pin" >&2
   exit 65
 fi
 
-if [[ ! -f "$source/Cargo.toml" ]] \
-  || ! grep -q '^name = "contextmink"' "$source/Cargo.toml"; then
-  echo "fetch_contextmink: $source is not a contextmink checkout (no Cargo.toml with name \"contextmink\")" >&2
-  exit 65
-fi
-
-pkgid="$(cargo pkgid --manifest-path "$source/Cargo.toml")"
-version="$(contextmink_version_from_pkgid "$pkgid")"
-if [[ "$version" != "$pin" ]]; then
-  echo "fetch_contextmink: contextmink source is ${version}, pin is ${pin}" >&2
-  exit 65
-fi
-
-build_args=(build --release --bins --manifest-path "$source/Cargo.toml" --target "$target")
-if [[ "$use_locked" -eq 1 ]]; then
-  build_args+=(--locked)
-fi
-cargo "${build_args[@]}"
-
-out="${dest}/${platform}"
-rm -rf "$out"
-mkdir -p "$out/docs" "$out/templates"
-
-read -r -a binaries <<< "$(binary_names_for_platform "$platform")"
-for binary in "${binaries[@]}"; do
-  source_binary="$source/target/$target/release/$binary"
-  if [[ ! -f "$source_binary" ]]; then
-    echo "fetch_contextmink: built binary missing: $source_binary" >&2
-    exit 68
-  fi
-  cp "$source_binary" "$out/"
-  chmod +x "$out/$binary"
-done
-
-cp "$source/README.md" "$source/SETUP.md" \
-  "$source/LICENSE" "$source/LICENSE-SSL" "$source/LICENSE-VPL" "$out/"
-cp -R "$source/docs/." "$out/docs/"
-cp -R "$source/templates/." "$out/templates/"
-
-{
-  printf '{\n'
-  printf '  "name": "contextmink",\n'
-  printf '  "version": "%s",\n' "$version"
-  printf '  "target": "%s",\n' "$target"
-  printf '  "platform": "%s",\n' "$platform"
-  printf '  "binary": "%s",\n' "${binaries[0]}"
-  if [[ "${#binaries[@]}" -gt 1 ]]; then
-    printf '  "bridge_binary": "%s",\n' "${binaries[1]}"
-  fi
-  printf '  "archive": "vendored-source"\n'
-  printf '}\n'
-} > "$out/manifest.json"
-
-echo "contextmink ${version} (${platform}, ${target}) -> $out"
-
-if [[ "$install" -eq 1 ]]; then
-  mkdir -p tools/contextmink/bin
-  for binary in "${binaries[@]}"; do
-    install_binary "$out/$binary" "tools/contextmink/bin/$binary"
+if [[ "$fetch_all" -eq 1 ]]; then
+  for selected in "${supported_platforms[@]}"; do
+    stage_platform "$pin" "$selected" "config/contextmink-sha256s.txt"
   done
-  cp "$out/templates/scripts/contextmink" scripts/contextmink
-  chmod +x scripts/contextmink
-  echo "installed: tools/contextmink/bin + scripts/contextmink"
+else
+  if [[ -z "$platform" ]]; then
+    platform="$(host_platform)"
+  fi
+  validate_platform "$platform"
+  stage_platform "$pin" "$platform" "config/contextmink-sha256s.txt"
 fi

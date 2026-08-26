@@ -43,11 +43,8 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
     stage_contextmink_pack(
         &repo_root,
         &output_dir,
-        None,
         host_platform_slug(),
         args.contextmink_dist.as_deref(),
-        &PathBuf::from("cargo"),
-        true,
     )?;
     if staging_dir.exists() {
         fs::remove_dir_all(&staging_dir)
@@ -117,11 +114,8 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
         stage_contextmink_pack(
             &repo_root,
             &bundle_dir,
-            Some(target),
             release_platform_slug(target),
             args.contextmink_dist.as_deref(),
-            &cargo_bin,
-            use_locked,
         )?;
 
         let zip_path = output_dir.join(format!("{bundle_name}.zip"));
@@ -320,13 +314,10 @@ fn release_binary_path_for_target(repo_root: &Path, target: &str) -> PathBuf {
         .join(release_binary_name_for_target(target))
 }
 
-/// Release bundles ship contextmink in a `contextmink/` subdirectory so
-/// wikitool users get bounded-read tooling without a separate install. It
-/// stays a separate binary: contextmink is project-generic, and agents must
-/// not have to route bounded reads through wikitool. The default release path
-/// builds the vendored `vendor/contextmink` source at the version pinned in
-/// `config/contextmink.version`; `--contextmink-dist` is only an explicit
-/// prebuilt-pack override.
+/// Release bundles ship Contextmink in a `contextmink/` subdirectory so users
+/// get bounded-read tooling without coupling the two binaries. Contextmink is
+/// project-generic and owns its own setup lifecycle. Wikitool only consumes a
+/// release pack staged from a repository-pinned upstream archive.
 fn read_contextmink_pin(repo_root: &Path) -> Result<String> {
     let path = repo_root.join("config/contextmink.version");
     let raw = fs::read_to_string(&path)
@@ -367,23 +358,19 @@ fn host_platform_slug() -> &'static str {
 fn stage_contextmink_pack(
     repo_root: &Path,
     bundle_dir: &Path,
-    target: Option<&str>,
     platform_slug: &str,
     contextmink_dist: Option<&Path>,
-    cargo_bin: &Path,
-    use_locked: bool,
 ) -> Result<()> {
-    if let Some(dist) = contextmink_dist {
-        return stage_prebuilt_contextmink_pack(repo_root, bundle_dir, platform_slug, dist);
+    let dist = contextmink_dist
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| repo_root.join("dist/contextmink-dist"));
+    if !dist.is_dir() {
+        bail!(
+            "Contextmink distribution root is missing: {}. Stage the pinned upstream pack with scripts/fetch_contextmink.sh --platform {platform_slug}",
+            normalize_path(&dist)
+        );
     }
-    stage_vendored_contextmink_pack(
-        repo_root,
-        bundle_dir,
-        target,
-        platform_slug,
-        cargo_bin,
-        use_locked,
-    )
+    stage_prebuilt_contextmink_pack(repo_root, bundle_dir, platform_slug, &dist)
 }
 
 fn stage_prebuilt_contextmink_pack(
@@ -404,6 +391,7 @@ fn stage_prebuilt_contextmink_pack(
     let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
         .with_context(|| format!("invalid JSON in {}", normalize_path(&manifest_path)))?;
     validate_contextmink_manifest(&manifest, &pin, platform_slug)?;
+    validate_contextmink_archive_receipt(repo_root, &source, &manifest)?;
     for key in ["binary", "bridge_binary"] {
         if let Some(binary) = manifest.get(key).and_then(serde_json::Value::as_str) {
             let path = source.join(binary);
@@ -421,167 +409,68 @@ fn stage_prebuilt_contextmink_pack(
     Ok(())
 }
 
-fn stage_vendored_contextmink_pack(
+fn validate_contextmink_archive_receipt(
     repo_root: &Path,
-    bundle_dir: &Path,
-    target: Option<&str>,
-    platform_slug: &str,
-    cargo_bin: &Path,
-    use_locked: bool,
+    source: &Path,
+    manifest: &serde_json::Value,
 ) -> Result<()> {
-    let pin = read_contextmink_pin(repo_root)?;
-    let source_root = repo_root.join("vendor/contextmink");
-    let manifest_path = source_root.join("Cargo.toml");
-    if !manifest_path.is_file() {
-        bail!(
-            "vendored contextmink source is missing: {}",
-            normalize_path(&manifest_path)
-        );
-    }
-    let source_version = read_contextmink_source_version(cargo_bin, &manifest_path)?;
-    if source_version != pin {
-        bail!(
-            "vendored contextmink version {source_version:?} does not match the pin {pin} in config/contextmink.version"
-        );
-    }
-
-    run_cargo_contextmink_build_for_target(&source_root, cargo_bin, target, use_locked)?;
-
-    let (binary_name, bridge_name) = expected_contextmink_pack_layout(platform_slug)?;
-    let binary_path = contextmink_build_binary_path(&source_root, target, binary_name);
-    if !binary_path.is_file() {
-        bail!(
-            "missing built contextmink binary for {platform_slug}: {}",
-            normalize_path(&binary_path)
-        );
-    }
-
-    let pack_dir = bundle_dir.join("contextmink");
-    reset_directory(&pack_dir)?;
-    copy_file(&binary_path, &pack_dir.join(binary_name))?;
-    if let Some(bridge) = bridge_name {
-        let bridge_path = contextmink_build_binary_path(&source_root, target, bridge);
-        if !bridge_path.is_file() {
-            bail!(
-                "missing built contextmink bridge for {platform_slug}: {}",
-                normalize_path(&bridge_path)
-            );
-        }
-        copy_file(&bridge_path, &pack_dir.join(bridge))?;
-    }
-
-    for file in [
-        "README.md",
-        "SETUP.md",
-        "LICENSE",
-        "LICENSE-SSL",
-        "LICENSE-VPL",
-    ] {
-        copy_file(&source_root.join(file), &pack_dir.join(file))?;
-    }
-    copy_dir_contents(&source_root.join("docs"), &pack_dir.join("docs"))?;
-    copy_dir_contents(&source_root.join("templates"), &pack_dir.join("templates"))?;
-
-    let mut manifest = serde_json::json!({
-        "name": "contextmink",
-        "version": source_version,
-        "target": target.unwrap_or("host"),
-        "platform": platform_slug,
-        "binary": binary_name,
-        "archive": "vendored-source"
-    });
-    if let Some(bridge) = bridge_name {
-        manifest["bridge_binary"] = serde_json::Value::String(bridge.to_string());
-    }
-    validate_contextmink_manifest(&manifest, &pin, platform_slug)?;
-    fs::write(
-        pack_dir.join("manifest.json"),
-        serde_json::to_string_pretty(&manifest)?,
-    )
-    .with_context(|| {
+    let archive = manifest
+        .get("archive")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("contextmink manifest is missing the archive field"))?;
+    let pins_path = repo_root.join("config/contextmink-sha256s.txt");
+    let pins = fs::read_to_string(&pins_path)
+        .with_context(|| format!("failed to read {}", normalize_path(&pins_path)))?;
+    let expected = contextmink_archive_hash_from_pins(&pins, archive).with_context(|| {
         format!(
-            "failed to write {}",
-            normalize_path(pack_dir.join("manifest.json"))
+            "no repository-pinned Contextmink archive hash for {archive:?} in {}",
+            normalize_path(&pins_path)
         )
     })?;
-    Ok(())
-}
 
-fn read_contextmink_source_version(cargo_bin: &Path, manifest_path: &Path) -> Result<String> {
-    let output = ProcessCommand::new(cargo_bin)
-        .arg("pkgid")
-        .arg("--manifest-path")
-        .arg(manifest_path)
-        .output()
-        .with_context(|| {
-            format!(
-                "failed to execute {} pkgid for vendored contextmink",
-                normalize_path(cargo_bin)
-            )
-        })?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("cargo pkgid failed for vendored contextmink: {stderr}");
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    contextmink_version_from_pkgid(&stdout)
-}
-
-fn contextmink_version_from_pkgid(raw: &str) -> Result<String> {
-    let pkgid = raw.trim();
-    let Some(index) = pkgid.rfind('@').or_else(|| pkgid.rfind('#')) else {
-        bail!("unexpected cargo pkgid for vendored contextmink: {pkgid:?}");
-    };
-    let version = &pkgid[index + 1..];
-    parse_contextmink_pin(version)
-}
-
-fn run_cargo_contextmink_build_for_target(
-    source_root: &Path,
-    cargo_bin: &Path,
-    target: Option<&str>,
-    use_locked: bool,
-) -> Result<()> {
-    let manifest_path = source_root.join("Cargo.toml");
-    let mut command = ProcessCommand::new(cargo_bin);
-    command
-        .current_dir(source_root)
-        .arg("build")
-        .arg("--release")
-        .arg("--bins")
-        .arg("--manifest-path")
-        .arg(&manifest_path);
-    if let Some(target) = target {
-        command.arg("--target").arg(target);
-    }
-    if use_locked {
-        command.arg("--locked");
-    }
-    let status = command.status().with_context(|| {
+    let receipt_path = source.join("archive.sha256");
+    let receipt = fs::read_to_string(&receipt_path).with_context(|| {
         format!(
-            "failed to execute {} for vendored contextmink",
-            normalize_path(cargo_bin)
+            "missing Contextmink archive verification receipt: {}. Restage with scripts/fetch_contextmink.sh",
+            normalize_path(&receipt_path)
         )
     })?;
-    if !status.success() {
-        match target {
-            Some(target) => bail!("cargo build failed for vendored contextmink target {target}"),
-            None => bail!("cargo build failed for vendored contextmink"),
-        }
+    let mut fields = receipt.split_whitespace();
+    let actual_hash = fields.next();
+    let actual_archive = fields.next();
+    if fields.next().is_some()
+        || actual_hash != Some(expected.as_str())
+        || actual_archive != Some(archive)
+    {
+        bail!(
+            "Contextmink archive receipt in {} does not match the repository pin for {archive}",
+            normalize_path(&receipt_path)
+        );
     }
     Ok(())
 }
 
-fn contextmink_build_binary_path(
-    source_root: &Path,
-    target: Option<&str>,
-    binary_name: &str,
-) -> PathBuf {
-    let mut path = source_root.join("target");
-    if let Some(target) = target {
-        path = path.join(target);
+fn contextmink_archive_hash_from_pins(raw: &str, archive: &str) -> Result<String> {
+    let mut found = None;
+    for line in raw.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let mut fields = line.split_whitespace();
+        let hash = fields.next();
+        let name = fields.next();
+        if fields.next().is_some() || hash.is_none() || name.is_none() {
+            bail!("invalid Contextmink SHA-256 pin line: {line:?}");
+        }
+        let hash = hash.expect("checked above");
+        if hash.len() != 64 || !hash.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            bail!("invalid Contextmink SHA-256 value in pin line: {line:?}");
+        }
+        if name == Some(archive) {
+            if found.is_some() {
+                bail!("duplicate Contextmink SHA-256 pin for {archive:?}");
+            }
+            found = Some(hash.to_ascii_lowercase());
+        }
     }
-    path.join("release").join(binary_name)
+    found.ok_or_else(|| anyhow::anyhow!("archive is not pinned"))
 }
 
 fn validate_contextmink_manifest(
@@ -790,7 +679,7 @@ fn is_release_binary_entry(relative_path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        contextmink_version_from_pkgid, host_platform_slug, is_release_binary_entry,
+        contextmink_archive_hash_from_pins, host_platform_slug, is_release_binary_entry,
         parse_contextmink_pin, release_binary_name_for_target, release_bundle_name,
         release_platform_slug, resolve_release_artifact_version, resolve_release_targets,
         sha256_file, validate_contextmink_manifest,
@@ -868,11 +757,19 @@ mod tests {
         assert!(parse_contextmink_pin("").is_err());
         assert!(parse_contextmink_pin("v0.3.0").is_err());
         assert!(parse_contextmink_pin("0.3").is_err());
-        assert_eq!(
-            contextmink_version_from_pkgid("path+file:///repo/vendor/contextmink#0.6.0\n").unwrap(),
-            "0.6.0"
+        let archive = "contextmink-0.9.0-windows-x86_64.zip";
+        let pins = format!(
+            "{}  {}\n{}  other.zip\n",
+            "56e1bde757ede27439cdb2971ef60a06298ef1d4d02c986364f4c0e20dc8465c",
+            archive,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         );
-
+        assert_eq!(
+            contextmink_archive_hash_from_pins(&pins, archive).unwrap(),
+            "56e1bde757ede27439cdb2971ef60a06298ef1d4d02c986364f4c0e20dc8465c"
+        );
+        assert!(contextmink_archive_hash_from_pins(&pins, "missing.zip").is_err());
+        assert!(contextmink_archive_hash_from_pins("bad hash line\n", archive).is_err());
         let manifest: serde_json::Value = serde_json::json!({
             "name": "contextmink",
             "version": "0.3.0",

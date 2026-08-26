@@ -64,6 +64,13 @@ jobs:
         env:
           RAW: ${{ inputs.artifact_version }}
 
+      - name: Stage pinned Contextmink release pack
+        shell: bash
+        run: >
+          bash scripts/fetch_contextmink.sh
+          --platform ${{ matrix.platform }}
+          --dest dist/contextmink-dist
+
       - name: Build + package versioned release bundle
         run: >
           cargo run --quiet --package wikitool --features maintainer --
@@ -71,6 +78,7 @@ jobs:
           --targets ${{ matrix.target }}
           --artifact-version ${{ steps.names.outputs.version }}
           --output-dir dist/release-matrix
+          --contextmink-dist dist/contextmink-dist
 
       - name: Verify packaged release (Unix)
         if: runner.os != 'Windows'
@@ -85,6 +93,7 @@ jobs:
           test -d "$BUNDLE/.claude/skills"
           cmp -s "$BUNDLE/AGENTS.md" "$BUNDLE/CLAUDE.md"
           test -d "$BUNDLE/writing_context"
+          test -f "$BUNDLE/writing_context/profile.toml"
           test -d "$BUNDLE/docs/wikitool"
           test ! -e "$BUNDLE/llm_instructions"
           test ! -e "$BUNDLE/SETUP.md"
@@ -98,9 +107,12 @@ jobs:
           smoke="$RUNNER_TEMP/wikitool-contextmink-install"
           rm -rf "$smoke"
           mkdir -p "$smoke"
-          "$BUNDLE/${{ matrix.binary_name }}" contextmink install --project-root "$smoke" --format json
+          "$BUNDLE/contextmink/contextmink" setup-project "$smoke" --skill-target both --json
           test -f "$smoke/tools/contextmink/bin/contextmink"
           "$smoke/tools/contextmink/bin/contextmink" --version
+          test -f "$smoke/tools/contextmink/project-install.json"
+          test -f "$smoke/.agents/skills/contextmink/SKILL.md"
+          test -f "$smoke/.claude/skills/contextmink/SKILL.md"
           test -f "${BUNDLE}.zip"
 
       - name: Verify packaged release (Windows)
@@ -118,6 +130,7 @@ jobs:
           $claudeHash = (Get-FileHash -Path "$env:BUNDLE/CLAUDE.md" -Algorithm SHA256).Hash
           if ($agentsHash -ne $claudeHash) { throw "AGENTS.md and CLAUDE.md mismatch" }
           if (!(Test-Path "$env:BUNDLE/writing_context")) { throw "writing_context missing" }
+          if (!(Test-Path "$env:BUNDLE/writing_context/profile.toml")) { throw "typed writing profile missing" }
           if (!(Test-Path "$env:BUNDLE/docs/wikitool")) { throw "docs/wikitool missing" }
           if (Test-Path "$env:BUNDLE/llm_instructions") { throw "legacy llm_instructions directory must not ship" }
           if (Test-Path "$env:BUNDLE/SETUP.md") { throw "SETUP.md must not ship" }
@@ -131,9 +144,12 @@ jobs:
           $smoke = Join-Path $env:RUNNER_TEMP "wikitool-contextmink-install"
           if (Test-Path $smoke) { Remove-Item -LiteralPath $smoke -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $smoke | Out-Null
-          & "$env:BUNDLE/${{ matrix.binary_name }}" contextmink install --project-root $smoke --format json
+          & "$env:BUNDLE/contextmink/contextmink.exe" setup-project $smoke --skill-target both --json
           if (!(Test-Path "$smoke/tools/contextmink/bin/contextmink.exe")) { throw "installed contextmink missing" }
           if (!(Test-Path "$smoke/tools/contextmink/bin/contextmink-bridge.exe")) { throw "installed contextmink bridge missing" }
+          if (!(Test-Path "$smoke/tools/contextmink/project-install.json")) { throw "Contextmink setup receipt missing" }
+          if (!(Test-Path "$smoke/.agents/skills/contextmink/SKILL.md")) { throw "Contextmink Agent Skill missing" }
+          if (!(Test-Path "$smoke/.claude/skills/contextmink/SKILL.md")) { throw "Contextmink Claude skill missing" }
           & "$smoke/tools/contextmink/bin/contextmink.exe" --version
           Push-Location $smoke
           try {

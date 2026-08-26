@@ -1,105 +1,172 @@
-# Wikitool Architecture
+# Wikitool architecture
 
-Wikitool is shaped around agentic wiki work, not generic scraping. The long-term split is:
+Wikitool is an evidence, authoring, review, and guarded synchronization system for MediaWiki. It
+does not embed an LLM backend. External agents may use its typed outputs and shipped skills to write
+real encyclopedic prose; wikitool owns the evidence and publication boundaries around that work.
 
-- `crates/wikitool` owns CLI argument parsing, command-family dispatch, text output, JSON view selection, and release packaging surfaces.
-- `crates/wikitool_core` owns MediaWiki IO, sync state, indexing, retrieval, profile/catalog construction, parsing, linting, and reusable output models.
-- `ai-pack/` owns shipped agent instructions and writing context. It should describe workflows and decision rules, not duplicate generated command help.
-- `docs/wikitool/reference.md` is generated from CLI help and is the canonical flag reference.
+## System boundaries
 
-## CLI Shape
+- `crates/wikitool` owns CLI parsing, command dispatch, compact presentation, and release surfaces.
+- `crates/wikitool_core` owns MediaWiki IO, revision-aware sync, indexing, retrieval, typed profile
+  policy, deterministic parsing, linting, acceptance verification, and reusable models.
+- `ai-pack/` owns the coauthoring contract and editorial guidance. It explains how an external agent
+  turns evidence into prose; it does not duplicate CLI reference text.
+- `docs/wikitool/reference.md` is generated from clap help and is the flag authority.
+- `.wikitool/data/wikitool.db` is a rebuildable projection. Source files, live MediaWiki revisions,
+  typed profile policy, interview/open-item ledgers, source artifacts, and acceptance receipts are
+  the authorities at their respective boundaries.
 
-CLI modules should stay thin at the top level. Large command families should use a facade plus
-focused submodules:
+Large CLI families use thin facades and focused submodules. Shared behavior belongs in core only
+when multiple lanes have the same constraints. Machine policy must not be inferred by searching
+Markdown examples.
 
-- `knowledge_cli/`: build/warm/status, article-start, interview ledger, contract traversal, shared output helpers.
-- `knowledge_inspect_cli/`: chunks, backlinks, templates, reference audits, index/page summaries.
-- `review_cli/`: pre-push workflow orchestration, lint/validation/push dry-run checks, draft gates,
-  next-step shaping, and report output.
-- `sync_cli/`: init, pull, push, diff, status, delete, and sync presentation/shared selection helpers.
-- `wiki_cli/`: capabilities, profile probes, rules, authoring surface, text printers, JSON summaries.
+## Coauthoring pipeline
 
-Adding a command should put the clap arguments near the facade and the implementation in the
-owning command-family module. Shared behavior belongs in `wikitool_core` when it is reusable across
-CLI lanes, or in a local `shared.rs` only when it is presentation glue.
+The intended flow is:
 
-## Agentic Token Contract
+```text
+live/local wiki + external sources + human knowledge
+                     |
+                     v
+       bounded evidence and explicit unknowns
+                     |
+                     v
+      article_start_v3 coauthoring contract
+                     |
+                     v
+     external agent or human drafts real prose
+                     |
+                     v
+   reader/source review + deterministic lint/fix
+                     |
+                     v
+      article_acceptance_v2 human decision
+                     |
+                     v
+       revision-bound promotion and push
+```
 
-Default outputs must be useful in a constrained model context:
+Wikitool supplies knowledge to the writer, but retrieval order and profile defaults do not own
+editorial judgment. `knowledge article-start --format json --view brief` exposes a typed contract:
+agent prose drafting is allowed;
+model output is not evidence; structure derives from the evidenced factual spine; adjacent-entity
+relationships must be important, supported, and proportionate; exact human acceptance is required
+for publication.
 
-- Prefer interpreted entry points such as `knowledge article-start` and wikitool brief JSON views.
-- Keep expanded output explicit: `--view full` is opt-in on brief-first surfaces.
-- Keep retrieval bounded by `--limit`, `--token-budget`, and `--max-pages`; broad commands should
-  return counts, summaries, and follow-up commands before full bodies.
-- Preserve scoped drill-down lanes: `knowledge inspect chunks`, `knowledge inspect references`,
-  `templates show/examples`, and `wiki surface show` should let agents ask for the next slice rather
-  than loading the whole project.
-- JSON envelopes should expose readiness, degradation, selection, and schema/version fields where
-  agents need to reason about whether an answer is safe to use.
+The compact result includes evidence coverage, stable source paths and content hashes, local fit
+signals, open questions, constraints, and follow-up commands. It excludes the exact subject from
+comparable-page structure and filters configured relationship headings. Comparable outlines remain
+observations rather than templates.
 
-When changing output shape, update the owning docs/skill surface and add or adjust tests that lock
-the compact/default behavior. Generated help changes require regenerating `docs/wikitool/reference.md`.
+## Publication acceptance
 
-## Guidance Surfaces
+Promotion and changed non-redirect Main-namespace pushes require an `article_acceptance_v2`
+receipt. The receipt binds:
 
-Agent guidance should stay aligned with the command boundaries:
+- title, source path, and target path;
+- exact article SHA-256;
+- named human editor;
+- truthful prose origin, including `agent_draft` and `collaborative_draft`;
+- zero-error lint summary and the human warning decision;
+- an attestation that the exact prose was read and accepted;
+- an editorial attestation that it was judged specific, readable, proportionate, and source-bound.
 
-- Route authoring through `knowledge article-start`; use `knowledge contracts` and `knowledge inspect` for targeted drill-downs.
-- Route new articles and substantial expansions through the knowledge-interview skill by default,
-  unless the user opts out or the task is mechanical. The interview sets article intent, scope, and
-  angle; it is not limited to cases where the user knows facts absent from public sources.
-- Use `wiki profile show` and `wiki surface show` for target-wiki contracts, not assumptions from
-  source wikis.
-- Use `knowledge inspect` subcommands for targeted retrieval and audit slices.
-- Keep Claude and Codex wrappers thin and help-backed; the wrappers should name front doors and
-  safety boundaries, not restate flags.
+Any content change makes the receipt stale. `--force` cannot bypass the gate. The identity is an
+explicit audit assertion, not cryptographic authentication, so shipped guidance also forbids an
+agent from self-attesting. The command is `wikitool article accept`.
 
-## Knowledge Interview Artifacts
+This gate does not make prose quality mechanically decidable. It makes the human publication
+decision visible and binds it to the exact bytes.
 
-The first human-in-loop authoring boundary is an agent skill plus a Rust-validated ledger artifact:
-`.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. These briefs capture distilled
-user knowledge, supplied materials, candidate structure, source leads, open questions, and
-high-risk interview statements.
-They are not article prose, citation evidence, or a replacement for editorial quality-gating. On
-Remilia Wiki, quality-gated human statements can become article prose as reasonable truth; cite when
-research surfaces a source, when a claim is external or contested, or when a primary record exists.
-Source paths may include target-wiki records, hosted artifacts, first-party sources, archived
-primary records, creator-published statements, or target-wiki source notes; the architecture should
-not require outside secondary coverage for niche subjects the wiki is preserving first.
-It should also avoid forcing adjacent subjects into direct Remilia-relation framing. The interview
-surface should elicit editorial vantage, adjacency, and canon purpose, then let articles cover
-subjects as themselves unless a direct Remilia/Milady/community relationship is real and
-article-shaping.
+## Prose diagnostics
 
-`knowledge interview init|validate|show|audit|open-item` owns deterministic path creation, starter
-sidecars, frontmatter/section validation, typed open-items JSONL records with status transitions,
-negative-evidence counts, freshness classification, compact summaries, and ledger audits.
-The conversational interview loop stays in the agent skill. It is open-ended and critic-driven:
-agents should ask broad initial questions, inspect supplied materials, reflect the emerging article
-shape, and continue follow-up rounds while answers materially improve the article. `knowledge
-article-start` remains the authoring scout front door and accepts `--brief-path` to surface a
-validated interview summary. `review --brief-path` carries the same summary into the gate and fails
-on invalid brief metadata. Mechanical validation proves the ledger is parseable, not that the
-interview is complete or the article is good.
-Neither command treats user assertions as evidence.
+Lint remains deterministic and diagnostic. `style.synthetic_phrase` is a suggestion to reread the
+underlying thought; `editorial.forced_relationship_frame` is a warning that requires editorial
+judgment. Neither finding is evidence of AI authorship, and zero findings do not establish truth,
+source fidelity, proportion, or reader value.
 
-## Agentic Maturity Backlog
+The shipped style review therefore uses hard source/subject failures and adversarial reader
+questions, not a vocabulary detector. It asks whether paragraphs teach concrete subject-specific
+facts, citations support nearby claims, coverage reflects evidence rather than retrieval
+availability, and the lead defines the subject without gratuitous host-wiki framing.
 
-The ghidramink stack has several mature agent-facing patterns that map cleanly to wikitool without
-importing reverse-engineering-specific machinery. Stage these as future implementation lanes:
+## Typed profile policy
 
-- Add a strict maintainer `doc-audit` lane that verifies CLI help, generated reference, ai-pack
-  Claude/Codex wrappers, writing context, and root redirect stubs against the live command surface.
-- Keep compact wikitool brief views for high-value retrieval surfaces: `knowledge article-start`,
-  `knowledge inspect chunks`, `templates show`, `wiki surface show`, and `review`. The default
-  should be compact and evidence-rich; full bodies remain explicit opt-in.
-- Make promotion gates first-class: draft-to-article promotion, template/catalog adoption, and
-  push dry-runs should carry machine-readable evidence, blocking reasons, and next commands in one
-  bounded receipt.
-- Expand review integration only after real use: future checks can compare explicit claim/source
-  metadata against drafts, but should avoid overfitting prose matching.
-- Prefer capability-first shaping over broad inspection. Commands that expose optional detail
-  levels should report accepted modes and defaults in JSON receipts so agents do not guess which
-  payload shape is token-safe.
-- Keep closeout receipts cheap and replayable: review, validate, docs/reference generation, and
-  release packaging should produce bounded JSON summaries suitable for CI and agent handoff.
+Machine-consumed policy lives in `ai-pack/writing_context/profile.toml`. Wikitool validates the
+profile schema and consumes typed authoring, citation, category, lint, golden-set, and extension
+contracts. Markdown contributes human guidance and provenance hashes but cannot silently create
+global defaults.
+
+The Remilia profile has no global preferred category. Relationship-to-Remilia headings are
+editorial warnings, not required structure. `parent_group = Remilia` is a template value for actual
+Remilia projects, not an inferred relationship for adjacent people or works.
+
+## Evidence and readiness
+
+Agent-facing output is compact, bounded, and explicit about incomplete scope. Brief views expose
+selection, source paths, hashes, readiness, degradation, and targeted follow-up commands. Expanded
+bodies are opt-in through `--view full`. Retrieval lanes use limits, token budgets, page caps, and
+content-derived evidence identities rather than ordinal IDs.
+
+`knowledge status` reports `drafting_ready` only when both content and documentation artifacts use
+the current generation and their recorded imports are clean. `content_ready` means the current
+content projection exists without a current clean docs profile. Neither state says that a topic has
+adequate sources or that prose is ready to publish.
+
+Local articles and comparable pages are claim and fit surfaces, not automatic independent
+authority. External source selection remains an editorial/research step. Source extraction should
+retain enough locator and provenance information to audit every load-bearing claim.
+
+## Interview ledger
+
+`knowledge interview init|validate|show|audit|open-item` owns deterministic paths, frontmatter
+validation, structured open items, freshness, and compact handoff summaries. The conversation is
+owned by the agent and human together.
+
+A brief may define the article object, record target-wiki testimony, classify source leads,
+preserve exclusions, and propose a draft plan. It is not automatically independent evidence or
+publication acceptance. An external agent may draft from a validated brief after inspecting the
+relevant sources and preserving open negative/do-not-assert items.
+
+## Sync safety
+
+Push planning hydrates the observed remote revision identity. Existing-page edits send
+`baserevid`; creates send `createonly`. Generic mutation retries are disabled so an ambiguous write
+is not silently replayed. A forced push may waive a preflight conflict only with explicit approval;
+the write remains compare-and-swap bound to the revision observed for that attempt.
+
+The remaining durability gap is post-write reconciliation: the API response is not yet recorded as
+a durable remote mutation receipt, and a later fetch can observe a subsequent editor. Persist the
+edit response revision ID and reconcile that exact revision before treating this edge as closed.
+
+## Outbound research safety
+
+Research requests use a shared outbound policy: HTTP(S) only, no embedded credentials, no local or
+special-use targets, and validation at every redirect. Cookies honor Secure, host-only, and path
+boundaries. Cache keys include schema, extractor, user-agent, and session fingerprints; entries
+have a bounded lifetime and replacement writes avoid partial files.
+
+Two limitations remain explicit. DNS validation and the HTTP connection do not yet share a pinned
+resolution, leaving a DNS-rebinding window. On Windows, session-cookie files are masked in CLI
+output but do not yet receive an explicit user-only ACL.
+
+## Contextmink boundary
+
+Contextmink is an independent project-generic transcript guard. Wikitool release bundles consume a
+version-pinned upstream Contextmink release pack staged by `scripts/fetch_contextmink.sh` and
+verified against repository-owned archive hashes. Wikitool carries no Contextmink source fork and
+no second installer; the bundled Contextmink binary owns receipt-backed project setup through
+`setup-project`.
+
+## Development contract
+
+When behavior changes:
+
+1. update clap help and regenerate `docs/wikitool/reference.md`;
+2. update the operator guide and thin Claude/Codex wrappers;
+3. keep `ai-pack/AGENTS.md` and `ai-pack/CLAUDE.md` byte-identical;
+4. update typed policy and writing context when editorial behavior changes;
+5. add tests for the authority boundary and outcome, not incidental wording.
+
+Use deterministic state-machine or character-by-character parsing for wikitext and HTML. Do not
+introduce regex parsing at those boundaries.
