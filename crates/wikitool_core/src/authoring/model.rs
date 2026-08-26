@@ -16,7 +16,9 @@ pub enum LocalExistenceState {
 #[serde(rename_all = "snake_case")]
 pub enum ContextSurfaceSource {
     Profile,
+    ExactPage,
     Comparables,
+    ExactPageAndComparables,
     Both,
     ContractTraversal,
 }
@@ -36,7 +38,9 @@ pub struct EvidenceRef {
     pub id: String,
     pub source_kind: String,
     pub source_title: String,
+    pub source_relative_path: String,
     pub locator: Option<String>,
+    pub chunk_sha256: String,
     /// Approximate chunk size in tokens. This is a size, not a relevance rank;
     /// it was previously (mis)named `score`.
     pub token_estimate: u32,
@@ -104,7 +108,7 @@ pub struct LinkSurfaceEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SectionSkeleton {
+pub struct SectionCandidate {
     pub heading: String,
     pub rationale: String,
     pub required: bool,
@@ -120,8 +124,8 @@ pub struct SubjectResearchLane {
     /// prose from *other* pages, not facts about the subject.
     pub top_local_excerpt: Option<String>,
     pub evidence: Vec<EvidenceRef>,
-    /// Verbatim chunk texts from comparable pages. Context to mine, not
-    /// assertions about the subject; previously (mis)named `candidate_facts`.
+    /// Verbatim chunk texts from related pages other than the exact subject page.
+    /// This is adjacency context to inspect, never evidence for a subject claim.
     pub comparable_page_excerpts: Vec<String>,
     /// Citation template families observed locally (e.g. "cite web / web");
     /// previously (mis)named `external_sources_shortlist`, which suggested
@@ -154,7 +158,9 @@ pub struct ArticleEvidenceProfile {
     pub exact_local_title: Option<String>,
     pub local_title_hit_count: usize,
     pub backlink_count: usize,
-    pub direct_subject_evidence: Vec<EvidenceCoverageItem>,
+    /// Local wiki records and chunks that directly match the subject query.
+    /// This is editing context, not automatic support for a factual claim.
+    pub subject_context: Vec<EvidenceCoverageItem>,
     pub broad_context: Vec<EvidenceCoverageItem>,
     pub comparable_pages: Vec<EvidenceCoverageItem>,
     pub live_leads_status: String,
@@ -174,8 +180,8 @@ pub struct ComparableOutline {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalIntegrationLane {
     pub comparable_pages: Vec<String>,
-    /// The closest comparable page's section sequence in document order — the
-    /// strongest single structural model for a new draft.
+    /// A related non-subject page's section sequence in document order. This is
+    /// an observed example for human review, not a recommended article outline.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closest_comparable_outline: Option<ComparableOutline>,
     pub required_templates: Vec<RequiredTemplate>,
@@ -183,9 +189,9 @@ pub struct LocalIntegrationLane {
     pub available_infoboxes: Vec<TemplateSurfaceEntry>,
     pub citation_templates_seen: Vec<TemplateSurfaceEntry>,
     pub template_surface: Vec<TemplateSurfaceEntry>,
-    pub categories_seen: Vec<CategorySurfaceEntry>,
-    pub links_seen: Vec<LinkSurfaceEntry>,
-    pub section_skeleton: Vec<SectionSkeleton>,
+    pub observed_categories: Vec<CategorySurfaceEntry>,
+    pub observed_links: Vec<LinkSurfaceEntry>,
+    pub section_candidates: Vec<SectionCandidate>,
     pub docs_queries: Vec<String>,
     pub contract_query: String,
     pub contract_matched_query_terms: Vec<String>,
@@ -201,6 +207,17 @@ pub struct AuthoringConstraint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ArticleAuthoringContract {
+    pub mode: String,
+    pub agent_may_draft_prose: bool,
+    pub human_acceptance_required_for_publication: bool,
+    pub model_output_is_evidence: bool,
+    pub prose_standard: String,
+    pub structure_policy: String,
+    pub relationship_frame_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArticleStartResult {
     pub schema_version: String,
     pub topic: String,
@@ -209,6 +226,7 @@ pub struct ArticleStartResult {
     pub evidence_profile: ArticleEvidenceProfile,
     pub subject_research: SubjectResearchLane,
     pub local_integration: LocalIntegrationLane,
+    pub authoring_contract: ArticleAuthoringContract,
     pub constraints: Vec<AuthoringConstraint>,
     pub open_questions: Vec<OpenQuestion>,
     pub next_actions: Vec<RecommendedAction>,

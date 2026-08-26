@@ -100,9 +100,6 @@ fn test_profile_overlay() -> ProfileOverlay {
             unreliable_sources: Vec::new(),
         },
         remilia: RemiliaRules {
-            default_parent_group: Some("Remilia".to_string()),
-            preferred_group_field: Some("parent_group".to_string()),
-            avoid_group_fields: Vec::new(),
             infobox_preferences: vec![
                 InfoboxPreference {
                     subject_type: "concept".to_string(),
@@ -116,12 +113,11 @@ fn test_profile_overlay() -> ProfileOverlay {
         },
         categories: CategoryRules {
             preferred_categories: vec!["Category:Ideas".to_string()],
-            min_per_article: 1,
-            max_per_article: 4,
         },
         lint: LintRules {
-            banned_phrases: Vec::new(),
-            watchlist_terms: Vec::new(),
+            synthetic_phrase_prompts: Vec::new(),
+            discouraged_relationship_headings: Vec::new(),
+            discouraged_lead_relationship_terms: Vec::new(),
             forbid_curly_quotes: true,
             forbid_placeholder_fragments: Vec::new(),
             proper_nouns: Vec::new(),
@@ -1801,7 +1797,14 @@ fn build_article_start_uses_neutral_surfaces_without_forced_type() {
         build_article_start(&report, &test_profile_overlay(), ArticleStartIntent::New);
     let serialized = serde_json::to_string(&article_start).expect("serialize article start");
 
-    assert_eq!(article_start.schema_version, "article_start");
+    assert_eq!(article_start.schema_version, "article_start_v3");
+    assert!(article_start.authoring_contract.agent_may_draft_prose);
+    assert!(
+        article_start
+            .authoring_contract
+            .human_acceptance_required_for_publication
+    );
+    assert!(!article_start.authoring_contract.model_output_is_evidence);
     assert_eq!(article_start.intent, ArticleStartIntent::New);
     assert!(!serialized.contains("\"article_type\""));
     assert!(!serialized.contains("confidence"));
@@ -1814,7 +1817,7 @@ fn build_article_start_uses_neutral_surfaces_without_forced_type() {
     assert!(
         article_start
             .evidence_profile
-            .direct_subject_evidence
+            .subject_context
             .iter()
             .any(|item| item.source_kind == "local_chunk")
     );
@@ -1857,6 +1860,74 @@ fn build_article_start_uses_neutral_surfaces_without_forced_type() {
 }
 
 #[test]
+fn build_article_start_scopes_existing_page_comparables_to_its_infobox_type() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Aster_Vale.wiki"),
+        "{{Infobox person|name=Aster Vale}}\n'''Aster Vale''' is a writer.\n== Biography ==\nAster Vale wrote essays.\n[[Category:People]]",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Morgan_Reed.wiki"),
+        "{{Infobox person|name=Morgan Reed}}\n'''Morgan Reed''' is an editor who worked with Aster Vale.\n== Career ==\nReed edited Vale's essays.\n[[Category:People]]",
+    );
+    write_file(
+        &paths
+            .wiki_content_dir
+            .join("Main")
+            .join("Aster_Vale_launch.wiki"),
+        "{{Infobox event|name=Aster Vale launch}}\nThe '''Aster Vale launch''' was an event.\n== Program ==\nAster Vale spoke.\n[[Category:Events]]",
+    );
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let report = build_authoring_knowledge_pack(
+        &paths,
+        Some("Aster Vale"),
+        None,
+        &AuthoringKnowledgePackOptions::default(),
+    )
+    .expect("authoring pack");
+    let report = match report {
+        AuthoringKnowledgePack::Found(report) => *report,
+        other => panic!("expected found authoring pack, got {other:?}"),
+    };
+    let article_start =
+        build_article_start(&report, &test_profile_overlay(), ArticleStartIntent::Audit);
+
+    assert!(
+        article_start
+            .local_integration
+            .comparable_pages
+            .iter()
+            .all(|title| title != "Aster Vale launch")
+    );
+    assert!(
+        article_start
+            .local_integration
+            .available_infoboxes
+            .iter()
+            .all(|entry| entry.template_title == "Template:Infobox person")
+    );
+    assert!(
+        article_start
+            .local_integration
+            .observed_categories
+            .iter()
+            .all(|entry| entry.category_title != "Category:Events")
+    );
+    assert!(
+        article_start
+            .local_integration
+            .section_candidates
+            .iter()
+            .all(|entry| entry.heading != "Program")
+    );
+}
+
+#[test]
 fn build_article_start_marks_empty_local_evidence_without_forcing_comparables() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
@@ -1888,12 +1959,14 @@ fn build_article_start_marks_empty_local_evidence_without_forcing_comparables() 
         vec!["cheetah".to_string()]
     );
     assert!(article_start.local_integration.comparable_pages.is_empty());
-    assert!(
+    assert_eq!(
         article_start
             .local_integration
-            .section_skeleton
+            .section_candidates
             .iter()
-            .any(|section| section.heading == "Overview" && !section.content_backed)
+            .map(|section| section.heading.as_str())
+            .collect::<Vec<_>>(),
+        vec!["References"]
     );
     assert!(
         article_start

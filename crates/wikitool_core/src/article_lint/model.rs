@@ -75,6 +75,8 @@ pub struct ArticleLintReport {
     pub relative_path: String,
     pub title: String,
     pub namespace: String,
+    /// Hash of the exact article text inspected by this lint run.
+    pub content_sha256: String,
     pub issue_count: usize,
     pub errors: usize,
     pub warnings: usize,

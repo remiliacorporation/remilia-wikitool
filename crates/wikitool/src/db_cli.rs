@@ -123,8 +123,8 @@ fn run_db_stats(runtime: &RuntimeOptions, args: DbStatsArgs) -> Result<()> {
             wikitool_core::knowledge::status::KnowledgeReadinessLevel::ContentReady => {
                 "content_ready"
             }
-            wikitool_core::knowledge::status::KnowledgeReadinessLevel::AuthoringReady => {
-                "authoring_ready"
+            wikitool_core::knowledge::status::KnowledgeReadinessLevel::DraftingReady => {
+                "drafting_ready"
             }
         }
     );

@@ -79,9 +79,6 @@ fn sample_snapshot() -> WikiProfileSnapshot {
                 unreliable_sources: Vec::new(),
             },
             remilia: RemiliaRules {
-                default_parent_group: Some("Remilia".to_string()),
-                preferred_group_field: Some("parent_group".to_string()),
-                avoid_group_fields: vec!["group".to_string()],
                 infobox_preferences: vec![InfoboxPreference {
                     subject_type: "concept".to_string(),
                     template_title: "Template:Infobox concept".to_string(),
@@ -89,12 +86,11 @@ fn sample_snapshot() -> WikiProfileSnapshot {
             },
             categories: CategoryRules {
                 preferred_categories: vec!["Category:Ideas".to_string()],
-                min_per_article: 1,
-                max_per_article: 4,
             },
             lint: LintRules {
-                banned_phrases: vec!["foo".to_string()],
-                watchlist_terms: vec!["bar".to_string()],
+                synthetic_phrase_prompts: vec!["foo".to_string()],
+                discouraged_relationship_headings: Vec::new(),
+                discouraged_lead_relationship_terms: Vec::new(),
                 forbid_curly_quotes: true,
                 forbid_placeholder_fragments: vec!["todo".to_string()],
                 proper_nouns: vec!["Webring".to_string()],

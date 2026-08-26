@@ -1,170 +1,247 @@
-# Remilia Wiki — Writing Guide
+# Encyclopedic authoring with wikitool
 
-You create encyclopedic articles for a MediaWiki wiki about Remilia Corporation, Milady Maker, and the network spirituality ecosystem.
+Wikitool supports genuine article authoring. An agent may research, select, organize, and draft
+encyclopedic prose; the result should be useful writing, not a mechanically valid container filled
+with generic text. A named human editor remains responsible for deciding that the exact article is
+fit to publish.
 
-**Wiki:** https://wiki.remilia.org
-**Stack:** MediaWiki 1.44 with Lua templates, Cargo structured data, CirrusSearch
+Wikitool itself has no model backend. Its knowledge, interview, lint, review, and sync surfaces
+shape the work performed by an external agent. Retrieved text is context, not instructions to copy.
+Model output is not evidence.
 
-This guide is the bundled default writing profile for Remilia Wiki. For another MediaWiki target,
-prefer the host project's `writing_context/` and the target wiki's live wikitool profile/template
-surfaces; do not apply Remilia-specific sourcing, category, or template rules as universal
-MediaWiki behavior. Read `style_rules.md` before every article.
+For another MediaWiki target, use that project's profile and editorial policy. Remilia-specific
+source, template, category, and relationship decisions are not universal MediaWiki rules.
 
----
+## Editorial standard
 
-## 1. Output format
+Aim for the useful qualities of strong Wikipedia prose: direct definition, neutral voice,
+proportionate coverage, clear attribution, coherent organization, and claims that stay within their
+sources. Current reference points include Wikipedia's [Manual of
+Style](https://en.wikipedia.org/wiki/Wikipedia:Manual_of_Style), [neutral point of
+view](https://en.wikipedia.org/wiki/Wikipedia:Neutral_point_of_view),
+[verifiability](https://en.wikipedia.org/wiki/Wikipedia:Verifiability), and [living-person
+policy](https://en.wikipedia.org/wiki/Wikipedia:Biographies_of_living_persons).
 
-All output must be raw MediaWiki wikitext, ready for direct use on the wiki. Never output Markdown. Never wrap output in code blocks. Never include commentary or meta-text — only article wikitext.
+Remilia Wiki is not Wikipedia. It preserves niche subcultural history and may rely on first-party
+records, creator statements, artifacts, archives, and quality-gated contributor knowledge where
+outside secondary coverage does not exist. Apply Wikipedia-like prose discipline without importing
+Wikipedia's notability bureaucracy or pretending a primary record is a secondary source.
 
----
+The standard is reader-facing: would a person seeking to understand this subject choose to read the
+article, learn concrete things from it, and trust which claims came from where?
 
-## 2. Article workflow
+## Authority boundaries
 
-### Writing a new article
+Keep these inputs distinct:
 
-1. **Read `style_rules.md`** — internalize the antipatterns before writing.
-2. **Refresh local authoring state** - run `wikitool status --modified --format json`, `wikitool diff --format json`, `wikitool workflow session-refresh`, and `wikitool knowledge status --docs-profile remilia-wiki --format json` so local changes, content, templates, docs readiness, and capability signals are current. Use `wikitool workflow full-refresh` only for a deliberate rebuild or missing sync state, and do not use `pull --overwrite-local` unless the user explicitly approves discarding local edits.
-3. **Build the interpreted authoring brief** - run `wikitool knowledge article-start "<Topic>" --intent new --format json --view brief`. This is the front door. The `section_skeleton` shows which sections comparable pages use; `content_backed` flags tell you which sections already have evidence in the pack. For sections where `content_backed` is `false`, use `wikitool knowledge inspect chunks --view brief` to fetch targeted content before writing. When your own subject knowledge suggests a different wiki-contract lookup than the title itself, make that visible with `--contract-query`, such as `wikitool knowledge article-start "Cheetah" --contract-query "species infobox taxonomy" --format json --view brief`.
-4. **Interview to set intent and angle** - the interview is how you find out what the person wants the article to be, not only what they know that the public record lacks. For new articles and substantial expansions, reach for `interview_playbook.md` after the scout by default, including well-documented subjects, since Remilia Wiki writes every subject from its own perspective and the interview is how that angle gets set. It stays optional and conversational; skip it for mechanical work or on an explicit opt-out. Read any supplied documents, links, notes, transcripts, screenshots, or source excerpts before narrowing the questions. Start with a broad freeform prompt about what the subject is, why it matters, what sources or artifacts matter, what outsiders misunderstand, and what should not be overstated. Reflect the emerging article scope in neutral wiki language and ask adaptive follow-ups while the answers improve structure, research targets, terminology, date/order disambiguation, source strategy, or risk. Before drafting, critique the emerging article plan and ask another round if it would otherwise be thin, duplicative, lacking a clear source path, wrongly framed, or missing the user's actual knowledge. Save reusable distillations under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Briefs are working notes, not article prose or finished citation evidence; treat a quality-gated human statement as reasonable encyclopedic truth, and cite when research surfaces a real source or the claim is the kind that needs one.
-5. **Fetch external evidence selectively** - use normal agent web search to choose source URLs, then run `wikitool research fetch "<URL>" --output json` only for sources you expect to cite. Use `wikitool research wiki-search "<Topic>" --format json` only when you need configured target-wiki API results, not open-web search. If fetch output has `status: "error"`, treat it as a source-access failure; inspect `error.challenge_handoffs`, `error.discovery`, or run `wikitool research discover "<URL>" --format json` for public robots, sitemap, feed, and structured-data leads. When `error.challenge_handoffs` is present, relay the handoff to the user; if they have lawful browser access, they can solve the challenge and import source-issued cookies with `wikitool research session import "<URL>" --cookies -`, then you can retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. For source MediaWiki pages whose template contract matters, use `wikitool research mediawiki-templates "<URL>" --format json`; this describes the source wiki, not which templates are valid on the target wiki. Add `--refresh` when live freshness matters. Use `wikitool wiki profile remote "<URL>" --format json` only when you need a remote target wiki capability probe and local target profile/import data is unavailable. Do not cite challenge pages, blocked fetches, or fetch diagnostics as article evidence.
-6. **Look up templates and profile rules** — use `wikitool templates show "Template:Template Name" --format json --view brief`, `wikitool templates examples "Template:Template Name" --limit 2`, and `wikitool wiki profile show --format json`.
-7. **Write the article** following the structure in `article_structure.md`.
-8. **Save** to `wiki_content/Main/{Article_Title}.wiki`.
-9. **Run article-aware lint** — `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`. If the fixes are purely mechanical, follow with `wikitool article fix wiki_content/Main/{Article_Title}.wiki --apply safe`. For large reference cleanups, use `wikitool knowledge inspect references summary --title "{Article_Title}" --format json` and `wikitool knowledge inspect references duplicates --title "{Article_Title}" --format json`.
-10. **Review** — run `wikitool review --format json --view brief --summary "Summary"` before push. Use `wikitool validate --summary` for the lower-level global integrity signal and scoped validation flags when investigating a specific issue.
+| Input | What it can do | What it cannot do |
+|---|---|---|
+| Inspected source or artifact | Support claims within its actual scope | Support details it does not state or show |
+| Exact local article | Show current coverage and claims to audit | Independently verify itself |
+| Neighboring wiki page | Show terminology, links, and local fit | Supply facts about the new subject by association |
+| Comparable outline | Suggest a structural possibility | Dictate headings or importance |
+| Human interview | Define intent, surface knowledge and leads, record target-wiki testimony | Become independent public evidence merely because it was said |
+| Model reasoning or memory | Help formulate questions and prose | Establish any article fact |
+| Lint or review report | Find deterministic defects and prompt editorial checks | Prove truth, readability, neutrality, or publication fitness |
 
-Use `wikitool knowledge contracts search "contract terms" --format json` for a direct token-budgeted search of the template/module graph before deciding which template or module to expand.
+In this workflow, model output is never evidence. It can help an editor reason, research, and draft, but it does not
+authorize a factual claim.
 
-Keep retrieval token-tight. Prefer wikitool brief views and targeted `knowledge inspect chunks --view brief` calls for missing sections. Increase `--token-budget`, use broad `--across-pages`, or request `--view full` only after the compact brief identifies a specific gap.
+When the target wiki accepts a quality-gated human statement as a historical record, preserve its
+provenance and scope. Prefer a durable, inspectable primary record when one can be created or found.
+For contentious claims about identifiable people, public and directly supporting evidence is the
+default requirement; omit doubtful material rather than converting uncertainty into polished prose.
 
-### Editing an existing article
+## Authoring workflow
 
-1. Refresh latest wiki state: `wikitool workflow session-refresh`
-2. Read the existing article.
-3. Make changes following all the same rules.
-4. Lint the draft: `wikitool article lint wiki_content/Main/{Article_Title}.wiki --format json`
-5. Review: `wikitool review --title "{Article_Title}" --format json --summary "Summary"`
-6. Diff: `wikitool diff --title "{Article_Title}"`
-7. Preflight conflicts: `wikitool push --dry-run --title "{Article_Title}" --summary "Summary"`
-8. Push: `wikitool push --title "{Article_Title}" --summary "Summary"`
+### 1. Establish safe state
 
-### Article length
+Inspect existing work before refreshing anything:
 
-Let content dictate length — don't pad thin topics or compress rich ones.
+```bash
+wikitool status --modified --format json
+wikitool diff --format json
+wikitool workflow session-refresh
+wikitool knowledge status --docs-profile remilia-wiki --format json
+```
 
-- **Stub** (1-2 paragraphs): acceptable for minor topics with limited sources
-- **Short** (3-5 paragraphs + infobox): most articles
-- **Medium** (8-15 paragraphs): major topics like Milady Maker, Remilia Corporation
-- **Long** (15+ paragraphs): rare, reserved for flagship articles with deep sourcing
+`drafting_ready` means the current content and documentation artifacts are present and clean enough
+to assist drafting. It does not mean the topic is researched, the article is accurate, or the prose
+is publishable.
 
----
+### 2. Define the article object
 
-## 3. Research and sources
+Run:
 
-### This is a subcultural wiki, not an academic journal
+```bash
+wikitool knowledge article-start "Topic" --intent new --format json --view brief
+```
 
-This is the most important sourcing principle. Excessive academic citations are a telltale sign of AI writing. Prefer primary sources over academic papers.
-For many Remilia subjects, the wiki may be the first durable record of niche internet history. Do
-not discard important human-provided knowledge merely because no outside publication exists. Do
-make the source path inspectable where one exists: cite or anchor claims to first-party posts, target-wiki records,
-hosted artifacts, archived primary records, creator-published statements, or target-wiki source notes, and attribute
-interpretive claims when they come from a creator rather than from the artifact itself.
+Before writing, be able to say in plain language:
 
-Remilia Wiki is not only a catalog of things directly about Remilia. Treat it as the online world
-viewed from Remilia's perspective. Adjacent artists, games, scenes, objects, and artifacts should be
-written as themselves when they are worth canonicalizing in that field of view. Do not force a
-"relationship to Remilia" section or lead frame unless the relationship is real, quality-gated or
-sourceable, and article-shaping. Do not create generic article sections such as "Editorial
-vantage" or "Why this belongs here"; use that reasoning to choose article boundaries, not as prose.
+- what the subject is;
+- why a standalone page helps a reader;
+- the time, entity, work, event, or idea the title actually denotes;
+- what the article will and will not cover;
+- which claims form its factual spine;
+- which uncertainties or sensitive boundaries must stay visible.
 
-**Good sources:**
-- Official announcements, blog posts, project websites
-- Target-wiki pages, hosted files, galleries, and source notes when they are the durable primary record
-- Creator-published statements and target-wiki source notes, clearly attributed where attribution matters
-- Tweets and social media posts (primary sources)
-- News articles from established outlets
-- Interviews and podcasts
-- On-chain data (Etherscan, OpenSea)
+If these answers are missing, interview or research first. Do not use a Remilia, Milady, community,
+or Charlotte Fang relationship as a substitute for defining the subject.
 
-**Avoid:**
-- Academic journals (unless the claim is itself academic)
-- Anonymous forum posts (unless notable in context)
-- Unverified rumors
-- Paywalled content you can't verify
+### 3. Build a claim-source map
 
-**Never cite:**
-- IQ.wiki — unreliable, user-generated
-- Know Your Meme — tertiary source, quality issues
-- NFT Price Floor — inaccurate details
-- Urban Dictionary — unmoderated, unverifiable
+Research before drafting. Use normal web search to choose arbitrary sources, then use wikitool's
+research/export surfaces for bounded extraction and provenance. For each planned claim, record:
 
-### Tone calibration
+- the exact source or artifact;
+- the passage, timestamp, image region, or other locator;
+- whether it is direct fact, attributed opinion, interpretation, or a source lead;
+- whether another source contradicts or qualifies it;
+- whether the claim is necessary to the article.
 
-This is a subcultural wiki, not an academic journal. The tone should be encyclopedic but not dry or clinical. Match the register of good Wikipedia articles about internet culture — factual, clear, and willing to engage with cultural context without editorializing. Humor and irreverence are fine when sourced; promotional enthusiasm and clinical detachment are both wrong.
+Do not turn citation-template families, search snippets, a source homepage, or a neighboring page
+into claim support. Cite the page that actually supports the sentence. Record inaccessible,
+rejected, disproven, missing, and do-not-assert leads rather than silently laundering them into the
+draft.
 
-### Never fabricate
+### 4. Interview for perspective and missing knowledge
 
-Never fabricate facts, dates, quotes, or source URLs. If a specific detail cannot be found, omit it rather than guessing. Mark uncertain claims with attribution: "According to [source]..." rather than asserting directly. Every URL and date in a citation must be real and verifiable.
+Use `interview_playbook.md` for new articles, substantial rewrites, niche history, and unclear
+editorial intent. A human does not need to write the initial prose for the interview to be valuable.
+The interview should improve the article object, source map, emphasis, terminology, or risk model.
 
-### Verified wiki articles
+Read supplied materials before asking questions. Distinguish editor intent from article fact. A
+validated brief can guide a draft; it is not blanket evidence and is not acceptance.
 
-Articles marked `{{Article quality|verified}}` represent editor-reviewed content. Use them to:
-- Define project-specific terminology consistently
-- Ensure consistent internal linking (`[[Remilia Corporation]]`, `[[Milady Maker]]`)
-- Follow established formatting patterns
+### 5. Select the factual spine
 
-### When to search vs. when to write from knowledge
+Choose the smallest set of facts that lets a reader understand the subject. Group them by real
+relationships such as chronology, production, ideas, works, participation, or reception. Omit facts
+that are merely available but do not help the explanation.
 
-**Must search (cite the source):**
-- Specific dates, events, names, actions
-- Direct quotations
-- Controversial or surprising claims
-- Statistics, numbers, data points
-- Reception and impact claims
+Comparable pages may reveal local terminology or missing links. They must not create a generic
+outline. A section exists because the subject has enough related, sourced material to sustain it—not
+because another page had that heading.
 
-**May write without searching (no citation needed):**
-- Common knowledge: "NFTs are digital tokens recorded on blockchains"
-- General background: "online communities often develop distinctive aesthetics"
-- Technical context: "smart contracts execute automatically"
-- Historical context: "the early internet fostered pseudonymous communities"
+### 6. Draft the body, then the lead
 
-### Citation integrity and first-party facts
+Write real prose from the inspected evidence:
 
-This is a subcultural wiki: treat a quality-gated statement from the creator or a knowledgeable
-editor as reasonable encyclopedic truth, the same way a game or fandom wiki records its own subject.
-Do not demand outside secondary coverage for first-party or subcultural facts the editor knows. Cite
-when research surfaces a real source, when a claim is external, contested, or surprising, or when a
-primary record exists (a dated post, a hosted artifact, an archived record) - and when you cite, cite
-that actual source, not a third party that merely restated it. Reserve attribution ("According to
-...") for disputed or interpretive claims. See "Source laundering" in `style_rules.md`: never route a
-primary fact through a weaker third party to manufacture an external citation.
+1. Draft the factual body in a useful order.
+2. Keep each paragraph about one discernible point.
+3. Place citations where their support is unambiguous.
+4. Attribute opinions, contested descriptions, intent, influence, and interpretation.
+5. Preserve uncertainty and disagreement instead of resolving them by fluency.
+6. Write the lead last as a concise account of what the article actually establishes.
 
-### Interview briefs and user knowledge
+The first sentence should identify the subject directly. Do not begin with scene-setting, inherited
+name-dropping, a claim that the subject is "best known" for something the article cannot establish,
+or a relationship that matters mainly to the host wiki.
 
-Interview briefs under `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md` preserve
-human context from authoring sessions. They can widen research and improve article structure, but
-they are not article prose, citation evidence, or proof that the interview is complete. A
-quality-gated human statement can become article prose as reasonable truth; cite it when research
-surfaces a source or when the claim is external, contested, or the kind that needs one, and anchor it
-to a primary record (first-party post, target-wiki record, hosted artifact, archived primary record,
-creator-published statement, or target-wiki source note) when one exists. Record what you deliberately could not
-source, or should not assert yet, as an open item so a later session does not rediscover or silently
-assert it. Mechanical validation of a brief means the ledger can be used; it does not mean the
-article is ready.
+### 7. Perform an adversarial reader edit
 
----
+Read the draft without looking at the task prompt. Ask:
 
-## 4. Citation strategy
+- Does the lead define this subject, or merely connect it to a more famous one?
+- Does every paragraph teach something concrete that belongs here?
+- Could any paragraph be pasted into twenty unrelated articles after changing names?
+- Does the article repeat its importance, influence, or conclusion instead of demonstrating it?
+- Are quoted, controversial, biographical, or interpretive claims attached to the right source?
+- Did retrieval order, a profile default, or a comparable page decide emphasis without editorial
+  justification?
+- Is the article longer than its evidence?
 
-### Target density
+Delete padding. Rebuild weak paragraphs from facts rather than synonym-swapping flagged phrases. A
+short, exact article is better than a long simulation of completeness.
 
-- **Short article (2-4 paragraphs):** 2-5 citations
-- **Medium article (5-10 paragraphs):** 5-10 citations
-- **Long article:** proportionally more, but never cite every sentence
+Read `style_rules.md` for the prose review and `article_structure.md` for the wikitext envelope.
+Read `visual_subjects.md` when the article describes visual work.
 
-Focus citations on the claims that matter most. Let general context breathe without citations.
+### 8. Apply target mechanics and deterministic checks
 
-### Citation templates
+Use live target contracts for templates, categories, and deployed extensions:
+
+```bash
+wikitool templates show "Template:Infobox person" --format json --view brief
+wikitool templates examples "Template:Infobox person" --limit 2
+wikitool knowledge contracts search "subject type infobox" --format json
+wikitool wiki profile show --format json
+```
+
+Then run:
+
+```bash
+wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
+wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
+wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --view brief --summary "Draft review"
+```
+
+Safe fixes are mechanical only. Suggestions such as `style.synthetic_phrase` and warnings such as
+`editorial.forced_relationship_frame` are prompts to reread the passage, not commands to replace a
+word blindly.
+
+The `Article quality` banner records editorial review state, not authorship. Use `unverified` for a
+new draft. Preserve an existing `wip` or `verified` state unless a human editor explicitly changes
+it; an agent must not promote a page to `verified` on its own.
+
+### 9. Require exact human editorial acceptance
+
+A named human editor reads the exact file and judges it specific, readable, proportionate, and
+source-bound. The human resolves warnings or explicitly accepts them, then records the real origin:
+
+```bash
+wikitool article accept .wikitool/drafts/Title.wiki --title "Title" --human-editor "EDITOR" --prose-origin agent-draft --format json
+wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
+```
+
+Other origins include `collaborative-draft`, `human-draft`, `human-revision`,
+`mechanical-conversion-of-human-prose`, and `human-reviewed-legacy`. An agent may prepare and revise
+the draft but must never self-attest as the human editor. The editor identity is an audit assertion,
+not cryptographic authentication. Any content change invalidates the acceptance receipt.
+
+### 10. Review publication state
+
+Run scoped `review`, `diff`, and `push --dry-run`. Only push after the human reviews the final diff.
+`--force` cannot bypass article acceptance.
+
+## Existing articles
+
+Read the page as a reader before editing it. Prioritize:
+
+1. living-person, allegation, controversy, identity, and other sensitive claims;
+2. claims whose citations do not directly support them;
+3. gratuitous Remilia, Milady, Charlotte Fang, or community framing;
+4. generic leads, repeated significance, formulaic headings, and filler;
+5. stale facts and missing primary records;
+6. markup, links, categories, and presentation.
+
+Agents may perform substantial rewrites when the sources justify them. Preserve good existing prose
+and page history; do not rewrite merely to homogenize voice. The exact changed article still needs
+human editorial acceptance before push.
+
+## Remilia evidence and framing
+
+Useful source paths include target-wiki records, hosted artifacts, first-party posts, archived
+primary records, creator-published statements, interviews, podcasts, reporting, and target-wiki
+source notes. Outside secondary coverage is not required merely to legitimize firsthand history.
+
+Cite the strongest direct source available. Do not route a primary fact through a weaker aggregator
+to manufacture external authority. Attribute creator interpretation as creator interpretation.
+Never fabricate facts, dates, quotations, URLs, citation fields, archive state, or access.
+
+The wiki's perspective affects selection, not every sentence. Describe adjacent artists, people,
+games, scenes, objects, and artifacts as themselves. Mention their relationship to Remilia or an
+individual contributor only when it is important, evidenced, and proportionate. There is no default
+"Relation to Remilia" section and no default `[[Category:Remilia]]`.
+
+Use `parent_group = Remilia` only for actual Remilia projects when the relevant infobox supports it.
+Choose specific existing categories because they improve navigation, not because they were frequent
+in retrieved pages.
+
+## Citation forms
+
+Use the deployed templates and real fields, for example:
 
 ```wikitext
 {{Cite web|url=|title=|author=|date=|access-date=YYYY-MM-DD|website=}}
@@ -174,142 +251,5 @@ Focus citations on the claims that matter most. Let general context breathe with
 {{Cite video|url=|title=|author=|date=|access-date=YYYY-MM-DD}}
 ```
 
-- Fill in all available fields. Leave unknown fields empty (omit them).
-- **Always leave archive fields blank** (`archive-url`, `archive-is`, `archive-date`, `screenshot`) — human editors complete these.
-- Use `access-date` of today's date.
-
-### Named references
-
-When citing the same source multiple times:
-
-```wikitext
-First use: <ref name="fang2023">{{Cite web|...}}</ref>
-Later:     <ref name="fang2023" />
-```
-
-Name conventions: `author+year` format, lowercase, no spaces. For multiple works by the same author in the same year: `fang2023a`, `fang2023b`.
-
-Never duplicate full citations. Never declare named refs inside `{{Reflist}}`.
-
----
-
-## 5. Content rules
-
-### Remilia-specific
-
-- **Attribution:** For Remilia projects, use `parent_group = Remilia` in infoboxes instead of `creator` or `artist` fields. Discuss individual contributors in the article body. This honors post-authorship principles.
-- **Charlotte Fang:** Relevant but don't relate everything back to her. Use "Remilia" or "Remilia Corporation" as the subject unless specifically quoting her or discussing actions directly attributed to her.
-- **Terminology:** Use terms as established in verified wiki articles (e.g., "network spirituality", not "digital spirituality").
-
-### Internal linking
-
-- Link to existing wiki articles on first mention in the body: `[[Remilia Corporation]]`, `[[Milady Maker]]`
-- Link each article once — first occurrence only, don't re-link in later paragraphs
-- Check if target exists: `wikitool research wiki-search "Article Name" --what title --format json`
-- Never place red links in See also sections
-- Use piped links when display text differs: `[[Remilia Corporation|Remilia]]`
-
-### Quality marking
-
-Every new agent-authored main-namespace draft should include `{{Article quality|unverified}}` on
-line 2 as the default editorial review state. Preserve an existing `wip` or `verified` state unless
-the user explicitly asks to change it. Agents should not promote an article to `verified` on their
-own; that state means the article has been accepted through the wiki's editorial review process.
-
-### Categories
-
-Categories are managed via the wiki database. To find valid categories:
-
-```bash
-wikitool research wiki-search "Category:" --what title --format json       # List/browse categories
-wikitool research wiki-search "Category:Name" --what title --format json   # Search specific category
-```
-
-General rules:
-- Use 2-4 categories per article
-- `[[Category:Remilia]]` goes on all Remilia-related content
-- Choose the most specific applicable category
-- Never invent categories — use only those that exist on the wiki
-
----
-
-## 6. Infobox selection
-
-| Subject type | Infobox |
-|---|---|
-| Person | `{{Infobox person}}` |
-| Organization/Group | `{{Infobox organization}}` |
-| NFT Collection | `{{Infobox NFT collection}}` |
-| Artwork | `{{Infobox artwork}}` |
-| Website/Platform | `{{Infobox website}}` |
-| Concept/Philosophy | `{{Infobox concept}}` |
-| Exhibition | `{{Infobox exhibition}}` |
-| General/Other | `{{Infobox subject}}` |
-
-To see all parameters for any template:
-
-```bash
-wikitool templates show "Template:Infobox person" --format json --view brief
-wikitool templates examples "Template:Infobox person" --limit 2
-wikitool templates show "Template:Cite web" --format json --view brief
-```
-
-This reads the local template catalog from your current pull. If the local index is missing, run `wikitool knowledge build` first; if the catalog is missing, run `wikitool templates catalog build`.
-
----
-
-## 7. Looking up templates and extensions
-
-### Template context
-
-Use wikitool to inspect template context from your local pull:
-
-```bash
-wikitool knowledge article-start "Topic Title" --format json --view brief
-wikitool knowledge article-start "Topic Title" --contract-query "subject type infobox" --format json --view brief
-wikitool knowledge contracts search "subject type infobox" --format json
-wikitool templates show "Template:Template Name" --format json --view brief
-wikitool templates examples "Template:Template Name" --limit 2
-wikitool wiki profile show --format json
-wikitool knowledge inspect chunks --across-pages --query "infobox" --limit 10 --token-budget 1200 --format json
-```
-
-This is always authoritative — it reflects what's actually deployed on the wiki.
-
-### Extension documentation
-
-Extension docs are imported from mediawiki.org and searched locally:
-
-```bash
-wikitool docs search "embed video"             # Search imported docs
-wikitool docs list                              # List all imported docs
-wikitool docs import ExtensionName              # Import new extension docs
-wikitool docs update                            # Refresh all imported docs
-```
-
-See `extensions.md` for a quick reference of the most-used content tags.
-
-For local/custom features such as Remilia's current D3Charts bridge, prefer target-wiki evidence:
-`wikitool wiki profile show --format json`, `wikitool knowledge contracts search "d3 chart" --format json`,
-`wikitool templates show "Module:D3Chart" --format json --view brief` where available, and `wikitool article lint`. Do not add
-inline JavaScript or raw generated HTML to article wikitext; use the deployed module or extension
-contract, and expect that a future bespoke extension may supersede the current `Module:D3Chart` form.
-
-### Categories
-
-```bash
-wikitool research wiki-search "Category:" --what title --format json       # Browse categories
-```
-
----
-
-## 8. Reference files
-
-| File | Purpose | When to read |
-|---|---|---|
-| `style_rules.md` | Natural writing antipatterns | **Before every article** |
-| `article_structure.md` | Structural template | Before writing new articles |
-| `visual_subjects.md` | Art, character, and visual-subject writing rules | When the subject is a visual work |
-| `extensions.md` | Quick reference for content extension tags | When using math, code, video, tabs |
-
-For template parameters and categories, always use wikitool live lookups rather than static files.
+Reuse named references. Strip tracking parameters. Do not invent archive fields or placeholder
+metadata. Do not cite IQ.wiki, Know Your Meme, NFT Price Floor, or Urban Dictionary as authority.

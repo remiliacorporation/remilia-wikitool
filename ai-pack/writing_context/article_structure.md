@@ -1,158 +1,112 @@
-# Article Structure Template
+# Article structure
 
-Every article follows this structure. Adapt sections to fit the subject — not every article needs every section.
+Structure is an editorial result, not a template to fill. Start from the article's supported factual
+spine, cluster related claims, and choose the smallest set of headings that helps a reader follow
+them. `knowledge article-start` reports observed section candidates and comparable outlines; these
+are local signals, never a mandatory skeleton.
 
----
+## Wikitext envelope
 
-## Required skeleton
-
-```wikitext
-{{SHORTDESC:Brief one-line description of the subject}}
-{{Article quality|unverified}}
-
-'''Article Title''' is [opening sentence defining the subject].
-
-== Section heading ==
-Content...
-
-== References ==
-{{Reflist}}
-
-[[Category:Primary Category]]
-[[Category:Secondary Category]]
-```
-
-## Line-by-line requirements
-
-| Line | Content | Notes |
-|---|---|---|
-| 1 | `{{SHORTDESC:...}}` | Under 160 chars. Describes the subject, not the article. No wikitext inside. |
-| 2 | `{{Article quality\|unverified}}` | Default review state for new agent drafts. Preserve existing `wip` or `verified` unless explicitly changed. |
-| 3 | *(blank)* | |
-| 4+ | `'''Bold Title'''` opening paragraph | First sentence defines the subject. Bold only the title, first occurrence. |
-
-## Infobox placement
-
-Place infoboxes after the quality banner, before the article body:
+A Main-namespace article normally uses this order when each element is applicable:
 
 ```wikitext
-{{SHORTDESC:Generative NFT collection by Remilia Corporation}}
+{{SHORTDESC:Specific one-line description of the subject}}
 {{Article quality|unverified}}
-{{Infobox NFT collection
-|name        = Milady Maker
-|image       = Milady_Maker_logo.png
-|parent_group = Remilia
-|supply      = 10000
-|blockchain  = Ethereum
+{{Infobox ...
+|...
 }}
 
-'''Milady Maker''' is a generative NFT collection...
-```
+'''Article title''' is [direct, supported definition].
 
-For Remilia projects: use `parent_group = Remilia` instead of `creator` or `artist`.
-
-## Lead section
-
-- 1-4 paragraphs summarizing the article.
-- First sentence: `'''Subject'''` is/was [definition with context].
-- No section heading — the lead comes before any `==` heading.
-- Citations in the lead are optional if the same facts are cited in the body.
-
-## Body sections
-
-### Using the section skeleton from article-start
-
-`wikitool knowledge article-start` returns a `section_skeleton` with headings observed across comparable pages. Each entry includes:
-
-- **`heading`** — the section title seen on comparables
-- **`required`** — `true` for Overview and References (always present)
-- **`content_backed`** — `true` if retrieved evidence chunks already cover this section; `false` means the section exists on comparables but no content was retrieved
-- **`supporting_pages`** — which comparable pages have this section
-
-**Use the skeleton as a starting point, not a contract:**
-
-1. **Drop** sections that don't apply to your subject. A section appearing on comparables doesn't mean it belongs on every article — apply editorial judgment.
-2. **Add** sections the skeleton missed if your evidence supports them. The skeleton reflects structural consensus among comparables; unique aspects of your subject won't appear.
-3. **Investigate** sections marked `content_backed: false` — these exist on comparables but weren't in the retrieved evidence. Use `wikitool knowledge inspect chunks "<Page>" --query "<heading>" --limit 4 --token-budget 400` to fetch targeted content before writing those sections.
-4. **Sparse skeletons are normal** when comparables are structurally diverse (e.g., an organization compared against artworks, events, and people). Fall back on the subject-type patterns below.
-
-When a knowledge interview exists, combine the `section_skeleton` with the interview brief before
-drafting. The brief can suggest missing sections, source leads, and terminology, but it is not
-article prose or citation evidence. Corroborate user assertions before publishing factual claims.
-When the brief's Draft Plan proposes a subject-specific body shape, prefer that plan over generic
-comparable-page sections that would make the article thin or wrongly framed. Appendices such as
-References still remain at the end.
-
-### Common section patterns by subject type
-
-| Subject type | Typical sections |
-|---|---|
-| Person | History, Career, Notable work, Personal life |
-| Organization | History, Projects, Structure, Impact |
-| Concept | Origin, Description, Usage, Reception |
-| NFT Collection | Development, Launch, Design, Community, Impact |
-| Event | Background, The event, Aftermath |
-| Artwork | Creation, Description, Exhibition, Reception |
-
-For subjects that are primarily visual works (art, character designs, collections, card art), also follow `visual_subjects.md`, which covers describing the artifact as a primary source and the boundary between description and interpretation.
-
-### Section rules
-- Use `==` for main sections, `===` for subsections.
-- Sentence case: `== Early life ==` not `== Early Life ==`.
-- One blank line before each heading.
-- Do not number sections or phrase them as questions.
-
-## Standard appendices (in this order)
-
-```wikitext
-== See also ==
-* [[Related Article 1]]
-* [[Related Article 2]]
+== Subject-derived heading ==
+[Encyclopedic prose with inline citations.]
 
 == References ==
 {{Reflist}}
 
-== External links ==
-* [https://example.com Official website]
-
-[[Category:Remilia]]
-[[Category:NFT Collections]]
+[[Category:Specific existing category]]
 ```
 
-### See also
-- 3-5 links to related articles not already prominently linked in the body.
-- Only link to pages that exist. Never add red links here.
+The bracketed text is explanatory, not placeholder content to emit.
 
-### References
-- `{{Reflist}}` renders all inline `<ref>` citations.
-- This section is mandatory if the article has any citations.
+- Keep `SHORTDESC` concise and describe the subject, not “an article about” it.
+- Use `unverified` for a new draft. Preserve existing `wip` or `verified` unless a human editor
+  explicitly changes the review state.
+- Put an applicable infobox after the quality banner and before the lead.
+- The lead has no heading. Bold the title only at its first occurrence.
+- Use sentence-case headings, `==` for sections, and `===` for subsections.
+- Add `References` when inline citations exist. Add `See also`, `Further reading`, `External links`,
+  or `Notes` only when they contain useful, non-duplicative material.
+- Put specific verified categories at the end. Frequency in nearby pages is not a category rule.
 
-### Further reading (optional)
-- Relevant publications not used as sources. Be selective.
+## Deriving sections
 
-### External links (optional)
-- Official websites, major resources. Typically 1-3 links maximum.
-- For NFT collections, include `{{Etherscan}}` with the contract address.
+Create a section when all of these are true:
 
-### Categories
-- 2-4 categories from the wiki's existing category set.
-- Place at the very end of the article, after all sections.
-- Look up valid categories: `wikitool research wiki-search "Category:" --what title --format json`
+1. it answers a distinct reader question about the subject;
+2. it contains more than a repeated lead claim or one isolated detail;
+3. its claims have adequate evidence;
+4. the heading describes the content without evaluation;
+5. separating it improves the article's flow.
 
-## Content extension tags
+Otherwise merge the material into a related section or omit it.
 
-Use these when the article calls for special content:
+Useful organizing relationships include chronology, works, production, ideas, design, activity,
+governance, participation, and documented reception. These are prompts for reasoning, not default
+headings. For a person, do not invent “Early life” when no sourced early-life material exists. For
+an artwork, do not create “Reception” from the agent's own response. For a project, do not turn a
+feature list into prose sections without explaining how the features matter to the subject.
 
-```wikitext
-<math>E = mc^2</math>                                    <!-- Math formulas -->
-<syntaxhighlight lang="solidity">code</syntaxhighlight>  <!-- Source code -->
-<poem>Line 1\nLine 2</poem>                               <!-- Poetry/lyrics -->
-{{#ev:youtube|VIDEO_ID|description=Caption}}              <!-- Video embeds -->
-<tabber>
-|-|Tab 1=Content
-|-|Tab 2=Content
-</tabber>                                                 <!-- Tabbed content -->
-{{#invoke:D3Chart|bar|data=A:1,B:2}}                      <!-- Remilia-local charts; lint before use -->
+Write the body before the lead so the lead summarizes the article that exists rather than the
+article imagined at the start.
+
+## Comparable pages and interview plans
+
+Use comparable pages to learn target vocabulary, typical article scale, link conventions, and
+possible omissions. Do not copy their heading sequence or reproduce their weaknesses. The exact
+subject page is excluded from comparable selection in the current `article-start` contract.
+
+An interview brief may contain a draft plan. Treat it as an editor proposal to test against the
+evidence. A proposed section can be rewritten, merged, reordered, or dropped. The agent may write
+the resulting prose when the claim-source map is adequate.
+
+Generic “Impact”, “Legacy”, “Future”, “Conclusion”, “Broader context”, and relationship-to-Remilia
+sections deserve particular skepticism. Use one only when distinct, sourced material makes it the
+clearest organization.
+
+## Leads and article length
+
+The lead identifies the subject and summarizes the body in proportion to its importance. It should
+not carry a second mini-article about Remilia, Charlotte Fang, an industry, or a scene merely to
+explain why the page was created.
+
+Let evidence determine length. A short article can contain a definition, a compact chronology or
+description, and sources. Do not expand it with generic background or interpretation to imitate a
+larger encyclopedia entry. If the subject cannot yet sustain a standalone explanation, consider a
+redirect or a section in a broader page.
+
+## Infoboxes, media, and categories
+
+An infobox summarizes supported facts; it does not replace the lead or authorize fields whose
+values are unknown. Query the live contract before using a template:
+
+```bash
+wikitool templates show "Template:Infobox person" --format json --view brief
+wikitool templates examples "Template:Infobox person" --limit 2
 ```
 
-See `extensions.md` for full details on each.
+Use `parent_group = Remilia` only for an actual Remilia project when the template supports it. Do
+not infer an individual's employment, identity, authorship, or relationship from a profile default.
+
+Images should help identify or understand the subject. Captions state what the image shows and the
+context needed to interpret it; they do not add unsupported criticism. Read `visual_subjects.md`
+for artifact-description boundaries.
+
+Choose categories from existing target-wiki categories because they improve navigation. There is
+no universal `[[Category:Remilia]]` default and no requirement to reach an arbitrary category count.
+
+## Rendering and extensions
+
+Read `extensions.md` and the live wiki profile before adding extension syntax. Do not add raw
+JavaScript or generated HTML to an article. For templates or Cargo-backed rendering, validate the
+relevant rendered consumer shapes with `wiki render-check` after publication.

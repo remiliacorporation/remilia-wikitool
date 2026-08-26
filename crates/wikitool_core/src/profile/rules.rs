@@ -53,23 +53,30 @@ pub struct CitationRules {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RemiliaRules {
-    pub default_parent_group: Option<String>,
-    pub preferred_group_field: Option<String>,
-    pub avoid_group_fields: Vec<String>,
     pub infobox_preferences: Vec<InfoboxPreference>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CategoryRules {
     pub preferred_categories: Vec<String>,
-    pub min_per_article: usize,
-    pub max_per_article: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LintRules {
-    pub banned_phrases: Vec<String>,
-    pub watchlist_terms: Vec<String>,
+    /// Narrow prompts for human rereading when prose uses canned significance
+    /// language. These are suggestions, never a word blacklist or mechanical
+    /// substitute for editorial judgment.
+    pub synthetic_phrase_prompts: Vec<String>,
+    /// Headings that commonly force an adjacent subject into the profile owner's
+    /// frame. These are review prompts, not unconditional errors: a human editor
+    /// may keep a relationship section when that relationship is genuinely
+    /// subject-defining and proportionate.
+    #[serde(default)]
+    pub discouraged_relationship_headings: Vec<String>,
+    /// Profile-owner or adjacent-person terms whose appearance in another
+    /// subject's lead requires an explicit proportionality check.
+    #[serde(default)]
+    pub discouraged_lead_relationship_terms: Vec<String>,
     pub forbid_curly_quotes: bool,
     pub forbid_placeholder_fragments: Vec<String>,
     /// Proper nouns that may stay capitalized mid-heading without tripping the

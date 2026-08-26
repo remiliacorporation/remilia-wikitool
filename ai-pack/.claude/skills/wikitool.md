@@ -1,30 +1,32 @@
 # /wikitool - Thin wrapper
 
-Thin wrapper for the `wikitool` CLI.
+Use normal reasoning and verify current flags with `wikitool --help`, `wikitool <command> --help`,
+and `docs/wikitool/reference.md`.
 
-Use normal reasoning, ordinary shell/file tools, and direct editing by default.
-Do not invent flags or cached behavior; verify against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
+Read `writing_context/writing_guide.md`, `style_rules.md`, and `article_structure.md` before
+authoring. You may research and write genuine encyclopedic prose. Build a claim-source map first;
+model memory, search snippets, retrieval order, nearby pages, and fluent synthesis are not evidence.
 
-At the start of an editing session, inspect local edits and refresh local wiki state before relying on indexed content:
-`wikitool status --modified --format json`, `wikitool diff --format json`,
-`wikitool workflow session-refresh`, and
-`wikitool knowledge status --docs-profile remilia-wiki --format json`. Use `wikitool workflow full-refresh`
-only for deliberate rebuilds or missing sync state; do not use `pull --overwrite-local` without explicit approval.
+At session start, inspect `wikitool status --modified --format json` and `wikitool diff --format json`,
+then run `wikitool workflow session-refresh` and `wikitool knowledge status`. Do not use
+`pull --overwrite-local` without explicit approval. Use `knowledge article-start
+--intent new|expand|audit|refresh --view brief` for the typed coauthoring contract and
+evidence signals. `drafting_ready` is artifact readiness, not publication readiness. Route new,
+substantial, niche, or unclear article work through `/knowledge-interview`.
 
-Use `wikitool knowledge article-start "Topic" --intent new|expand|audit|refresh --format json --view brief` as the authoring front door.
-For new articles and substantial expansions, route to `/knowledge-interview` by default to set the
-article's intent, scope, and angle with the user and surface what they know, not only when they know
-more than the public record. Skip it on an explicit opt-out or for mechanical lint, link, sync,
-source-fetch, or validation work.
-Keep agent context compact: prefer wikitool briefs (`article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, `review --view brief`) before using `--view full`, broad reference selections, or high token budgets.
-Use normal agent web search to choose arbitrary external sources, then use `wikitool research fetch`, `research discover`, and `export` for extraction and provenance. Use `research wiki-search` only for the configured target wiki API.
-When `research fetch --output json` returns `error.challenge_handoffs`, relay the exact handoff to the user and ask them to solve the source challenge in a browser, then import source-issued cookies with `research session import ... --cookies -` and retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. Use `research session list|show|clear|prune` to manage local sessions; cookie values are stored locally and not printed by CLI output.
-Use `wikitool research mediawiki-templates "URL"` when a source MediaWiki page's template/module contract matters. The report is cached; add `--refresh` when live freshness matters. Treat it as source-wiki context only; target-wiki template use still has to pass local `knowledge contracts`, `templates show`, and `article lint`.
-Use `wikitool wiki profile remote "URL"` only as an explicitly scoped remote target capability probe when local import/profile data is unavailable. It reports extensions, parser tags, namespaces, and API capabilities, not portable template permission.
-Use `wikitool knowledge inspect references ...` for indexed citation audits and duplicate cleanup passes.
-Use scoped `wikitool validate --category ... --title ... --limit ...` when investigating a specific validation class. Use `--verify-live` for broken-link or redirect findings that need production API corroboration.
-Use scoped `wikitool status`, `wikitool diff`, and `wikitool push --dry-run` selectors when working on a subset of pages.
-Use `wikitool review --format json --view brief --summary "..."` for the pre-push gate; request `--view full` only when the brief points to a needed detail.
-After pushing templates, Cargo queries, or other dynamic rendering changes, use `wikitool wiki render-check "Title" --scope-class CLASS --expect-scopes N --require-interactive-link --require-href-contains TEXT --format json` to verify the live rendered HTML contract. Add `--require-link-class mw-file-description` when native MediaViewer behavior is required, and `--require-page-image FILE` when PageImages/Popups must select an exact representative file. The check rejects parser errors and literal rendered wikilinks by default, and crawler-only file-source anchors do not satisfy the interactive-link requirement.
+Use `knowledge contracts` for target template/module decisions and `validate --verify-live` for
+production-sensitive links, redirects, and rendered-state findings.
 
-Reach for `wikitool` when you need wiki-grounded retrieval, template/profile lookup, lint/fix, sync, or guarded push flows.
+Draft the factual body before the lead. Define the subject directly, keep claims within inspected
+sources, and do not inherit Remilia, Charlotte Fang, Milady, category, or section framing from
+adjacent pages. Run the adversarial reader edit before lint.
+
+Use `article lint`, safe mechanical fixes, and scoped validation. A named human must read the exact
+final prose and run or explicitly direct `article accept`; use the truthful origin, including
+`agent-draft` or `collaborative-draft`. Never self-attest. Promotion and changed Main-namespace
+pushes require the accepted hash, and `--force` cannot bypass it. Close with `review --view brief`,
+`diff`, and `push --dry-run`.
+
+Use normal web search to choose sources, then wikitool research/export for extraction and
+provenance. Relay access challenges rather than bypassing them. After dynamic rendering changes,
+use `wiki render-check` on each relevant consumer.

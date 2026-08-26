@@ -1,6 +1,6 @@
 # Wikitool Command Brief
 
-This is the compact packaged guidance for AI-assisted MediaWiki editing with wikitool. The same
+This is the compact packaged guidance for evidence-bound encyclopedic coauthoring with wikitool. The same
 guidance body is shipped as both `AGENTS.md` and `CLAUDE.md` so Claude, Codex, and other agent
 front doors land on the same operating contract.
 
@@ -38,7 +38,7 @@ Prefer packaged-root paths when working from an extracted release bundle.
 | `.claude/skills/review.md` | Claude pre-push gate wrapper |
 | `.claude/skills/knowledge-interview.md` | Claude human knowledge interview wrapper |
 | `codex_skills/` | Codex equivalents of the wrappers |
-| `writing_context/` | Writing rules and target-wiki editorial profile |
+| `writing_context/` | Evidence-to-prose workflow, reader-facing review, and target-wiki editorial profile |
 | `docs/wikitool/guide.md` | Detailed operator manual |
 | `docs/wikitool/reference.md` | Generated CLI help reference |
 
@@ -49,9 +49,9 @@ Do not duplicate command reference material here. Check `wikitool --help`,
 
 For article work, read in this order:
 
-1. `writing_context/style_rules.md`
-2. `writing_context/article_structure.md` (plus `writing_context/visual_subjects.md` for art, character, and other visual subjects)
-3. `writing_context/writing_guide.md`
+1. `writing_context/writing_guide.md`
+2. `writing_context/style_rules.md`
+3. `writing_context/article_structure.md` (plus `writing_context/visual_subjects.md` for art, character, and other visual subjects)
 4. `writing_context/interview_playbook.md` for article creation, substantial expansion, or non-mechanical review gaps
 5. `writing_context/extensions.md`
 6. `.claude/rules/wiki-style.md`
@@ -78,7 +78,7 @@ approves discarding local edits.
 
 ## Authoring Entry Points
 
-Use these as front doors, then continue with normal research and editing judgment:
+Use these as evidence and coauthoring front doors:
 
 ```bash
 wikitool knowledge article-start "Topic" --intent new --format json --view brief
@@ -89,13 +89,13 @@ wikitool knowledge article-start "Cheetah" --contract-query "species infobox tax
 wikitool knowledge contracts search "contract terms" --format json
 ```
 
-For new articles and substantial expansions, scout first with `knowledge article-start`, then
-interview by default. The knowledge-interview faculty is an optional, conversational lane, but for real
-article work it is the normal move: its job is to set what the article should be - intent, scope, and
-angle - and surface what the person knows, what may not be online, and which sources to use, so the
-draft is shaped to the wiki's perspective rather than generic. This holds even for well-documented
-subjects. Skip it for mechanical lint, link, sync, source-fetch, or validation work, on explicit opt-outs
-such as "no interview", or for tiny edits.
+For new articles and substantial expansions, scout first with `knowledge article-start`, then use
+the knowledge interview to establish intent, scope, terminology, source leads, exclusions, and
+firsthand knowledge. An agent may research and write genuine encyclopedic prose from inspected
+evidence. `drafting_ready` means the retrieval artifacts are current; it does not mean the topic is
+researched or the prose is publishable. Model memory, search snippets, neighboring pages, retrieval
+rank, and fluent synthesis are not evidence. Build a claim-source map, draft the factual body before
+the lead, and apply the adversarial reader review in `writing_context/style_rules.md`.
 
 The interview is an elicitation loop, not a checklist. Read any user-supplied documents, links,
 screenshots, transcripts, notes, or source excerpts before narrowing the questions. Start with a
@@ -106,8 +106,9 @@ scope, terminology, date/order disambiguation, source strategy, section plan, or
 
 Reusable interview distillations belong under
 `.wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md`. Treat these briefs as working
-notes: user assertions are research leads that become article prose as reasonable truth once they
-pass editorial quality-gating. For this niche subcultural wiki, a primary record may be a target-wiki
+notes: user assertions may be target-wiki testimony or research leads, but they are not automatic
+independent evidence or acceptance. Agent- or human-authored prose may use quality-gated firsthand
+knowledge under the target policy with its provenance and scope intact. For this niche subcultural wiki, a primary record may be a target-wiki
 record, hosted artifact, first-party source, archived primary record, creator-published statement,
 or target-wiki source note; corroboration does not have to be outside secondary coverage. Cite when research surfaces
 a source or a claim is external or contested, and never launder a primary fact through a weaker third
@@ -156,16 +157,12 @@ must not route through wikitool. The binary runs natively from any shell
 `--argv-b64` lossless argv channel — optional, only for repositories that
 keep Bash-first scripts; nothing in contextmink requires it.
 
-Install it with `wikitool contextmink install` from the project/agent working
-directory; the command writes relative to the current directory unless
-`--project-root <dir>` is explicit. It finds the release pack next to the
-wikitool binary, falls back to the vendored `vendor/contextmink` source checkout
-when wikitool is source-built, or takes `--from <pack-or-source-dir>`. It places
-the binaries, launcher, and a wikitool-tailored `.contextmink.toml`, then
-verifies the installed binary. Then merge
-`tools/contextmink/templates/CLAUDE.contextmink.md` (Claude) or
-`AGENTS.contextmink.md` (Codex) into project guidance. `contextmink/SETUP.md`
-remains the manual path for nonstandard layouts. The core habits:
+From an unpacked release, run `contextmink/contextmink(.exe) setup-project
+<project-root> --skill-target both --json`. Contextmink owns the project-local
+binaries, launchers, configuration, skills, and exact setup receipt; wikitool
+does not install or rebuild it. `setup-project` deliberately does not edit
+`AGENTS.md` or `CLAUDE.md`, so review its generated integration note and add one
+concise project-specific trigger when needed. The core habits:
 
 - Choose contextmink invocation by active shell and target: use
   `scripts/contextmink ...` from Bash-hosted sessions such as macOS, Linux, Git
@@ -222,6 +219,7 @@ Before any live write push:
 ```bash
 wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
+wikitool article accept .wikitool/drafts/Title.wiki --title "Title" --human-editor "EDITOR" --prose-origin agent-draft --format json
 wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool article lint --changed --format json
 wikitool review --draft-path .wikitool/drafts/Title.wiki --title "Title" --format json --view brief --summary "Draft review"
@@ -233,10 +231,15 @@ wikitool push --dry-run --summary "Summary"
 ```
 
 Only push after the dry run is reviewed. Never use `--force` without explicit user approval.
+Only a named human who read the exact prose may run or explicitly direct `article accept`; an
+agent must never self-attest. Acceptance is bound to the content hash and cannot be bypassed with
+`--force`. Record the truthful origin, including `agent-draft` or `collaborative-draft`. Acceptance
+attests that the article is specific, readable, proportionate, and source-bound. The recorded
+identity is an audit assertion, not cryptographic authentication.
 For content investigations involving redirects, missing pages, or broken links, verify against the
 live API at `https://wiki.remilia.org/api.php`.
 When using `review --draft-path`, follow the report's `next_steps` field for direct draft lint/fix,
-`article promote`, and the scoped post-promotion review/push dry run.
+human acceptance, `article promote`, and the scoped post-promotion review/push dry run.
 
 ## Host Overlay
 

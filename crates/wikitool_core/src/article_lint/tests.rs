@@ -43,20 +43,32 @@ fn write_instruction_sources(paths: &ResolvedPaths) {
     write_file(
         &paths
             .project_root
+            .join("tools/wikitool/ai-pack/writing_context/profile.toml"),
+        include_str!("../../../../ai-pack/writing_context/profile.toml"),
+    );
+    write_file(
+        &paths
+            .project_root
             .join("tools/wikitool/ai-pack/writing_context/article_structure.md"),
-        "{{SHORTDESC:Example}}\n{{Article quality|unverified}}\n== References ==\n{{Reflist}}\nparent_group = Remilia",
+        "Use sections that follow the subject.\nEnd with == References == and {{Reflist}}.",
     );
     write_file(
         &paths
             .project_root
             .join("tools/wikitool/ai-pack/writing_context/style_rules.md"),
-        "**Never use:**\n- \"stands as\"\n### No placeholder content\n- Never output: `INSERT_SOURCE_URL`\n### No system artifacts\n- Never output: `contentReference[oaicite:0]`\nStraight quotes only",
+        "State specific sourced facts.\nNever output placeholders or system artifacts.\nUse straight quotes.",
     );
     write_file(
         &paths
             .project_root
             .join("tools/wikitool/ai-pack/writing_context/writing_guide.md"),
-        "raw MediaWiki wikitext\nNever output Markdown\nUse 2-4 categories per article\n[[Category:Remilia]]\n{{Article quality|unverified}}\nparent_group = Remilia\n### Citation templates\n```wikitext\n{{Cite web|url=}}\n```\n## 6. Infobox selection\n| Subject type | Infobox |\n|---|---|\n| NFT Collection | `{{Infobox NFT collection}}` |\n",
+        "Write source-bound encyclopedic prose in MediaWiki wikitext.\nUse only categories evidenced by the subject.\nA Remilia relationship is never a default.\n",
+    );
+    write_file(
+        &paths
+            .project_root
+            .join("tools/wikitool/ai-pack/writing_context/extensions.md"),
+        "# Extension contracts\n",
     );
 }
 
@@ -358,6 +370,90 @@ fn sentence_case_heading_does_not_promote_lowercase_title_words() {
 
     let report = lint_article(&paths, &article_path).expect("lint");
     assert!(has_rule(&report, "style.sentence_case_heading"));
+}
+
+#[test]
+fn flags_synthetic_phrases_for_human_review_without_a_mechanical_fix() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' serves as a testament to the project.\n\n== References ==\n{{Reflist}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    let issue = report
+        .issues
+        .iter()
+        .find(|issue| issue.rule_id == "style.synthetic_phrase")
+        .expect("synthetic phrase issue");
+
+    assert_eq!(issue.severity, ArticleLintSeverity::Suggestion);
+    assert!(issue.suggested_fixes.is_empty());
+    assert!(
+        issue
+            .suggested_remediation
+            .as_deref()
+            .is_some_and(|remediation| remediation.contains("human editor"))
+    );
+}
+
+#[test]
+fn flags_forced_remilia_relationship_headings_for_human_judgment() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a subject.\n\n== Relation to Remilia ==\nA generic adjacency claim.\n\n== References ==\n{{Reflist}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    let issue = report
+        .issues
+        .iter()
+        .find(|issue| issue.rule_id == "editorial.forced_relationship_frame")
+        .expect("relationship framing issue");
+
+    assert_eq!(issue.severity, ArticleLintSeverity::Warning);
+    assert!(issue.suggested_fixes.is_empty());
+    assert!(
+        issue
+            .suggested_remediation
+            .as_deref()
+            .is_some_and(|remediation| remediation.contains("subject-defining"))
+    );
+}
+
+#[test]
+fn flags_profile_owner_framing_in_an_adjacent_subject_lead() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    write_instruction_sources(&paths);
+    write_common_templates(&paths);
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a performer associated with Remilia.\n\n== References ==\n{{Reflist}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    let issue = report
+        .issues
+        .iter()
+        .find(|issue| issue.rule_id == "editorial.lead_relationship_frame")
+        .expect("lead relationship warning");
+    assert_eq!(issue.severity, ArticleLintSeverity::Warning);
+    assert_eq!(issue.evidence.as_deref(), Some("Remilia"));
+    assert!(issue.suggested_fixes.is_empty());
 }
 
 #[test]
@@ -665,7 +761,7 @@ fn clustered_citations_move_punctuation_before_the_whole_cluster() {
 }
 
 #[test]
-fn detects_remilia_parent_group_rule() {
+fn does_not_infer_remilia_parent_group_from_creator_field() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
     let paths = paths(&project_root);
@@ -681,7 +777,7 @@ fn detects_remilia_parent_group_rule() {
     );
 
     let report = lint_article(&paths, &article_path).expect("lint");
-    assert!(has_rule(&report, "profile.remilia_parent_group"));
+    assert!(!has_rule(&report, "profile.remilia_parent_group"));
 }
 
 #[test]

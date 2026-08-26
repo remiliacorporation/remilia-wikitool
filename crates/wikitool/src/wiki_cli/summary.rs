@@ -100,23 +100,17 @@ pub(super) struct ProfileCitationSummary<'a> {
 
 #[derive(Debug, Serialize)]
 pub(super) struct ProfileRemiliaSummary<'a> {
-    default_parent_group: Option<&'a str>,
-    preferred_group_field: Option<&'a str>,
-    avoid_group_fields: &'a [String],
     infobox_preferences: &'a [wikitool_core::profile::InfoboxPreference],
 }
 
 #[derive(Debug, Serialize)]
 pub(super) struct ProfileCategorySummary<'a> {
     preferred_categories: &'a [String],
-    min_per_article: usize,
-    max_per_article: usize,
 }
 
 #[derive(Debug, Serialize)]
 pub(super) struct ProfileLintSummary {
-    banned_phrase_count: usize,
-    watchlist_term_count: usize,
+    synthetic_phrase_prompt_count: usize,
     forbid_curly_quotes: bool,
     forbid_placeholder_fragment_count: usize,
 }
@@ -231,19 +225,13 @@ fn summarize_overlay<'a>(overlay: &'a ProfileOverlay) -> ProfileOverlaySummary<'
             unreliable_source_count: overlay.citations.unreliable_sources.len(),
         },
         remilia: ProfileRemiliaSummary {
-            default_parent_group: overlay.remilia.default_parent_group.as_deref(),
-            preferred_group_field: overlay.remilia.preferred_group_field.as_deref(),
-            avoid_group_fields: &overlay.remilia.avoid_group_fields,
             infobox_preferences: &overlay.remilia.infobox_preferences,
         },
         categories: ProfileCategorySummary {
             preferred_categories: &overlay.categories.preferred_categories,
-            min_per_article: overlay.categories.min_per_article,
-            max_per_article: overlay.categories.max_per_article,
         },
         lint: ProfileLintSummary {
-            banned_phrase_count: overlay.lint.banned_phrases.len(),
-            watchlist_term_count: overlay.lint.watchlist_terms.len(),
+            synthetic_phrase_prompt_count: overlay.lint.synthetic_phrase_prompts.len(),
             forbid_curly_quotes: overlay.lint.forbid_curly_quotes,
             forbid_placeholder_fragment_count: overlay.lint.forbid_placeholder_fragments.len(),
         },

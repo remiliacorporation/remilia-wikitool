@@ -185,20 +185,12 @@ pub(super) fn print_overlay(overlay: &ProfileOverlay) {
         )
     );
     println!(
-        "rules.default_parent_group: {}",
-        overlay
-            .remilia
-            .default_parent_group
-            .as_deref()
-            .unwrap_or("<none>")
-    );
-    println!(
         "rules.preferred_categories: {}",
         join_or_none(&overlay.categories.preferred_categories)
     );
     println!(
-        "rules.banned_phrase_count: {}",
-        overlay.lint.banned_phrases.len()
+        "rules.synthetic_phrase_prompt_count: {}",
+        overlay.lint.synthetic_phrase_prompts.len()
     );
     println!(
         "rules.unreliable_source_count: {}",

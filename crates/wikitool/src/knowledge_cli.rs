@@ -39,7 +39,7 @@ enum KnowledgeSubcommand {
     Warm(KnowledgeWarmArgs),
     #[command(about = "Report knowledge readiness and degradations")]
     Status(KnowledgeStatusArgs),
-    #[command(about = "Assemble an interpreted authoring brief for a topic")]
+    #[command(about = "Assemble an editorial-support evidence brief for a topic")]
     ArticleStart(KnowledgeArticleStartArgs),
     #[command(about = "Plan and search token-budgeted authoring contracts")]
     Contracts(KnowledgeContractsArgs),
@@ -101,7 +101,7 @@ pub(crate) struct KnowledgeStatusArgs {
         long,
         default_value = DEFAULT_DOCS_PROFILE,
         value_name = "PROFILE",
-        help = "Docs profile to assess for authoring readiness"
+        help = "Docs profile to assess for editorial-support readiness"
     )]
     docs_profile: String,
     #[arg(
@@ -130,7 +130,7 @@ pub(crate) struct KnowledgeArticleStartArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional knowledge interview brief to validate and include in the authoring brief"
+        help = "Optional knowledge interview brief to validate and include in the editorial-support brief"
     )]
     brief_path: Option<PathBuf>,
     #[arg(

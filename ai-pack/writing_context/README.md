@@ -1,36 +1,21 @@
-# Writing Context
+# Writing context
 
-Default article-writing context for Remilia Wiki.
-
-This directory is not the global agent instruction surface. It contains editorial and wikitext
-guidance used when drafting or revising articles. Agent routing lives in `AGENTS.md` / `CLAUDE.md`;
-operator workflows live in `docs/wikitool/guide.md` and the skill wrappers.
-
-For another MediaWiki target, provide host `writing_context/` when building the AI pack with
-`--host-project-root`; wikitool packages that host writing profile at the same release-root path.
-
-## Files
+Editorial guidance for evidence-bound encyclopedic coauthoring. Wikitool and its agent wrappers may
+support genuine prose drafting as well as research, interviews, wikitext mechanics, review, and
+guarded sync. A named human editor accepts the exact prose before publication.
 
 | File | Purpose |
 |---|---|
-| `style_rules.md` | Natural writing rules and AI-writing antipatterns. Read before every article. |
-| `article_structure.md` | Required article skeleton and section patterns. |
-| `visual_subjects.md` | Rules for art, character designs, and other visual subjects (artifact-as-source, describe vs. interpret). |
-| `writing_guide.md` | Sourcing, citations, categories, and article workflow. |
-| `interview_playbook.md` | Human knowledge intake flow and interview brief artifact guidance. |
-| `extensions.md` | Content extension tags and target-local chart contracts. |
+| `profile.toml` | Typed machine policy consumed by wikitool. |
+| `writing_guide.md` | Evidence-to-prose workflow, authority boundaries, and publication acceptance. |
+| `style_rules.md` | Reader-facing prose and source-fidelity review, not AI-word detection. |
+| `article_structure.md` | Subject-derived organization and MediaWiki mechanics. |
+| `interview_playbook.md` | Human knowledge intake, evidence classification, and durable ledger. |
+| `visual_subjects.md` | Artifact-as-source and description/interpretation rules for visual work. |
+| `extensions.md` | Deployed content extension contracts. |
 
-## Lookup Boundary
-
-Static writing context is only the baseline. For live target-wiki facts, use wikitool:
-
-```bash
-wikitool knowledge article-start "Topic" --intent new --format json --view brief
-wikitool knowledge contracts search "subject type infobox" --format json
-wikitool templates show "Template:Infobox person" --format json --view brief
-wikitool wiki profile show --format json
-wikitool article lint wiki_content/Main/Topic.wiki --format json
-```
-
-Do not treat Remilia-specific templates, categories, or D3Charts syntax as portable MediaWiki
-features on other target wikis.
+Static context is a baseline. `knowledge article-start` exposes a typed coauthoring contract and
+current evidence signals; `drafting_ready` means local artifacts are current, not that a topic or
+draft is publication-ready. Use live `templates`, `wiki profile`, `knowledge contracts`, and
+`article lint` surfaces for target facts. Do not treat Remilia-specific templates, categories, or
+extension syntax as portable MediaWiki features.

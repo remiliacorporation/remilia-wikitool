@@ -29,7 +29,7 @@ use crate::profile::WikiCapabilityManifest;
 #[cfg(test)]
 use crate::schema::open_initialized_database_connection;
 
-const ARTICLE_LINT_SCHEMA_VERSION: &str = "article_lint_v1";
+const ARTICLE_LINT_SCHEMA_VERSION: &str = "article_lint_v2";
 const ARTICLE_FIX_SCHEMA_VERSION: &str = "article_fix_v1";
 const REMILIA_PROFILE_ID: &str = "remilia";
 
@@ -158,6 +158,7 @@ fn build_report(
         relative_path: document.relative_path.clone(),
         title: document.title.clone(),
         namespace: document.namespace.clone(),
+        content_sha256: crate::support::compute_sha256(&document.content),
         issue_count: issues.len(),
         errors,
         warnings,

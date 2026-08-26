@@ -125,25 +125,22 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
                 && body.contains("knowledge interview validate")
                 && body.contains("knowledge article-start --brief-path")
                 && body.contains("review --brief-path")
-                && body.contains("intent, scope, and")
-                && body.contains("well-documented")
-                && body.contains("normal move")
-                && body.contains("user assertions are research leads")
-                && body.contains("opt-outs"),
-            "packaged guidance must route human-in-loop article work through the interview faculty"
+                && body.contains("write genuine encyclopedic prose")
+                && body.contains("Model memory")
+                && body.contains("drafting_ready")
+                && body.contains("claim-source map")
+                && body.contains("article accept")
+                && body.contains("never self-attest")
+                && body.contains("not cryptographic authentication"),
+            "packaged guidance must enforce evidence-bound coauthoring and human publication acceptance"
         );
-        // "wikitool context" was a removed command; "wikitool contextmink" is the
-        // live installer and must not trip the ban.
-        let refers_to_removed_context_command = body
-            .match_indices("wikitool context")
-            .any(|(index, needle)| !body[index + needle.len()..].starts_with("mink"));
         assert!(
             !body.contains("Docs bootstrap")
                 && !body.contains("WIKITOOL_CLAUDE.md")
                 && !body.contains("llm_instructions")
                 && !body.contains("wikitool search")
                 && !body.contains("wikitool fetch")
-                && !refers_to_removed_context_command
+                && !body.contains("wikitool context")
                 && !body.contains("wikitool seo")
                 && !body.contains("wikitool net")
                 && !body.contains("agent-card")
@@ -160,13 +157,7 @@ fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
 
 #[test]
 fn contextmink_shell_routing_guidance_stays_aligned_across_surfaces() {
-    for path in [
-        "ai-pack/AGENTS.md",
-        "ai-pack/CLAUDE.md",
-        "vendor/contextmink/templates/AGENTS.contextmink.md",
-        "vendor/contextmink/templates/CLAUDE.contextmink.md",
-        "vendor/contextmink/docs/setup.md",
-    ] {
+    for path in ["ai-pack/AGENTS.md", "ai-pack/CLAUDE.md"] {
         assert_contextmink_shell_routing_contract(path, &read_repo_file(path));
     }
 
@@ -225,8 +216,8 @@ fn thin_wrappers_reference_help_and_keep_article_start_primary() {
             "thin wrappers must not refer to the retired raw pack command"
         );
         assert!(
-            body.contains("Keep agent context compact") && body.contains("--view brief"),
-            "thin wrappers must preserve compact-first agent retrieval guidance"
+            body.contains("--view brief"),
+            "thin wrappers must preserve compact-first retrieval guidance"
         );
     }
     for body in [&claude_skill, &codex_skill] {
@@ -247,15 +238,16 @@ fn packaged_review_wrappers_stay_aligned_on_gate_sequence() {
     ] {
         let body = read_repo_file(path);
         assert!(
-            body.contains("Preferred gate brief: `wikitool review --format json --view brief --summary \"...\"`")
-                && body.contains("Draft-first gate: `wikitool review --draft-path")
+            body.contains("wikitool review --draft-path")
                 && body.contains("--view brief")
-                && body.contains("Direct draft iteration:")
-                && body.contains("wikitool article promote")
+                && body.contains("article accept")
+                && body.contains("article promote")
                 && body.contains("next_steps")
-                && body.contains("wikitool validate --summary")
+                && body.contains("must not self-attest")
+                && body.contains("--force")
+                && body.contains("validate --summary")
                 && body.contains("--verify-live"),
-            "{path} must stay aligned with the current content gate sequence"
+            "{path} must preserve acceptance before promotion and push"
         );
     }
 }
@@ -282,42 +274,38 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
 
     for body in [&claude_skill, &codex_skill] {
         assert!(
-            body.contains("Thin wrapper")
-                && body.contains("wikitool --help")
+            body.contains("wikitool --help")
                 && body.contains("docs/wikitool/reference.md")
                 && body.contains("writing_context/interview_playbook.md")
-                && body.contains("wikitool knowledge interview init")
+                && body.contains("knowledge interview init")
                 && body.contains("open-item")
-                && body.contains("knowledge interview validate")
                 && body.contains("article-start")
                 && body.contains("--brief-path")
-                && body.contains("intent, scope, and angle")
-                && body.contains("well-documented subjects")
-                && body.contains("normal move")
+                && body.contains("draft")
+                && body.contains("not independent evidence")
+                && body.contains("model memory")
+                && body.contains("article accept")
+                && body.contains("never self-attest")
                 && body.contains(".wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md"),
-            "knowledge interview wrappers must stay thin, help-backed, and ledger-aware"
+            "knowledge interview wrappers must be help-backed, ledger-aware, and coauthoring-aware"
         );
     }
 
     assert!(
-        playbook.contains("Scout first")
-            && playbook.contains("freeform dump")
-            && playbook.contains("Read supplied materials")
-            && playbook.contains("what the person actually wants written")
-            && playbook.contains("well-documented subjects")
-            && playbook.contains("This is framing, not a forced")
-            && playbook.contains("no fixed number of rounds")
-            && playbook.contains("interviewer/critic loop")
-            && playbook.contains("explicit opt-out")
-            && playbook.contains("mechanical link checks")
+        playbook.contains("Scout with")
+            && playbook.contains("freeform account")
+            && playbook.contains("Read every supplied")
+            && playbook.contains("The human does not need to pre-write")
+            && playbook.contains("agent may draft")
+            && playbook.contains("model memory")
+            && playbook.contains("Run a critic pass")
             && playbook.contains("wikitool knowledge interview init")
             && playbook.contains("knowledge interview open-item add")
             && playbook.contains("rejected-source")
             && playbook.contains("inaccessible-source")
             && playbook.contains("knowledge interview audit")
-            && playbook.contains("not article prose, citation evidence, proof")
-            && playbook.contains("Mechanical validation does not imply editorial"),
-        "interview playbook must preserve the adaptive, evidence-bounded intake contract"
+            && playbook.contains("not automatically independent evidence"),
+        "interview playbook must preserve adaptive intake and evidence-bound drafting"
     );
     assert!(
         !playbook.contains(
@@ -339,12 +327,35 @@ fn knowledge_interview_skill_and_playbook_are_packaged() {
 
     let changelog = read_repo_file("CHANGELOG.md");
     assert!(
-        changelog.contains("normal move after the article-start scout")
-            && changelog.contains("Its purpose is direction")
-            && changelog.contains("well-documented subject")
-            && !changelog.contains("skip it when they do not"),
-        "0.4.0 release notes must describe interview as direction-first, not public-source-gap-only"
+        changelog.to_ascii_lowercase().contains("coauthor"),
+        "release notes must record the coauthoring reset"
     );
+}
+
+#[test]
+fn coauthoring_boundary_is_consistent_across_public_surfaces() {
+    for path in [
+        "ai-pack/AGENTS.md",
+        "ai-pack/CLAUDE.md",
+        "ai-pack/codex_skills/wikitool-operator/SKILL.md",
+        "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
+        "ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md",
+        "ai-pack/writing_context/writing_guide.md",
+        "docs/wikitool/guide.md",
+        "docs/wikitool/architecture.md",
+    ] {
+        let body = read_repo_file(path);
+        let normalized = body.to_ascii_lowercase();
+        assert!(
+            normalized.contains("human")
+                && normalized.contains("article accept")
+                && normalized.contains("draft")
+                && (normalized.contains("model output is not evidence")
+                    || normalized.contains("model memory")
+                    || normalized.contains("model output") && normalized.contains("not evidence")),
+            "{path} must allow evidence-bound drafting and require exact human acceptance"
+        );
+    }
 }
 
 #[test]

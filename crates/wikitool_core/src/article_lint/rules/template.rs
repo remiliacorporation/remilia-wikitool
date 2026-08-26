@@ -1,10 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::article_lint::document::ParsedArticleDocument;
-use crate::article_lint::model::{
-    ArticleLintIssue, ArticleLintSeverity, SuggestedFix, SuggestedFixKind,
-};
-use crate::content_store::parsing::make_content_preview;
+use crate::article_lint::model::{ArticleLintIssue, ArticleLintSeverity};
 use crate::profile::{
     TemplateCatalogEntry, TemplateCatalogEntryLookup, find_template_catalog_entry,
     unknown_template_parameter_keys,
@@ -37,57 +34,6 @@ pub(super) fn lint_citation_needed(
                         .to_string(),
                 ),
                 suggested_fixes: Vec::new(),
-            },
-            safe_fixes: Vec::new(),
-        });
-    }
-}
-
-pub(super) fn lint_remilia_parent_group(
-    document: &ParsedArticleDocument,
-    resources: &LoadedResources,
-    matches: &mut Vec<IssueMatch>,
-) {
-    if resources.overlay.remilia.default_parent_group.is_none() {
-        return;
-    }
-    for template in &document.templates {
-        if !template
-            .template_title
-            .eq_ignore_ascii_case("Template:Infobox NFT collection")
-        {
-            continue;
-        }
-        let has_parent_group = template
-            .parameter_keys
-            .iter()
-            .any(|key| key == "parent group" || key == "parent_group");
-        let has_legacy_group = template
-            .parameter_keys
-            .iter()
-            .any(|key| key == "creator" || key == "artist");
-        if has_parent_group || !has_legacy_group {
-            continue;
-        }
-        matches.push(IssueMatch {
-            issue: ArticleLintIssue {
-                rule_id: "profile.remilia_parent_group".to_string(),
-                severity: ArticleLintSeverity::Warning,
-                message:
-                    "Remilia NFT infoboxes should use parent_group instead of creator or artist."
-                        .to_string(),
-                span: document.span_for_range(template.start, template.end),
-                evidence: Some(make_content_preview(&template.raw_wikitext, 120)),
-                suggested_remediation: Some(
-                    "Replace creator=/artist= with parent_group=Remilia in the infobox."
-                        .to_string(),
-                ),
-                suggested_fixes: vec![SuggestedFix {
-                    label: "Rename infobox field to parent_group".to_string(),
-                    kind: SuggestedFixKind::AssistedFix,
-                    replacement_preview: Some("| parent_group = Remilia".to_string()),
-                    patch: None,
-                }],
             },
             safe_fixes: Vec::new(),
         });

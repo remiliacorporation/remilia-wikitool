@@ -1,48 +1,54 @@
-# Style Trap Detection Criteria
+# Authoring adjudication sheet
 
-## Pass Criteria (all articles)
+This sheet evaluates prose and evidence. It does not count “AI words” or ban vocabulary by itself.
 
-| # | Check | Pass Condition |
-|---|-------|----------------|
-| 1 | Line 1 | Starts with `{{SHORTDESC:` |
-| 2 | Line 2 | Equals `{{Article quality|unverified}}` |
-| 3 | Line 3 | Is blank |
-| 4 | Line 4+ | Starts with `'''` (bold title) |
-| 5 | References | Contains `== References ==` with `{{Reflist}}` |
-| 6 | Categories | Has 2-4 `[[Category:...]]` lines |
-| 7 | Banned phrases | Zero matches from style_rules.md banned list |
-| 8 | AI watchlist | Fewer than 3 AI watchlist words |
-| 9 | Quotes | Straight quotes only (`"` and `'`), no curly quotes |
-| 10 | Format | No markdown syntax (`#`, `**`, `` ` ``, `---`) |
-| 11 | Constraint | Constraint-specific rule from writing_pools.json |
+## Hard-failure review
 
-## AI Watchlist Words
+Mark each `pass` or `fail` and cite the sentence/source involved:
 
-These words individually are not errors, but 3+ in one article suggests AI-generated style:
+| Check | Pass condition |
+|---|---|
+| Closed evidence | No fact exceeds the inspected packet or source |
+| Citation binding | Every citation directly supports its attached claim |
+| Subject definition | The lead identifies the subject on its own terms |
+| Relationship proportion | Adjacent Remilia/Charlotte/Milady context has only evidenced weight |
+| Sensitive claims | Contentious or biographical material is necessary and adequately supported |
+| Uncertainty | Contradictions and gaps remain visible |
+| No filler | No paragraph exists to reach a length, section, or category target |
+| No fabrication | No invented quotation, URL, date, citation field, or archive state |
 
-- delve, tapestry, multifaceted, landscape, realm
-- paradigm, robust, leverage, foster, comprehensive
-- innovative, utilize, facilitate, synergy, holistic
+Any failure makes the draft unusable until resolved.
 
-## Banned Phrases (significance inflation)
+## Scored review
 
-- groundbreaking, revolutionary, pivotal, transformative
-- game-changing, cutting-edge, state-of-the-art
-- "one of the most important", "widely regarded as"
-- "played a key role", "had a profound impact"
+Score `0` to `4` with a one-sentence reason:
 
-## Banned Sources
+| Axis | Score | Evidence note |
+|---|---:|---|
+| Source fidelity | | |
+| Direct definition and scope | | |
+| Specificity and factual density | | |
+| Proportion and selection | | |
+| Structure | | |
+| Paragraph readability | | |
+| Attribution and uncertainty | | |
+| Target-wiki integration | | |
+| Preservation of good prose | | |
+| Voluntary reader value | | |
 
-- IQ.wiki
-- Know Your Meme
-- NFT Price Floor
-- Urban Dictionary
+## Diagnostic reread prompts
 
-## Structural Anti-Patterns
+These patterns deserve a reread, not an automatic failure:
 
-- Bullet lists where prose is expected (unless specifically a list section)
-- `== External links ==` with only one link
-- Categories that don't exist in the wiki
-- Wikilinks to obviously nonexistent articles
-- Citation stubs (url only, no title/date)
-- Empty sections (heading followed immediately by another heading)
+- generic importance or legacy language;
+- promotional evaluation;
+- vague attribution;
+- analytical-sounding “highlighting/showcasing/reflecting” clauses;
+- repeated conclusions;
+- article-shaped background that could fit many subjects;
+- headings inherited from a comparable rather than derived from evidence;
+- listification where connected prose would explain more;
+- category or relationship choices driven by local frequency.
+
+Rewrite the underlying thought or delete it. Replacing one flagged word with a synonym does not
+improve the article.

@@ -2,20 +2,100 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::knowledge::model::AuthoringKnowledgePackResult;
 use crate::profile::ProfileOverlay;
+use crate::support::{compute_hash, compute_sha256};
 
 use super::model::{
-    ArticleEvidenceProfile, ArticleStartIntent, ArticleStartResult, AuthoringConstraint,
-    CategorySurfaceEntry, ContextSurfaceSource, EvidenceCoverageItem, EvidenceRef,
-    LinkSurfaceEntry, LocalExistenceState, LocalIntegrationLane, OpenQuestion, QueryTermCoverage,
-    RecommendedAction, RequiredTemplate, SectionSkeleton, SubjectResearchLane, SubjectTypeHint,
-    TemplateSurfaceEntry,
+    ArticleAuthoringContract, ArticleEvidenceProfile, ArticleStartIntent, ArticleStartResult,
+    AuthoringConstraint, CategorySurfaceEntry, ContextSurfaceSource, EvidenceCoverageItem,
+    EvidenceRef, LinkSurfaceEntry, LocalExistenceState, LocalIntegrationLane, OpenQuestion,
+    QueryTermCoverage, RecommendedAction, RequiredTemplate, SectionCandidate, SubjectResearchLane,
+    SubjectTypeHint, TemplateSurfaceEntry,
 };
+
+#[derive(Debug, Default)]
+struct ComparableScope {
+    exact_title: Option<String>,
+    exact_infobox_titles: BTreeSet<String>,
+    /// `Some` means the exact page established an infobox type, so only pages
+    /// sharing that type are peers. An empty set intentionally means that no
+    /// usable comparable was found.
+    peer_titles: Option<BTreeSet<String>>,
+}
+
+impl ComparableScope {
+    fn allows_peer(&self, title: &str) -> bool {
+        if self
+            .exact_title
+            .as_deref()
+            .is_some_and(|exact| title.eq_ignore_ascii_case(exact))
+        {
+            return false;
+        }
+        self.peer_titles
+            .as_ref()
+            .map(|peers| peers.contains(&title.to_ascii_lowercase()))
+            .unwrap_or(true)
+    }
+
+    fn allows_supporting_page(&self, title: &str) -> bool {
+        self.exact_title
+            .as_deref()
+            .is_some_and(|exact| title.eq_ignore_ascii_case(exact))
+            || self.allows_peer(title)
+    }
+}
+
+fn build_comparable_scope(pack: &AuthoringKnowledgePackResult) -> ComparableScope {
+    let Some(exact_title) = pack
+        .topic_assessment
+        .exact_page
+        .as_ref()
+        .map(|page| page.title.clone())
+    else {
+        return ComparableScope::default();
+    };
+
+    let exact_infoboxes = pack
+        .suggested_templates
+        .iter()
+        .filter(|template| {
+            template_is_infobox(&template.template_title)
+                && template
+                    .example_pages
+                    .iter()
+                    .any(|page| page.eq_ignore_ascii_case(&exact_title))
+        })
+        .collect::<Vec<_>>();
+    let exact_infobox_titles = exact_infoboxes
+        .iter()
+        .map(|template| normalize_template_title(&template.template_title))
+        .collect::<BTreeSet<_>>();
+    let peer_titles = if exact_infoboxes.is_empty() {
+        None
+    } else {
+        Some(
+            exact_infoboxes
+                .iter()
+                .flat_map(|template| template.example_pages.iter())
+                .filter(|page| !page.eq_ignore_ascii_case(&exact_title))
+                .map(|page| page.to_ascii_lowercase())
+                .collect(),
+        )
+    };
+
+    ComparableScope {
+        exact_title: Some(exact_title),
+        exact_infobox_titles,
+        peer_titles,
+    }
+}
 
 pub fn build_article_start(
     pack: &AuthoringKnowledgePackResult,
     overlay: &ProfileOverlay,
     intent: ArticleStartIntent,
 ) -> ArticleStartResult {
+    let comparable_scope = build_comparable_scope(pack);
     let local_state = if let Some(exact_page) = &pack.topic_assessment.exact_page {
         if exact_page.is_redirect {
             LocalExistenceState::RedirectExists
@@ -33,23 +113,33 @@ pub fn build_article_start(
     let evidence = pack
         .chunks
         .iter()
-        .enumerate()
-        .map(|(index, chunk)| EvidenceRef {
-            id: format!("local-chunk-{index}"),
-            source_kind: "local_chunk".to_string(),
-            source_title: chunk.source_title.clone(),
-            locator: chunk.section_heading.clone(),
-            token_estimate: u32::try_from(chunk.token_estimate.min(u32::MAX as usize))
-                .unwrap_or(u32::MAX),
-            text_preview: Some(excerpt_text(&chunk.chunk_text, EVIDENCE_PREVIEW_CHARS)),
+        .map(|chunk| {
+            let evidence_identity = format!(
+                "{}\0{}\0{}",
+                chunk.source_relative_path,
+                chunk.section_heading.as_deref().unwrap_or(""),
+                chunk.chunk_text
+            );
+            let evidence_hash = compute_hash(&evidence_identity);
+            EvidenceRef {
+                id: format!("local-chunk-{}", &evidence_hash[..16]),
+                source_kind: "local_chunk".to_string(),
+                source_title: chunk.source_title.clone(),
+                source_relative_path: chunk.source_relative_path.clone(),
+                locator: chunk.section_heading.clone(),
+                chunk_sha256: compute_sha256(&chunk.chunk_text),
+                token_estimate: u32::try_from(chunk.token_estimate.min(u32::MAX as usize))
+                    .unwrap_or(u32::MAX),
+                text_preview: Some(excerpt_text(&chunk.chunk_text, EVIDENCE_PREVIEW_CHARS)),
+            }
         })
         .collect::<Vec<_>>();
-
     let subject_research = SubjectResearchLane {
         top_local_excerpt: pack.chunks.first().map(|chunk| chunk.chunk_text.clone()),
         comparable_page_excerpts: pack
             .chunks
             .iter()
+            .filter(|chunk| comparable_scope.allows_peer(&chunk.source_title))
             .take(5)
             .map(|chunk| chunk.chunk_text.clone())
             .collect(),
@@ -62,26 +152,30 @@ pub fn build_article_start(
         ambiguity_notes: pack.stub_missing_links.clone(),
         evidence: evidence.clone(),
     };
-    let evidence_profile = build_evidence_profile(pack, &evidence);
+    let evidence_profile = build_evidence_profile(pack, &evidence, &comparable_scope);
 
     let comparable_pages = pack
         .related_pages
         .iter()
+        .filter(|page| comparable_scope.allows_peer(&page.title))
         .take(8)
         .map(|page| page.title.clone())
         .collect::<Vec<_>>();
     let contract_parameter_keys = build_contract_parameter_key_map(pack);
     let required_templates = build_required_templates(overlay, &contract_parameter_keys);
-    let subject_type_hints = build_subject_type_hints(pack, overlay);
-    let available_infoboxes = build_available_infoboxes(pack, overlay, &contract_parameter_keys);
-    let citation_templates_seen = build_citation_templates(pack, overlay, &contract_parameter_keys);
+    let subject_type_hints = build_subject_type_hints(pack, overlay, &comparable_scope);
+    let available_infoboxes =
+        build_available_infoboxes(pack, overlay, &contract_parameter_keys, &comparable_scope);
+    let citation_templates_seen =
+        build_citation_templates(pack, overlay, &contract_parameter_keys, &comparable_scope);
     let template_surface = build_template_surface(pack, overlay, &contract_parameter_keys);
-    let categories_seen = build_category_surface(pack);
-    let links_seen = build_link_surface(pack);
-    let section_skeleton = build_section_skeleton(pack);
+    let observed_categories = build_category_surface(pack, &comparable_scope);
+    let observed_links = build_link_surface(pack, &comparable_scope);
+    let section_candidates = build_section_candidates(pack, overlay, &comparable_scope);
     let contract_plan = &pack.context_summary.wiki_contract_context.traversal_plan;
 
-    let closest_comparable_outline = build_closest_comparable_outline(pack);
+    let closest_comparable_outline =
+        build_closest_comparable_outline(pack, overlay, &comparable_scope);
     let local_integration = LocalIntegrationLane {
         comparable_pages,
         closest_comparable_outline,
@@ -90,14 +184,10 @@ pub fn build_article_start(
         available_infoboxes,
         citation_templates_seen,
         template_surface,
-        categories_seen,
-        links_seen,
-        section_skeleton,
-        docs_queries: pack
-            .docs_context
-            .as_ref()
-            .map(|docs| docs.queries.clone())
-            .unwrap_or_default(),
+        observed_categories,
+        observed_links,
+        section_candidates,
+        docs_queries: build_article_start_docs_queries(pack, &comparable_scope),
         contract_query: contract_plan.query.clone(),
         contract_matched_query_terms: contract_plan.matched_query_terms.clone(),
         contract_missing_query_terms: contract_plan.missing_query_terms.clone(),
@@ -140,13 +230,14 @@ pub fn build_article_start(
     let next_actions = build_next_actions(intent, &local_state, &evidence_profile);
 
     ArticleStartResult {
-        schema_version: "article_start".to_string(),
+        schema_version: "article_start_v3".to_string(),
         topic: pack.topic.clone(),
         intent,
         local_state,
         evidence_profile,
         subject_research,
         local_integration,
+        authoring_contract: build_authoring_contract(),
         constraints,
         open_questions,
         next_actions,
@@ -156,6 +247,7 @@ pub fn build_article_start(
 fn build_evidence_profile(
     pack: &AuthoringKnowledgePackResult,
     evidence_refs: &[EvidenceRef],
+    comparable_scope: &ComparableScope,
 ) -> ArticleEvidenceProfile {
     let query_terms = normalized_query_terms(&pack.query_terms, &pack.query);
     let exact_local_title = pack
@@ -164,7 +256,7 @@ fn build_evidence_profile(
         .as_ref()
         .map(|page| page.title.clone());
 
-    let mut direct_subject_evidence = Vec::new();
+    let mut subject_context = Vec::new();
     let mut broad_context = Vec::new();
     let mut comparable_pages = Vec::new();
     let mut query_term_coverage = query_terms
@@ -177,7 +269,7 @@ fn build_evidence_profile(
         .collect::<Vec<_>>();
 
     if let Some(title) = &exact_local_title {
-        direct_subject_evidence.push(EvidenceCoverageItem {
+        subject_context.push(EvidenceCoverageItem {
             source_kind: "exact_local_title".to_string(),
             source_title: title.clone(),
             locator: None,
@@ -218,13 +310,16 @@ fn build_evidence_profile(
             evidence_id: evidence_refs.get(index).map(|evidence| evidence.id.clone()),
         };
         if item.missing_query_terms.is_empty() {
-            direct_subject_evidence.push(item);
+            subject_context.push(item);
         } else {
             broad_context.push(item);
         }
     }
 
     for page in &pack.related_pages {
+        if !comparable_scope.allows_peer(&page.title) {
+            continue;
+        }
         let text = format!("{}\n{}", page.title, page.summary);
         let matched = matched_query_terms(&text, &query_terms);
         for term in &matched {
@@ -259,7 +354,7 @@ fn build_evidence_profile(
             .push("No exact local page resolved for the requested topic.".to_string());
     }
     if !query_terms.is_empty()
-        && !direct_subject_evidence
+        && !subject_context
             .iter()
             .any(|item| item.source_kind != "exact_local_title")
     {
@@ -274,7 +369,7 @@ fn build_evidence_profile(
     }
     if exact_local_title.is_none()
         || !missing_query_terms.is_empty()
-        || !direct_subject_evidence
+        || !subject_context
             .iter()
             .any(|item| item.source_kind != "exact_local_title")
     {
@@ -289,7 +384,7 @@ fn build_evidence_profile(
         exact_local_title,
         local_title_hit_count: pack.topic_assessment.local_title_hit_count,
         backlink_count: pack.topic_assessment.backlink_count,
-        direct_subject_evidence,
+        subject_context,
         broad_context,
         comparable_pages,
         live_leads_status: "not_checked_by_article_start".to_string(),
@@ -374,7 +469,7 @@ fn build_next_actions(
             } else {
                 actions.push(RecommendedAction {
                     label: "Gather independent sources".to_string(),
-                    why: "No local evidence was returned; establish the subject from reliable external sources before drafting.".to_string(),
+                    why: "No local evidence was returned; establish the subject from reliable external or first-party primary sources before drafting.".to_string(),
                 });
                 actions.push(RecommendedAction {
                     label: "Decide wiki fit".to_string(),
@@ -383,8 +478,16 @@ fn build_next_actions(
                 });
             }
             actions.push(RecommendedAction {
-                label: "Draft structure".to_string(),
-                why: "Start from the section skeleton, required templates, and gathered evidence before prose.".to_string(),
+                label: "Build a claim-source map".to_string(),
+                why: "Separate supported subject claims, contextual leads, disputed interpretations, and unknowns before writing prose.".to_string(),
+            });
+            actions.push(RecommendedAction {
+                label: "Draft encyclopedic prose".to_string(),
+                why: "Write a subject-specific factual spine, then a concise lead; use retrieved neighboring pages only for local fit, never as automatic facts or structure.".to_string(),
+            });
+            actions.push(RecommendedAction {
+                label: "Run the reader-value edit".to_string(),
+                why: "Remove generic framing, repeated significance claims, unsupported synthesis, and gratuitous relationship language before human editorial acceptance.".to_string(),
             });
             actions
         }
@@ -396,12 +499,12 @@ fn build_next_actions(
             },
             RecommendedAction {
                 label: "Compare section coverage".to_string(),
-                why: "Use comparable pages and the skeleton to identify missing local structure."
+                why: "Show observed related-page structures to the human editor as examples, not as a generated outline."
                     .to_string(),
             },
             RecommendedAction {
-                label: "Draft additive edits".to_string(),
-                why: "Keep the next pass scoped to new sections, citations, or integration links."
+                label: "Draft the evidenced expansion".to_string(),
+                why: "Write only the sourced gaps, integrate them into the article's factual spine, and avoid wholesale generic rewrites."
                     .to_string(),
             },
         ],
@@ -413,6 +516,11 @@ fn build_next_actions(
             RecommendedAction {
                 label: "Inspect sources and templates".to_string(),
                 why: "Verify citations, required appendices, categories, and template parameters against local evidence.".to_string(),
+            },
+            RecommendedAction {
+                label: "Perform the reader-value audit".to_string(),
+                why: "Read the page as an encyclopedia article: test the lead, factual spine, source binding, paragraph specificity, proportionality, and every relationship or significance claim."
+                    .to_string(),
             },
             RecommendedAction {
                 label: "Report actionable findings".to_string(),
@@ -443,7 +551,7 @@ fn build_next_actions(
 fn has_local_authoring_evidence(evidence_profile: &ArticleEvidenceProfile) -> bool {
     evidence_profile.exact_local_title.is_some()
         || evidence_profile.backlink_count > 0
-        || !evidence_profile.direct_subject_evidence.is_empty()
+        || !evidence_profile.subject_context.is_empty()
         || !evidence_profile.broad_context.is_empty()
         || !evidence_profile.comparable_pages.is_empty()
 }
@@ -515,34 +623,92 @@ fn excerpt_text(text: &str, max_chars: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
+fn build_article_start_docs_queries(
+    pack: &AuthoringKnowledgePackResult,
+    comparable_scope: &ComparableScope,
+) -> Vec<String> {
+    let existing = pack
+        .docs_context
+        .as_ref()
+        .map(|docs| docs.queries.as_slice())
+        .unwrap_or_default();
+    if comparable_scope.exact_infobox_titles.is_empty() {
+        return existing.to_vec();
+    }
+
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for title in &comparable_scope.exact_infobox_titles {
+        let query = title
+            .split_once(':')
+            .map(|(_, tail)| tail)
+            .unwrap_or(title)
+            .to_string();
+        if seen.insert(query.to_ascii_lowercase()) {
+            out.push(query);
+        }
+    }
+    for query in existing {
+        if query.to_ascii_lowercase().contains("infobox") {
+            continue;
+        }
+        if seen.insert(query.to_ascii_lowercase()) {
+            out.push(query.clone());
+        }
+    }
+    out.truncate(4);
+    out
+}
+
 /// The closest comparable page's level-2 headings in document order.
 fn build_closest_comparable_outline(
     pack: &AuthoringKnowledgePackResult,
+    overlay: &ProfileOverlay,
+    comparable_scope: &ComparableScope,
 ) -> Option<crate::authoring::model::ComparableOutline> {
-    let closest = pack.related_pages.first()?;
-    let ordered_headings: Vec<String> = pack
-        .comparable_page_headings
+    for closest in pack
+        .related_pages
         .iter()
-        .filter(|heading| heading.source_title == closest.title)
-        .map(|heading| heading.section_heading.clone())
-        .collect();
-    if ordered_headings.is_empty() {
-        return None;
+        .filter(|page| comparable_scope.allows_peer(&page.title))
+    {
+        let ordered_headings = pack
+            .comparable_page_headings
+            .iter()
+            .filter(|heading| heading.source_title == closest.title)
+            .map(|heading| normalize_heading(&heading.section_heading))
+            .filter(|heading| {
+                !heading.is_empty()
+                    && !heading_is_low_signal(heading)
+                    && !heading_is_discouraged(heading, overlay)
+            })
+            .collect::<Vec<_>>();
+        if !ordered_headings.is_empty() {
+            return Some(crate::authoring::model::ComparableOutline {
+                title: closest.title.clone(),
+                ordered_headings,
+            });
+        }
     }
-    Some(crate::authoring::model::ComparableOutline {
-        title: closest.title.clone(),
-        ordered_headings,
-    })
+    None
 }
 
 fn build_subject_type_hints(
     pack: &AuthoringKnowledgePackResult,
     overlay: &ProfileOverlay,
+    comparable_scope: &ComparableScope,
 ) -> Vec<SubjectTypeHint> {
     let mut hints = BTreeMap::<String, (BTreeSet<String>, BTreeSet<String>)>::new();
     for template in &pack.suggested_templates {
         let template_title = normalize_template_title(&template.template_title);
         if !template_is_infobox(&template_title) {
+            continue;
+        }
+        if !comparable_scope.exact_infobox_titles.is_empty()
+            && !comparable_scope
+                .exact_infobox_titles
+                .iter()
+                .any(|exact| exact.eq_ignore_ascii_case(&template_title))
+        {
             continue;
         }
         for preference in &overlay.remilia.infobox_preferences {
@@ -579,6 +745,7 @@ fn build_available_infoboxes(
     pack: &AuthoringKnowledgePackResult,
     overlay: &ProfileOverlay,
     contract_parameter_keys: &BTreeMap<String, Vec<String>>,
+    comparable_scope: &ComparableScope,
 ) -> Vec<TemplateSurfaceEntry> {
     let profile_mappings = overlay_infobox_subject_type_map(overlay);
     let mut out = collect_template_entries(
@@ -630,6 +797,35 @@ fn build_available_infoboxes(
                 lookup_parameter_keys(contract_parameter_keys, &entry.template_title);
         }
     }
+    if !comparable_scope.exact_infobox_titles.is_empty() {
+        out.retain(|entry| {
+            comparable_scope
+                .exact_infobox_titles
+                .iter()
+                .any(|exact| exact.eq_ignore_ascii_case(&entry.template_title))
+        });
+    }
+    let exact_title = pack
+        .topic_assessment
+        .exact_page
+        .as_ref()
+        .map(|page| page.title.as_str());
+    out.sort_by(|left, right| {
+        let left_exact = exact_title.is_some_and(|title| {
+            left.supporting_pages
+                .iter()
+                .any(|page| page.eq_ignore_ascii_case(title))
+        });
+        let right_exact = exact_title.is_some_and(|title| {
+            right
+                .supporting_pages
+                .iter()
+                .any(|page| page.eq_ignore_ascii_case(title))
+        });
+        right_exact
+            .cmp(&left_exact)
+            .then_with(|| left.template_title.cmp(&right.template_title))
+    });
     out
 }
 
@@ -637,6 +833,7 @@ fn build_citation_templates(
     pack: &AuthoringKnowledgePackResult,
     overlay: &ProfileOverlay,
     contract_parameter_keys: &BTreeMap<String, Vec<String>>,
+    comparable_scope: &ComparableScope,
 ) -> Vec<TemplateSurfaceEntry> {
     let mut comparable_entries = BTreeMap::<String, TemplateSurfaceEntry>::new();
     for reference in &pack.suggested_references {
@@ -659,7 +856,13 @@ fn build_citation_templates(
                 parameter_keys: lookup_parameter_keys(contract_parameter_keys, &template_title),
                 template_title: template_title.clone(),
             });
-        extend_sorted_unique(&mut entry.supporting_pages, &reference.example_pages);
+        let supporting_pages = reference
+            .example_pages
+            .iter()
+            .filter(|page| comparable_scope.allows_supporting_page(page))
+            .cloned()
+            .collect::<Vec<_>>();
+        extend_sorted_unique(&mut entry.supporting_pages, &supporting_pages);
     }
 
     for rule in &overlay.citations.preferred_templates {
@@ -683,7 +886,16 @@ fn build_citation_templates(
         );
     }
 
-    comparable_entries.into_values().collect()
+    comparable_entries
+        .into_values()
+        .filter(|entry| {
+            !entry.supporting_pages.is_empty()
+                || matches!(
+                    entry.source,
+                    ContextSurfaceSource::Profile | ContextSurfaceSource::Both
+                )
+        })
+        .collect()
 }
 
 fn build_template_surface(
@@ -745,45 +957,97 @@ fn build_template_surface(
     out
 }
 
-fn build_category_surface(pack: &AuthoringKnowledgePackResult) -> Vec<CategorySurfaceEntry> {
+fn build_category_surface(
+    pack: &AuthoringKnowledgePackResult,
+    comparable_scope: &ComparableScope,
+) -> Vec<CategorySurfaceEntry> {
+    let exact_title = comparable_scope.exact_title.as_deref();
     let mut out = pack
         .suggested_categories
         .iter()
-        .map(|category| CategorySurfaceEntry {
-            category_title: category.title.clone(),
-            source: ContextSurfaceSource::Comparables,
-            supporting_pages: dedup_sorted(category.evidence_titles.clone()),
+        .filter_map(|category| {
+            let supporting_pages = dedup_sorted(
+                category
+                    .evidence_titles
+                    .iter()
+                    .filter(|page| comparable_scope.allows_supporting_page(page))
+                    .cloned()
+                    .collect(),
+            );
+            if supporting_pages.is_empty() {
+                return None;
+            }
+            let exact_supported = exact_title.is_some_and(|title| {
+                supporting_pages
+                    .iter()
+                    .any(|page| page.eq_ignore_ascii_case(title))
+            });
+            let source = if exact_supported && supporting_pages.len() > 1 {
+                ContextSurfaceSource::ExactPageAndComparables
+            } else if exact_supported {
+                ContextSurfaceSource::ExactPage
+            } else {
+                ContextSurfaceSource::Comparables
+            };
+            Some(CategorySurfaceEntry {
+                category_title: category.title.clone(),
+                source,
+                supporting_pages,
+            })
         })
         .collect::<Vec<_>>();
     out.sort_by(|left, right| left.category_title.cmp(&right.category_title));
     out
 }
 
-fn build_link_surface(pack: &AuthoringKnowledgePackResult) -> Vec<LinkSurfaceEntry> {
+fn build_link_surface(
+    pack: &AuthoringKnowledgePackResult,
+    comparable_scope: &ComparableScope,
+) -> Vec<LinkSurfaceEntry> {
+    let exact_title = comparable_scope.exact_title.as_deref();
     let mut out = pack
         .suggested_links
         .iter()
-        .map(|link| LinkSurfaceEntry {
-            page_title: link.title.clone(),
-            source: ContextSurfaceSource::Comparables,
-            supporting_pages: dedup_sorted(link.evidence_titles.clone()),
+        .filter_map(|link| {
+            let supporting_pages = dedup_sorted(
+                link.evidence_titles
+                    .iter()
+                    .filter(|page| comparable_scope.allows_supporting_page(page))
+                    .cloned()
+                    .collect(),
+            );
+            if supporting_pages.is_empty() {
+                return None;
+            }
+            let exact_supported = exact_title.is_some_and(|title| {
+                supporting_pages
+                    .iter()
+                    .any(|page| page.eq_ignore_ascii_case(title))
+            });
+            let source = if exact_supported && supporting_pages.len() > 1 {
+                ContextSurfaceSource::ExactPageAndComparables
+            } else if exact_supported {
+                ContextSurfaceSource::ExactPage
+            } else {
+                ContextSurfaceSource::Comparables
+            };
+            Some(LinkSurfaceEntry {
+                page_title: link.title.clone(),
+                source,
+                supporting_pages,
+            })
         })
         .collect::<Vec<_>>();
     out.sort_by(|left, right| left.page_title.cmp(&right.page_title));
     out
 }
 
-fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSkeleton> {
-    let lead_content_backed = pack.topic_assessment.exact_page.is_some() || !pack.chunks.is_empty();
-    let mut sections = vec![SectionSkeleton {
-        heading: "Overview".to_string(),
-        rationale:
-            "Use a concise lead anchored in cited evidence and local terminology when available."
-                .to_string(),
-        required: true,
-        content_backed: lead_content_backed,
-        supporting_pages: Vec::new(),
-    }];
+fn build_section_candidates(
+    pack: &AuthoringKnowledgePackResult,
+    overlay: &ProfileOverlay,
+    comparable_scope: &ComparableScope,
+) -> Vec<SectionCandidate> {
+    let mut sections = Vec::new();
 
     // Collect chunk headings to determine content_backed status.
     let mut chunk_heading_pages = BTreeMap::<String, BTreeSet<String>>::new();
@@ -802,8 +1066,14 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
     // Primary signal: section headings from all comparable pages (deterministic, complete).
     let mut heading_support = BTreeMap::<String, (String, BTreeSet<String>)>::new();
     for cph in &pack.comparable_page_headings {
+        if !comparable_scope.allows_peer(&cph.source_title) {
+            continue;
+        }
         let normalized = normalize_heading(&cph.section_heading);
-        if normalized.is_empty() || heading_is_low_signal(&normalized) {
+        if normalized.is_empty()
+            || heading_is_low_signal(&normalized)
+            || heading_is_discouraged(&normalized, overlay)
+        {
             continue;
         }
         let entry = heading_support
@@ -815,9 +1085,15 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
     // Secondary signal: headings seen only in retrieved chunks (may come from pages
     // outside the top comparable set, preserving backward-compatible discovery).
     for chunk in &pack.chunks {
+        if !comparable_scope.allows_peer(&chunk.source_title) {
+            continue;
+        }
         if let Some(heading) = chunk.section_heading.as_deref() {
             let normalized = normalize_heading(heading);
-            if normalized.is_empty() || heading_is_low_signal(&normalized) {
+            if normalized.is_empty()
+                || heading_is_low_signal(&normalized)
+                || heading_is_discouraged(&normalized, overlay)
+            {
                 continue;
             }
             let entry = heading_support
@@ -832,13 +1108,22 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
     // article outline instead of an alphabetized set.
     let mut page_rank = BTreeMap::<String, usize>::new();
     for (rank, page) in pack.related_pages.iter().enumerate() {
+        if !comparable_scope.allows_peer(&page.title) {
+            continue;
+        }
         page_rank.entry(page.title.clone()).or_insert(rank);
     }
     let mut heading_order = BTreeMap::<String, (usize, usize)>::new();
     let mut per_page_position = BTreeMap::<String, usize>::new();
     for cph in &pack.comparable_page_headings {
+        if !comparable_scope.allows_peer(&cph.source_title) {
+            continue;
+        }
         let normalized = normalize_heading(&cph.section_heading);
-        if normalized.is_empty() || heading_is_low_signal(&normalized) {
+        if normalized.is_empty()
+            || heading_is_low_signal(&normalized)
+            || heading_is_discouraged(&normalized, overlay)
+        {
             continue;
         }
         let position_entry = per_page_position
@@ -862,7 +1147,12 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
             .or_insert(candidate);
     }
 
-    let min_support = if pack.related_pages.len() > 1 { 2 } else { 1 };
+    let comparable_count = pack
+        .related_pages
+        .iter()
+        .filter(|page| comparable_scope.allows_peer(&page.title))
+        .count();
+    let min_support = if comparable_count > 1 { 2 } else { 1 };
     let mut headings = heading_support
         .into_values()
         .filter(|(_, supporting_pages)| supporting_pages.len() >= min_support)
@@ -870,7 +1160,7 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
             let key = heading.to_ascii_lowercase();
             let content_backed = chunk_heading_pages.contains_key(&key);
             let page_list: Vec<String> = supporting_pages.iter().cloned().collect();
-            SectionSkeleton {
+            SectionCandidate {
                 rationale: format!(
                     "Seen on {} comparable page{}.",
                     supporting_pages.len(),
@@ -897,7 +1187,7 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
             .then_with(|| left.heading.cmp(&right.heading))
     });
     sections.extend(headings);
-    sections.push(SectionSkeleton {
+    sections.push(SectionCandidate {
         heading: "References".to_string(),
         rationale: "Reference handling is a hard requirement for publication-quality pages."
             .to_string(),
@@ -909,11 +1199,32 @@ fn build_section_skeleton(pack: &AuthoringKnowledgePackResult) -> Vec<SectionSke
 }
 
 fn build_constraints(overlay: &ProfileOverlay) -> Vec<AuthoringConstraint> {
-    let mut constraints = vec![AuthoringConstraint {
-        level: "must".to_string(),
-        rule_id: "files-first".to_string(),
-        message: "Use local wiki content and conventions as the primary fit check.".to_string(),
-    }];
+    let mut constraints = vec![
+        AuthoringConstraint {
+            level: "must".to_string(),
+            rule_id: "evidence-bound-prose".to_string(),
+            message: "Agent-authored prose is allowed, but every factual claim must be supported by inspected evidence. Model memory, retrieval rank, and neighboring-page prose are not evidence."
+                .to_string(),
+        },
+        AuthoringConstraint {
+            level: "must".to_string(),
+            rule_id: "subject-first".to_string(),
+            message: "Define the subject on its own terms. Mention Remilia, Charlotte Fang, or another adjacent entity only when a source-backed relationship is important to understanding the subject, and give it proportionate weight."
+                .to_string(),
+        },
+        AuthoringConstraint {
+            level: "must".to_string(),
+            rule_id: "reader-value".to_string(),
+            message: "Write specific encyclopedic prose that earns each paragraph: concrete facts, coherent chronology or analysis, no generic importance claims, repeated conclusions, or article-shaped filler."
+                .to_string(),
+        },
+        AuthoringConstraint {
+            level: "must".to_string(),
+            rule_id: "human-publication-gate".to_string(),
+            message: "A named human editor must read and accept the exact final prose before promotion or push; an agent may draft but must never self-attest."
+                .to_string(),
+        },
+    ];
     if overlay.authoring.require_short_description {
         constraints.push(AuthoringConstraint {
             level: "must".to_string(),
@@ -944,6 +1255,18 @@ fn build_constraints(overlay: &ProfileOverlay) -> Vec<AuthoringConstraint> {
         });
     }
     constraints
+}
+
+fn build_authoring_contract() -> ArticleAuthoringContract {
+    ArticleAuthoringContract {
+        mode: "encyclopedic_coauthoring".to_string(),
+        agent_may_draft_prose: true,
+        human_acceptance_required_for_publication: true,
+        model_output_is_evidence: false,
+        prose_standard: "Specific, neutral, proportionate, readable encyclopedic prose; claims remain within inspected sources and uncertainty stays visible.".to_string(),
+        structure_policy: "Derive structure from the subject's evidenced factual spine and reader needs. Comparable outlines are observations, not templates.".to_string(),
+        relationship_frame_policy: "Do not force Remilia, Charlotte Fang, or any adjacent entity into the lead or a dedicated section unless the relationship is independently relevant, source-backed, and proportionate.".to_string(),
+    }
 }
 
 fn overlay_infobox_subject_type_map(overlay: &ProfileOverlay) -> BTreeMap<String, String> {
@@ -1024,6 +1347,14 @@ fn heading_is_low_signal(heading: &str) -> bool {
     ]
     .iter()
     .any(|value| lowered.contains(value))
+}
+
+fn heading_is_discouraged(heading: &str, overlay: &ProfileOverlay) -> bool {
+    overlay
+        .lint
+        .discouraged_relationship_headings
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(heading))
 }
 
 fn dedup_sorted(values: Vec<String>) -> Vec<String> {

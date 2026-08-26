@@ -73,9 +73,28 @@ pub(super) fn build_review_next_steps(
             "Rerun the draft review gate after edits or safe fixes.",
             review_draft_argv,
         ),
+        command_next_step(
+            "human_accept_draft",
+            "A human editor reads the exact prose and records acceptance; agents must not self-attest.",
+            vec![
+                "wikitool",
+                "article",
+                "accept",
+                &draft_path,
+                "--title",
+                &title,
+                "--human-editor",
+                "<human-editor>",
+                "--prose-origin",
+                "<human-draft|human-revision|agent-draft|collaborative-draft|mechanical-conversion-of-human-prose|human-reviewed-legacy>",
+                "--format",
+                "json",
+            ],
+        ),
         ReviewNextStep {
             kind: "promote_draft",
-            description: "Copy the accepted draft to the sync path before push review.".to_string(),
+            description: "Copy the exact hash-bound, human-accepted draft to the sync path before push review."
+                .to_string(),
             command: Some(review_next_step_command(vec![
                 "wikitool",
                 "article",
@@ -95,7 +114,7 @@ pub(super) fn build_review_next_steps(
         ),
         command_next_step(
             "push_dry_run",
-            "Preview the scoped push only after the promoted review is clean.",
+            "Preview the scoped push only after the promoted review is clean and its human acceptance receipt still matches.",
             vec![
                 "wikitool",
                 "push",

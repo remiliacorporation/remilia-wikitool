@@ -16,6 +16,17 @@ pub fn compute_hash(content: &str) -> String {
     output
 }
 
+/// Full SHA-256 digest for identities and attestations where a compact cache
+/// key is not sufficient.
+pub fn compute_sha256(content: &str) -> String {
+    let digest = Sha256::digest(content.as_bytes());
+    let mut output = String::with_capacity(64);
+    for byte in digest {
+        output.push_str(&format!("{byte:02x}"));
+    }
+    output
+}
+
 /// Normalize wiki page content to MediaWiki's canonical stored form for sync comparison.
 /// MediaWiki rewrites CR and CRLF line endings to LF and strips trailing whitespace on
 /// save, so a local file's trailing newline (the POSIX editor default) would otherwise
@@ -171,13 +182,21 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        compute_hash, compute_wiki_sync_hash, format_iso8601_utc, normalize_path,
+        compute_hash, compute_sha256, compute_wiki_sync_hash, format_iso8601_utc, normalize_path,
         normalize_pathbuf, normalize_wiki_content, parse_redirect,
     };
 
     #[test]
     fn short_hash_is_stable() {
         assert_eq!(compute_hash("alpha"), "8ed3f6ad685b959e");
+    }
+
+    #[test]
+    fn full_sha256_is_stable() {
+        assert_eq!(
+            compute_sha256("alpha"),
+            "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8"
+        );
     }
 
     #[test]

@@ -358,7 +358,7 @@ pub fn create_interview_brief(
 fn insert_scout_section(brief: &str, scout: &InterviewScoutContext) -> String {
     let mut section = String::from("\n## Scout Context\n\n");
     section.push_str(
-        "Tool-written local-evidence snapshot from `knowledge article-start`; do not edit.\n\n",
+        "Tool-written local-context snapshot from `knowledge article-start`; observations are not recommendations or claim evidence. Do not edit.\n\n",
     );
     section.push_str(&format!("Local state: {}\n", scout.local_state));
     if !scout.comparable_pages.is_empty() {
@@ -396,7 +396,7 @@ fn insert_scout_section(brief: &str, scout: &InterviewScoutContext) -> String {
     }
     if !scout.missing_query_terms.is_empty() {
         section.push_str(&format!(
-            "Query terms with no local evidence: {}\n",
+            "Query terms with no local context: {}\n",
             scout.missing_query_terms.join("; ")
         ));
     }
@@ -448,8 +448,8 @@ fn build_question_agenda(
             "likely_missing" | "linked_but_missing" => {
                 agenda.push(InterviewQuestionArea {
                     area: "primary knowledge the wiki lacks".to_string(),
-                    suggested_question: "The wiki has no coverage of this subject yet, so your knowledge is the starting record. What do you know firsthand, and what should I verify independently?".to_string(),
-                    why: "Local index has no page for this subject; everything starts from the human's knowledge and leads.".to_string(),
+                    suggested_question: "The wiki has no coverage of this subject yet. What do you know firsthand, which sources or artifacts should I inspect, and what should I verify independently?".to_string(),
+                    why: "The local index has no subject page; the draft must be built from the interview's scoped knowledge and inspected sources rather than neighboring-page inference.".to_string(),
                 });
             }
             _ => {}
@@ -463,9 +463,9 @@ fn build_question_agenda(
             agenda.push(InterviewQuestionArea {
                 area: "article shape".to_string(),
                 suggested_question: format!(
-                    "The closest existing page is {title}{outline}. Should this article follow a similar shape, or is the subject a different kind of thing?"
+                    "One nearby page is {title}{outline}. Is any part of that shape useful here, or should this subject be organized differently?"
                 ),
-                why: "Comparable-page structure is the strongest local signal for the section plan; confirming or rejecting it early shapes every later question.".to_string(),
+                why: "A comparable outline is one local observation, not a template. Asking explicitly prevents adjacency from silently dictating the article's structure.".to_string(),
             });
         }
         for term in scout.missing_query_terms.iter().take(3) {
@@ -1066,7 +1066,7 @@ fn parse_second_level_headings(body: &str) -> Vec<String> {
 }
 
 /// Draft-plan signals extracted from a knowledge interview brief body, used by
-/// `article-start` to fold human planning into its section skeleton and warnings,
+/// `article-start` to fold human planning into its section candidates and warnings,
 /// and surfaced by `interview show` as the machine-readable handoff plan.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct BriefDraftPlan {
@@ -2382,7 +2382,7 @@ mod scout_and_handoff_tests {
         assert!(out.contains(
             "Closest comparable outline (Post-Authorship): Core principles > Historical context"
         ));
-        assert!(out.contains("Query terms with no local evidence: XCOPY"));
+        assert!(out.contains("Query terms with no local context: XCOPY"));
     }
 
     #[test]

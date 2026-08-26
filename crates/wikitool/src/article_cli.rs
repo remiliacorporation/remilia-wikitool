@@ -2,11 +2,13 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
+use wikitool_core::article_acceptance::ArticleProseOrigin;
 use wikitool_core::article_lint::ArticleFixApplyMode;
 
 use crate::RuntimeOptions;
 use crate::cli_support::OutputFormat;
 
+mod accept;
 mod fix;
 mod lint;
 mod output;
@@ -24,12 +26,52 @@ pub(crate) struct ArticleArgs {
 
 #[derive(Debug, Subcommand)]
 enum ArticleSubcommand {
+    #[command(about = "Record human acceptance of the exact article prose")]
+    Accept(ArticleAcceptArgs),
     #[command(about = "Lint article wikitext against wiki/profile rules")]
     Lint(ArticleLintArgs),
     #[command(about = "Apply safe mechanical fixes to article wikitext")]
     Fix(ArticleFixArgs),
-    #[command(about = "Copy a reviewed state draft into the sync tree")]
+    #[command(about = "Promote an exactly human-accepted draft into the sync tree")]
     Promote(ArticlePromoteArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ArticleAcceptArgs {
+    #[arg(help = "Draft or Main-namespace article path whose exact prose was read")]
+    path: PathBuf,
+    #[arg(
+        long,
+        value_name = "TITLE",
+        help = "Canonical Main-namespace article title"
+    )]
+    title: String,
+    #[arg(
+        long,
+        value_name = "IDENTITY",
+        help = "Name or handle of the human editor who read and accepted the exact prose"
+    )]
+    human_editor: String,
+    #[arg(
+        long,
+        value_enum,
+        value_name = "ORIGIN",
+        help = "Prose origin: human-draft|human-revision|agent-draft|collaborative-draft|mechanical-conversion-of-human-prose|human-reviewed-legacy"
+    )]
+    prose_origin: ArticleProseOriginArg,
+    #[arg(
+        long,
+        help = "Record that the human editor explicitly accepted remaining lint warnings"
+    )]
+    allow_warnings: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -108,7 +150,9 @@ pub(crate) struct ArticleFixArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct ArticlePromoteArgs {
-    #[arg(help = "State-draft path under the canonical .wikitool/drafts/ directory")]
+    #[arg(
+        help = "Human-accepted state-draft path under the canonical .wikitool/drafts/ directory"
+    )]
     path: PathBuf,
     #[arg(
         long,
@@ -131,6 +175,31 @@ pub(crate) struct ArticlePromoteArgs {
 enum ArticleFixApplyArg {
     None,
     Safe,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ArticleProseOriginArg {
+    HumanDraft,
+    HumanRevision,
+    AgentDraft,
+    CollaborativeDraft,
+    MechanicalConversionOfHumanProse,
+    HumanReviewedLegacy,
+}
+
+impl From<ArticleProseOriginArg> for ArticleProseOrigin {
+    fn from(value: ArticleProseOriginArg) -> Self {
+        match value {
+            ArticleProseOriginArg::HumanDraft => Self::HumanDraft,
+            ArticleProseOriginArg::HumanRevision => Self::HumanRevision,
+            ArticleProseOriginArg::AgentDraft => Self::AgentDraft,
+            ArticleProseOriginArg::CollaborativeDraft => Self::CollaborativeDraft,
+            ArticleProseOriginArg::MechanicalConversionOfHumanProse => {
+                Self::MechanicalConversionOfHumanProse
+            }
+            ArticleProseOriginArg::HumanReviewedLegacy => Self::HumanReviewedLegacy,
+        }
+    }
 }
 
 impl ArticleFixApplyArg {
@@ -159,6 +228,7 @@ impl std::fmt::Display for ArticleFixApplyArg {
 
 pub(crate) fn run_article(runtime: &RuntimeOptions, args: ArticleArgs) -> Result<()> {
     match args.command {
+        ArticleSubcommand::Accept(args) => accept::run_article_accept(runtime, args),
         ArticleSubcommand::Lint(args) => lint::run_article_lint(runtime, args),
         ArticleSubcommand::Fix(args) => fix::run_article_fix(runtime, args),
         ArticleSubcommand::Promote(args) => promote::run_article_promote(runtime, args),

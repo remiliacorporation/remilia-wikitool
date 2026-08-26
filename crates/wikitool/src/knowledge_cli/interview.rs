@@ -612,7 +612,7 @@ fn build_interview_scout(
             .take(4)
             .collect(),
         categories_seen: integration
-            .categories_seen
+            .observed_categories
             .iter()
             .map(|entry| entry.category_title.clone())
             .take(6)

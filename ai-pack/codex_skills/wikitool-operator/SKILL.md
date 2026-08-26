@@ -1,36 +1,47 @@
 ---
 name: wikitool-operator
-description: Thin wrapper for operating the wikitool CLI with canonical help/reference alignment.
+description: Research, author, revise, review, and safely sync evidence-bound MediaWiki articles with wikitool. Use for real encyclopedic prose drafting, wiki-grounded retrieval, source handling, interviews, wikitext, lint/fix, validation, exact human acceptance, and guarded publication.
 ---
 
-# Skill: wikitool-operator
+# Wikitool operator
 
-Thin wrapper for the `wikitool` CLI.
+Use normal reasoning and direct editing. Verify current flags with `wikitool --help`, `wikitool
+<command> --help`, and `docs/wikitool/reference.md`.
 
-Use normal reasoning, ordinary shell/file tools, and direct editing by default.
-Do not invent flags or workflow details; verify against `wikitool --help`, `wikitool <command> --help`, and `docs/wikitool/reference.md`.
+For article prose, read `writing_context/writing_guide.md`, `style_rules.md`, and
+`article_structure.md`; read `visual_subjects.md` when applicable. Agent-authored prose is allowed
+and should meet a real encyclopedic standard. Model memory, retrieval rank, search snippets, nearby
+pages, and fluent synthesis are not evidence.
 
-At the start of an editing session, inspect local edits and refresh local wiki state before relying on indexed content:
-`wikitool status --modified --format json`, `wikitool diff --format json`,
-`wikitool workflow session-refresh`, and
-`wikitool knowledge status --docs-profile remilia-wiki --format json`. Use `wikitool workflow full-refresh`
-only for deliberate rebuilds or missing sync state; do not use `pull --overwrite-local` without explicit approval.
+At session start, inspect `wikitool status --modified --format json` and `wikitool diff --format json`,
+then run `wikitool workflow session-refresh` and `wikitool knowledge status`. Use
+`workflow full-refresh` only for deliberate rebuilds or missing state. Never use
+`pull --overwrite-local` without explicit approval.
 
-Use `knowledge article-start --intent new|expand|audit|refresh --view brief` as the authoring front door.
-For new articles and substantial expansions, route to `wikitool-knowledge-interview` by default to
-set the article's intent, scope, and angle with the user and surface what they know, not only when
-they know more than the public record. Skip it on an explicit opt-out or for mechanical lint, link,
-sync, source-fetch, or validation work.
-Keep agent context compact: prefer wikitool briefs (`article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, `review --view brief`) before using `--view full`, broad reference selections, or high token budgets.
-Use normal agent web search to choose arbitrary external sources, then use `research fetch`, `research discover`, and `export` for extraction and provenance. Use `research wiki-search` only for the configured target wiki API.
-When `research fetch --output json` returns `error.challenge_handoffs`, relay the exact handoff to the user and ask them to solve the source challenge in a browser, then import source-issued cookies with `research session import ... --cookies -` and retry with `--refresh`. Do not use stealth clients, TLS impersonation, paid crawlers, or third-party reader services. Use `research session list|show|clear|prune` to manage local sessions; cookie values are stored locally and not printed by CLI output.
-Use `research mediawiki-templates URL` when a source MediaWiki page's own template/module contract matters, especially for arbitrary wikis such as Wikipedia. The report is cached; add `--refresh` when live freshness matters. Treat that output as source-wiki context only; target-wiki template use still has to pass local `knowledge contracts`, `templates show`, and `article lint`.
-Use `wiki profile remote URL` only for an explicitly scoped remote target capability probe when local import/profile data is unavailable. It reports extensions, parser tags, namespaces, and API capabilities, not portable template permission.
-Use `knowledge inspect references` for indexed citation audits and duplicate cleanup prep.
-Use scoped `validate --category ... --title ... --limit ...` when investigating a specific validation class. Use `--verify-live` for broken-link or redirect findings that need production API corroboration.
-Use scoped `status`, `diff`, and `push --dry-run` selectors when working on a subset of pages.
-Use `article lint .wikitool/drafts/Title.wiki --title "Title"`, `article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe`, and `article promote .wikitool/drafts/Title.wiki --title "Title"` for direct draft iteration before push review.
-Use `review --format json --view brief --summary "..."` for the pre-push gate; request `--view full` only when the brief points to a needed detail.
-After pushing templates, Cargo queries, or other dynamic rendering changes, use `wiki render-check "Title" --scope-class CLASS --expect-scopes N --require-interactive-link --require-href-contains TEXT --format json` to verify the live rendered HTML contract. Add `--require-link-class mw-file-description` when native MediaViewer behavior is required, and `--require-page-image FILE` when PageImages/Popups must select an exact representative file. The check rejects parser errors and literal rendered wikilinks by default, and crawler-only file-source anchors do not satisfy the interactive-link requirement.
+Use `knowledge article-start --intent new|expand|audit|refresh --view brief` for the typed
+coauthoring contract, evidence coverage, local fit signals, and open questions. `drafting_ready`
+means the current retrieval artifacts are usable, not that the topic is researched or the draft is
+publishable. Comparable outlines and categories are observations, not defaults. Route new articles,
+substantial rewrites, niche history, and unclear intent through `wikitool-knowledge-interview`.
+Use `knowledge contracts` for target template and module decisions.
 
-Reach for `wikitool` when you need wiki-grounded retrieval, template/profile lookup, lint/fix, sync, or guarded push flows.
+Build a claim-source map before drafting. Use normal web search to choose arbitrary external
+sources, then `research fetch`, `research discover`, and `export` for bounded extraction and
+provenance. Use `research wiki-search` only for the configured target wiki. Relay access challenges
+to the user rather than bypassing them. Inspect the exact source behind each important claim.
+
+Draft from the factual spine, write the lead after the body, and perform the adversarial reader edit
+in `style_rules.md`. Define the subject on its own terms. Do not force Remilia, Charlotte Fang,
+Milady, or community framing from local adjacency. Keep uncertainty, source attribution, and
+living-person risk visible.
+
+Use `article lint` and `article fix --apply safe` for deterministic diagnostics and mechanical
+repairs. These checks cannot establish source fidelity or prose quality. A named human must read the
+exact final prose and run or explicitly direct `article accept`, using `agent-draft`,
+`collaborative-draft`, or the other truthful origin. Never self-attest. Acceptance is hash-bound;
+the stated identity is an audit assertion, not cryptographic authentication. Promotion and changed
+Main-namespace pushes require the receipt, and `--force` does not bypass it.
+
+Use scoped `validate --verify-live`, `status`, `diff`, `review --view brief`, and `push --dry-run`
+before a live push. After dynamic rendering changes, run `wiki render-check` for every relevant
+consumer shape.

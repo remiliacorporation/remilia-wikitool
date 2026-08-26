@@ -1,43 +1,38 @@
-# Real Article Test Template
+# Real article authoring eval
 
-Research and write a complete wiki article for a real topic.
+Research and draft or revise a real wiki article. This is an editorial-quality eval, not a prompt to
+maximize length or satisfy a generic article shape.
 
 ## Topic
-- **Name**: {{TOPIC_NAME}}
-- **Domain**: {{TOPIC_DOMAIN}}
-- **Context**: {{TOPIC_CONTEXT}}
 
-## Constraint
-{{CONSTRAINT_RULE}}
+- **Name:** {{TOPIC_NAME}}
+- **Intent:** {{NEW_EXPAND_AUDIT_REFRESH}}
+- **Reader need:** {{READER_NEED}}
+- **Known risk or framing trap:** {{RISK}}
 
-## Style Trap
-{{STYLE_TRAP_CHECK}}
+## Method
 
-## Instructions
+1. Read the current article when one exists.
+2. Run `knowledge article-start` with the selected intent and retain its evidence IDs, warnings, and
+   contract.
+3. Inspect the actual sources behind load-bearing and sensitive claims. Build a claim-source map
+   that records support, locators, contradictions, and omissions.
+4. Define the subject on its own terms and select a factual spine. Do not copy a comparable outline
+   or infer importance from profile/category frequency.
+5. Draft the body, then the lead, as raw MediaWiki wikitext.
+6. Apply `writing_context/style_rules.md` and record what was removed or reframed in the adversarial
+   reader edit.
+7. Run lint and review, but do not treat mechanical success as a quality score.
+8. Stop short of `article accept`, promotion, or push; a named human reviewer owns those decisions.
 
-1. Research the topic using web search and wiki API
-2. Write raw MediaWiki wikitext (NOT markdown)
-3. Follow all wiki style rules from `tools/wikitool/ai-pack/writing_context/style_rules.md`
-4. Obey the constraint above exactly
-5. Use only verifiable claims with real citations
-6. The style trap describes what the evaluator will check — write to pass it
+Use only claims supported by inspected sources or explicitly permitted target-wiki testimony.
+Preserve good existing prose. If evidence supports only a stub, write a stub. If it does not support
+a standalone page, recommend a redirect or merge instead of padding.
 
-## Required Structure
+## Deliverables
 
-```
-Line 1: {{SHORTDESC:Brief description}}
-Line 2: {{Article quality|unverified}}
-Line 3: (blank)
-Line 4+: '''Topic Name''' followed by opening paragraph
-...body sections...
-== References ==
-{{Reflist}}
+- Draft: `wiki_content_testing/Main/{{TOPIC_NAME_ENCODED}}.wiki`
+- Claim-source map: `wiki_content_testing/evidence/{{TOPIC_NAME_ENCODED}}.md`
+- Review note: hard failures, rubric scores, and the answer to “Would someone read this?”
 
-[[Category:...]]  (2-4, looked up from wiki database)
-```
-
-## Output
-
-Save the article to `wiki_content_testing/Main/{{TOPIC_NAME_ENCODED}}.wiki`
-
-Good real-topic articles may be manually promoted to `wiki_content/Main/` after review.
+Outputs are evaluation artifacts and are never promoted without separate human review.

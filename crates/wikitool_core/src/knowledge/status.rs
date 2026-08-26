@@ -27,7 +27,7 @@ pub struct KnowledgeArtifact {
 pub enum KnowledgeReadinessLevel {
     NotReady,
     ContentReady,
-    AuthoringReady,
+    DraftingReady,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -130,10 +130,37 @@ pub fn knowledge_status(
         degradations.push("docs_profile_manifest_missing".to_string());
     }
 
-    let content_index_ready = index_rows > 0 && content_index_artifact.is_some();
-    let docs_profile_ready = docs_profile_corpora > 0 && docs_profile_artifact.is_some();
+    let content_generation_current = artifact_generation_is_current(
+        content_index_artifact.as_ref(),
+        "content_index",
+        &mut degradations,
+    );
+    let docs_generation_current = artifact_generation_is_current(
+        docs_profile_artifact.as_ref(),
+        "docs_profile",
+        &mut degradations,
+    );
+    let content_import_clean = artifact_import_is_clean(
+        content_index_artifact.as_ref(),
+        "content_index",
+        &mut degradations,
+    );
+    let docs_import_clean = artifact_import_is_clean(
+        docs_profile_artifact.as_ref(),
+        "docs_profile",
+        &mut degradations,
+    );
+
+    let content_index_ready = index_rows > 0
+        && content_index_artifact.is_some()
+        && content_generation_current
+        && content_import_clean;
+    let docs_profile_ready = docs_profile_corpora > 0
+        && docs_profile_artifact.is_some()
+        && docs_generation_current
+        && docs_import_clean;
     let readiness = if content_index_ready && docs_profile_ready {
-        KnowledgeReadinessLevel::AuthoringReady
+        KnowledgeReadinessLevel::DraftingReady
     } else if content_index_ready {
         KnowledgeReadinessLevel::ContentReady
     } else {
@@ -153,6 +180,50 @@ pub fn knowledge_status(
         content_index_artifact,
         docs_profile_artifact,
     })
+}
+
+fn artifact_generation_is_current(
+    artifact: Option<&KnowledgeArtifact>,
+    label: &str,
+    degradations: &mut Vec<String>,
+) -> bool {
+    let Some(artifact) = artifact else {
+        return false;
+    };
+    if artifact.schema_generation == KNOWLEDGE_GENERATION {
+        return true;
+    }
+    degradations.push(format!(
+        "{label}_generation_mismatch:expected={KNOWLEDGE_GENERATION}:actual={}",
+        artifact.schema_generation
+    ));
+    false
+}
+
+fn artifact_import_is_clean(
+    artifact: Option<&KnowledgeArtifact>,
+    label: &str,
+    degradations: &mut Vec<String>,
+) -> bool {
+    let Some(artifact) = artifact else {
+        return false;
+    };
+    let metadata: serde_json::Value = match serde_json::from_str(&artifact.metadata_json) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            degradations.push(format!("{label}_metadata_invalid:{error}"));
+            return false;
+        }
+    };
+    let failure_count = metadata
+        .get("failures")
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, Vec::len);
+    if failure_count == 0 {
+        return true;
+    }
+    degradations.push(format!("{label}_import_failures:{failure_count}"));
+    false
 }
 
 fn normalize_profile(profile: &str) -> String {
@@ -341,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn knowledge_status_reports_authoring_ready_with_docs_profile_artifact() {
+    fn knowledge_status_reports_drafting_ready_with_current_clean_artifacts() {
         let (_temp, paths) = test_paths();
         write_main_page(&paths, "Alpha", "'''Alpha''' article.\n[[Category:People]]");
         rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
@@ -389,9 +460,72 @@ mod tests {
             .expect("record artifact");
 
         let status = knowledge_status(&paths, DEFAULT_DOCS_PROFILE).expect("status");
-        assert_eq!(status.readiness, KnowledgeReadinessLevel::AuthoringReady);
+        assert_eq!(status.readiness, KnowledgeReadinessLevel::DraftingReady);
         assert!(status.content_index_ready);
         assert!(status.docs_profile_ready);
         assert!(status.degradations.is_empty());
+    }
+
+    #[test]
+    fn knowledge_status_rejects_stale_or_failed_docs_artifacts() {
+        let (_temp, paths) = test_paths();
+        write_main_page(&paths, "Alpha", "'''Alpha''' article.\n[[Category:People]]");
+        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+        let connection = open_initialized_database_connection(&paths.db_path).expect("open db");
+        connection
+            .execute(
+                "INSERT INTO docs_corpora (
+                    corpus_id, corpus_kind, label, source_wiki, source_version,
+                    source_profile, technical_type, refresh_kind, refresh_spec,
+                    pages_count, sections_count, symbols_count, examples_count,
+                    fetched_at_unix, expires_at_unix
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                params![
+                    "profile:remilia-wiki",
+                    "profile",
+                    "profile",
+                    "mediawiki.org",
+                    "1.44",
+                    DEFAULT_DOCS_PROFILE,
+                    "profile",
+                    "profile",
+                    "{}",
+                    1i64,
+                    1i64,
+                    0i64,
+                    0i64,
+                    1i64,
+                    2i64,
+                ],
+            )
+            .expect("insert docs corpus");
+        record_docs_profile_artifact(
+            &connection,
+            DEFAULT_DOCS_PROFILE,
+            1,
+            r#"{"failures":["missing page"]}"#,
+        )
+        .expect("record artifact");
+        connection
+            .execute(
+                "UPDATE runtime_artifacts SET schema_generation = 'knowledge-v0.0.0' WHERE artifact_key = ?1",
+                params![docs_profile_artifact_key(DEFAULT_DOCS_PROFILE)],
+            )
+            .expect("stale artifact");
+
+        let status = knowledge_status(&paths, DEFAULT_DOCS_PROFILE).expect("status");
+        assert_eq!(status.readiness, KnowledgeReadinessLevel::ContentReady);
+        assert!(!status.docs_profile_ready);
+        assert!(
+            status
+                .degradations
+                .iter()
+                .any(|item| item.starts_with("docs_profile_generation_mismatch:"))
+        );
+        assert!(
+            status
+                .degradations
+                .contains(&"docs_profile_import_failures:1".to_string())
+        );
     }
 }

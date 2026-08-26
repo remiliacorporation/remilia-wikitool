@@ -2,8 +2,9 @@ use anyhow::{Result, bail};
 use serde::Serialize;
 use wikitool_core::authoring::article_start::build_article_start;
 use wikitool_core::authoring::model::{
-    ArticleStartIntent, ArticleStartResult, ContextSurfaceSource, EvidenceCoverageItem,
-    LocalExistenceState, OpenQuestion, RequiredTemplate, SectionSkeleton, TemplateSurfaceEntry,
+    ArticleAuthoringContract, ArticleStartIntent, ArticleStartResult, ContextSurfaceSource,
+    EvidenceCoverageItem, LocalExistenceState, OpenQuestion, RecommendedAction, RequiredTemplate,
+    SectionCandidate, TemplateSurfaceEntry,
 };
 use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::knowledge::authoring::{
@@ -185,8 +186,22 @@ pub(super) fn run_knowledge_article_start(
                 serde_json::to_string(&article_start.local_state)?
             );
             println!(
-                "article_start.evidence.direct_subject_evidence.count: {}",
-                article_start.evidence_profile.direct_subject_evidence.len()
+                "article_start.authoring.mode: {}",
+                article_start.authoring_contract.mode
+            );
+            println!(
+                "article_start.authoring.agent_may_draft_prose: {}",
+                article_start.authoring_contract.agent_may_draft_prose
+            );
+            println!(
+                "article_start.authoring.human_acceptance_required_for_publication: {}",
+                article_start
+                    .authoring_contract
+                    .human_acceptance_required_for_publication
+            );
+            println!(
+                "article_start.evidence.subject_context.count: {}",
+                article_start.evidence_profile.subject_context.len()
             );
             println!(
                 "article_start.evidence.broad_context.count: {}",
@@ -259,30 +274,30 @@ pub(super) fn run_knowledge_article_start(
                     .join(", ")
             );
             println!(
-                "article_start.categories_seen: {}",
+                "article_start.observed_categories: {}",
                 article_start
                     .local_integration
-                    .categories_seen
+                    .observed_categories
                     .iter()
                     .map(|entry| entry.category_title.clone())
                     .collect::<Vec<_>>()
                     .join(", ")
             );
             println!(
-                "article_start.links_seen: {}",
+                "article_start.observed_links: {}",
                 article_start
                     .local_integration
-                    .links_seen
+                    .observed_links
                     .iter()
                     .map(|entry| entry.page_title.clone())
                     .collect::<Vec<_>>()
                     .join(", ")
             );
             println!(
-                "article_start.section_skeleton: {}",
+                "article_start.section_candidates: {}",
                 article_start
                     .local_integration
-                    .section_skeleton
+                    .section_candidates
                     .iter()
                     .map(|entry| entry.heading.clone())
                     .collect::<Vec<_>>()
@@ -350,7 +365,7 @@ fn fold_interview_brief_into_article_start(
     let plan = parse_brief_draft_plan(&body);
 
     merge_brief_planned_sections(
-        &mut article_start.local_integration.section_skeleton,
+        &mut article_start.local_integration.section_candidates,
         &plan.likely_sections,
     );
 
@@ -402,7 +417,10 @@ fn fold_blocking_evidence_gaps(open_questions: &mut Vec<OpenQuestion>, gaps: &[S
     }
 }
 
-fn merge_brief_planned_sections(section_skeleton: &mut Vec<SectionSkeleton>, planned: &[String]) {
+fn merge_brief_planned_sections(
+    section_candidates: &mut Vec<SectionCandidate>,
+    planned: &[String],
+) {
     let mut planned_keys = std::collections::BTreeSet::new();
     let mut planned_sections = Vec::new();
 
@@ -412,13 +430,13 @@ fn merge_brief_planned_sections(section_skeleton: &mut Vec<SectionSkeleton>, pla
             continue;
         }
 
-        if let Some(index) = section_skeleton
+        if let Some(index) = section_candidates
             .iter()
             .position(|section| normalized_heading_key(&section.heading) == key)
         {
-            planned_sections.push(section_skeleton.remove(index));
+            planned_sections.push(section_candidates.remove(index));
         } else {
-            planned_sections.push(SectionSkeleton {
+            planned_sections.push(SectionCandidate {
                 heading: name.trim().to_string(),
                 rationale: BRIEF_SECTION_RATIONALE.to_string(),
                 required: false,
@@ -432,25 +450,21 @@ fn merge_brief_planned_sections(section_skeleton: &mut Vec<SectionSkeleton>, pla
         return;
     }
 
-    let mut lead_sections = Vec::new();
     let mut remaining_body_sections = Vec::new();
     let mut appendix_sections = Vec::new();
 
-    for section in std::mem::take(section_skeleton) {
+    for section in std::mem::take(section_candidates) {
         let key = normalized_heading_key(&section.heading);
-        if key == "overview" {
-            lead_sections.push(section);
-        } else if is_terminal_appendix_key(&key) {
+        if is_terminal_appendix_key(&key) {
             appendix_sections.push(section);
         } else {
             remaining_body_sections.push(section);
         }
     }
 
-    section_skeleton.extend(lead_sections);
-    section_skeleton.extend(planned_sections);
-    section_skeleton.extend(remaining_body_sections);
-    section_skeleton.extend(appendix_sections);
+    section_candidates.extend(planned_sections);
+    section_candidates.extend(remaining_body_sections);
+    section_candidates.extend(appendix_sections);
 }
 
 fn normalized_heading_key(heading: &str) -> String {
@@ -492,6 +506,8 @@ struct ArticleStartBrief<'a> {
     topic: Option<&'a str>,
     intent: Option<&'a ArticleStartIntent>,
     local_state: Option<&'a LocalExistenceState>,
+    authoring_contract: Option<&'a ArticleAuthoringContract>,
+    editorial_actions: Vec<&'a RecommendedAction>,
     interview_brief: Option<InterviewBriefCard<'a>>,
     evidence: Option<ArticleStartEvidenceCard<'a>>,
     local_integration: Option<ArticleStartIntegrationCard<'a>>,
@@ -505,13 +521,13 @@ struct ArticleStartBrief<'a> {
 #[derive(Debug, Serialize)]
 struct ArticleStartEvidenceCard<'a> {
     query: &'a str,
-    direct_subject_evidence_count: usize,
+    subject_context_count: usize,
     broad_context_count: usize,
     comparable_page_count: usize,
     backlink_count: usize,
     missing_query_terms: &'a [String],
     live_leads_status: &'a str,
-    top_direct_evidence: Vec<EvidenceCoverageCard<'a>>,
+    top_subject_context: Vec<EvidenceCoverageCard<'a>>,
     top_context_evidence: Vec<EvidenceCoverageCard<'a>>,
 }
 
@@ -543,9 +559,9 @@ struct ArticleStartIntegrationCard<'a> {
     available_infoboxes: Vec<TemplateSurfaceCard<'a>>,
     citation_templates_seen: Vec<&'a str>,
     template_surface: Vec<&'a str>,
-    categories_seen: Vec<String>,
-    links_seen: Vec<String>,
-    section_skeleton: Vec<SectionSkeletonCard<'a>>,
+    observed_categories: Vec<ObservedCategoryCard<'a>>,
+    observed_links: Vec<ObservedLinkCard<'a>>,
+    section_candidates: Vec<SectionCandidateCard<'a>>,
     docs_queries: Vec<String>,
     contract_query: &'a str,
     contract_matched_query_terms: &'a [String],
@@ -571,7 +587,21 @@ struct TemplateSurfaceCard<'a> {
 }
 
 #[derive(Debug, Serialize)]
-struct SectionSkeletonCard<'a> {
+struct ObservedCategoryCard<'a> {
+    category_title: &'a str,
+    source: &'a ContextSurfaceSource,
+    supporting_pages: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ObservedLinkCard<'a> {
+    page_title: &'a str,
+    source: &'a ContextSurfaceSource,
+    supporting_pages: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SectionCandidateCard<'a> {
     heading: &'a str,
     required: bool,
     content_backed: bool,
@@ -592,6 +622,8 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             topic: None,
             intent: None,
             local_state: None,
+            authoring_contract: None,
+            editorial_actions: Vec::new(),
             interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
             evidence: None,
             local_integration: None,
@@ -620,6 +652,8 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             topic: None,
             intent: None,
             local_state: None,
+            authoring_contract: None,
+            editorial_actions: Vec::new(),
             interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
             evidence: None,
             local_integration: None,
@@ -681,7 +715,7 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
 
                 let brief_section_count = article_start
                     .local_integration
-                    .section_skeleton
+                    .section_candidates
                     .iter()
                     .filter(|section| section.rationale == BRIEF_SECTION_RATIONALE)
                     .count();
@@ -725,9 +759,9 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             ]));
             if let Some(section) = article_start
                 .local_integration
-                .section_skeleton
+                .section_candidates
                 .iter()
-                .find(|section| !section.content_backed)
+                .find(|section| !section.required && !section.content_backed)
             {
                 next_commands.push(brief_command_owned(vec![
                     "wikitool".to_string(),
@@ -803,21 +837,20 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                 topic: Some(&article_start.topic),
                 intent: Some(&article_start.intent),
                 local_state: Some(&article_start.local_state),
+                authoring_contract: Some(&article_start.authoring_contract),
+                editorial_actions: article_start.next_actions.iter().collect(),
                 interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
                 evidence: Some(ArticleStartEvidenceCard {
                     query: &article_start.evidence_profile.query,
-                    direct_subject_evidence_count: article_start
-                        .evidence_profile
-                        .direct_subject_evidence
-                        .len(),
+                    subject_context_count: article_start.evidence_profile.subject_context.len(),
                     broad_context_count: article_start.evidence_profile.broad_context.len(),
                     comparable_page_count: article_start.evidence_profile.comparable_pages.len(),
                     backlink_count: article_start.evidence_profile.backlink_count,
                     missing_query_terms: &article_start.evidence_profile.missing_query_terms,
                     live_leads_status: &article_start.evidence_profile.live_leads_status,
-                    top_direct_evidence: article_start
+                    top_subject_context: article_start
                         .evidence_profile
-                        .direct_subject_evidence
+                        .subject_context
                         .iter()
                         .take(3)
                         .map(|item| evidence_card(item, &article_start.subject_research.evidence))
@@ -867,23 +900,31 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                         .map(|entry| entry.template_title.as_str())
                         .take(8)
                         .collect(),
-                    categories_seen: article_start
+                    observed_categories: article_start
                         .local_integration
-                        .categories_seen
+                        .observed_categories
                         .iter()
                         .take(6)
-                        .map(|entry| entry.category_title.clone())
+                        .map(|entry| ObservedCategoryCard {
+                            category_title: &entry.category_title,
+                            source: &entry.source,
+                            supporting_pages: capped_strings(&entry.supporting_pages, 3),
+                        })
                         .collect(),
-                    links_seen: article_start
+                    observed_links: article_start
                         .local_integration
-                        .links_seen
+                        .observed_links
                         .iter()
                         .take(8)
-                        .map(|entry| entry.page_title.clone())
+                        .map(|entry| ObservedLinkCard {
+                            page_title: &entry.page_title,
+                            source: &entry.source,
+                            supporting_pages: capped_strings(&entry.supporting_pages, 3),
+                        })
                         .collect(),
-                    section_skeleton: article_start
+                    section_candidates: article_start
                         .local_integration
-                        .section_skeleton
+                        .section_candidates
                         .iter()
                         .take(if output.interview_brief.is_some() {
                             12
@@ -1039,8 +1080,8 @@ fn template_surface_card(template: &TemplateSurfaceEntry) -> TemplateSurfaceCard
     }
 }
 
-fn section_card(section: &SectionSkeleton) -> SectionSkeletonCard<'_> {
-    SectionSkeletonCard {
+fn section_card(section: &SectionCandidate) -> SectionCandidateCard<'_> {
+    SectionCandidateCard {
         heading: &section.heading,
         required: section.required,
         content_backed: section.content_backed,
@@ -1059,8 +1100,8 @@ mod tests {
     use std::path::PathBuf;
     use wikitool_core::knowledge_interview::{BriefDraftPlan, InterviewOpenItemCounts};
 
-    fn section(heading: &str, rationale: &str, required: bool) -> SectionSkeleton {
-        SectionSkeleton {
+    fn section(heading: &str, rationale: &str, required: bool) -> SectionCandidate {
+        SectionCandidate {
             heading: heading.to_string(),
             rationale: rationale.to_string(),
             required,
@@ -1118,7 +1159,6 @@ mod tests {
     #[test]
     fn brief_planned_sections_define_body_order_before_appendices() {
         let mut skeleton = vec![
-            section("Overview", "lead", true),
             section("Background", "Seen on comparables.", false),
             section("References", "Required appendix.", true),
             section("Reception", "Seen on comparables.", false),
@@ -1140,7 +1180,6 @@ mod tests {
         assert_eq!(
             headings,
             vec![
-                "Overview",
                 "Design, aesthetic, and presentation",
                 "Reception",
                 "Background",
@@ -1148,18 +1187,15 @@ mod tests {
             ]
         );
         assert_eq!(
-            skeleton[1].rationale,
+            skeleton[0].rationale,
             "Planned in the interview brief Draft Plan; not observed on comparable pages."
         );
-        assert_eq!(skeleton[2].rationale, "Seen on comparables.");
+        assert_eq!(skeleton[1].rationale, "Seen on comparables.");
     }
 
     #[test]
     fn brief_planned_sections_ignore_duplicates_and_structural_labels() {
-        let mut skeleton = vec![
-            section("Overview", "lead", true),
-            section("References", "Required appendix.", true),
-        ];
+        let mut skeleton = vec![section("References", "Required appendix.", true)];
 
         merge_brief_planned_sections(
             &mut skeleton,
@@ -1175,7 +1211,7 @@ mod tests {
             .iter()
             .map(|section| section.heading.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(headings, vec!["Overview", "Design", "References"]);
+        assert_eq!(headings, vec!["Design", "References"]);
     }
 
     #[test]
@@ -1195,12 +1231,12 @@ mod tests {
         brief.summary.open_item_counts.open = 1;
 
         let readiness = article_start_brief_readiness(
-            &KnowledgeReadinessLevel::AuthoringReady,
+            &KnowledgeReadinessLevel::DraftingReady,
             &[],
             Some(&brief),
         );
 
-        assert_eq!(readiness, KnowledgeReadinessLevel::AuthoringReady);
+        assert_eq!(readiness, KnowledgeReadinessLevel::DraftingReady);
     }
 
     #[test]
@@ -1209,7 +1245,7 @@ mod tests {
         brief.summary.open_item_counts.negative_evidence = 1;
 
         let readiness = article_start_brief_readiness(
-            &KnowledgeReadinessLevel::AuthoringReady,
+            &KnowledgeReadinessLevel::DraftingReady,
             &[],
             Some(&brief),
         );

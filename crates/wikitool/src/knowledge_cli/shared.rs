@@ -69,7 +69,7 @@ pub(super) fn format_readiness(value: &KnowledgeReadinessLevel) -> &'static str 
     match value {
         KnowledgeReadinessLevel::NotReady => "not_ready",
         KnowledgeReadinessLevel::ContentReady => "content_ready",
-        KnowledgeReadinessLevel::AuthoringReady => "authoring_ready",
+        KnowledgeReadinessLevel::DraftingReady => "drafting_ready",
     }
 }
 

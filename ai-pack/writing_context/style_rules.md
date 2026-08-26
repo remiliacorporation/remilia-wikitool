@@ -1,336 +1,173 @@
-# Natural Writing Style Rules
+# Encyclopedic prose review
 
-Rules for writing encyclopedic articles that read as human-authored prose.
-Derived from Wikipedia's Manual of Style and Signs of AI Writing.
+Use this review for human-, agent-, and collaboratively drafted articles. Judge the text that a
+reader will see. Do not infer quality or authorship from a word list, and do not rewrite good prose
+merely to make it look less machine-generated.
 
-These are **hard rules**, not suggestions. Violating them produces text that reads as machine-generated.
+A lint phrase match is a reread signal, not a verdict. Passing lint is not evidence that an article
+is accurate, neutral, readable, or worth publishing.
 
----
+## 1. Hard failures
 
-## I. Banned phrases and constructions
+Do not publish prose with any of these defects:
 
-### Significance inflation
+- a factual claim rests on model memory, a search snippet, retrieval rank, or an unrelated local
+  page rather than inspected evidence;
+- a citation does not support the sentence it is attached to;
+- quotation, date, identity, allegation, motive, influence, reception, or intent was invented or
+  inferred beyond the source;
+- a contentious claim about an identifiable person lacks direct, adequate support;
+- the subject is defined mainly through an incidental relationship to Remilia, Charlotte Fang,
+  Milady, or another better-known entity;
+- the prose resolves uncertainty, disagreement, or missing evidence simply by sounding confident;
+- a paragraph exists to make the article look complete rather than to tell the reader something.
 
-Never attach importance-claims to mundane facts. State what happened; let the reader judge significance.
+## 2. Definition and scope
 
-**Never use:**
-- "stands as", "serves as a testament", "is a testament to"
-- "pivotal role", "crucial role", "significant role", "key role"
-- "key moment", "key turning point", "watershed moment"
-- "underscores its importance", "highlights its significance"
-- "reflects broader trends", "reflects the evolving"
-- "symbolizing its ongoing", "enduring legacy", "lasting impact"
-- "contributing to the", "setting the stage for"
-- "marking/shaping the", "represents a shift", "marks a shift"
-- "evolving landscape", "cultural landscape"
-- "focal point", "indelible mark", "deeply rooted"
-- "profound heritage", "rich history"
+The lead's first sentence should answer “what is this?” in the most specific supported terms. It
+should not answer “why is this on Remilia Wiki?” or “who is it connected to?” unless that connection
+is genuinely part of the definition.
 
-**Instead:** State specific facts. "The collection sold 10,000 units in 48 hours" is better than "The collection played a pivotal role in shaping the evolving NFT landscape."
+Bad:
 
-### Promotional puffery
+> '''Example''' is best known in the Remilia community through its significant connection to
+> Charlotte Fang.
 
-**Never use:**
-- "rich tapestry", "vibrant tapestry", "diverse tapestry"
-- "groundbreaking", "revolutionary", "trailblazing"
-- "stunning", "breathtaking", "fascinating glimpse"
-- "boasts a", "continues to captivate"
-- "nestled in", "in the heart of"
-- "intricate", "robust", "comprehensive" (when vague)
-- "innovative", "cutting-edge"
+Better pattern:
 
-### Copula avoidance
+> '''Example''' is a [work, person, project, event, term, or organization] that [specific defining
+> fact].
 
-AI text systematically avoids "is/are/was/has" in favor of elaborate substitutions. Use the simple form.
+Only use the better pattern when the bracketed content is supported. Follow with the facts that the
+article itself develops. Do not claim the subject is “best known” for something unless a source
+actually establishes that public recognition.
 
-| Bad (AI pattern) | Good (natural) |
-|---|---|
-| serves as the headquarters | is the headquarters |
-| features a collection of | has a collection of |
-| boasts a population of | has a population of |
-| marks the beginning of | is the beginning of |
-| stands as an example of | is an example of |
-| represents a departure from | is a departure from |
-| offers a glimpse into | shows |
-| ventured into politics as | was a candidate |
+Keep the scope stable. Do not slide between a person, their alias, a collective, a project, and a
+community as though they are interchangeable. Define ambiguous names and changes over time.
 
-### AI vocabulary (statistically overused)
+## 3. Source fidelity
 
-These words appear at dramatically higher rates in AI text than in human writing. Any single use may be fine, but clustering them is a strong AI signal.
+Write no more than the evidence allows.
 
-**Watch list — use sparingly or not at all:**
-- additionally, furthermore, moreover, notably
-- particularly, specifically, essentially, fundamentally
-- multifaceted, comprehensive, intricate, nuanced
-- landscape, tapestry, realm, sphere
-- leverage, harness, foster, facilitate
-- delve, underscore, showcase, highlight
-- testament, cornerstone, hallmark
-- encompasses, embodies, encapsulates
-- commendable, noteworthy, remarkable
+- A source saying that an event occurred does not establish its importance.
+- A creator describing an intention supports an attributed statement of intention, not an objective
+  reading of the work.
+- An artifact can support what is visibly or textually present; it usually cannot establish process,
+  authorship, influence, date, or reception on its own.
+- A homepage can establish only what the homepage actually says. Do not reuse it as a citation for
+  multiple unrelated details.
+- A local article is a claim to verify unless its underlying citation has been inspected.
 
-**Prefer instead:** plain connectives (and, but, also, however), concrete verbs, specific nouns.
+Use direct attribution when the source owns the judgment: “The creator described…”, “According to
+the announcement…”, or “The review characterized…”. Do not hide contested judgments behind “it is
+considered”, “observers noted”, “critics say”, or other vague subjects.
 
-### Didactic disclaimers
+## 4. Proportion and editorial selection
 
-**Never use:**
-- "it's important to note", "it should be noted"
-- "it is crucial to differentiate", "it is worth mentioning"
-- "it's important to remember"
-- "may vary", "results may differ"
-- "it is beyond the scope of"
+Coverage should reflect what is important to understanding the subject, not what happened to be
+easy to retrieve.
 
-These address the reader directly. Encyclopedic prose never does this.
-
-### Section summaries and conclusions
-
-**Never:**
-- Add a "Conclusion" section
-- End sections with "In summary," / "In conclusion," / "Overall,"
-- Restate a section's main point at its end
-- Add a "Challenges and future outlook" section using the formula: "Despite its [positive words], [subject] faces challenges..."
-
-Sections should end with the last relevant fact, not a wrap-up.
-
-### Elegant variation
-
-Do not strain to find synonyms for the subject. Repeating the name or using "it/they" is better than cycling through "the project", "the collection", "the initiative", "the venture".
-
-**Bad:** "Milady Maker launched in 2021. The collection... The project... The PFP initiative..."
-**Good:** "Milady Maker launched in 2021. It... The collection..." (pick one and stay consistent)
-
-### False ranges
-
-Only use "from X to Y" when X and Y sit on a real, identifiable scale (time, quantity, severity).
-
-**Bad:** "from problem-solving to artistic expression" (no scale)
-**Bad:** "from fundamental physics to medicine" (different fields, not a range)
-**Good:** "from 2019 to 2023" (time scale)
-**Good:** "from mild to severe" (severity scale)
-
-### Negative parallelisms
-
-**Never use argumentative constructions:**
-- "Not only X, but also Y"
-- "It is not just about X, it's about Y"
-- "No mere X, but a Y"
-
-These are persuasive, not encyclopedic. State both facts plainly.
-
-### Rule of three
-
-Do not artificially group items in threes for rhetorical effect.
-
-**Bad:** "keynote sessions, panel discussions, and networking opportunities"
-**Good:** Name the specific sessions, or describe what happened.
-
-### Superficial analysis via participle phrases
-
-Do not attach "-ing" phrases that assign significance to facts.
-
-**Bad:** "The exhibition opened in March, highlighting the growing interest in digital art."
-**Bad:** "The project launched on Ethereum, showcasing the possibilities of on-chain art."
-**Good:** "The exhibition opened in March." (Let the reader draw conclusions.)
-
-### Notability name-dropping
-
-Do not invoke famous names or projects to inflate a subject's significance by association.
-
-**Bad:** "reminiscent of Beeple's Everydays", "akin to what Banksy achieved", "in the tradition of CryptoPunks"
-**Good:** Describe the subject's own qualities. Comparisons require sourcing — if a reliable source drew the comparison, cite it. Otherwise omit.
-
-### Inline-header lists
-
-Do not use `**Header:** description` pseudo-list patterns. This is a strong AI signal — it tries to impose structure without using actual sections.
-
-**Bad:**
-```
-**Artistic style:** The collection features anime-inspired aesthetics.
-**Community:** Holders participate in group chats.
-**Market performance:** The floor price rose in 2023.
-```
-
-**Good:** Write these as flowing prose paragraphs, or use proper `===` subsections if they genuinely warrant their own headings.
-
-### Excessive hedging
-
-Do not over-qualify every statement. State the fact or omit it.
-
-**Never use:**
-- "arguably", "potentially", "to some extent"
-- "in many ways", "in some respects", "it could be said that"
-- "one might argue", "it remains to be seen"
-
-These weaken the prose and signal uncertainty about your own output. Encyclopedic writing states what is known and attributes contested claims to sources.
-
----
-
-## II. Prose style
-
-### Vary sentence rhythm
-- Mix short sentences with longer ones. Monotonous medium-length sentences are an AI signal.
-- A two-word sentence after a long one creates emphasis. Three long sentences in a row feel mechanical.
-- Read your output aloud (mentally) — if it sounds like a metronome, rewrite.
-
-### Write plainly
-- Prefer active voice. "Remilia launched the collection" not "The collection was launched by Remilia."
-- Use concrete verbs: "sold", "created", "published", "wrote" — not "leveraged", "facilitated", "showcased".
-
-### Lead section
-- The lead summarizes the entire article in 1-4 paragraphs.
-- The first sentence defines the subject: **'''Subject'''** is/was [definition].
-- The lead should stand alone as a useful summary.
-- Do not add citations to the lead if the same facts are cited in the body.
-
-### Flowing prose over lists
-- Write paragraphs, not bullet points. Lists are for genuinely discrete items (tracklists, member rosters, dates).
-- **Bad:** Converting three related facts into a three-item bullet list.
-- **Good:** "The project's goals are to document history, create a community, and provide accurate information."
-
-### Consistent terminology
-- Pick one term for a concept and use it throughout. Don't alternate between "the project", "the collection", "the initiative" for the same thing.
-- Use the subject's actual name, not elegant variations.
-
-### Sentence case for headings
-- `== Early life and education ==` (correct)
-- `== Early Life and Education ==` (wrong — title case)
-- Exception: proper nouns within headings retain their capitalization.
-
-### No direct address
-- Never address "you" or "the reader".
-- Never use "we" to mean "you and I, the reader".
-- Third person only.
-
----
-
-## III. Formatting and markup
-
-### Wikitext, not Markdown
-- `'''bold'''` not `**bold**`
-- `''italic''` not `*italic*`
-- `== Heading ==` not `## Heading`
-- `[[Link]]` not `[Link](url)`
-- `----` not `---`
-- Never output fenced code blocks (` ```wikitext `)
-
-### Straight quotes only
-- Use `"` and `'` (straight), never `"` `"` `'` `'` (curly).
-- This applies to all text including quotations.
-
-### Bold usage
-- Bold the article title in the first sentence only: `'''Milady Maker''' is...`
-- Never use bold for emphasis in the body. Use italics sparingly, or rewrite.
-
-### Dashes
-- Use em dashes (—) sparingly. Commas, parentheses, or colons are often better.
-- Never cluster multiple em dashes in a paragraph.
-
-### Citations after punctuation
-- **Correct:** `...the event occurred.<ref>{{Cite web|...}}</ref>`
-- **Wrong:** `...the event occurred<ref>{{Cite web|...}}</ref>.`
-
-### Non-English text
-- Mark non-English words with `{{lang|xx|word}}` where xx is the ISO 639 language code.
-- Proper names in other languages typically don't need this.
-
-### Images and infoboxes
-- Place infoboxes and lead images right-aligned.
-- Use `|thumb|right|` for article images.
-- Write descriptive captions — they appear in popups and previews.
-
----
-
-## IV. Citation hygiene
-
-### Never fabricate sources
-- Every URL, DOI, and ISBN must be real and verifiable.
-- If you cannot find a source, do not make the claim.
-- Never invent reference details to fill gaps.
-
-### No URL trackers
-- Strip `?utm_source=chatgpt.com`, `?utm_source=openai`, `?referrer=grok.com` and similar tracking parameters from all URLs.
-
-### No placeholder content
-- Never output: `[Author Name]`, `INSERT_SOURCE_URL`, `2025-XX-XX`, `https://www.example.com/source`
-- If information is unavailable, omit the field entirely.
-
-### No system artifacts
-- Never output: `citeturn0search0`, `contentReference[oaicite:0]`, `oai_citation`, `({"attribution":{"attributableIndex":"..."}})`, `attached_file:1`
-- Never output `[cite_start]`, `[cite: N]`, or similar citation markers from training data.
-
-### Named references for reuse
-- First use: `<ref name="shortname">{{Cite web|...}}</ref>`
-- Subsequent: `<ref name="shortname" />`
-- Never duplicate the full citation. Never declare named refs inside `{{Reflist}}`.
-
-### Access dates
-- Use today's date for `access-date`, not a date from weeks or months ago.
-- All citations in one article should have consistent, current access dates.
-
-### Archive fields
-- Leave ALL archive fields blank: `archive-url`, `archive-is`, `archive-date`, `screenshot`.
-- Human editors complete these manually later.
-
-### Citation density
-- Aim for 2-5 citations in a short article (2-4 paragraphs).
-- Cite specific claims about the subject, not general background.
-- **Bad:** "NFTs are digital tokens.<ref>1</ref> They are recorded on blockchains.<ref>2</ref>"
-- **Good:** "NFTs are digital tokens recorded on blockchains. Milady Maker launched in August 2021.<ref>1</ref>"
-
----
-
-## V. Meta-communication
-
-### Never talk about the task
-- No "Certainly!", "Here's a draft...", "I hope this helps", "Let me know if..."
-- No "In this article, we will discuss..."
-- No "As an AI language model..."
-
-### Never mention knowledge limitations
-- No "as of my last knowledge update", "based on available information"
-- No "details aren't widely documented", "is limited in the provided search results"
-- No speculation about gaps in sources.
-
-### Never include reviewer notes
-- No submission statements explaining why the article is notable.
-- No notes to editors about what to check.
-- Output only the article wikitext, nothing else.
-
----
-
-## VI. Unreliable sources
-
-**Never cite these — they appear in search results but are unreliable:**
-- IQ.wiki (iq.wiki) — inaccurate, user-generated
-- Know Your Meme (knowyourmeme.com) — tertiary source, quality issues
-- NFT Price Floor (nftpricefloor.com) — inaccurate details
-- Urban Dictionary (urbandictionary.com) — unmoderated, unverifiable
-
-If these are the only sources available, note the lack of reliable sourcing rather than citing them.
-
-### Source laundering
-
-Do not reach for a weaker third party to "back up" a fact you can already establish from a primary or
-first-party source. The citation target is the actual source of the fact, not a middleman that
-restated it. If a creator stated something in a post, cite the post, not a site that summarized it;
-if a primary record establishes a detail, cite that record, not an outlet that merely republished it.
-When the primary source is inaccessible, note the gap or omit the claim rather than downgrading to a
-weaker secondary source purely to manufacture an external citation.
-
----
-
-## VII. Quick self-check
-
-Before finishing any article, verify:
-
-1. **No banned phrases** — search your output for "tapestry", "landscape", "pivotal", "testament", "showcasing", "underscores", "highlights"
-2. **Simple copulas** — did you use "is/was/has" or always avoid them?
-3. **No section summaries** — does any section end with a restatement?
-4. **Sentence case headings** — are all headings sentence case?
-5. **Straight quotes** — any curly quotes?
-6. **Clean citations** — any utm_source, placeholder dates, or fabricated URLs?
-7. **No meta-commentary** — does output contain only article wikitext?
-8. **Prose, not lists** — did you convert anything to bullets that should be prose?
-9. **Sentence rhythm** — are your sentences monotonously similar in length? Mix short and long.
-10. **No name-dropping** — did you invoke famous names just for association?
-11. **No hedging** — any "arguably", "potentially", "to some extent"?
+- Give a relationship only the space its evidence and explanatory value warrant.
+- Do not repeat the same importance claim in the lead, body, and final paragraph.
+- Do not turn every available fact into a section.
+- Do not pad thin evidence with background about the broader NFT, art, internet, or Remilia scene.
+- Do not add “Impact”, “Legacy”, “Reception”, “Controversy”, or “Relation to Remilia” because the
+  heading sounds encyclopedic. Add one only when distinct sourced material sustains it.
+- A useful stub is an acceptable result. Apparent completeness is not.
+
+## 5. Paragraph craft
+
+Each paragraph should make one intelligible contribution and connect its sentences through facts,
+not rhetorical glue.
+
+Prefer:
+
+- concrete nouns and verbs;
+- plain forms such as “is”, “has”, “made”, “released”, and “said” when they are exact;
+- chronology when sequence explains the subject;
+- explicit causal language only when a source establishes causation;
+- repeated use of the subject's actual name or a clear pronoun over strained synonyms.
+
+Reread and usually remove:
+
+- importance inflation: “pivotal”, “landmark”, “enduring legacy”, “testament to”, “underscores the
+  significance”;
+- promotional evaluation: “groundbreaking”, “visionary”, “stunning”, “vibrant”, “innovative”;
+- empty transitions: “Moreover”, “Notably”, “In addition”, or “It is important to note” when the
+  sentence has no real logical dependency;
+- analytical-sounding participles that smuggle in a conclusion: “highlighting”, “showcasing”,
+  “reflecting”, or “marking” without a source for the claimed significance;
+- generic closing sentences that restate the paragraph or announce an “impact”;
+- elegant variation that cycles through “the project”, “the initiative”, “the venture”, and “the
+  collection” for one thing;
+- formulaic contrasts such as “not merely X, but Y” and artificial three-item flourishes;
+- vague hedges used instead of attribution or omission.
+
+None of these words is mechanically banned. Keep one when it is the clearest accurate choice and
+the sentence earns it. Rewrite the underlying thought, not just the flagged token.
+
+## 6. Article-shaped filler
+
+Delete a passage if changing the subject's name would let it fit many unrelated articles. Common
+forms include:
+
+- a scene-setting paragraph that explains a whole industry before identifying the subject;
+- a “broader context” paragraph with no sourced connection to the subject;
+- a conclusion that predicts continued relevance;
+- a list of themes whose evidence is only the agent's interpretation;
+- a section composed of one claim repeated in several phrasings;
+- a paragraph that exists solely to mention a famous person or project.
+
+Specificity is not extra detail for its own sake. It is the selection of names, dates, acts, works,
+language, and relationships that actually distinguish this subject.
+
+## 7. Leads
+
+Write the lead after the body. It should stand alone as a compact account of what the article
+establishes, normally one to four paragraphs depending on article length.
+
+- Bold the article title on its first occurrence only.
+- Define the subject directly in the first sentence.
+- Summarize the body rather than introducing facts that appear nowhere else.
+- Keep interpretation and reputation proportionate and attributed.
+- Do not open with a quotation, rhetorical scene, host-wiki relationship, or importance claim.
+- Cite sensitive or easily challenged lead claims even when they are also cited in the body.
+
+## 8. Structure and flow
+
+Use paragraphs for connected facts and lists for genuinely discrete data such as members,
+tracklists, variants, or dates. Do not use bold pseudo-headings inside bullet lists.
+
+Headings use sentence case and describe the material beneath them. If a heading would contain only
+one small paragraph, consider merging it into a stronger section. End a section with its last useful
+fact, not “In summary”, “Overall”, or a forecast.
+
+## 9. Wikitext and citations
+
+- Use wikitext, not Markdown: `'''bold'''`, `''italic''`, `== Heading ==`, and `[[Link]]`.
+- Do not emit fenced code blocks around article text.
+- Put citation markers after punctuation unless the target style requires otherwise.
+- Reuse named references for the same source and claim family.
+- Strip URL tracking parameters.
+- Never emit placeholder sources, fake archive data, or model citation artifacts such as
+  `citeturn0search0`, `oaicite`, `[cite_start]`, or `contentReference`.
+- Use straight quotation marks in wikitext unless the target style specifies otherwise.
+- Add bold only for the title in the lead, not as body emphasis.
+
+## 10. Final reader test
+
+Before acceptance, answer each question with the rendered article in mind:
+
+1. What concrete understanding does the reader gain from every paragraph?
+2. Is the subject intelligible without prior Remilia knowledge?
+3. Does each citation support the claim nearest to it?
+4. Are primary-source interpretation and human testimony attributed at the right level?
+5. Did any retrieval artifact decide emphasis by accident?
+6. Are sensitive claims necessary, proportionate, and strongly sourced?
+7. Is any section present only because an encyclopedic article “usually has one”?
+8. Can repeated significance language be replaced by a fact or deleted?
+9. Does the lead accurately compress the body?
+10. Would someone voluntarily read this article rather than only use it as a database record?
+
+If the last answer is no, lint is not the next step. Reconsider the article object, evidence,
+selection, and prose.

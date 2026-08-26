@@ -152,7 +152,7 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
     let steps = build_review_next_steps(&paths, Some(&selection), "Draft review", None)
         .expect("next steps");
 
-    assert_eq!(steps.len(), 6);
+    assert_eq!(steps.len(), 7);
     assert_eq!(steps[0].kind, "lint_draft");
     assert_eq!(
         steps[0].command.as_ref().expect("lint command").argv,
@@ -166,6 +166,23 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
             "--format",
             "json"
         ]
+    );
+    let accept = steps
+        .iter()
+        .find(|step| step.kind == "human_accept_draft")
+        .and_then(|step| step.command.as_ref())
+        .expect("human acceptance command");
+    assert!(
+        accept
+            .argv
+            .windows(2)
+            .any(|pair| pair == ["--human-editor", "<human-editor>"])
+    );
+    assert!(
+        accept
+            .argv
+            .windows(2)
+            .any(|pair| pair[0] == "--prose-origin")
     );
     let promote = steps
         .iter()

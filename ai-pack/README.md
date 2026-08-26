@@ -14,12 +14,14 @@ The packaged release root is intentionally flat and ready to use: `AGENTS.md`, `
 | `.claude/rules/*` | `.claude/rules/*` | Claude always-on editing rules |
 | `.claude/skills/*` | `.claude/skills/*` | Claude operator/review/interview wrappers |
 | `codex_skills/*` | `codex_skills/*` | Codex equivalents |
-| `writing_context/*.md` | `writing_context/*.md` | Article-writing profile |
+| `writing_context/profile.toml` | `writing_context/profile.toml` | Required typed machine policy |
+| `writing_context/*.md` | `writing_context/*.md` | Encyclopedic coauthoring and editorial guidance |
 | `docs-bundle-v1.json` | `ai/docs-bundle-v1.json` | Optional offline docs preload |
 
-`writing_context/` is deliberately not named after a model family. It is the target-wiki writing
-profile: style, article structure, sourcing rules, knowledge-interview notes, and content-extension
-notes. Global agent behavior belongs in `AGENTS.md` / `CLAUDE.md` and the skill wrappers.
+`writing_context/` is deliberately not named after a model family. `profile.toml` is the typed
+machine-policy authority; Markdown files explain the evidence-to-prose workflow, style,
+structure, sourcing, interviews, and extensions. Wikitool must not infer policy from prose examples.
+Global agent behavior belongs in `AGENTS.md` / `CLAUDE.md` and the skill wrappers.
 
 ## Host Overlay
 
@@ -30,7 +32,8 @@ may overlay host context:
 1. Host `CLAUDE.md` becomes the active guidance body and is written to both packaged `CLAUDE.md`
    and packaged `AGENTS.md`.
 2. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
-3. Host `writing_context/` replaces the packaged writing profile at the same release-root path.
+3. Host `writing_context/` replaces the packaged writing profile at the same release-root path and
+   must include both Markdown guidance and a typed `profile.toml`.
 
 Without a host overlay, release bundles ship the generic wikitool-maintained context.
 

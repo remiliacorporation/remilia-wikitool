@@ -4,7 +4,11 @@ use super::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use wikitool_core::article_acceptance::{
+    ArticleAcceptanceLintSummary, ArticleProseOrigin, record_article_acceptance,
+};
 use wikitool_core::runtime::{ResolvedPaths, ValueSource};
+use wikitool_core::support::compute_sha256;
 
 struct TestDir {
     path: PathBuf,
@@ -107,6 +111,22 @@ fn article_promote_copies_state_draft_to_title_path() {
         config: None,
         diagnostics: false,
     };
+    record_article_acceptance(
+        &paths,
+        &draft_path,
+        "Cheetah",
+        "wiki_content/Main/Cheetah.wiki",
+        "human-editor",
+        ArticleProseOrigin::HumanDraft,
+        ArticleAcceptanceLintSummary {
+            content_sha256: compute_sha256("'''Cheetah''' is a cat."),
+            errors: 0,
+            warnings: 0,
+            suggestions: 0,
+            warnings_explicitly_accepted: false,
+        },
+    )
+    .expect("accept draft");
 
     run_article_promote(
         &runtime,
@@ -129,6 +149,70 @@ fn article_promote_copies_state_draft_to_title_path() {
         "'''Cheetah''' is a cat."
     );
     assert!(draft_path.exists(), "promotion preserves the draft source");
+}
+
+#[test]
+fn article_promote_rejects_draft_without_human_acceptance() {
+    let temp = TestDir::new("promote-unaccepted");
+    let paths = test_paths(&temp.path);
+    let draft_path = paths.state_dir.join("drafts").join("Cheetah.wiki");
+    fs::create_dir_all(draft_path.parent().expect("draft parent")).expect("draft parent");
+    fs::write(&draft_path, "'''Cheetah''' is a cat.").expect("draft");
+    let runtime = RuntimeOptions {
+        project_root: Some(temp.path.clone()),
+        data_dir: None,
+        config: None,
+        diagnostics: false,
+    };
+
+    let error = run_article_promote(
+        &runtime,
+        ArticlePromoteArgs {
+            path: draft_path,
+            title: "Cheetah".to_string(),
+            overwrite: false,
+            format: OutputFormat::Json,
+        },
+    )
+    .expect_err("unaccepted prose must not promote");
+
+    assert!(
+        error
+            .to_string()
+            .contains("human acceptance receipt is missing")
+    );
+}
+
+#[test]
+fn article_promote_rejects_non_main_namespace_title() {
+    let temp = TestDir::new("promote-non-main");
+    let paths = test_paths(&temp.path);
+    let draft_path = paths.state_dir.join("drafts").join("Category_Test.wiki");
+    fs::create_dir_all(draft_path.parent().expect("draft parent")).expect("draft parent");
+    fs::write(&draft_path, "Category prose.").expect("draft");
+    let runtime = RuntimeOptions {
+        project_root: Some(temp.path.clone()),
+        data_dir: None,
+        config: None,
+        diagnostics: false,
+    };
+
+    let error = run_article_promote(
+        &runtime,
+        ArticlePromoteArgs {
+            path: draft_path,
+            title: "Category:Test".to_string(),
+            overwrite: false,
+            format: OutputFormat::Json,
+        },
+    )
+    .expect_err("non-Main drafts must not use prose promotion");
+
+    assert!(
+        error
+            .to_string()
+            .contains("only supports Main-namespace article titles")
+    );
 }
 
 #[test]

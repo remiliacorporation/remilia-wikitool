@@ -52,8 +52,10 @@ pub(super) fn collect_issue_matches(
     style::lint_mojibake(document, &mut matches);
     style::lint_curly_quotes(document, &mut matches);
     style::lint_placeholder_fragments(document, resources, &mut matches);
+    style::lint_synthetic_phrase_prompts(document, resources, &mut matches);
+    style::lint_discouraged_relationship_headings(document, resources, &mut matches);
+    style::lint_discouraged_lead_relationship_terms(document, resources, &mut matches);
     template::lint_citation_needed(document, &mut matches);
-    template::lint_remilia_parent_group(document, resources, &mut matches);
     template::lint_template_availability(document, resources, &mut matches);
     module::lint_module_invocations(document, resources, &mut matches);
     asset::lint_asset_references(document, resources, &mut matches);
