@@ -117,6 +117,7 @@ pub(super) fn collect_sync_planning_context(
                 synced_wiki_timestamp: None,
                 remote_conflict: false,
                 remote_wiki_timestamp: None,
+                remote_revision_id: None,
             }),
             Some(entry) if entry.content_hash != file.content_hash => {
                 changes.push(PlannedSyncChangeInternal {
@@ -128,6 +129,7 @@ pub(super) fn collect_sync_planning_context(
                     synced_wiki_timestamp: entry.wiki_modified_at.clone(),
                     remote_conflict: false,
                     remote_wiki_timestamp: None,
+                    remote_revision_id: None,
                 });
             }
             Some(_) => {}
@@ -149,6 +151,7 @@ pub(super) fn collect_sync_planning_context(
                 synced_wiki_timestamp: entry.wiki_modified_at.clone(),
                 remote_conflict: false,
                 remote_wiki_timestamp: None,
+                remote_revision_id: None,
             });
         }
     }
@@ -190,6 +193,7 @@ fn build_sync_plan_report(context: &SyncPlanningContext) -> SyncPlanReport {
                 synced_wiki_timestamp: change.synced_wiki_timestamp.clone(),
                 remote_conflict: change.remote_conflict,
                 remote_wiki_timestamp: change.remote_wiki_timestamp.clone(),
+                remote_revision_id: change.remote_revision_id,
             })
             .collect(),
         request_count: context.request_count,
@@ -232,6 +236,9 @@ pub(super) fn hydrate_remote_conflicts<A: WikiWriteApi>(
         change.remote_wiki_timestamp = remote_timestamps
             .get(&normalized_title_key(&change.title))
             .map(|item| item.timestamp.clone());
+        change.remote_revision_id = remote_timestamps
+            .get(&normalized_title_key(&change.title))
+            .map(|item| item.revision_id);
     }
     context.request_count = api.request_count();
     Ok(())

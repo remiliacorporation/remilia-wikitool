@@ -13,8 +13,8 @@ pub use cargo_query::{
     cargo_table_fields,
 };
 pub use client::{
-    ExternalSearchHit, MediaWikiClient, MediaWikiClientConfig, PageTimestampInfo, RemotePage,
-    WikiReadApi, WikiWriteApi,
+    EditConstraint, ExternalSearchHit, MediaWikiClient, MediaWikiClientConfig, PageTimestampInfo,
+    RemotePage, WikiReadApi, WikiWriteApi,
 };
 pub use namespace::{NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE};
 pub use render::{

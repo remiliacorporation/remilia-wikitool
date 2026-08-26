@@ -65,11 +65,9 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
         });
     };
 
-    if options.force {
-        context.request_count = api.request_count();
-    } else {
-        hydrate_remote_conflicts(&mut context, api)?;
-    }
+    // Force may waive a pre-existing conflict after operator review, but it must
+    // still bind the write to the exact remote revision observed in this run.
+    hydrate_remote_conflicts(&mut context, api)?;
 
     let mut report = PushReport {
         success: true,
@@ -86,6 +84,34 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
     };
 
     if context.changes.is_empty() {
+        return Ok(report);
+    }
+
+    let acceptance_errors = collect_article_acceptance_errors(paths, &context);
+    if !acceptance_errors.is_empty() {
+        for (title, detail) in &acceptance_errors {
+            report.errors.push(format!(
+                "{title}: human editorial acceptance required: {detail}"
+            ));
+            report.pages.push(PushPageResult {
+                title: title.clone(),
+                action: "blocked_unaccepted_prose".to_string(),
+                detail: Some(detail.clone()),
+            });
+        }
+        if options.dry_run {
+            for change in &context.changes {
+                if acceptance_errors.contains_key(&change.title) {
+                    continue;
+                }
+                report.pages.push(PushPageResult {
+                    title: change.title.clone(),
+                    action: push_dry_run_action(&change.change_type).to_string(),
+                    detail: None,
+                });
+            }
+        }
+        report.success = false;
         return Ok(report);
     }
 
@@ -144,7 +170,20 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                     }
                 };
                 let absolute = absolute_path_from_relative(paths, &file.relative_path);
-                let content = match fs::read_to_string(&absolute) {
+                let content_result = if file.namespace == "Main" && !file.is_redirect {
+                    crate::article_acceptance::load_accepted_article(
+                        paths,
+                        &absolute,
+                        &file.title,
+                        &file.relative_path,
+                    )
+                    .map(|accepted| accepted.content)
+                } else {
+                    fs::read_to_string(&absolute).with_context(|| {
+                        format!("failed to read local content from {}", absolute.display())
+                    })
+                };
+                let content = match content_result {
                     Ok(content) => content,
                     Err(error) => {
                         report.errors.push(format!("{}: {error}", change.title));
@@ -157,7 +196,27 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                     }
                 };
 
-                match api.edit_page(&file.title, &content, &options.summary) {
+                let constraint = match change.change_type {
+                    DiffChangeType::NewLocal => EditConstraint::CreateOnly,
+                    DiffChangeType::ModifiedLocal => {
+                        let Some(revision_id) = change.remote_revision_id else {
+                            report.errors.push(format!(
+                                "{}: remote revision identity is missing; refusing unconstrained edit",
+                                file.title
+                            ));
+                            report.pages.push(PushPageResult {
+                                title: file.title.clone(),
+                                action: "error".to_string(),
+                                detail: Some("remote revision identity is missing".to_string()),
+                            });
+                            continue;
+                        };
+                        EditConstraint::ExistingRevision { revision_id }
+                    }
+                    DiffChangeType::DeletedLocal => unreachable!("delete handled separately"),
+                };
+
+                match api.edit_page(&file.title, &content, &options.summary, constraint) {
                     Ok(remote_page) => {
                         let (is_redirect, redirect_target) = parse_redirect(&remote_page.content);
                         let content_hash = compute_wiki_sync_hash(&remote_page.content);
@@ -270,6 +329,34 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
     report.request_count = api.request_count();
     report.success = report.errors.is_empty() && report.conflicts.is_empty();
     Ok(report)
+}
+
+fn collect_article_acceptance_errors(
+    paths: &ResolvedPaths,
+    context: &SyncPlanningContext,
+) -> BTreeMap<String, String> {
+    let mut errors = BTreeMap::new();
+    for change in &context.changes {
+        if !matches!(
+            change.change_type,
+            DiffChangeType::NewLocal | DiffChangeType::ModifiedLocal
+        ) {
+            continue;
+        }
+        let Some(file) = context.local_map.get(&normalized_title_key(&change.title)) else {
+            continue;
+        };
+        if file.namespace != "Main" || file.is_redirect {
+            continue;
+        }
+        let absolute = absolute_path_from_relative(paths, &file.relative_path);
+        if let Err(error) =
+            verify_article_acceptance(paths, &absolute, &file.title, &file.relative_path)
+        {
+            errors.insert(file.title.clone(), format!("{error:#}"));
+        }
+    }
+    errors
 }
 
 fn push_dry_run_action(change_type: &DiffChangeType) -> &'static str {

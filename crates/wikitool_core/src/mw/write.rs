@@ -8,7 +8,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::auth::{LoginResponse, TokenQueryResponse};
-use super::client::{MediaWikiClient, PageTimestampInfo, RemotePage, WikiReadApi, WikiWriteApi};
+use super::client::{
+    EditConstraint, MediaWikiClient, PageTimestampInfo, RemotePage, WikiReadApi, WikiWriteApi,
+};
 
 #[derive(Debug, Deserialize, Default)]
 struct QueryResponse {
@@ -351,19 +353,29 @@ impl WikiWriteApi for MediaWikiClient {
         Ok(output)
     }
 
-    fn edit_page(&mut self, title: &str, content: &str, summary: &str) -> Result<RemotePage> {
+    fn edit_page(
+        &mut self,
+        title: &str,
+        content: &str,
+        summary: &str,
+        constraint: EditConstraint,
+    ) -> Result<RemotePage> {
         let token = self.ensure_csrf_token()?;
-        let response = self.request_json_post(
-            &[
-                ("action", "edit".to_string()),
-                ("title", title.to_string()),
-                ("text", content.to_string()),
-                ("summary", summary.to_string()),
-                ("bot", "1".to_string()),
-                ("token", token),
-            ],
-            true,
-        )?;
+        let mut params = vec![
+            ("action", "edit".to_string()),
+            ("title", title.to_string()),
+            ("text", content.to_string()),
+            ("summary", summary.to_string()),
+            ("bot", "1".to_string()),
+            ("token", token),
+        ];
+        match constraint {
+            EditConstraint::CreateOnly => params.push(("createonly", "1".to_string())),
+            EditConstraint::ExistingRevision { revision_id } => {
+                params.push(("baserevid", revision_id.to_string()));
+            }
+        }
+        let response = self.request_json_post(&params, true)?;
         let edit_payload: EditResponse =
             serde_json::from_value(response).context("failed to decode edit response")?;
         let edit = edit_payload

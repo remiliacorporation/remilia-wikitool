@@ -156,6 +156,7 @@ pub struct SyncPlanChange {
     pub synced_wiki_timestamp: Option<String>,
     pub remote_conflict: bool,
     pub remote_wiki_timestamp: Option<String>,
+    pub remote_revision_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -194,6 +195,7 @@ pub(super) struct PlannedSyncChangeInternal {
     pub(super) synced_wiki_timestamp: Option<String>,
     pub(super) remote_conflict: bool,
     pub(super) remote_wiki_timestamp: Option<String>,
+    pub(super) remote_revision_id: Option<i64>,
 }
 
 #[derive(Debug)]

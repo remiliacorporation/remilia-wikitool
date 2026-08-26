@@ -69,8 +69,20 @@ pub trait WikiReadApi {
 pub trait WikiWriteApi: WikiReadApi {
     fn login(&mut self, username: &str, password: &str) -> Result<()>;
     fn get_page_timestamps(&mut self, titles: &[String]) -> Result<Vec<PageTimestampInfo>>;
-    fn edit_page(&mut self, title: &str, content: &str, summary: &str) -> Result<RemotePage>;
+    fn edit_page(
+        &mut self,
+        title: &str,
+        content: &str,
+        summary: &str,
+        constraint: EditConstraint,
+    ) -> Result<RemotePage>;
     fn delete_page(&mut self, title: &str, reason: &str) -> Result<()>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditConstraint {
+    CreateOnly,
+    ExistingRevision { revision_id: i64 },
 }
 
 #[derive(Debug, Clone)]
@@ -81,7 +93,6 @@ pub struct MediaWikiClientConfig {
     pub rate_limit_read_ms: u64,
     pub rate_limit_write_ms: u64,
     pub max_retries: usize,
-    pub max_write_retries: usize,
     pub retry_delay_ms: u64,
 }
 
@@ -105,7 +116,6 @@ impl MediaWikiClientConfig {
             rate_limit_read_ms: env_value_u64("WIKITOOL_RATE_LIMIT_READ_MS", 300),
             rate_limit_write_ms: env_value_u64("WIKITOOL_RATE_LIMIT_WRITE_MS", 1_000),
             max_retries: env_value_usize("WIKITOOL_HTTP_RETRIES", 2),
-            max_write_retries: env_value_usize("WIKITOOL_HTTP_WRITE_RETRIES", 1),
             retry_delay_ms: env_value_u64("WIKITOOL_HTTP_RETRY_DELAY_MS", 500),
         }
     }
@@ -215,11 +225,9 @@ impl MediaWikiClient {
         params: &[(&str, String)],
         is_write: bool,
     ) -> Result<Value> {
-        let max_retries = if is_write {
-            self.config.max_write_retries
-        } else {
-            self.config.max_retries
-        };
+        // A timeout or 5xx after a mutation leaves the outcome ambiguous. Never
+        // replay writes automatically; callers must reconcile remote state first.
+        let max_retries = if is_write { 0 } else { self.config.max_retries };
         let pairs = post_form_pairs(params);
 
         for attempt in 0..=max_retries {
@@ -276,11 +284,9 @@ impl MediaWikiClient {
         mut build_form: impl FnMut() -> Result<Form>,
         is_write: bool,
     ) -> Result<Value> {
-        let max_retries = if is_write {
-            self.config.max_write_retries
-        } else {
-            self.config.max_retries
-        };
+        // Multipart mutations have the same ambiguous-success problem as form
+        // mutations and therefore also run exactly once.
+        let max_retries = if is_write { 0 } else { self.config.max_retries };
 
         for attempt in 0..=max_retries {
             let form = build_form()?;

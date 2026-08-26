@@ -7,15 +7,17 @@ use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, params};
 use similar::TextDiff;
 
+use crate::article_acceptance::verify_article_acceptance;
 use crate::filesystem::{
     NamespaceMapper, ScanOptions, ScannedFile, case_safe_title_relative_path, scan_files,
     validate_scoped_path,
 };
 use crate::knowledge::content_index::rebuild_index;
 pub use crate::mw::{
-    ExternalSearchHit, ExternalSearchReport, MediaWikiClient, MediaWikiClientConfig,
-    MediaWikiSearchOptions, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
-    NS_TEMPLATE, PageTimestampInfo, RemotePage, WikiReadApi, WikiWriteApi, search_pages_report,
+    EditConstraint, ExternalSearchHit, ExternalSearchReport, MediaWikiClient,
+    MediaWikiClientConfig, MediaWikiSearchOptions, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN,
+    NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE, PageTimestampInfo, RemotePage, WikiReadApi, WikiWriteApi,
+    search_pages_report,
 };
 use crate::runtime::ResolvedPaths;
 use crate::schema::{ensure_database_schema_connection, open_initialized_database_connection};

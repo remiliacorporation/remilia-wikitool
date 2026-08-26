@@ -6,13 +6,18 @@ use serde_json::json;
 use tempfile::tempdir;
 
 use super::{
-    DiffBaselineStatus, DiffChangeType, DiffOptions, ExternalSearchHit, NS_MAIN, PageTimestampInfo,
-    PullOptions, PushOptions, RemotePage, SiteInfoNamespace, SyncPlanOptions, SyncSelection,
-    WikiReadApi, WikiWriteApi, collect_changed_article_paths, diff_local_against_sync,
-    namespace_display_name, plan_sync_changes, pull_from_remote_with_api, push_to_remote_with_api,
-    should_include_discovered_namespace,
+    DiffBaselineStatus, DiffChangeType, DiffOptions, EditConstraint, ExternalSearchHit, NS_MAIN,
+    PageTimestampInfo, PullOptions, PushOptions, RemotePage, SiteInfoNamespace, SyncPlanOptions,
+    SyncSelection, WikiReadApi, WikiWriteApi, collect_changed_article_paths,
+    diff_local_against_sync, namespace_display_name, plan_sync_changes, pull_from_remote_with_api,
+    push_to_remote_with_api, should_include_discovered_namespace,
 };
+use crate::article_acceptance::{
+    ArticleAcceptanceLintSummary, ArticleProseOrigin, record_article_acceptance,
+};
+use crate::filesystem::title_to_relative_path;
 use crate::runtime::{ResolvedPaths, ValueSource};
+use crate::support::compute_sha256;
 
 #[derive(Default)]
 struct MockApi {
@@ -24,6 +29,7 @@ struct MockApi {
     timestamp_batches: Vec<Vec<String>>,
     search_hits: Vec<ExternalSearchHit>,
     edited_pages: Vec<String>,
+    edit_constraints: Vec<(String, EditConstraint)>,
     deleted_pages: Vec<String>,
     login_required: bool,
     logged_in: bool,
@@ -104,12 +110,14 @@ impl WikiWriteApi for MockApi {
         title: &str,
         content: &str,
         _summary: &str,
+        constraint: EditConstraint,
     ) -> anyhow::Result<RemotePage> {
         self.request_count += 1;
         if self.login_required && !self.logged_in {
             anyhow::bail!("not logged in");
         }
         self.edited_pages.push(title.to_string());
+        self.edit_constraints.push((title.to_string(), constraint));
         let page = RemotePage {
             title: title.to_string(),
             namespace: NS_MAIN,
@@ -147,6 +155,28 @@ fn write_file(path: &Path, content: &str) {
         fs::create_dir_all(parent).expect("create parent dir");
     }
     fs::write(path, content).expect("write file");
+}
+
+fn accept_main_article(paths: &ResolvedPaths, title: &str) {
+    let relative_path = title_to_relative_path(paths, title, false).expect("article path");
+    let absolute_path = paths.project_root.join(&relative_path);
+    let content = fs::read_to_string(&absolute_path).expect("accepted article content");
+    record_article_acceptance(
+        paths,
+        &absolute_path,
+        title,
+        &relative_path,
+        "human-editor",
+        ArticleProseOrigin::HumanRevision,
+        ArticleAcceptanceLintSummary {
+            content_sha256: compute_sha256(&content),
+            errors: 0,
+            warnings: 0,
+            suggestions: 0,
+            warnings_explicitly_accepted: false,
+        },
+    )
+    .expect("accept article");
 }
 
 fn paths(project_root: &Path) -> ResolvedPaths {
@@ -666,7 +696,6 @@ fn diff_detects_new_modified_and_deleted_local_pages() {
         &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
         "gamma local",
     );
-
     let diff = diff_local_against_sync(
         &paths,
         &DiffOptions {
@@ -730,10 +759,12 @@ fn push_dry_run_reports_local_changes_without_writes() {
         &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
         "alpha local edit",
     );
+    accept_main_article(&paths, "Alpha");
     write_file(
         &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
         "gamma local",
     );
+    accept_main_article(&paths, "Gamma");
 
     let report = push_to_remote_with_api(
         &paths,
@@ -770,6 +801,68 @@ fn push_dry_run_reports_local_changes_without_writes() {
 }
 
 #[test]
+fn push_dry_run_blocks_unaccepted_main_article_prose_even_with_force() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace
+        .insert(NS_MAIN, vec!["Alpha".to_string()]);
+    api.page_contents
+        .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+    pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: false,
+        },
+        &mut api,
+    )
+    .expect("seed pull");
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "unaccepted local prose",
+    );
+
+    let report = push_to_remote_with_api(
+        &paths,
+        &PushOptions {
+            summary: "test unaccepted dry run".to_string(),
+            dry_run: true,
+            force: true,
+            delete: false,
+            include_templates: false,
+            categories_only: false,
+            selection: SyncSelection::default(),
+        },
+        &mut api,
+        None,
+    )
+    .expect("push dry run");
+
+    assert!(!report.success);
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|error| error.contains("human editorial acceptance required"))
+    );
+    assert!(
+        report
+            .pages
+            .iter()
+            .any(|page| { page.title == "Alpha" && page.action == "blocked_unaccepted_prose" })
+    );
+    assert!(api.edited_pages.is_empty());
+}
+
+#[test]
 fn push_detects_remote_conflict_without_force() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
@@ -803,6 +896,7 @@ fn push_detects_remote_conflict_without_force() {
         &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
         "alpha local edit",
     );
+    accept_main_article(&paths, "Alpha");
     api.page_timestamps.insert(
         "Alpha".to_string(),
         PageTimestampInfo {
@@ -864,6 +958,7 @@ fn push_dry_run_detects_remote_conflict_without_writes() {
         &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
         "alpha local edit",
     );
+    accept_main_article(&paths, "Alpha");
     api.page_timestamps.insert(
         "Alpha".to_string(),
         PageTimestampInfo {
@@ -895,7 +990,7 @@ fn push_dry_run_detects_remote_conflict_without_writes() {
 }
 
 #[test]
-fn forced_push_dry_run_skips_remote_conflict_hydration() {
+fn forced_push_dry_run_still_hydrates_remote_revision_identity() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
     fs::create_dir_all(&project_root).expect("create root");
@@ -926,6 +1021,7 @@ fn forced_push_dry_run_skips_remote_conflict_hydration() {
         &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
         "alpha forced local edit",
     );
+    accept_main_article(&paths, "Alpha");
 
     let report = push_to_remote_with_api(
         &paths,
@@ -945,7 +1041,7 @@ fn forced_push_dry_run_skips_remote_conflict_hydration() {
 
     assert!(report.dry_run);
     assert!(report.conflicts.is_empty());
-    assert!(api.timestamp_batches.is_empty());
+    assert_eq!(api.timestamp_batches, vec![vec!["Alpha".to_string()]]);
     assert!(api.edited_pages.is_empty());
 }
 
@@ -987,6 +1083,8 @@ fn push_conflict_hydration_fetches_changed_titles_in_one_batch() {
         &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
         "beta local edit",
     );
+    accept_main_article(&paths, "Alpha");
+    accept_main_article(&paths, "Beta");
 
     let report = push_to_remote_with_api(
         &paths,
