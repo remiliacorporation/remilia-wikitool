@@ -5,13 +5,18 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::runtime::ResolvedPaths;
-use crate::support::{compute_hash, normalize_path};
+use crate::support::{compute_sha256, normalize_path, unix_timestamp};
 
 use super::model::{
     ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult,
-    MediaWikiTemplateQueryOptions, MediaWikiTemplateReport,
+    ExternalFetchSession, MediaWikiTemplateQueryOptions, MediaWikiTemplateReport,
 };
 use super::session::load_research_session_for_url;
+
+const RESEARCH_FETCH_CACHE_SCHEMA: &str = "research_fetch_cache_v3";
+const RESEARCH_MEDIAWIKI_CACHE_SCHEMA: &str = "research_mediawiki_template_report_cache_v3";
+const RESEARCH_CACHE_TTL_SECONDS: u64 = 86_400;
+const RESEARCH_EXTRACTOR_VERSION: &str = concat!("wikitool-", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -54,12 +59,14 @@ pub struct CachedMediaWikiTemplateReport {
 #[derive(Debug, Serialize, Deserialize)]
 struct CachedFetchDocument {
     schema_version: String,
+    written_at_unix: u64,
     result: ExternalFetchResult,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CachedMediaWikiTemplateReportDocument {
     schema_version: String,
+    written_at_unix: u64,
     report: MediaWikiTemplateReport,
 }
 
@@ -85,9 +92,21 @@ pub fn fetch_mediawiki_template_report_cached(
     cache_options: &ResearchCacheOptions,
 ) -> Result<CachedMediaWikiTemplateReport> {
     let session = load_research_session_for_url(paths, url)?;
-    fetch_mediawiki_template_report_cached_with(paths, url, options, cache_options, || {
-        super::mediawiki_fetch::fetch_mediawiki_template_report_with_session(url, options, session)
-    })
+    let session_for_fetch = session.clone();
+    fetch_mediawiki_template_report_cached_with(
+        paths,
+        url,
+        options,
+        cache_options,
+        session.as_ref(),
+        || {
+            super::mediawiki_fetch::fetch_mediawiki_template_report_with_session(
+                url,
+                options,
+                session_for_fetch,
+            )
+        },
+    )
 }
 
 fn fetch_mediawiki_template_report_cached_with<F>(
@@ -95,6 +114,7 @@ fn fetch_mediawiki_template_report_cached_with<F>(
     url: &str,
     options: &MediaWikiTemplateQueryOptions,
     cache_options: &ResearchCacheOptions,
+    session: Option<&ExternalFetchSession>,
     fetcher: F,
 ) -> Result<CachedMediaWikiTemplateReport>
 where
@@ -111,7 +131,7 @@ where
     }
 
     ensure_research_cache_layout(paths)?;
-    let key = cache_key_for_mediawiki_template_report(url, options);
+    let key = cache_key_for_mediawiki_template_report(url, options, session);
     let cache_path = mediawiki_template_report_cache_path(paths, &key);
     if !cache_options.refresh
         && let Some(mut report) = read_cached_mediawiki_template_report(&cache_path)?
@@ -205,21 +225,24 @@ fn ensure_research_cache_layout(paths: &ResolvedPaths) -> Result<()> {
 }
 
 fn cache_key_for_fetch(url: &str, options: &ExternalFetchOptions) -> String {
-    compute_hash(&format!(
-        "fetch|url={}|format={}|profile={}|max_bytes={}",
+    compute_sha256(&format!(
+        "fetch|schema={RESEARCH_FETCH_CACHE_SCHEMA}|extractor={RESEARCH_EXTRACTOR_VERSION}|url={}|format={}|profile={}|max_bytes={}|user_agent={}|session={}",
         url.trim(),
         cache_format_label(options.format),
         cache_profile_label(options.profile),
-        options.max_bytes
+        options.max_bytes,
+        fetch_user_agent(options),
+        session_fingerprint(options.session.as_ref()),
     ))
 }
 
 fn cache_key_for_mediawiki_template_report(
     url: &str,
     options: &MediaWikiTemplateQueryOptions,
+    session: Option<&ExternalFetchSession>,
 ) -> String {
-    compute_hash(&format!(
-        "mediawiki_template_report|url={}|limit={}|content_limit={}|parameter_limit={}|templates={}",
+    compute_sha256(&format!(
+        "mediawiki_template_report|schema={RESEARCH_MEDIAWIKI_CACHE_SCHEMA}|extractor={RESEARCH_EXTRACTOR_VERSION}|url={}|limit={}|content_limit={}|parameter_limit={}|templates={}|session={}",
         url.trim(),
         options.limit,
         options.content_limit,
@@ -229,7 +252,29 @@ fn cache_key_for_mediawiki_template_report(
             .iter()
             .map(|title| title.trim())
             .collect::<Vec<_>>()
-            .join("|")
+            .join("|"),
+        session_fingerprint(session),
+    ))
+}
+
+fn fetch_user_agent(options: &ExternalFetchOptions) -> String {
+    options
+        .session
+        .as_ref()
+        .and_then(|session| session.user_agent.clone())
+        .or_else(|| std::env::var("WIKITOOL_USER_AGENT").ok())
+        .unwrap_or_else(|| crate::config::DEFAULT_USER_AGENT.to_string())
+}
+
+fn session_fingerprint(session: Option<&ExternalFetchSession>) -> String {
+    let Some(session) = session else {
+        return "public".to_string();
+    };
+    compute_sha256(&format!(
+        "domain={}\0cookie={}\0user_agent={}",
+        session.domain,
+        session.cookie_header,
+        session.user_agent.as_deref().unwrap_or("")
     ))
 }
 
@@ -288,8 +333,14 @@ fn read_cached_fetch(path: &Path) -> Result<Option<ExternalFetchResult>> {
     let payload = fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", normalize_path(path)))?;
     match serde_json::from_str::<CachedFetchDocument>(&payload) {
-        Ok(document) => Ok(Some(document.result)),
+        Ok(document)
+            if document.schema_version == RESEARCH_FETCH_CACHE_SCHEMA
+                && cache_document_is_fresh(document.written_at_unix) =>
+        {
+            Ok(Some(document.result))
+        }
         Err(_) => Ok(None),
+        Ok(_) => Ok(None),
     }
 }
 
@@ -310,11 +361,11 @@ fn write_cached_fetch(
             .with_context(|| format!("failed to create {}", normalize_path(parent)))?;
     }
     let payload = serde_json::to_string_pretty(&CachedFetchDocument {
-        schema_version: "research_fetch_cache_v1".to_string(),
+        schema_version: RESEARCH_FETCH_CACHE_SCHEMA.to_string(),
+        written_at_unix: unix_timestamp()?,
         result: result.clone(),
     })?;
-    fs::write(&path, payload.as_bytes())
-        .with_context(|| format!("failed to write {}", normalize_path(&path)))?;
+    write_cache_file(&path, &payload)?;
     if stale_path.exists() {
         fs::remove_file(&stale_path)
             .with_context(|| format!("failed to remove {}", normalize_path(&stale_path)))?;
@@ -330,8 +381,14 @@ fn read_cached_mediawiki_template_report(path: &Path) -> Result<Option<MediaWiki
     let payload = fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", normalize_path(path)))?;
     match serde_json::from_str::<CachedMediaWikiTemplateReportDocument>(&payload) {
-        Ok(document) => Ok(Some(document.report)),
+        Ok(document)
+            if document.schema_version == RESEARCH_MEDIAWIKI_CACHE_SCHEMA
+                && cache_document_is_fresh(document.written_at_unix) =>
+        {
+            Ok(Some(document.report))
+        }
         Err(_) => Ok(None),
+        Ok(_) => Ok(None),
     }
 }
 
@@ -349,12 +406,40 @@ fn write_cached_mediawiki_template_report(
     report.cache_status = None;
     report.cache_path = None;
     let payload = serde_json::to_string_pretty(&CachedMediaWikiTemplateReportDocument {
-        schema_version: "research_mediawiki_template_report_cache_v1".to_string(),
+        schema_version: RESEARCH_MEDIAWIKI_CACHE_SCHEMA.to_string(),
+        written_at_unix: unix_timestamp()?,
         report,
     })?;
-    fs::write(&path, payload.as_bytes())
-        .with_context(|| format!("failed to write {}", normalize_path(&path)))?;
+    write_cache_file(&path, &payload)?;
     Ok(path)
+}
+
+fn cache_document_is_fresh(written_at_unix: u64) -> bool {
+    unix_timestamp()
+        .map(|now| now.saturating_sub(written_at_unix) <= RESEARCH_CACHE_TTL_SECONDS)
+        .unwrap_or(false)
+}
+
+fn write_cache_file(path: &Path, payload: &str) -> Result<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("cache.json");
+    let temporary = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
+    fs::write(&temporary, payload.as_bytes())
+        .with_context(|| format!("failed to write {}", normalize_path(&temporary)))?;
+    if path.exists() {
+        fs::remove_file(path)
+            .with_context(|| format!("failed to replace {}", normalize_path(path)))?;
+    }
+    fs::rename(&temporary, path).with_context(|| {
+        format!(
+            "failed to promote cache document {} -> {}",
+            normalize_path(&temporary),
+            normalize_path(path)
+        )
+    })?;
+    Ok(())
 }
 
 fn annotate_template_report_cache(
@@ -428,7 +513,7 @@ mod tests {
             source_wiki: "web".to_string(),
             source_domain: "example.com".to_string(),
             content_format: "text".to_string(),
-            content_hash: crate::support::compute_hash(content),
+            content_hash: crate::support::compute_sha256(content),
             revision_id: None,
             display_title: None,
             rendered_fetch_mode: None,
@@ -453,7 +538,7 @@ mod tests {
             source_wiki: "mediawiki".to_string(),
             source_domain: "wiki.remilia.org".to_string(),
             content_format: "html".to_string(),
-            content_hash: crate::support::compute_hash(content),
+            content_hash: crate::support::compute_sha256(content),
             revision_id: Some(1),
             display_title: Some("Main Page".to_string()),
             rendered_fetch_mode: Some(crate::research::RenderedFetchMode::ParseApi),
@@ -491,6 +576,20 @@ mod tests {
             template_pages: Vec::new(),
             warnings: Vec::new(),
         }
+    }
+
+    #[test]
+    fn research_cache_keys_use_full_sha256() {
+        let options = ExternalFetchOptions {
+            format: ExternalFetchFormat::Html,
+            max_bytes: 10_000,
+            profile: ExternalFetchProfile::Research,
+            session: None,
+        };
+        assert_eq!(
+            cache_key_for_fetch("https://example.com/article", &options).len(),
+            64
+        );
     }
 
     #[test]
@@ -647,6 +746,7 @@ mod tests {
             "https://example.org/wiki/Article",
             &options,
             &ResearchCacheOptions::default(),
+            None,
             || {
                 count.set(count.get() + 1);
                 Ok(sample_template_report("First"))
@@ -663,6 +763,7 @@ mod tests {
             "https://example.org/wiki/Article",
             &options,
             &ResearchCacheOptions::default(),
+            None,
             || {
                 count.set(count.get() + 1);
                 Ok(sample_template_report("Second"))

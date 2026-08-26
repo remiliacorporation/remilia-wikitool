@@ -15,7 +15,7 @@ use crate::research::url::{encode_title, parse_wiki_url};
 use crate::research::web_fetch::{
     ExternalClient, external_client_with_session, truncate_to_byte_limit,
 };
-use crate::support::compute_hash;
+use crate::support::compute_sha256;
 
 const DEFAULT_MEDIAWIKI_TEMPLATE_BATCH_SIZE: usize = 50;
 const MEDIAWIKI_TEMPLATE_QUERY_LIMIT: usize = 500;
@@ -442,7 +442,7 @@ fn parse_template_pages_payload(
                     exists: true,
                     revision_id,
                     revision_timestamp,
-                    content_hash: Some(compute_hash(content)),
+                    content_hash: Some(compute_sha256(content)),
                     content_truncated: content_preview.len() < content.len(),
                     content_preview: Some(content_preview),
                     templatedata: None,
@@ -674,6 +674,7 @@ mod tests {
         );
         assert_eq!(pages[0].content_preview.as_deref(), Some("abc"));
         assert!(pages[0].content_truncated);
+        assert_eq!(pages[0].content_hash.as_deref().map(str::len), Some(64));
         assert_eq!(pages[1].title, "Template:Missing");
         assert!(!pages[1].exists);
     }

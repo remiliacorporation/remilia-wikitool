@@ -232,7 +232,8 @@ pub fn load_research_session_for_url(
         if session_is_expired(&session, now) || !domain_matches(&host, &session.domain) {
             continue;
         }
-        let cookie_header = cookie_header_for_request(&session, &host, path, now);
+        let cookie_header =
+            cookie_header_for_request(&session, &host, path, parsed_url.scheme(), now);
         if cookie_header.is_empty() {
             continue;
         }
@@ -458,6 +459,7 @@ fn cookie_header_for_request(
     session: &ResearchSession,
     host: &str,
     request_path: &str,
+    scheme: &str,
     now: u64,
 ) -> String {
     session
@@ -468,17 +470,32 @@ fn cookie_header_for_request(
                 .expires_at_unix
                 .is_none_or(|expires_at| expires_at > now)
         })
-        .filter(|cookie| {
-            let domain = cookie.domain.as_deref().unwrap_or(&session.domain);
-            domain_matches(host, domain)
+        .filter(|cookie| !cookie.secure || scheme.eq_ignore_ascii_case("https"))
+        .filter(|cookie| match cookie.domain.as_deref() {
+            Some(domain) => domain_matches(host, domain),
+            None => host.eq_ignore_ascii_case(&session.domain),
         })
         .filter(|cookie| {
             let path = cookie.path.as_deref().unwrap_or("/");
-            request_path.starts_with(path)
+            cookie_path_matches(request_path, path)
         })
         .map(|cookie| format!("{}={}", cookie.name, cookie.value))
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+fn cookie_path_matches(request_path: &str, cookie_path: &str) -> bool {
+    if request_path == cookie_path {
+        return true;
+    }
+    if !request_path.starts_with(cookie_path) {
+        return false;
+    }
+    cookie_path.ends_with('/')
+        || request_path
+            .as_bytes()
+            .get(cookie_path.len())
+            .is_some_and(|value| *value == b'/')
 }
 
 fn summarize_session(session: &ResearchSession, path: &Path) -> ResearchSessionSummary {
@@ -748,6 +765,54 @@ mod tests {
         );
         assert_eq!(parsed.cookies[0].name, "cf_clearance");
         assert!(parsed.cookies[0].http_only);
+    }
+
+    #[test]
+    fn cookie_scope_enforces_host_only_secure_and_path_boundaries() {
+        let session = ResearchSession {
+            schema_version: RESEARCH_SESSION_SCHEMA_VERSION.to_string(),
+            domain: "example.com".to_string(),
+            source_url: "https://example.com/foo".to_string(),
+            user_agent: None,
+            obtained_at: "2026-01-01T00:00:00Z".to_string(),
+            obtained_at_unix: 1,
+            ttl_hint_seconds: None,
+            expires_at_unix: None,
+            cookies: vec![
+                ResearchSessionCookie {
+                    name: "host_only".to_string(),
+                    value: "one".to_string(),
+                    domain: None,
+                    path: Some("/foo".to_string()),
+                    expires_at_unix: None,
+                    secure: false,
+                    http_only: false,
+                },
+                ResearchSessionCookie {
+                    name: "secure_domain".to_string(),
+                    value: "two".to_string(),
+                    domain: Some("example.com".to_string()),
+                    path: Some("/".to_string()),
+                    expires_at_unix: None,
+                    secure: true,
+                    http_only: false,
+                },
+            ],
+            notes: Vec::new(),
+        };
+
+        let exact_https =
+            cookie_header_for_request(&session, "example.com", "/foo/bar", "https", 2);
+        assert!(exact_https.contains("host_only=one"));
+        assert!(exact_https.contains("secure_domain=two"));
+
+        let subdomain_http =
+            cookie_header_for_request(&session, "sub.example.com", "/foo/bar", "http", 2);
+        assert!(!subdomain_http.contains("host_only=one"));
+        assert!(!subdomain_http.contains("secure_domain=two"));
+
+        let false_path = cookie_header_for_request(&session, "example.com", "/foobar", "https", 2);
+        assert!(!false_path.contains("host_only=one"));
     }
 
     #[test]

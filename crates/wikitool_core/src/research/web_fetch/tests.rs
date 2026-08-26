@@ -237,7 +237,7 @@ fn research_profile_returns_clean_text_and_metadata() {
     );
     assert_eq!(result.extract.as_deref(), Some("Summary text"));
     assert_eq!(result.extraction_quality, Some(ExtractionQuality::Low));
-    assert!(!result.content_hash.is_empty());
+    assert_eq!(result.content_hash.len(), 64);
     assert!(!collapse_inline_whitespace(&result.content).contains("<html>"));
 }
 
@@ -366,6 +366,7 @@ fn detects_cloudflare_challenge_header() {
         content_type: "text/html; charset=UTF-8".to_string(),
         cf_mitigated: Some("challenge".to_string()),
         crawler_price: None,
+        redirect_location: None,
         body: "<html><body>generic challenge shell</body></html>".to_string(),
     };
 
@@ -382,6 +383,7 @@ fn builds_structured_challenge_handoff_for_cloudflare() {
         content_type: "text/html; charset=UTF-8".to_string(),
         cf_mitigated: Some("challenge".to_string()),
         crawler_price: None,
+        redirect_location: None,
         body: "<html><body>generic challenge shell</body></html>".to_string(),
     };
 

@@ -7,15 +7,18 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use reqwest::Url;
-use reqwest::blocking::Client;
+use reqwest::header::LOCATION;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::runtime::ResolvedPaths;
 use crate::support::{normalize_path, now_iso8601_utc, unix_timestamp};
 
+use super::http_policy::validate_outbound_research_url;
+
 const DEFAULT_USER_AGENT: &str = crate::config::DEFAULT_USER_AGENT;
 const ARCHIVE_ACCEPT: &str = "*/*";
+const MAX_ARCHIVE_REDIRECTS: usize = 10;
 
 #[derive(Debug, Clone)]
 pub struct WebArchiveOptions {
@@ -97,9 +100,9 @@ pub fn archive_web_site(
         bail!("archive requires max_total_bytes >= 1");
     }
 
-    let start = Url::parse(source_url)
-        .with_context(|| format!("failed to parse source URL: {source_url}"))?;
+    let start = validate_outbound_research_url(source_url)?;
     let origin_host = start
+        .url()
         .host_str()
         .ok_or_else(|| anyhow::anyhow!("source URL has no host: {source_url}"))?
         .to_ascii_lowercase();
@@ -110,11 +113,7 @@ pub fn archive_web_site(
     fs::create_dir_all(&output_dir)
         .with_context(|| format!("failed to create {}", output_dir.display()))?;
 
-    let client = Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .context("failed to build web archive HTTP client")?;
-    let mut queue = VecDeque::from([(strip_fragment(start), 0usize)]);
+    let mut queue = VecDeque::from([(strip_fragment(start.url().clone()), 0usize)]);
     let mut seen = HashSet::new();
     let mut entries = Vec::new();
     let mut total_bytes = 0usize;
@@ -150,7 +149,7 @@ pub fn archive_web_site(
             break;
         };
 
-        match fetch_archive_candidate(&client, url.as_str(), byte_limit) {
+        match fetch_archive_candidate(url.as_str(), byte_limit) {
             Ok(candidate) => {
                 let local_path = archive_path_for_url(
                     &output_dir,
@@ -268,51 +267,79 @@ fn response_byte_limit(
     })
 }
 
-fn fetch_archive_candidate(
-    client: &Client,
-    url: &str,
-    byte_limit: ResponseByteLimit,
-) -> Result<ArchiveCandidate> {
-    let mut response = client
-        .get(url)
-        .header("User-Agent", DEFAULT_USER_AGENT)
-        .header("Accept", ARCHIVE_ACCEPT)
-        .send()
-        .with_context(|| format!("failed to fetch {url}"))?;
-    let final_url = response.url().clone();
-    let status = response.status().as_u16();
-    let content_type = response
-        .headers()
-        .get("content-type")
-        .and_then(|value| value.to_str().ok())
-        .map(ToString::to_string);
-    let mut body = Vec::new();
-    let limit = u64::try_from(byte_limit.bytes)
-        .unwrap_or(u64::MAX)
-        .saturating_add(1);
-    response
-        .by_ref()
-        .take(limit)
-        .read_to_end(&mut body)
-        .with_context(|| format!("failed to read {url}"))?;
-    if body.len() > byte_limit.bytes {
-        if byte_limit.constrained_by_total {
+fn fetch_archive_candidate(url: &str, byte_limit: ResponseByteLimit) -> Result<ArchiveCandidate> {
+    let mut current_url = url.to_string();
+    for redirects_followed in 0..=MAX_ARCHIVE_REDIRECTS {
+        let validated_url = validate_outbound_research_url(&current_url)?;
+        let client = validated_url.pinned_client(Duration::from_secs(30))?;
+        let mut response = client
+            .get(validated_url.url().clone())
+            .header("User-Agent", DEFAULT_USER_AGENT)
+            .header("Accept", ARCHIVE_ACCEPT)
+            .send()
+            .with_context(|| format!("failed to fetch {current_url}"))?;
+        let response_url = response.url().clone();
+        let status = response.status();
+        if status.is_redirection() {
+            if redirects_followed >= MAX_ARCHIVE_REDIRECTS {
+                bail!("archive fetch exceeded {MAX_ARCHIVE_REDIRECTS} HTTP redirects for {url}");
+            }
+            let location = response
+                .headers()
+                .get(LOCATION)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "archive redirect omitted Location for {} (HTTP {})",
+                        response_url,
+                        status.as_u16()
+                    )
+                })?
+                .to_str()
+                .context("archive redirect Location is not valid text")?;
+            current_url = resolve_archive_redirect(&response_url, location)?.to_string();
+            continue;
+        }
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .map(ToString::to_string);
+        let mut body = Vec::new();
+        let limit = u64::try_from(byte_limit.bytes)
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        response
+            .by_ref()
+            .take(limit)
+            .read_to_end(&mut body)
+            .with_context(|| format!("failed to read {response_url}"))?;
+        if body.len() > byte_limit.bytes {
+            if byte_limit.constrained_by_total {
+                bail!(
+                    "response would exceed --max-total-bytes remaining limit ({}) for {response_url}",
+                    byte_limit.bytes
+                );
+            }
             bail!(
-                "response would exceed --max-total-bytes remaining limit ({}) for {url}",
+                "response exceeded --max-bytes limit ({}) for {response_url}",
                 byte_limit.bytes
             );
         }
-        bail!(
-            "response exceeded --max-bytes limit ({}) for {url}",
-            byte_limit.bytes
-        );
+        return Ok(ArchiveCandidate {
+            final_url: response_url,
+            status: status.as_u16(),
+            content_type,
+            body,
+        });
     }
-    Ok(ArchiveCandidate {
-        final_url,
-        status,
-        content_type,
-        body,
-    })
+    unreachable!("bounded archive redirect loop must return or fail")
+}
+
+fn resolve_archive_redirect(response_url: &Url, location: &str) -> Result<Url> {
+    response_url
+        .join(location)
+        .with_context(|| format!("invalid archive redirect Location: {location}"))
 }
 
 fn default_archive_dir(paths: &ResolvedPaths, host: &str) -> PathBuf {
@@ -556,8 +583,8 @@ fn starts_with_ascii_case(value: &str, prefix: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_css_urls, extract_html_urls, resolve_archive_url, response_byte_limit,
-        sanitize_path_component, should_enqueue, split_srcset,
+        extract_css_urls, extract_html_urls, resolve_archive_redirect, resolve_archive_url,
+        response_byte_limit, sanitize_path_component, should_enqueue, split_srcset,
     };
     use reqwest::Url;
 
@@ -618,6 +645,15 @@ mod tests {
         // Relative links resolve against the base and drop any fragment.
         let resolved = resolve_archive_url(&base, "../other.html#frag").expect("resolved");
         assert_eq!(resolved.as_str(), "https://example.com/other.html");
+    }
+
+    #[test]
+    fn archive_redirect_resolution_handles_relative_locations() {
+        let response_url = Url::parse("https://example.com/old/page").expect("url");
+        let redirected =
+            resolve_archive_redirect(&response_url, "../new/page").expect("redirect URL");
+
+        assert_eq!(redirected.as_str(), "https://example.com/new/page");
     }
 
     #[test]

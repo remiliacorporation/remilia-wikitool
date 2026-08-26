@@ -11,7 +11,7 @@ use crate::research::url::encode_title;
 use crate::research::web_fetch::{
     ExternalClient, external_client_with_session, truncate_to_byte_limit,
 };
-use crate::support::{compute_hash, now_iso8601_utc};
+use crate::support::{compute_sha256, now_iso8601_utc};
 
 const DEFAULT_MEDIAWIKI_TITLE_BATCH_SIZE: usize = 50;
 
@@ -233,7 +233,7 @@ fn apply_rendered_page(
     base.title = rendered.title;
     base.content = truncate_to_byte_limit(&rendered.html, max_bytes);
     base.content_format = "html".to_string();
-    base.content_hash = compute_hash(&base.content);
+    base.content_hash = compute_sha256(&base.content);
     base.display_title = rendered.display_title;
     base.revision_id = rendered.revision_id.or(base.revision_id);
     base.rendered_fetch_mode = Some(RenderedFetchMode::ParseApi);
@@ -337,7 +337,7 @@ fn parse_mediawiki_content_page(
         .and_then(Value::as_str)
         .map(ToString::to_string);
     let revision_id = revision.get("revid").and_then(Value::as_i64);
-    let content_hash = compute_hash(&content);
+    let content_hash = compute_sha256(&content);
 
     Ok(MediaWikiFetchOutcome::Found(Box::new(
         ExternalFetchResult {
@@ -422,7 +422,7 @@ mod tests {
         );
         assert_eq!(result.extract.as_deref(), Some("Lead summary"));
         assert_eq!(result.content_format, "wikitext");
-        assert!(!result.content_hash.is_empty());
+        assert_eq!(result.content_hash.len(), 64);
         assert!(result.display_title.is_none());
         assert!(result.rendered_fetch_mode.is_none());
     }
@@ -464,6 +464,7 @@ mod tests {
         assert_eq!(merged.content, "<p>Hello</p>");
         assert_eq!(merged.content_format, "html");
         assert_ne!(merged.content_hash, "old-hash");
+        assert_eq!(merged.content_hash.len(), 64);
         assert_eq!(merged.revision_id, Some(56));
         assert_eq!(merged.display_title.as_deref(), Some("<i>Main Page</i>"));
         assert_eq!(

@@ -1,6 +1,7 @@
 pub mod cache;
 pub(crate) mod entities;
 pub mod export;
+mod http_policy;
 pub mod mediawiki_fetch;
 pub mod model;
 pub mod session;

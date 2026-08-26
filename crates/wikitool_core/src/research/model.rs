@@ -191,6 +191,7 @@ pub struct ExternalFetchResult {
     pub source_wiki: String,
     pub source_domain: String,
     pub content_format: String,
+    /// Full SHA-256 of the exact returned source representation.
     pub content_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision_id: Option<i64>,
@@ -313,6 +314,7 @@ pub struct MediaWikiTemplatePage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision_timestamp: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Full SHA-256 when source content was returned.
     pub content_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_preview: Option<String>,

@@ -7,7 +7,7 @@ use super::text::{
 use crate::research::model::{
     ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExtractionQuality, FetchMode,
 };
-use crate::support::{compute_hash, now_iso8601_utc};
+use crate::support::{compute_sha256, now_iso8601_utc};
 pub(in crate::research::web_fetch) fn build_html_fetch_result(
     html: &str,
     final_url: &str,
@@ -45,7 +45,7 @@ pub(in crate::research::web_fetch) fn build_html_fetch_result(
                 source_wiki: "web".to_string(),
                 source_domain: source_domain.to_string(),
                 content_format: "html".to_string(),
-                content_hash: compute_hash(html),
+                content_hash: compute_sha256(html),
                 revision_id: None,
                 display_title: None,
                 rendered_fetch_mode: None,
@@ -60,7 +60,7 @@ pub(in crate::research::web_fetch) fn build_html_fetch_result(
         }
         ExternalFetchProfile::Research => {
             if let Some(note) = challenge_notice {
-                let content_hash = compute_hash(&note);
+                let content_hash = compute_sha256(&note);
                 return ExternalFetchResult {
                     title,
                     content: note.clone(),
@@ -97,7 +97,7 @@ pub(in crate::research::web_fetch) fn build_html_fetch_result(
                     .description
                     .clone()
                     .or_else(|| summarize_text(&content, 280));
-                let content_hash = compute_hash(&content);
+                let content_hash = compute_sha256(&content);
 
                 return ExternalFetchResult {
                     title,
@@ -128,7 +128,7 @@ pub(in crate::research::web_fetch) fn build_html_fetch_result(
                 .clone()
                 .or_else(|| summarize_text(&content, 280));
             let extraction_quality = Some(score_extraction_quality(&content, extract.as_deref()));
-            let content_hash = compute_hash(&content);
+            let content_hash = compute_sha256(&content);
 
             ExternalFetchResult {
                 title,
@@ -220,7 +220,7 @@ pub(in crate::research::web_fetch) fn build_text_fetch_result(
         source_wiki: "web".to_string(),
         source_domain: source_domain.to_string(),
         content_format: content_format.to_string(),
-        content_hash: compute_hash(&content),
+        content_hash: compute_sha256(&content),
         revision_id: None,
         display_title: None,
         rendered_fetch_mode: None,

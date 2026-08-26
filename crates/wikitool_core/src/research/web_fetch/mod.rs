@@ -3,12 +3,13 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use reqwest::Url;
-use reqwest::blocking::Client;
 use reqwest::blocking::RequestBuilder;
+use reqwest::header::LOCATION;
 use serde_json::Value;
 
 use crate::support::{env_value, env_value_u64, env_value_usize};
 
+use super::http_policy::validate_outbound_research_url;
 use super::model::{
     ChallengeHandoff, ExternalFetchAttempt, ExternalFetchFailure, ExternalFetchFailureError,
     ExternalFetchOptions, ExternalFetchProfile, ExternalFetchResult, ExternalFetchSession,
@@ -19,10 +20,11 @@ const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const DEFAULT_RETRIES: usize = 2;
 const DEFAULT_RETRY_DELAY_MS: u64 = 350;
 const MAX_CLIENT_REDIRECTS: usize = 1;
+const MAX_HTTP_REDIRECTS: usize = 5;
 const DIRECT_ACCEPT: &str = "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,text/markdown;q=0.8,application/json;q=0.7,*/*;q=0.1";
 
 pub(crate) struct ExternalClient {
-    pub(crate) client: Client,
+    timeout: Duration,
     user_agent: String,
     session: Option<ExternalFetchSession>,
     retries: usize,
@@ -48,6 +50,7 @@ pub(super) struct TextHttpResponse {
     content_type: String,
     cf_mitigated: Option<String>,
     crawler_price: Option<String>,
+    redirect_location: Option<String>,
     body: String,
 }
 
@@ -57,6 +60,8 @@ impl ExternalClient {
         api_url: &str,
         params: &[(&str, String)],
     ) -> Result<Value> {
+        let validated_url = validate_outbound_research_url(api_url)?;
+        let pinned_client = validated_url.pinned_client(self.timeout)?;
         let mut pairs = Vec::with_capacity(params.len() + 2);
         pairs.push(("format".to_string(), "json".to_string()));
         pairs.push(("formatversion".to_string(), "2".to_string()));
@@ -76,9 +81,8 @@ impl ExternalClient {
                 }
             }
 
-            let response = self
-                .client
-                .get(api_url)
+            let response = pinned_client
+                .get(validated_url.url().clone())
                 .header("User-Agent", self.user_agent.clone())
                 .query(&pairs);
             let response = self.apply_session_headers(response, api_url).send();
@@ -161,12 +165,8 @@ pub(crate) fn external_client_with_session(
         .as_ref()
         .and_then(|session| session.user_agent.clone())
         .unwrap_or_else(|| env_value("WIKITOOL_USER_AGENT", DEFAULT_USER_AGENT));
-    let client = Client::builder()
-        .timeout(Duration::from_millis(timeout_ms))
-        .build()
-        .context("failed to build external HTTP client")?;
     Ok(ExternalClient {
-        client,
+        timeout: Duration::from_millis(timeout_ms),
         user_agent,
         session,
         retries,
@@ -182,6 +182,7 @@ pub(crate) fn fetch_web_url(
     let client = external_client_with_session(options.session.clone())?;
     let mut current_url = url.to_string();
     let mut client_redirects = 0usize;
+    let mut http_redirects = 0usize;
     let mut attempts = Vec::new();
     let mut challenge_handoffs = Vec::new();
 
@@ -202,6 +203,39 @@ pub(crate) fn fetch_web_url(
                 return Err(fetch_failure(url, attempts, challenge_handoffs).into());
             }
         };
+        if (300..400).contains(&response.http_status) {
+            let Some(location) = response.redirect_location.as_deref() else {
+                attempts.push(ExternalFetchAttempt {
+                    mode: "http_redirect".to_string(),
+                    url: current_url.clone(),
+                    outcome: "redirect_missing_location".to_string(),
+                    http_status: Some(response.http_status),
+                    content_type: Some(response.content_type.clone()),
+                    message: Some("HTTP redirect response omitted Location".to_string()),
+                });
+                return Err(fetch_failure(url, attempts, challenge_handoffs).into());
+            };
+            if http_redirects >= MAX_HTTP_REDIRECTS {
+                bail!("research fetch exceeded {MAX_HTTP_REDIRECTS} HTTP redirects");
+            }
+            let base = Url::parse(&response.final_url)
+                .with_context(|| format!("invalid redirect base URL: {}", response.final_url))?;
+            let next = base
+                .join(location)
+                .with_context(|| format!("invalid redirect Location: {location}"))?;
+            validate_outbound_research_url(next.as_str())?;
+            attempts.push(ExternalFetchAttempt {
+                mode: "http_redirect".to_string(),
+                url: current_url.clone(),
+                outcome: "follow".to_string(),
+                http_status: Some(response.http_status),
+                content_type: Some(response.content_type.clone()),
+                message: Some(format!("Location: {next}")),
+            });
+            current_url = next.to_string();
+            http_redirects += 1;
+            continue;
+        }
         if response.http_status >= 400 {
             let outcome = if response.http_status == 402 || response.crawler_price.is_some() {
                 "payment_required"
@@ -328,9 +362,10 @@ pub(super) fn request_text_candidate(
     url: &str,
     max_bytes: usize,
 ) -> Result<TextHttpResponse> {
-    let mut request = client
-        .client
-        .get(url)
+    let validated_url = validate_outbound_research_url(url)?;
+    let pinned_client = validated_url.pinned_client(client.timeout)?;
+    let mut request = pinned_client
+        .get(validated_url.url().clone())
         .header("User-Agent", client.user_agent.clone())
         .header("Accept", DIRECT_ACCEPT)
         .header("Accept-Language", "en-US,en;q=0.9")
@@ -366,6 +401,11 @@ pub(super) fn request_text_candidate(
         .get("crawler-price")
         .and_then(|value| value.to_str().ok())
         .map(ToString::to_string);
+    let redirect_location = response
+        .headers()
+        .get(LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string);
     let body = if is_supported_text_content_type(&content_type) {
         read_text_body_limited(response, max_bytes)?
     } else {
@@ -377,6 +417,7 @@ pub(super) fn request_text_candidate(
         content_type,
         cf_mitigated,
         crawler_price,
+        redirect_location,
         body,
     })
 }
