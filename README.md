@@ -153,6 +153,26 @@ wikitool workflow full-refresh
 Release bundles include a version-pinned upstream Contextmink pack. Contextmink owns its binary,
 templates, project setup, and install receipt; Wikitool does not carry a fork or second installer.
 
+## Wikitest evaluation
+
+Source checkouts include `wikitest`, a separate workspace binary that exercises the public
+`wikitool` executable rather than reaching through crate internals. It owns strict catalogs for
+mechanical workflows, synthetic knowledge-index retrieval, and externally authored and reviewed
+prose assignments:
+
+```bash
+cargo build -p wikitool -p wikitest
+target/debug/wikitest validate
+target/debug/wikitest suite core-dogfood --require-all
+target/debug/wikitest prose prepare-suite prose-dogfood
+```
+
+Run-producing commands re-open and verify their hash-bound receipts—including the exact Wikitest
+driver and evaluated Wikitool binaries—before returning success. A host wiki can add a read-only
+supplemental catalog for its real local database without moving site doctrine into Wikitest or
+Wikitool. Wikitest and its catalogs are development/release-evaluation substrate and are
+intentionally absent from end-user release archives; see `wikitest/README.md`.
+
 ## Build from source
 
 ```bash
@@ -163,8 +183,8 @@ cargo test --workspace --all-targets
 Reference generation, docs audit, and release packaging are maintainer-only:
 
 ```bash
-cargo run --features maintainer -- docs generate-reference
-cargo run --features maintainer -- docs audit
+cargo run --package wikitool --features maintainer -- docs generate-reference
+cargo run --package wikitool --features maintainer -- docs audit
 ```
 
 ## Documentation
@@ -176,6 +196,7 @@ cargo run --features maintainer -- docs audit
 | `docs/wikitool/architecture.md` | Layering and authority boundaries |
 | `ai-pack/integration/` | Generic agent and site-adapter contracts |
 | `ai-pack/codex_skills/` | Canonical editorial and operator skills |
+| `wikitest/README.md` | Executable mechanical, knowledge, and prose evaluation laboratory |
 | `VERSIONING.md` / `CHANGELOG.md` | Release policy and history |
 
 ## License

@@ -15,8 +15,8 @@ pub const AUTHOR_SUBMISSION_SCHEMA: &str = "wikitest.author-submission.v1";
 pub const CLAIM_MAP_SCHEMA: &str = "wikitest.claim-map.v1";
 pub const REVIEW_REQUEST_SCHEMA: &str = "wikitest.review-request.v1";
 pub const REVIEW_SUBMISSION_SCHEMA: &str = "wikitest.review-submission.v1";
-pub const PROSE_RECEIPT_SCHEMA: &str = "wikitest.prose-receipt.v1";
-pub const PROSE_SUITE_RECEIPT_SCHEMA: &str = "wikitest.prose-suite-receipt.v1";
+pub const PROSE_RECEIPT_SCHEMA: &str = "wikitest.prose-receipt.v2";
+pub const PROSE_SUITE_RECEIPT_SCHEMA: &str = "wikitest.prose-suite-receipt.v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -471,6 +471,7 @@ pub struct ReviewStageReceipt {
 pub struct ProseReceipt {
     pub schema: String,
     pub run_id: String,
+    pub driver: ToolIdentity,
     pub assignment: ProseAssignmentIdentity,
     pub tool: ToolIdentity,
     pub status: ProseRunStatus,
@@ -515,6 +516,7 @@ pub struct ProseSuiteRun {
 pub struct ProseSuiteReceipt {
     pub schema: String,
     pub run_id: String,
+    pub driver: ToolIdentity,
     pub suite: ProseSuiteIdentity,
     pub created_at_unix_ms: u128,
     pub required_coverage: Vec<String>,

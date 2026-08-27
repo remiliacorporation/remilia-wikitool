@@ -7,7 +7,7 @@ Maintainer-only commands hidden from default help are intentionally omitted.
 Regenerate from a source checkout with the maintainer surface enabled:
 
 ```bash
-cargo run --features maintainer -- docs generate-reference
+cargo run --package wikitool --features maintainer -- docs generate-reference
 ```
 
 ## Global

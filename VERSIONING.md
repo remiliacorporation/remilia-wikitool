@@ -82,13 +82,15 @@ Packaged / distributable:
 2. Update version in `Cargo.toml` workspace package.
 3. Move the `[Unreleased]` notes in `CHANGELOG.md` under a dated `## [x.y.z] - date` heading.
 4. Run:
-   - `cargo build`
-   - `cargo fmt --all`
-   - `cargo clippy --workspace --all-targets -- -D warnings`
-   - `cargo test -p wikitool_core`
-   - `cargo test -p wikitool`
-   - `bash testbench/cli_tests.sh`
-   - `TIER=live bash testbench/acceptance_workflows.sh`
+   - `cargo build --workspace`
+   - `cargo fmt --all -- --check`
+   - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+   - `cargo test --workspace --all-targets`
+   - `cargo run --quiet --package wikitest -- validate`
+   - `cargo run --quiet --package wikitest -- suite core-dogfood --require-all`
+   - `cargo run --quiet --package wikitest -- prose prepare-suite prose-dogfood`
+   - `bash tests/cli_compat/cli_tests.sh`
+   - `TIER=live bash tests/cli_compat/acceptance_workflows.sh`
 5. Validate the knowledge cutover from a fresh runtime:
    - `cargo run --package wikitool -- db reset --yes`
    - `cargo run --package wikitool -- knowledge warm --docs-profile mw-1.44-authoring --docs-mode missing`
@@ -101,11 +103,18 @@ Packaged / distributable:
    - `cargo run --package wikitool -- status --conflicts --title "Example Topic"`
    - `cargo run --package wikitool -- module lint --format text`
    - `cargo run --package wikitool --features maintainer -- docs generate-reference`
-6. Build release bundles:
+6. If the release changes an editorial skill, prose schema, or packet construction, complete one
+   real authoring assignment and its blinded review:
+   - `target/debug/wikitest prose prepare aster-index-authoring`
+   - have one external author follow the generated request, then use `prose submit-author`
+   - have a differently identified reviewer work only from `review/export/`, then use
+     `prose submit-review`
+   - re-run `wikitest inspect <run>/receipt.json` and retain the verified receipt
+7. Build release bundles:
    - `bash scripts/fetch_contextmink.sh --platform <platform> --dest dist/contextmink-dist`
    - `cargo run --package wikitool --features maintainer -- release build-matrix --targets <triple> --contextmink-dist dist/contextmink-dist`
    - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=X.Y.Z` for per-platform artifacts
-7. Verify each zip contains:
+8. Verify each zip contains:
    - `wikitool` or `wikitool.exe`
    - `AGENTS.md`, `CLAUDE.md`, `README.md`
    - `.claude/rules/`, `.claude/skills/`
@@ -118,5 +127,5 @@ Packaged / distributable:
    - `contextmink/contextmink-bridge.exe` in the Windows bundle only
    - `contextmink/archive.sha256`, matching the repository-pinned upstream archive receipt
    - `manifest.json`
-8. Verify `SHA256SUMS.txt` matches the uploaded zip assets.
-9. Create tag `X.Y.Z`.
+9. Verify `SHA256SUMS.txt` matches the uploaded zip assets.
+10. Create tag `X.Y.Z`.

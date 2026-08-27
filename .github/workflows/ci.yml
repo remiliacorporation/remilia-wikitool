@@ -20,8 +20,14 @@ jobs:
         run: |
           cargo run --quiet --package wikitool --features maintainer -- docs generate-reference --output /tmp/wikitool-reference.md
           diff -u docs/wikitool/reference.md /tmp/wikitool-reference.md
-      - name: Offline CLI regression testbench
-        run: bash testbench/cli_tests.sh
+      - name: Wikitest evaluation authority
+        run: |
+          cargo build --package wikitool --package wikitest
+          cargo run --quiet --package wikitest -- validate
+          cargo run --quiet --package wikitest -- suite core-dogfood --require-all
+          cargo run --quiet --package wikitest -- prose prepare-suite prose-dogfood
+      - name: CLI compatibility regressions
+        run: bash tests/cli_compat/cli_tests.sh
 
   rust-lint:
     runs-on: ubuntu-latest

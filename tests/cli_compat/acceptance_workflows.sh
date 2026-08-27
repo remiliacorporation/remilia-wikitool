@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Focused acceptance checks for the post-cutover authoring workflow.
 # Usage:
-#   TIER=offline bash testbench/acceptance_workflows.sh
-#   TIER=live    bash testbench/acceptance_workflows.sh
+#   TIER=offline bash tests/cli_compat/acceptance_workflows.sh
+#   TIER=live    bash tests/cli_compat/acceptance_workflows.sh
 set -euo pipefail
 
 TIER="${TIER:-offline}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 WIKITOOL_RAW="${WIKITOOL:-}"
 TMP_BASE="${TMPDIR:-$SCRIPT_DIR/.tmp}"
 mkdir -p "$TMP_BASE"
@@ -63,7 +63,7 @@ resolve_wikitool_cmd() {
     # A distro Cargo may be older than the workspace's declared Rust edition,
     # while the surrounding Windows checkout is already built with cargo.exe.
     if command -v cargo.exe > /dev/null 2>&1; then
-        WIKITOOL_CMD=(cargo.exe run --quiet --)
+        WIKITOOL_CMD=(cargo.exe run --quiet --package wikitool --)
         WIKITOOL_PATH_MODE="windows"
         return
     fi
@@ -71,7 +71,7 @@ resolve_wikitool_cmd() {
     if command -v cargo > /dev/null 2>&1; then
         local cargo_path
         cargo_path=$(command -v cargo)
-        WIKITOOL_CMD=(cargo run --quiet --)
+        WIKITOOL_CMD=(cargo run --quiet --package wikitool --)
         if [[ "$cargo_path" == *.exe ]]; then
             WIKITOOL_PATH_MODE="windows"
         else

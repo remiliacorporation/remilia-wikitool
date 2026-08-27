@@ -11,7 +11,7 @@
 # checkout you care about.
 #
 # Usage:
-#   testbench/perf_bench.sh --project-root <disposable-project-copy> [options]
+#   benchmarks/cli_perf.sh --project-root <disposable-project-copy> [options]
 #
 # Options:
 #   --project-root <path>   Required. Disposable project copy to benchmark against.
@@ -24,7 +24,8 @@
 #
 # Env:
 #   WIKITOOL                Override the wikitool command (default: release binary
-#                           next to this script's repo, else cargo run --quiet --).
+#                           next to this script's repo, else
+#                           cargo run --quiet --package wikitool --).
 #
 # Scenarios (local): status-modified, diff, lint-corpus, article-start-brief,
 #   fts-search, knowledge-build, knowledge-warm
@@ -76,7 +77,7 @@ resolve_wikitool() {
             return
         fi
     done
-    echo "cargo run --quiet --"
+    echo "cargo run --quiet --package wikitool --"
 }
 WT_CMD="$(resolve_wikitool)"
 
@@ -91,7 +92,7 @@ NATIVE_ROOT="$(to_native_path "$PROJECT_ROOT")"
 
 wt() {
     # shellcheck disable=SC2086
-    (cd "$PROJECT_ROOT" && $WT_CMD --project-root "$NATIVE_ROOT" "$@")
+    (cd "$REPO_ROOT" && $WT_CMD --project-root "$NATIVE_ROOT" "$@")
 }
 
 now_ns() { date +%s%N; }

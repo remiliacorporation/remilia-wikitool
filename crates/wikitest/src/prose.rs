@@ -10,6 +10,7 @@ use crate::artifact::{
     resolve_output_path, sha256_bytes, sha256_file, unix_ms,
 };
 use crate::catalog::{Manifest, load_manifest, resolve_manifest};
+use crate::identity::{current_driver_identity, verify_path_identity, verify_recorded_identity};
 use crate::model::{ArtifactIdentity, OutputArtifact, ToolIdentity};
 use crate::process::{CapturedStream, probe_version, run_bounded};
 use crate::prose_model::{
@@ -244,6 +245,7 @@ pub fn prepare_assignment(path: &Path, options: &ProseOptions) -> Result<Prepare
     let receipt = ProseReceipt {
         schema: PROSE_RECEIPT_SCHEMA.to_owned(),
         run_id,
+        driver: current_driver_identity(&options.repository)?,
         assignment: assignment_identity,
         tool,
         status,
@@ -339,6 +341,7 @@ pub fn prepare_suite(path: &Path, options: &ProseOptions) -> Result<PreparedPros
     let receipt = ProseSuiteReceipt {
         schema: PROSE_SUITE_RECEIPT_SCHEMA.to_owned(),
         run_id,
+        driver: current_driver_identity(&options.repository)?,
         suite: suite_identity,
         created_at_unix_ms: created_at,
         required_coverage: suite.required_coverage,
@@ -359,7 +362,8 @@ pub fn submit_author(
     options: &ProseOptions,
 ) -> Result<PreparedProse> {
     let (mut receipt, receipt_path, run_directory, assignment) = load_prose_run(run)?;
-    verify_current_receipt(&run_directory, &receipt)?;
+    verify_current_receipt(&options.repository, &run_directory, &receipt)?;
+    verify_path_identity(&options.wikitool, &receipt.tool, "configured Wikitool")?;
     if assignment.mode != ProseMode::Authoring
         || receipt.status != ProseRunStatus::AwaitingAuthor
         || receipt.author.is_some()
@@ -486,10 +490,15 @@ pub fn submit_author(
     })
 }
 
-pub fn submit_review(run: &Path, submission_path: &Path) -> Result<PreparedProse> {
+pub fn submit_review(
+    run: &Path,
+    submission_path: &Path,
+    options: &ProseOptions,
+) -> Result<PreparedProse> {
     let (mut receipt, receipt_path, run_directory, _public_assignment) = load_prose_run(run)?;
     let assignment = load_authority_assignment(&receipt, &run_directory)?;
-    verify_current_receipt(&run_directory, &receipt)?;
+    verify_current_receipt(&options.repository, &run_directory, &receipt)?;
+    verify_path_identity(&options.wikitool, &receipt.tool, "configured Wikitool")?;
     if receipt.status != ProseRunStatus::AwaitingReview || receipt.review.is_some() {
         bail!("prose run is not awaiting a review submission");
     }
@@ -1184,7 +1193,13 @@ fn load_authority_assignment(
     Ok(assignment)
 }
 
-fn verify_current_receipt(run_directory: &Path, receipt: &ProseReceipt) -> Result<()> {
+fn verify_current_receipt(
+    repository: &Path,
+    run_directory: &Path,
+    receipt: &ProseReceipt,
+) -> Result<()> {
+    verify_recorded_identity(repository, &receipt.driver, "Wikitest driver")?;
+    verify_recorded_identity(repository, &receipt.tool, "Wikitool")?;
     verify_artifact(run_directory, &receipt.authority)?;
     verify_artifact(run_directory, &receipt.packet)?;
     for input in &receipt.inputs {

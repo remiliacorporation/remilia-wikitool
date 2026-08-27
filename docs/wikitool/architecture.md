@@ -188,6 +188,24 @@ path constraints. Cache keys include extractor and session identity and have bou
 Source acquisition does not establish source suitability. The writing and review skills must open
 the work, bind claims to exact passages, preserve source role, and disclose inaccessible material.
 
+## Evaluation boundary
+
+`crates/wikitest` is a source-resident evaluator, not a library back door or a prose grader inside
+Wikitool. It invokes the public executable in isolated projects or an explicitly admitted
+read-only host root. Its generic catalog covers mechanical article state transitions and synthetic
+local-index retrieval; a host repository may add supplemental real-corpus scenarios without
+embedding site policy in either general-purpose crate.
+
+Prose assignments freeze the inspected sources and canonical skill bytes, accept an external
+author's exact article and claim-source map, then expose a blinded packet to a differently
+identified reviewer. Controlled cases test stable verdict axes and disposition, not secret phrase
+matching. Receipts bind both the exact Wikitest driver and the evaluated Wikitool binary. Every
+run-producing command re-inspects that receipt before success, and state advances preflight the
+recorded identities so a stale evaluator cannot partially mutate a prose run. CI can
+deterministically run mechanics, knowledge fixtures, and packet construction; model-backed prose
+performance remains an explicit dogfood campaign whose participant and receipt evidence must be
+reported separately.
+
 ## Release boundary
 
 Release archives contain a target-neutral AI pack, generic adapter example, and canonical skills.
@@ -196,6 +214,10 @@ the guidance files it declares as a supplement under `site_adapter/project/`; un
 files are not shipped. The supplement never replaces public `CLAUDE.md`, `AGENTS.md`, rules,
 wrappers, or skills. Unknown, malformed, traversing, or incomplete host adapter state fails
 packaging.
+
+Wikitest is intentionally not packaged in end-user release archives. Its authority depends on the
+source catalog, controlled inputs, and public skill tree that accompany a source checkout; the
+shipped runtime remains the Wikitool binary and agent pack being evaluated.
 
 Contextmink remains a separately versioned, hash-pinned upstream release pack. Wikitool contains no
 Contextmink source fork and no duplicate installer.
@@ -212,8 +234,9 @@ Contextmink source fork and no duplicate installer.
   user-only ACL.
 - Wikitext parsing is deterministic and bounded, not a complete replacement for MediaWiki's
   production parser; rendered behavior must be checked through `wiki render-check` where relevant.
-- Editorial-skill quality has structural and closed-world fixtures, but model performance must be
-  evaluated across agents and real source packets; prompt conformance alone is not proof.
+- Wikitest provides replayable structural and closed-world evidence, but model performance must be
+  sampled across agents and real source packets; one successful campaign or prompt conformance is
+  not a universal quality claim.
 
 ## Development contract
 
@@ -224,5 +247,6 @@ When behavior changes:
 3. regenerate `docs/wikitool/reference.md` from clap help;
 4. run `docs audit` to verify target neutrality, skill package shape, adapter routing, and generated
    reference freshness;
-5. package both the generic AI pack and an explicit host-adapter supplement;
-6. keep live writes out of tests unless the test is explicitly authorized and revision-bound.
+5. run the relevant Wikitest suites and retain their self-inspected receipts;
+6. package both the generic AI pack and an explicit host-adapter supplement;
+7. keep live writes out of tests unless the test is explicitly authorized and revision-bound.

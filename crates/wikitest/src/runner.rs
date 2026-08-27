@@ -11,6 +11,7 @@ use crate::artifact::{
     resolve_output_path, sha256_bytes, sha256_file, unix_ms,
 };
 use crate::catalog::{Manifest, load_manifest, resolve_manifest};
+use crate::identity::current_driver_identity;
 use crate::model::{
     ArtifactIdentity, AssertionReceipt, FileAssertion, MissingDisposition, OutputArtifact,
     OutputAssertion, RECEIPT_SCHEMA, Requirement, RequirementReceipt, RunReceipt, RunStatus,
@@ -153,6 +154,7 @@ fn run_loaded_scenario(
     let mut receipt = RunReceipt {
         schema: RECEIPT_SCHEMA.to_owned(),
         run_id,
+        driver: current_driver_identity(&options.repository)?,
         scenario: ScenarioIdentity {
             id: scenario.id.clone(),
             title: scenario.title.clone(),
@@ -376,6 +378,7 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
     let mut receipt = SuiteReceipt {
         schema: SUITE_RECEIPT_SCHEMA.to_owned(),
         run_id,
+        driver: current_driver_identity(&options.repository)?,
         suite: SuiteIdentity {
             id: suite.id,
             title: suite.title,

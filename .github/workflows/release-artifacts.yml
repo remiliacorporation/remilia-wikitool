@@ -92,8 +92,14 @@ jobs:
           test -d "$BUNDLE/.claude/rules"
           test -d "$BUNDLE/.claude/skills"
           cmp -s "$BUNDLE/AGENTS.md" "$BUNDLE/CLAUDE.md"
-          test -d "$BUNDLE/writing_context"
-          test -f "$BUNDLE/writing_context/profile.toml"
+          test -f "$BUNDLE/codex_skills/wiki-writing/SKILL.md"
+          test -f "$BUNDLE/codex_skills/prose-review/SKILL.md"
+          test -f "$BUNDLE/codex_skills/wiki-interview/SKILL.md"
+          test -f "$BUNDLE/codex_skills/wikitool-operator/SKILL.md"
+          test -f "$BUNDLE/integration/agent_integration.md"
+          test -f "$BUNDLE/integration/site_adapters.md"
+          test -f "$BUNDLE/site_adapter/generic.toml"
+          test ! -e "$BUNDLE/writing_context"
           test -d "$BUNDLE/docs/wikitool"
           test ! -e "$BUNDLE/llm_instructions"
           test ! -e "$BUNDLE/SETUP.md"
@@ -129,8 +135,14 @@ jobs:
           $agentsHash = (Get-FileHash -Path "$env:BUNDLE/AGENTS.md" -Algorithm SHA256).Hash
           $claudeHash = (Get-FileHash -Path "$env:BUNDLE/CLAUDE.md" -Algorithm SHA256).Hash
           if ($agentsHash -ne $claudeHash) { throw "AGENTS.md and CLAUDE.md mismatch" }
-          if (!(Test-Path "$env:BUNDLE/writing_context")) { throw "writing_context missing" }
-          if (!(Test-Path "$env:BUNDLE/writing_context/profile.toml")) { throw "typed writing profile missing" }
+          if (!(Test-Path "$env:BUNDLE/codex_skills/wiki-writing/SKILL.md")) { throw "wiki-writing skill missing" }
+          if (!(Test-Path "$env:BUNDLE/codex_skills/prose-review/SKILL.md")) { throw "prose-review skill missing" }
+          if (!(Test-Path "$env:BUNDLE/codex_skills/wiki-interview/SKILL.md")) { throw "wiki-interview skill missing" }
+          if (!(Test-Path "$env:BUNDLE/codex_skills/wikitool-operator/SKILL.md")) { throw "wikitool-operator skill missing" }
+          if (!(Test-Path "$env:BUNDLE/integration/agent_integration.md")) { throw "agent integration guidance missing" }
+          if (!(Test-Path "$env:BUNDLE/integration/site_adapters.md")) { throw "site adapter guidance missing" }
+          if (!(Test-Path "$env:BUNDLE/site_adapter/generic.toml")) { throw "generic site adapter missing" }
+          if (Test-Path "$env:BUNDLE/writing_context") { throw "retired writing_context directory must not ship" }
           if (!(Test-Path "$env:BUNDLE/docs/wikitool")) { throw "docs/wikitool missing" }
           if (Test-Path "$env:BUNDLE/llm_instructions") { throw "legacy llm_instructions directory must not ship" }
           if (Test-Path "$env:BUNDLE/SETUP.md") { throw "SETUP.md must not ship" }

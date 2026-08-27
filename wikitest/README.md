@@ -40,8 +40,12 @@ Run the deterministic reusable suite:
 
 ```text
 target/debug/wikitest suite core-dogfood --require-all
-target/debug/wikitest inspect .wikitest/runs/suite-.../receipt.json
 ```
+
+Every command that creates or advances a run re-opens the resulting receipt and verifies all
+retained hashes, including the exact Wikitest driver and evaluated Wikitool binaries, before
+returning success. Use `inspect .wikitest/runs/suite-.../receipt.json` later to revalidate retained
+evidence after copying, archiving, or suspected tampering.
 
 Prepare the prose campaign or one assignment:
 
@@ -97,7 +101,13 @@ oracles use stable protocol observations such as axis verdicts and disposition. 
 are reserved for a declared canonical vocabulary, never private spellings a reviewer could not
 know. Oracles are evaluated only after the review submission is fixed.
 
-Every substantive mutation invalidates the relevant hash. `inspect` re-hashes the tool, manifests,
-packets, inputs, candidates, submissions, process outputs, exports, child receipts, and coverage
-sets. Retained receipts are evaluation evidence, not a claim that one run represents every wiki,
-model, or article type.
+Every substantive mutation invalidates the relevant hash. `inspect` re-hashes the driver, tool,
+manifests, packets, inputs, candidates, submissions, process outputs, exports, child receipts, and
+coverage sets. Retained receipts are evaluation evidence, not a claim that one run represents every
+wiki, model, or article type. Rebuilding either binary intentionally makes the corresponding
+identity stale; retain that run as historical evidence and create a new run for the new binary
+instead of waiving the mismatch.
+
+Wikitest is source-resident evaluation infrastructure. Release archives ship the end-user
+Wikitool binary and agent pack, not this binary or its scenario catalogs; a standalone Wikitest
+binary without the source catalog and skill inputs would be an incomplete evaluator.

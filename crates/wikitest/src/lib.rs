@@ -1,5 +1,6 @@
 pub mod artifact;
 pub mod catalog;
+pub mod identity;
 pub mod inspection;
 pub mod model;
 pub mod process;

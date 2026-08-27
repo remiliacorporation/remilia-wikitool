@@ -57,7 +57,7 @@ wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pag
 ```
 
 Maintainer-only lanes (`docs generate-reference`, `docs audit`, `dev`, `release`) require
-`cargo run --features maintainer -- ...` from a source checkout.
+`cargo run --package wikitool --features maintainer -- ...` from a source checkout.
 
 ## Retrieval model
 

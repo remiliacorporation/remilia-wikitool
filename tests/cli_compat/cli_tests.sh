@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # wikitool CLI regression tests
 # Usage:
-#   TIER=offline bash testbench/cli_tests.sh   # offline-only (default)
-#   TIER=live   bash testbench/cli_tests.sh   # offline + live (read-only API)
+#   TIER=offline bash tests/cli_compat/cli_tests.sh   # offline-only (default)
+#   TIER=live   bash tests/cli_compat/cli_tests.sh   # offline + live (read-only API)
 #
 # Run from: tools/wikitool/
 set -euo pipefail
@@ -10,7 +10,7 @@ set -euo pipefail
 TIER="${TIER:-offline}"
 KNOWLEDGE_DOCS_PROFILE="${KNOWLEDGE_DOCS_PROFILE:-mw-1.44-authoring}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
 WIKITOOL_RAW="${WIKITOOL:-}"
 WIKITOOL_MAINTAINER_RAW="${WIKITOOL_MAINTAINER:-}"
@@ -74,8 +74,8 @@ resolve_wikitool_cmd() {
     # A distro Cargo may be older than the workspace's declared Rust edition,
     # while the surrounding Windows checkout is already built with cargo.exe.
     if command -v cargo.exe > /dev/null 2>&1; then
-        WIKITOOL_CMD=(cargo.exe run --quiet --)
-        WIKITOOL_MAINTAINER_CMD=(cargo.exe run --quiet --features maintainer --)
+        WIKITOOL_CMD=(cargo.exe run --quiet --package wikitool --)
+        WIKITOOL_MAINTAINER_CMD=(cargo.exe run --quiet --package wikitool --features maintainer --)
         WIKITOOL_PATH_MODE="windows"
         return
     fi
@@ -83,8 +83,8 @@ resolve_wikitool_cmd() {
     if command -v cargo > /dev/null 2>&1; then
         local cargo_path
         cargo_path=$(command -v cargo)
-        WIKITOOL_CMD=(cargo run --quiet --)
-        WIKITOOL_MAINTAINER_CMD=(cargo run --quiet --features maintainer --)
+        WIKITOOL_CMD=(cargo run --quiet --package wikitool --)
+        WIKITOOL_MAINTAINER_CMD=(cargo run --quiet --package wikitool --features maintainer --)
         if [[ "$cargo_path" == *.exe ]]; then
             WIKITOOL_PATH_MODE="windows"
         else
@@ -723,7 +723,7 @@ fi
 # --- independent contextmink setup ---
 section "contextmink setup-project"
 REAL_PACK=""
-for candidate in "$SCRIPT_DIR/../dist/contextmink-dist"/*/; do
+for candidate in "$REPO_ROOT/dist/contextmink-dist"/*/; do
     if [ -f "$candidate/manifest.json" ]; then
         REAL_PACK="$candidate"
         break
@@ -804,7 +804,11 @@ if has_maintainer_surface; then
     if [ -f "$AI_PACK_OUT/manifest.json" ] && [ -f "$AI_PACK_OUT/CLAUDE.md" ] \
         && [ -d "$AI_PACK_OUT/.claude/skills" ] && [ -d "$AI_PACK_OUT/codex_skills" ] \
         && [ -d "$AI_PACK_OUT/integration" ] && [ -f "$AI_PACK_OUT/site_adapter/generic.toml" ] \
-        && [ ! -e "$AI_PACK_OUT/SETUP.md" ]; then
+        && [ -f "$AI_PACK_OUT/codex_skills/wiki-writing/SKILL.md" ] \
+        && [ -f "$AI_PACK_OUT/codex_skills/prose-review/SKILL.md" ] \
+        && [ -f "$AI_PACK_OUT/codex_skills/wiki-interview/SKILL.md" ] \
+        && [ -f "$AI_PACK_OUT/codex_skills/wikitool-operator/SKILL.md" ] \
+        && [ ! -e "$AI_PACK_OUT/writing_context" ] && [ ! -e "$AI_PACK_OUT/SETUP.md" ]; then
         pass "release build-ai-pack stages the packaged AI companion"
     else
         fail "release build-ai-pack stages the packaged AI companion (got: ${OUTPUT:0:300})"
@@ -824,6 +828,11 @@ elif [ -n "$LOCAL_BINARY" ]; then
     if [ -f "$RELEASE_OUT/CLAUDE.md" ] && [ -f "$RELEASE_OUT/README.md" ] \
         && [ -d "$RELEASE_OUT/codex_skills" ] && [ -d "$RELEASE_OUT/integration" ] \
         && [ -f "$RELEASE_OUT/site_adapter/generic.toml" ] && [ ! -e "$RELEASE_OUT/SETUP.md" ] \
+        && [ -f "$RELEASE_OUT/codex_skills/wiki-writing/SKILL.md" ] \
+        && [ -f "$RELEASE_OUT/codex_skills/prose-review/SKILL.md" ] \
+        && [ -f "$RELEASE_OUT/codex_skills/wiki-interview/SKILL.md" ] \
+        && [ -f "$RELEASE_OUT/codex_skills/wikitool-operator/SKILL.md" ] \
+        && [ ! -e "$RELEASE_OUT/writing_context" ] \
         && { [ -f "$RELEASE_OUT/wikitool" ] || [ -f "$RELEASE_OUT/wikitool.exe" ]; }; then
         pass "release package stages a distributable bundle"
     else

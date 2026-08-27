@@ -308,9 +308,9 @@ is explicitly enabled. Packaged end-user binaries do not include them, and they 
 `wikitool --help` output and the generated reference.
 
 ```bash
-cargo run --features maintainer -- release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin
-cargo run --features maintainer -- release build-matrix --targets x86_64-unknown-linux-gnu --unversioned-names
-cargo run --features maintainer -- release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
+cargo run --package wikitool --features maintainer -- release build-matrix --targets x86_64-pc-windows-msvc,x86_64-unknown-linux-gnu,x86_64-apple-darwin
+cargo run --package wikitool --features maintainer -- release build-matrix --targets x86_64-unknown-linux-gnu --unversioned-names
+cargo run --package wikitool --features maintainer -- release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
 ```
 
 The public guidance and canonical skills always remain target-neutral. With

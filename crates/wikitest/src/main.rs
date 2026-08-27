@@ -272,6 +272,7 @@ fn execute(cli: Cli) -> Result<u8> {
             let path = resolve_manifest(&scenario, &catalogs, "scenario")?;
             let options = run_options(&cli, &repository, &catalogs)?;
             let run = run_scenario(&path, &options)?;
+            require_verified_receipt(&run.receipt_path, &repository)?;
             let value = serde_json::to_value(&run.receipt)?;
             render_value(cli.format, &value, || {
                 format!(
@@ -288,6 +289,7 @@ fn execute(cli: Cli) -> Result<u8> {
             let path = resolve_manifest(&suite, &catalogs, "suite")?;
             let options = run_options(&cli, &repository, &catalogs)?;
             let run = run_suite(&path, &options, require_all)?;
+            require_verified_receipt(&run.receipt_path, &repository)?;
             let value = serde_json::to_value(&run.receipt)?;
             render_value(cli.format, &value, || {
                 format!(
@@ -328,6 +330,7 @@ fn execute(cli: Cli) -> Result<u8> {
                 ProseCommand::Prepare { assignment } => {
                     let path = resolve_manifest(&assignment, &catalogs, "prose_assignment")?;
                     let prepared = prepare_assignment(&path, &options)?;
+                    require_verified_receipt(&prepared.receipt_path, &repository)?;
                     let value = serde_json::to_value(&prepared.receipt)?;
                     render_value(cli.format, &value, || {
                         format!(
@@ -344,6 +347,7 @@ fn execute(cli: Cli) -> Result<u8> {
                 ProseCommand::PrepareSuite { suite } => {
                     let path = resolve_manifest(&suite, &catalogs, "prose_suite")?;
                     let prepared = prepare_prose_suite(&path, &options)?;
+                    require_verified_receipt(&prepared.receipt_path, &repository)?;
                     let value = serde_json::to_value(&prepared.receipt)?;
                     render_value(cli.format, &value, || {
                         let mut lines = vec![format!(
@@ -364,7 +368,9 @@ fn execute(cli: Cli) -> Result<u8> {
                     Ok(0)
                 }
                 ProseCommand::SubmitAuthor { run, submission } => {
+                    require_verified_receipt(&prose_receipt_candidate(&run), &repository)?;
                     let prepared = submit_author(&run, &submission, &options)?;
+                    require_verified_receipt(&prepared.receipt_path, &repository)?;
                     let value = serde_json::to_value(&prepared.receipt)?;
                     render_value(cli.format, &value, || {
                         format!(
@@ -379,7 +385,9 @@ fn execute(cli: Cli) -> Result<u8> {
                     Ok(0)
                 }
                 ProseCommand::SubmitReview { run, submission } => {
-                    let prepared = submit_review(&run, &submission)?;
+                    require_verified_receipt(&prose_receipt_candidate(&run), &repository)?;
+                    let prepared = submit_review(&run, &submission, &options)?;
+                    require_verified_receipt(&prepared.receipt_path, &repository)?;
                     let oracle = prepared
                         .receipt
                         .review
@@ -405,6 +413,34 @@ fn execute(cli: Cli) -> Result<u8> {
             }
         }
     }
+}
+
+fn prose_receipt_candidate(run: &Path) -> PathBuf {
+    if run.is_dir() {
+        run.join("receipt.json")
+    } else {
+        run.to_path_buf()
+    }
+}
+
+fn require_verified_receipt(receipt_path: &Path, repository: &Path) -> Result<()> {
+    let inspection = inspect_receipt(receipt_path, repository)?;
+    if inspection.verified {
+        return Ok(());
+    }
+
+    let failed = inspection
+        .checks
+        .iter()
+        .filter(|check| !check.passed)
+        .map(|check| format!("{}: {}", check.name, check.detail))
+        .collect::<Vec<_>>()
+        .join("; ");
+    bail!(
+        "Wikitest wrote an unverifiable receipt at {}: {}",
+        portable(receipt_path),
+        failed
+    );
 }
 
 fn prose_options(cli: &Cli, repository: &Path, catalogs: &[PathBuf]) -> Result<ProseOptions> {

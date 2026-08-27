@@ -105,7 +105,9 @@ fn audit_reference(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     let ok = matches!((&actual, &expected), (Ok(left), Ok(right)) if normalize_newlines(left) == normalize_newlines(right));
     let message = match (actual, expected) {
         (Ok(_), Ok(_)) if ok => "generated CLI reference is current".to_string(),
-        (Ok(_), Ok(_)) => "generated CLI reference is stale; run `cargo run --features maintainer -- docs generate-reference`".to_string(),
+        (Ok(_), Ok(_)) => {
+            "generated CLI reference is stale; run `cargo run --package wikitool --features maintainer -- docs generate-reference`".to_string()
+        }
         (Err(error), _) => format!("failed to read generated reference: {error}"),
         (_, Err(error)) => format!("failed to render generated reference: {error}"),
     };

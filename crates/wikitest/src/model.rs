@@ -6,8 +6,8 @@ use serde_json::Value;
 
 pub const SCENARIO_SCHEMA: &str = "wikitest.scenario.v1";
 pub const SUITE_SCHEMA: &str = "wikitest.suite.v1";
-pub const RECEIPT_SCHEMA: &str = "wikitest.run-receipt.v1";
-pub const SUITE_RECEIPT_SCHEMA: &str = "wikitest.suite-receipt.v1";
+pub const RECEIPT_SCHEMA: &str = "wikitest.run-receipt.v2";
+pub const SUITE_RECEIPT_SCHEMA: &str = "wikitest.suite-receipt.v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -177,6 +177,7 @@ pub enum RunStatus {
 pub struct RunReceipt {
     pub schema: String,
     pub run_id: String,
+    pub driver: ToolIdentity,
     pub scenario: ScenarioIdentity,
     pub tool: ToolIdentity,
     pub status: RunStatus,
@@ -197,6 +198,7 @@ pub struct RunReceipt {
 pub struct SuiteReceipt {
     pub schema: String,
     pub run_id: String,
+    pub driver: ToolIdentity,
     pub suite: SuiteIdentity,
     pub status: RunStatus,
     pub require_all: bool,

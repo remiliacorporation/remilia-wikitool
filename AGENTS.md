@@ -59,7 +59,8 @@ scoped here.
 - Run `cargo clippy --workspace --all-targets -- -D warnings` for maintainer-facing cleanup or
   release-adjacent changes.
 - For CLI contract changes, run the relevant command help and regenerate
-  `docs/wikitool/reference.md` with `cargo run --features maintainer -- docs generate-reference`.
+  `docs/wikitool/reference.md` with
+  `cargo run --package wikitool --features maintainer -- docs generate-reference`.
 
 ## Bounded Output
 

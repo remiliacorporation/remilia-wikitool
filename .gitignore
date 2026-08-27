@@ -19,7 +19,7 @@ ai-pack/docs-bundle-*.json
 
 # Test coverage
 coverage/
-testbench/.tmp
+tests/cli_compat/.tmp
 
 # Build
 dist/

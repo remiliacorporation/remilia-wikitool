@@ -129,31 +129,16 @@ fn inspect_run(path: &Path, repository: &Path, receipt: RunReceipt) -> Result<Re
             checks.push(verify_output(root, output, "stderr"));
         }
     }
-    let tool_path = {
-        let candidate = PathBuf::from(&receipt.tool.locator);
-        if candidate.is_absolute() {
-            candidate
-        } else {
-            repository.join(candidate)
-        }
-    };
-    checks.push(match sha256_file(&tool_path) {
-        Ok((digest, _)) => InspectionCheck {
-            name: "tool_identity".to_owned(),
-            passed: digest == receipt.tool.sha256,
-            detail: format!(
-                "expected {}, observed {} at {}",
-                receipt.tool.sha256,
-                digest,
-                tool_path.display()
-            ),
-        },
-        Err(error) => InspectionCheck {
-            name: "tool_identity".to_owned(),
-            passed: false,
-            detail: format!("{error:#}"),
-        },
-    });
+    checks.push(binary_identity_check(
+        repository,
+        &receipt.driver,
+        "driver_identity",
+    ));
+    checks.push(binary_identity_check(
+        repository,
+        &receipt.tool,
+        "tool_identity",
+    ));
     let observed_truncation = receipt.steps.iter().any(|step| {
         step.stdout.as_ref().is_some_and(|output| output.truncated)
             || step.stderr.as_ref().is_some_and(|output| output.truncated)
@@ -364,6 +349,11 @@ fn inspect_suite(
             receipt.complete
         ),
     });
+    checks.push(binary_identity_check(
+        repository,
+        &receipt.driver,
+        "driver_identity",
+    ));
     let verified = checks.iter().all(|check| check.passed);
     Ok(ReceiptInspection {
         schema: INSPECTION_SCHEMA.to_owned(),
@@ -697,7 +687,16 @@ fn inspect_prose(
             receipt.status, expected_status, receipt.evaluation_complete
         ),
     });
-    checks.push(tool_identity_check(repository, &receipt.tool));
+    checks.push(binary_identity_check(
+        repository,
+        &receipt.driver,
+        "driver_identity",
+    ));
+    checks.push(binary_identity_check(
+        repository,
+        &receipt.tool,
+        "tool_identity",
+    ));
     let verified = checks.iter().all(|check| check.passed);
     Ok(ReceiptInspection {
         schema: INSPECTION_SCHEMA.to_owned(),
@@ -795,6 +794,11 @@ fn inspect_prose_suite(
             required, recorded, observed_coverage
         ),
     });
+    checks.push(binary_identity_check(
+        repository,
+        &receipt.driver,
+        "driver_identity",
+    ));
     let verified = checks.iter().all(|check| check.passed);
     Ok(ReceiptInspection {
         schema: INSPECTION_SCHEMA.to_owned(),
@@ -805,8 +809,12 @@ fn inspect_prose_suite(
     })
 }
 
-fn tool_identity_check(repository: &Path, tool: &crate::model::ToolIdentity) -> InspectionCheck {
-    let candidate = PathBuf::from(&tool.locator);
+fn binary_identity_check(
+    repository: &Path,
+    identity: &crate::model::ToolIdentity,
+    name: &str,
+) -> InspectionCheck {
+    let candidate = PathBuf::from(&identity.locator);
     let path = if candidate.is_absolute() {
         candidate
     } else {
@@ -814,16 +822,17 @@ fn tool_identity_check(repository: &Path, tool: &crate::model::ToolIdentity) -> 
     };
     match sha256_file(&path) {
         Ok((digest, _)) => InspectionCheck {
-            name: "tool_identity".to_owned(),
-            passed: digest == tool.sha256,
+            name: name.to_owned(),
+            passed: digest == identity.sha256,
             detail: format!(
-                "expected {}, observed {digest} at {}",
-                tool.sha256,
+                "expected {} ({}), observed {digest} at {}",
+                identity.sha256,
+                identity.version,
                 path.display()
             ),
         },
         Err(error) => InspectionCheck {
-            name: "tool_identity".to_owned(),
+            name: name.to_owned(),
             passed: false,
             detail: format!("{error:#}"),
         },
