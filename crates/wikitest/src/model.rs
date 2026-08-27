@@ -40,6 +40,7 @@ pub struct ScenarioManifest {
     pub kind: ScenarioKind,
     pub environment: ScenarioEnvironment,
     pub timeout_ms: u64,
+    pub coverage: Vec<String>,
     #[serde(default)]
     pub requirements: Vec<Requirement>,
     pub steps: Vec<ScenarioStep>,
@@ -51,6 +52,7 @@ pub struct SuiteManifest {
     pub schema: String,
     pub id: String,
     pub title: String,
+    pub required_coverage: Vec<String>,
     pub scenarios: Vec<String>,
 }
 
@@ -70,8 +72,7 @@ pub enum ScenarioStep {
         id: String,
         source: String,
         target: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        sha256: Option<String>,
+        sha256: String,
     },
     Command {
         id: String,
@@ -109,11 +110,35 @@ pub struct CommandExpectation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OutputAssertion {
-    Contains { value: String },
-    NotContains { value: String },
-    JsonPointerExists { pointer: String },
-    JsonPointerEquals { pointer: String, value: Value },
-    JsonArrayContains { pointer: String, value: Value },
+    Contains {
+        value: String,
+    },
+    NotContains {
+        value: String,
+    },
+    JsonPointerExists {
+        pointer: String,
+    },
+    JsonPointerEquals {
+        pointer: String,
+        value: Value,
+    },
+    JsonArrayContains {
+        pointer: String,
+        value: Value,
+    },
+    JsonArrayItemPointerEquals {
+        pointer: String,
+        item_pointer: String,
+        value: Value,
+    },
+    JsonPointerU64AtLeast {
+        pointer: String,
+        value: u64,
+    },
+    JsonPointerNonBlank {
+        pointer: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +204,8 @@ pub struct SuiteReceipt {
     pub finished_at_unix_ms: u128,
     pub duration_ms: u128,
     pub complete: bool,
+    pub required_coverage: Vec<String>,
+    pub observed_coverage: Vec<String>,
     pub runs: Vec<SuiteRunEntry>,
 }
 
@@ -194,7 +221,7 @@ pub struct SuiteIdentity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SuiteRunEntry {
-    pub scenario_locator: String,
+    pub scenario: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scenario_id: Option<String>,
     pub status: RunStatus,
@@ -213,6 +240,7 @@ pub struct ScenarioIdentity {
     pub title: String,
     pub kind: ScenarioKind,
     pub environment: ScenarioEnvironment,
+    pub coverage: Vec<String>,
     pub locator: String,
     pub sha256: String,
 }
@@ -296,6 +324,7 @@ impl ScenarioManifest {
         non_blank(&self.title, "scenario.title")?;
         non_blank(&self.description, "scenario.description")?;
         bounded_timeout(self.timeout_ms, "scenario.timeout_ms")?;
+        validate_unique_keys(&self.coverage, "scenario.coverage")?;
         if self.steps.is_empty() || self.steps.len() > 256 {
             bail!("scenario.steps must contain 1-256 steps");
         }
@@ -335,9 +364,7 @@ impl ScenarioManifest {
                 }
                 validate_relative_path(input, &format!("{source}.source"))?;
                 validate_relative_path(target, &format!("{source}.target"))?;
-                if let Some(digest) = sha256 {
-                    validate_sha256(digest, &format!("{source}.sha256"))?;
-                }
+                validate_sha256(sha256, &format!("{source}.sha256"))?;
             }
             ScenarioStep::Command {
                 argv,
@@ -386,14 +413,15 @@ impl SuiteManifest {
         }
         validate_key(&self.id, "suite.id")?;
         non_blank(&self.title, "suite.title")?;
+        validate_unique_keys(&self.required_coverage, "suite.required_coverage")?;
         if self.scenarios.is_empty() || self.scenarios.len() > 256 {
             bail!("suite.scenarios must contain 1-256 locators");
         }
         let mut unique = BTreeSet::new();
-        for (index, locator) in self.scenarios.iter().enumerate() {
-            validate_relative_path(locator, &format!("suite.scenarios[{index}]"))?;
-            if !unique.insert(locator) {
-                bail!("suite repeats scenario locator '{locator}'");
+        for (index, scenario) in self.scenarios.iter().enumerate() {
+            validate_key(scenario, &format!("suite.scenarios[{index}]"))?;
+            if !unique.insert(scenario) {
+                bail!("suite repeats scenario id '{scenario}'");
             }
         }
         Ok(())
@@ -429,9 +457,22 @@ fn validate_output_assertion(assertion: &OutputAssertion, source: &str) -> Resul
         }
         OutputAssertion::JsonPointerExists { pointer }
         | OutputAssertion::JsonPointerEquals { pointer, .. }
-        | OutputAssertion::JsonArrayContains { pointer, .. } => {
+        | OutputAssertion::JsonArrayContains { pointer, .. }
+        | OutputAssertion::JsonPointerU64AtLeast { pointer, .. }
+        | OutputAssertion::JsonPointerNonBlank { pointer } => {
             if !pointer.is_empty() && !pointer.starts_with('/') {
                 bail!("{source}.pointer must be empty or start with '/'");
+            }
+        }
+        OutputAssertion::JsonArrayItemPointerEquals {
+            pointer,
+            item_pointer,
+            ..
+        } => {
+            for (field, value) in [("pointer", pointer), ("item_pointer", item_pointer)] {
+                if !value.is_empty() && !value.starts_with('/') {
+                    bail!("{source}.{field} must be empty or start with '/'");
+                }
             }
         }
     }
@@ -494,7 +535,10 @@ fn validate_read_only_argv(argv: &[String]) -> Result<()> {
         [command, ..] if command == "config" || command == "status" => true,
         [command, subcommand, ..] if command == "db" && subcommand == "stats" => true,
         [command, subcommand, ..]
-            if command == "knowledge" && (subcommand == "status" || subcommand == "inspect") =>
+            if command == "knowledge"
+                && (subcommand == "status"
+                    || subcommand == "inspect"
+                    || subcommand == "article-start") =>
         {
             true
         }
@@ -547,6 +591,20 @@ fn validate_sha256(value: &str, source: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_unique_keys(values: &[String], source: &str) -> Result<()> {
+    if values.is_empty() || values.len() > 256 {
+        bail!("{source} must contain 1-256 values");
+    }
+    let mut unique = BTreeSet::new();
+    for (index, value) in values.iter().enumerate() {
+        validate_key(value, &format!("{source}[{index}]"))?;
+        if !unique.insert(value) {
+            bail!("{source} repeats '{value}'");
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -561,6 +619,7 @@ mod tests {
             "kind": "mechanical",
             "environment": "isolated",
             "timeout_ms": 10_000,
+            "coverage": ["public-cli"],
             "steps": [{
                 "action": "command",
                 "id": "status",
@@ -603,7 +662,7 @@ mod tests {
             id: "escape".into(),
             source: "../secret".into(),
             target: "wiki_content/Main/Secret.wiki".into(),
-            sha256: None,
+            sha256: "0".repeat(64),
         };
         assert!(value.validate().is_err());
     }
@@ -623,5 +682,24 @@ mod tests {
             "json".into(),
         ];
         value.validate().expect("read-only knowledge command");
+    }
+
+    #[test]
+    fn host_mode_accepts_article_start() {
+        let mut value = scenario();
+        value.environment = ScenarioEnvironment::HostReadOnly;
+        let ScenarioStep::Command { argv, .. } = &mut value.steps[0] else {
+            panic!("command step");
+        };
+        *argv = vec![
+            "knowledge".into(),
+            "article-start".into(),
+            "Remilia Corporation".into(),
+            "--intent".into(),
+            "audit".into(),
+            "--format".into(),
+            "json".into(),
+        ];
+        value.validate().expect("read-only article start");
     }
 }

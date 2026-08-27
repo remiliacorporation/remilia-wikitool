@@ -215,7 +215,7 @@ fn execute(cli: Cli) -> Result<u8> {
         } => {
             validate_output_budget(cli.max_output_bytes)?;
             let path = resolve_manifest(&scenario, &catalogs, "scenario")?;
-            let options = run_options(&cli, &repository)?;
+            let options = run_options(&cli, &repository, &catalogs)?;
             let run = run_scenario(&path, &options)?;
             let value = serde_json::to_value(&run.receipt)?;
             render_value(cli.format, &value, || {
@@ -231,7 +231,7 @@ fn execute(cli: Cli) -> Result<u8> {
         Command::Suite { suite, require_all } => {
             validate_output_budget(cli.max_output_bytes)?;
             let path = resolve_manifest(&suite, &catalogs, "suite")?;
-            let options = run_options(&cli, &repository)?;
+            let options = run_options(&cli, &repository, &catalogs)?;
             let run = run_suite(&path, &options, require_all)?;
             let value = serde_json::to_value(&run.receipt)?;
             render_value(cli.format, &value, || {
@@ -269,7 +269,7 @@ fn execute(cli: Cli) -> Result<u8> {
     }
 }
 
-fn run_options(cli: &Cli, repository: &Path) -> Result<RunOptions> {
+fn run_options(cli: &Cli, repository: &Path, catalogs: &[PathBuf]) -> Result<RunOptions> {
     let artifacts_root = cli
         .artifacts
         .clone()
@@ -277,6 +277,7 @@ fn run_options(cli: &Cli, repository: &Path) -> Result<RunOptions> {
     let wikitool = resolve_wikitool(cli.wikitool.as_deref(), repository)?;
     let mut options = RunOptions::new(repository.to_path_buf(), artifacts_root, wikitool);
     options.host_root = cli.host_root.clone();
+    options.catalogs = catalogs.to_vec();
     options.maximum_output_bytes = cli.max_output_bytes;
     Ok(options)
 }

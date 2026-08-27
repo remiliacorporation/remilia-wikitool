@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -10,7 +10,7 @@ use crate::artifact::{
     atomic_write, atomic_write_json, portable, relative_locator, resolve_existing_plain_file,
     resolve_output_path, sha256_bytes, sha256_file, unix_ms,
 };
-use crate::catalog::{Manifest, load_manifest};
+use crate::catalog::{Manifest, load_manifest, resolve_manifest};
 use crate::model::{
     ArtifactIdentity, AssertionReceipt, FileAssertion, MissingDisposition, OutputArtifact,
     OutputAssertion, RECEIPT_SCHEMA, Requirement, RequirementReceipt, RunReceipt, RunStatus,
@@ -28,16 +28,19 @@ pub struct RunOptions {
     pub artifacts_root: PathBuf,
     pub host_root: Option<PathBuf>,
     pub wikitool: PathBuf,
+    pub catalogs: Vec<PathBuf>,
     pub maximum_output_bytes: usize,
 }
 
 impl RunOptions {
     pub fn new(repository: PathBuf, artifacts_root: PathBuf, wikitool: PathBuf) -> Self {
+        let default_catalog = repository.join("wikitest");
         Self {
             repository,
             artifacts_root,
             host_root: None,
             wikitool,
+            catalogs: vec![default_catalog],
             maximum_output_bytes: DEFAULT_OUTPUT_BUDGET,
         }
     }
@@ -155,6 +158,7 @@ fn run_loaded_scenario(
             title: scenario.title.clone(),
             kind: scenario.kind,
             environment: scenario.environment,
+            coverage: scenario.coverage.clone(),
             locator: scenario_locator,
             sha256: scenario_sha256,
         },
@@ -218,12 +222,14 @@ fn run_loaded_scenario(
         }
         let step_receipt = match step {
             ScenarioStep::Copy { id, target, .. } => run_copy_step(
+                index,
                 id,
                 target,
                 fixture_snapshots
                     .get(id)
                     .with_context(|| format!("missing snapshotted fixture for step '{id}'"))?,
                 &workspace,
+                &steps_directory,
                 &run_directory,
             ),
             ScenarioStep::Command {
@@ -345,7 +351,28 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
         .strip_prefix(&options.repository)
         .map(portable)
         .unwrap_or_else(|_| portable(path));
-    let suite_directory = path.parent().context("suite path has no parent")?;
+    let mut observed_coverage = BTreeSet::new();
+    for scenario_id in &suite.scenarios {
+        let scenario_path = resolve_manifest(scenario_id, &options.catalogs, "scenario")?;
+        let (manifest, _) = load_manifest(&scenario_path)?;
+        let Manifest::Scenario(scenario) = manifest else {
+            bail!("suite entry '{scenario_id}' does not identify a scenario");
+        };
+        observed_coverage.extend(scenario.coverage);
+    }
+    let missing_coverage = suite
+        .required_coverage
+        .iter()
+        .filter(|coverage| !observed_coverage.contains(coverage.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing_coverage.is_empty() {
+        bail!(
+            "suite '{}' is missing required coverage {:?}",
+            suite.id,
+            missing_coverage
+        );
+    }
     let mut receipt = SuiteReceipt {
         schema: SUITE_RECEIPT_SCHEMA.to_owned(),
         run_id,
@@ -361,18 +388,20 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
         finished_at_unix_ms: started_at,
         duration_ms: 0,
         complete: false,
+        required_coverage: suite.required_coverage,
+        observed_coverage: observed_coverage.into_iter().collect(),
         runs: Vec::new(),
     };
     atomic_write_json(&receipt_path, &receipt)?;
     let mut all_child_complete = true;
 
-    for locator in suite.scenarios {
-        let scenario_path = match resolve_existing_plain_file(suite_directory, &locator) {
+    for scenario in suite.scenarios {
+        let scenario_path = match resolve_manifest(&scenario, &options.catalogs, "scenario") {
             Ok(path) => path,
             Err(error) => {
                 all_child_complete = false;
                 receipt.runs.push(SuiteRunEntry {
-                    scenario_locator: locator,
+                    scenario,
                     scenario_id: None,
                     status: RunStatus::Error,
                     receipt_locator: None,
@@ -388,7 +417,7 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
                 all_child_complete &= run.receipt.complete;
                 let (digest, _) = sha256_file(&run.receipt_path)?;
                 receipt.runs.push(SuiteRunEntry {
-                    scenario_locator: locator,
+                    scenario,
                     scenario_id: Some(run.receipt.scenario.id),
                     status: run.receipt.status,
                     receipt_locator: Some(relative_locator(
@@ -402,7 +431,7 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
             Err(error) => {
                 all_child_complete = false;
                 receipt.runs.push(SuiteRunEntry {
-                    scenario_locator: locator,
+                    scenario,
                     scenario_id: None,
                     status: RunStatus::Error,
                     receipt_locator: None,
@@ -469,10 +498,8 @@ fn snapshot_copy_inputs(
         let source_path = resolve_existing_plain_file(scenario_directory, source)?;
         let bytes = fs::read(&source_path)?;
         let digest = sha256_bytes(&bytes);
-        if let Some(expected) = sha256
-            && *expected != digest
-        {
-            bail!("fixture digest mismatch for step '{id}': got {digest}, expected {expected}");
+        if *sha256 != digest {
+            bail!("fixture digest mismatch for step '{id}': got {digest}, expected {sha256}");
         }
         let file_name = source_path
             .file_name()
@@ -491,16 +518,20 @@ fn snapshot_copy_inputs(
 }
 
 fn run_copy_step(
+    index: usize,
     id: &str,
     target: &str,
     snapshot: &Path,
     workspace: &Path,
+    steps_directory: &Path,
     run_directory: &Path,
 ) -> Result<StepReceipt> {
     let started = Instant::now();
     let destination = resolve_output_path(workspace, target)?;
     let bytes = fs::read(snapshot)?;
     atomic_write(&destination, &bytes)?;
+    let retained_output = steps_directory.join(format!("{index:03}-{id}.copied"));
+    atomic_write(&retained_output, &bytes)?;
     let digest = sha256_bytes(&bytes);
     Ok(StepReceipt {
         id: id.to_owned(),
@@ -519,7 +550,7 @@ fn run_copy_step(
             detail: digest.clone(),
         }],
         copied: Some(ArtifactIdentity {
-            locator: relative_locator(run_directory, &destination)?,
+            locator: relative_locator(run_directory, &retained_output)?,
             sha256: digest,
             bytes: bytes.len() as u64,
         }),
@@ -724,6 +755,59 @@ fn evaluate_output_assertions(
                     detail: format!(
                         "pointer {pointer:?}: expected array member {value}, observed {}",
                         observed.map_or_else(|| "<missing>".to_owned(), Value::to_string)
+                    ),
+                }
+            }
+            OutputAssertion::JsonArrayItemPointerEquals {
+                pointer,
+                item_pointer,
+                value,
+            } => {
+                let observed = parsed.as_ref().and_then(|document| document.pointer(pointer));
+                let matched = observed
+                    .and_then(Value::as_array)
+                    .is_some_and(|items| {
+                        items
+                            .iter()
+                            .any(|item| item.pointer(item_pointer) == Some(value))
+                    });
+                AssertionReceipt {
+                    target: target.to_owned(),
+                    assertion: "json_array_item_pointer_equals".to_owned(),
+                    passed: matched,
+                    detail: format!(
+                        "pointer {pointer:?}: expected an item whose {item_pointer:?} equals {value}, observed {} item(s)",
+                        observed.and_then(Value::as_array).map_or(0, Vec::len)
+                    ),
+                }
+            }
+            OutputAssertion::JsonPointerU64AtLeast { pointer, value } => {
+                let observed = parsed
+                    .as_ref()
+                    .and_then(|document| document.pointer(pointer))
+                    .and_then(Value::as_u64);
+                AssertionReceipt {
+                    target: target.to_owned(),
+                    assertion: "json_pointer_u64_at_least".to_owned(),
+                    passed: observed.is_some_and(|observed| observed >= *value),
+                    detail: format!(
+                        "pointer {pointer:?}: expected at least {value}, observed {}",
+                        observed.map_or_else(|| "<missing or non-u64>".to_owned(), |value| value.to_string())
+                    ),
+                }
+            }
+            OutputAssertion::JsonPointerNonBlank { pointer } => {
+                let observed = parsed
+                    .as_ref()
+                    .and_then(|document| document.pointer(pointer))
+                    .and_then(Value::as_str);
+                AssertionReceipt {
+                    target: target.to_owned(),
+                    assertion: "json_pointer_non_blank".to_owned(),
+                    passed: observed.is_some_and(|value| !value.trim().is_empty()),
+                    detail: format!(
+                        "pointer {pointer:?}: observed {}",
+                        observed.map_or("<missing or non-string>", |value| value)
                     ),
                 }
             }

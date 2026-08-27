@@ -1,0 +1,245 @@
+{
+  "schema": "wikitest.scenario.v1",
+  "id": "mechanical-article-lifecycle",
+  "title": "Mechanical article lifecycle",
+  "description": "Exercises explicit adapter initialization, deterministic lint and safe fixes, the exact-content acceptance ledger, draft promotion, and stale-acceptance refusal in an isolated project.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    "project-initialization",
+    "site-adapter",
+    "article-lint",
+    "safe-fix",
+    "acceptance-ledger",
+    "draft-promotion",
+    "stale-acceptance"
+  ],
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-generic",
+      "argv": ["init", "--templates", "--no-network"],
+      "expect": {
+        "exit_code": 0,
+        "files": [
+          {"kind": "exists", "path": ".wikitool/config.toml"},
+          {"kind": "exists", "path": ".wikitool/parser-config.json"}
+        ]
+      }
+    },
+    {
+      "action": "copy",
+      "id": "install-adapter",
+      "source": "fixtures/profile.toml",
+      "target": "site-adapter/profile.toml",
+      "sha256": "e7c3b712e9be8de62f73217d1c2efdd740261ea08593e11e5ee1d2aee03b9a34"
+    },
+    {
+      "action": "command",
+      "id": "initialize-adapter",
+      "argv": [
+        "init",
+        "--templates",
+        "--no-network",
+        "--force",
+        "--adapter-path",
+        "site-adapter/profile.toml"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "files": [
+          {"kind": "contains", "path": ".wikitool/config.toml", "value": "site-adapter/profile.toml"}
+        ]
+      }
+    },
+    {
+      "action": "copy",
+      "id": "install-quality-template",
+      "source": "fixtures/Template_Article_quality.wiki",
+      "target": "templates/misc/Template_Article_quality.wiki",
+      "sha256": "84f476b30356ea388fb23bf5cc1dcf9f14fc46de490ab6b08d5d0086a5c709ce"
+    },
+    {
+      "action": "copy",
+      "id": "install-reflist-template",
+      "source": "fixtures/Template_Reflist.wiki",
+      "target": "templates/misc/Template_Reflist.wiki",
+      "sha256": "2e8820c5d685d401b0c4554cdb5ac1c8093199a7b74f8089b873165ab5c9791d"
+    },
+    {
+      "action": "copy",
+      "id": "install-cite-template",
+      "source": "fixtures/Template_Cite_web.wiki",
+      "target": "templates/cite/Template_Cite_web.wiki",
+      "sha256": "071fa6569931cc731495d81ad19d58aa4868868c0137a2d3232553d672a67cbc"
+    },
+    {
+      "action": "copy",
+      "id": "install-broken-draft",
+      "source": "fixtures/broken-draft.wiki",
+      "target": ".wikitool/drafts/Example_Draft.wiki",
+      "sha256": "e99b5b22fe31c693f4803733286b960887542b01d4370afbbf1b9c3049cd5419"
+    },
+    {
+      "action": "command",
+      "id": "lint-broken-draft",
+      "argv": [
+        "article",
+        "lint",
+        ".wikitool/drafts/Example_Draft.wiki",
+        "--title",
+        "Example Draft",
+        "--strict",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 1,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_lint_v2"},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/errors", "value": 1},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/issues", "item_pointer": "/rule_id", "value": "structure.markdown_heading"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/issues", "item_pointer": "/rule_id", "value": "structure.require_reflist"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/issues", "item_pointer": "/rule_id", "value": "citation.after_punctuation"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/issues", "item_pointer": "/rule_id", "value": "citation.source_review"}
+        ],
+        "stderr": [
+          {"kind": "contains", "value": "article lint found"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-safe-fixes",
+      "argv": [
+        "article",
+        "fix",
+        ".wikitool/drafts/Example_Draft.wiki",
+        "--title",
+        "Example Draft",
+        "--apply",
+        "safe",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_fix_v1"},
+          {"kind": "json_pointer_equals", "pointer": "/changed", "value": true},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/applied_fix_count", "value": 3},
+          {"kind": "json_pointer_equals", "pointer": "/remaining_report/errors", "value": 0}
+        ],
+        "files": [
+          {"kind": "contains", "path": ".wikitool/drafts/Example_Draft.wiki", "value": "== History =="},
+          {"kind": "contains", "path": ".wikitool/drafts/Example_Draft.wiki", "value": "{{Reflist}}"},
+          {"kind": "contains", "path": ".wikitool/drafts/Example_Draft.wiki", "value": "scenario.<ref>"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "lint-fixed-draft",
+      "argv": [
+        "article",
+        "lint",
+        ".wikitool/drafts/Example_Draft.wiki",
+        "--title",
+        "Example Draft",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/errors", "value": 0},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/issues", "item_pointer": "/rule_id", "value": "citation.source_review"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "record-fixture-acceptance",
+      "argv": [
+        "article",
+        "accept",
+        ".wikitool/drafts/Example_Draft.wiki",
+        "--title",
+        "Example Draft",
+        "--human-editor",
+        "Wikitest fixture identity",
+        "--prose-origin",
+        "agent-draft",
+        "--allow-warnings",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_accept_v2"},
+          {"kind": "json_pointer_equals", "pointer": "/decision", "value": "accepted_for_main_namespace_promotion"},
+          {"kind": "json_pointer_equals", "pointer": "/editor_identity_assurance", "value": "self_reported_unverified"},
+          {"kind": "json_pointer_equals", "pointer": "/warnings_explicitly_accepted", "value": true}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "promote-accepted-draft",
+      "argv": [
+        "article",
+        "promote",
+        ".wikitool/drafts/Example_Draft.wiki",
+        "--title",
+        "Example Draft",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_promote_v3"},
+          {"kind": "json_pointer_equals", "pointer": "/source_preserved", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/editor_identity_assurance", "value": "self_reported_unverified"}
+        ],
+        "files": [
+          {"kind": "exists", "path": "wiki_content/Main/Example_Draft.wiki"},
+          {"kind": "contains", "path": "wiki_content/Main/Example_Draft.wiki", "value": "fictional archive used for an isolated Wikitest scenario"}
+        ]
+      }
+    },
+    {
+      "action": "copy",
+      "id": "mutate-accepted-draft",
+      "source": "fixtures/mutated-draft.wiki",
+      "target": ".wikitool/drafts/Example_Draft.wiki",
+      "sha256": "7a92d59ec09df62dd45b0ec0547638c3f7e8e528382fb373c7beb5f327c3cc80"
+    },
+    {
+      "action": "command",
+      "id": "reject-stale-acceptance",
+      "argv": [
+        "article",
+        "promote",
+        ".wikitool/drafts/Example_Draft.wiki",
+        "--title",
+        "Example Draft",
+        "--overwrite",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 1,
+        "stderr": [
+          {"kind": "contains", "value": "changed after the recorded acceptance decision"}
+        ],
+        "files": [
+          {"kind": "contains", "path": "wiki_content/Main/Example_Draft.wiki", "value": "fictional archive used for an isolated Wikitest scenario"},
+          {"kind": "not_contains", "path": "wiki_content/Main/Example_Draft.wiki", "value": "deliberately changed"}
+        ]
+      }
+    }
+  ]
+}

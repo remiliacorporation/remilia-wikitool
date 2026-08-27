@@ -263,7 +263,7 @@ mod tests {
             let mut file = fs::File::create(path.join("scenario.json")).expect("manifest");
             write!(
                 file,
-                "{{\"schema\":\"{SCENARIO_SCHEMA}\",\"id\":\"same\",\"title\":\"Same\",\"description\":\"Same scenario.\",\"kind\":\"mechanical\",\"environment\":\"isolated\",\"timeout_ms\":1000,\"steps\":[{{\"action\":\"command\",\"id\":\"status\",\"argv\":[\"status\"],\"expect\":{{\"exit_code\":0}}}}]}}"
+                "{{\"schema\":\"{SCENARIO_SCHEMA}\",\"id\":\"same\",\"title\":\"Same\",\"description\":\"Same scenario.\",\"kind\":\"mechanical\",\"environment\":\"isolated\",\"timeout_ms\":1000,\"coverage\":[\"public-cli\"],\"steps\":[{{\"action\":\"command\",\"id\":\"status\",\"argv\":[\"status\"],\"expect\":{{\"exit_code\":0}}}}]}}"
             )
             .expect("write manifest");
         }

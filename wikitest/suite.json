@@ -1,0 +1,23 @@
+{
+  "schema": "wikitest.suite.v1",
+  "id": "core-dogfood",
+  "title": "Core deterministic Wikitool dogfood",
+  "required_coverage": [
+    "project-initialization",
+    "site-adapter",
+    "article-lint",
+    "safe-fix",
+    "acceptance-ledger",
+    "draft-promotion",
+    "stale-acceptance",
+    "content-index",
+    "wikitext-parsing",
+    "internal-links",
+    "chunk-retrieval",
+    "article-start"
+  ],
+  "scenarios": [
+    "mechanical-article-lifecycle",
+    "knowledge-indexed-retrieval"
+  ]
+}

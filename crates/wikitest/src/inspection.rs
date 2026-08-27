@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -6,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::artifact::{resolve_output_path, sha256_file};
 use crate::model::{
-    ArtifactIdentity, RECEIPT_SCHEMA, RunReceipt, RunStatus, SUITE_RECEIPT_SCHEMA, SuiteReceipt,
+    ArtifactIdentity, RECEIPT_SCHEMA, RunReceipt, RunStatus, SUITE_RECEIPT_SCHEMA,
+    ScenarioManifest, SuiteManifest, SuiteReceipt,
 };
 
 pub const INSPECTION_SCHEMA: &str = "wikitest.receipt-inspection.v1";
@@ -79,6 +81,23 @@ fn inspect_run(path: &Path, repository: &Path, receipt: RunReceipt) -> Result<Re
                 )
             },
         ),
+    });
+    let scenario_manifest = scenario_input.and_then(|artifact| {
+        resolve_output_path(root, &artifact.locator)
+            .ok()
+            .and_then(|path| fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<ScenarioManifest>(&bytes).ok())
+    });
+    checks.push(InspectionCheck {
+        name: "scenario_identity".to_owned(),
+        passed: scenario_manifest.as_ref().is_some_and(|manifest| {
+            manifest.id == receipt.scenario.id
+                && manifest.title == receipt.scenario.title
+                && manifest.kind == receipt.scenario.kind
+                && manifest.environment == receipt.scenario.environment
+                && manifest.coverage == receipt.scenario.coverage
+        }),
+        detail: "receipt identity must equal the retained strict scenario manifest".to_owned(),
     });
     for artifact in &receipt.inputs {
         checks.push(verify_artifact(root, artifact, "input"));
@@ -179,6 +198,9 @@ fn inspect_suite(
     let artifact_root = root.parent().context("suite run has no artifact root")?;
     let mut checks = Vec::new();
     let suite_input = root.join("inputs/suite.json");
+    let suite_manifest = fs::read(&suite_input)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SuiteManifest>(&bytes).ok());
     checks.push(match sha256_file(&suite_input) {
         Ok((digest, _)) => InspectionCheck {
             name: "suite_input_bound".to_owned(),
@@ -191,12 +213,22 @@ fn inspect_suite(
             detail: format!("{error:#}"),
         },
     });
+    checks.push(InspectionCheck {
+        name: "suite_identity".to_owned(),
+        passed: suite_manifest.as_ref().is_some_and(|manifest| {
+            manifest.id == receipt.suite.id
+                && manifest.title == receipt.suite.title
+                && manifest.required_coverage == receipt.required_coverage
+        }),
+        detail: "receipt identity must equal the retained strict suite manifest".to_owned(),
+    });
     let mut child_complete = true;
+    let mut observed_coverage = BTreeSet::new();
     for run in &receipt.runs {
         let Some(locator) = &run.receipt_locator else {
             child_complete = false;
             checks.push(InspectionCheck {
-                name: format!("child_receipt:{}", run.scenario_locator),
+                name: format!("child_receipt:{}", run.scenario),
                 passed: false,
                 detail: run
                     .error
@@ -210,7 +242,7 @@ fn inspect_suite(
             Err(error) => {
                 child_complete = false;
                 checks.push(InspectionCheck {
-                    name: format!("child_receipt:{}", run.scenario_locator),
+                    name: format!("child_receipt:{}", run.scenario),
                     passed: false,
                     detail: format!("{error:#}"),
                 });
@@ -230,9 +262,12 @@ fn inspect_suite(
                 let child_inspection = parsed
                     .as_ref()
                     .and_then(|child| inspect_run(&child_path, repository, child.clone()).ok());
+                if let Some(child) = &parsed {
+                    observed_coverage.extend(child.scenario.coverage.iter().cloned());
+                }
                 child_complete &= parsed.as_ref().is_some_and(|child| child.complete);
                 InspectionCheck {
-                    name: format!("child_receipt:{}", run.scenario_locator),
+                    name: format!("child_receipt:{}", run.scenario),
                     passed: Some(&digest) == run.receipt_sha256.as_ref()
                         && identity_matches
                         && child_inspection
@@ -250,7 +285,7 @@ fn inspect_suite(
             Err(error) => {
                 child_complete = false;
                 InspectionCheck {
-                    name: format!("child_receipt:{}", run.scenario_locator),
+                    name: format!("child_receipt:{}", run.scenario),
                     passed: false,
                     detail: format!("{error:#}"),
                 }
@@ -284,6 +319,25 @@ fn inspect_suite(
         detail: format!(
             "recorded {:?}, recomputed {:?}",
             receipt.status, expected_status
+        ),
+    });
+    let recorded_coverage = receipt
+        .observed_coverage
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let required_coverage = receipt
+        .required_coverage
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    checks.push(InspectionCheck {
+        name: "suite_coverage".to_owned(),
+        passed: recorded_coverage == observed_coverage
+            && required_coverage.is_subset(&observed_coverage),
+        detail: format!(
+            "required {:?}, recorded {:?}, observed {:?}",
+            required_coverage, recorded_coverage, observed_coverage
         ),
     });
     checks.push(InspectionCheck {

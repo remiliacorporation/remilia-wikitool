@@ -1,0 +1,8 @@
+{{SHORTDESC:Fictional archive used to exercise Wikitool}}
+{{Article quality|unverified}}
+
+## History
+
+'''Example Draft''' is a fictional archive used for an isolated Wikitest scenario<ref>{{Cite web|url=https://en.wikipedia.org/wiki/Archive|title=Archive}}</ref>.
+
+== References ==
