@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+use wikitool_core::profile::site_adapter_resource_paths;
 
 use crate::cli_support::{
-    copy_dir_recursive, copy_file, detect_host_context_root, format_flag, is_markdown_file,
-    normalize_path, paths_equivalent, reset_directory, resolve_repo_root,
+    copy_dir_recursive, copy_file, format_flag, is_markdown_file, normalize_path, reset_directory,
+    resolve_repo_root,
 };
 
 use super::ReleaseBuildAiPackArgs;
@@ -14,19 +15,13 @@ use super::ReleaseBuildAiPackArgs;
 #[derive(Debug)]
 pub(super) struct AiPackBuildResult {
     pub(super) output_dir: PathBuf,
-    host_context_included: bool,
     claude_rules_included: bool,
     claude_skills_included: bool,
-    writing_context_included: bool,
-    host_writing_context_included: bool,
+    integration_included: bool,
+    generic_site_adapter_included: bool,
+    host_site_adapter_included: bool,
     codex_skills_included: bool,
     docs_bundle_included: bool,
-}
-
-#[derive(Debug)]
-struct AiPackGuidanceContext {
-    effective_claude_source: PathBuf,
-    host_root: Option<PathBuf>,
 }
 
 pub(super) fn run_release_build_ai_pack(args: ReleaseBuildAiPackArgs) -> Result<()> {
@@ -47,10 +42,6 @@ pub(super) fn run_release_build_ai_pack(args: ReleaseBuildAiPackArgs) -> Result<
 
 pub(super) fn print_ai_pack_build_flags(result: &AiPackBuildResult) {
     println!(
-        "host_context_included: {}",
-        format_flag(result.host_context_included)
-    );
-    println!(
         "claude_rules_included: {}",
         format_flag(result.claude_rules_included)
     );
@@ -59,12 +50,16 @@ pub(super) fn print_ai_pack_build_flags(result: &AiPackBuildResult) {
         format_flag(result.claude_skills_included)
     );
     println!(
-        "writing_context_included: {}",
-        format_flag(result.writing_context_included)
+        "integration_included: {}",
+        format_flag(result.integration_included)
     );
     println!(
-        "host_writing_context_included: {}",
-        format_flag(result.host_writing_context_included)
+        "generic_site_adapter_included: {}",
+        format_flag(result.generic_site_adapter_included)
+    );
+    println!(
+        "host_site_adapter_included: {}",
+        format_flag(result.host_site_adapter_included)
     );
     println!(
         "codex_skills_included: {}",
@@ -87,35 +82,23 @@ pub(super) fn build_ai_pack(
 
     let mut result = AiPackBuildResult {
         output_dir: output_dir.to_path_buf(),
-        host_context_included: false,
         claude_rules_included: false,
         claude_skills_included: false,
-        writing_context_included: false,
-        host_writing_context_included: false,
+        integration_included: false,
+        generic_site_adapter_included: false,
+        host_site_adapter_included: false,
         codex_skills_included: false,
         docs_bundle_included: false,
     };
 
-    let guidance_context = prepare_ai_pack_guidance_context(
+    copy_public_agent_guidance(&ai_pack_root, output_dir, &mut result)?;
+    let host_root = resolve_host_project_root(host_project_root)?;
+
+    copy_integration_and_site_adapter(
         repo_root,
         &ai_pack_root,
         output_dir,
-        host_project_root,
-        &mut result,
-    )?;
-    copy_file(
-        &guidance_context.effective_claude_source,
-        &output_dir.join("CLAUDE.md"),
-    )?;
-    copy_file(
-        &guidance_context.effective_claude_source,
-        &output_dir.join("AGENTS.md"),
-    )?;
-
-    copy_writing_context(
-        &ai_pack_root,
-        output_dir,
-        guidance_context.host_root.as_deref(),
+        host_root.as_deref(),
         &mut result,
     )?;
 
@@ -152,13 +135,11 @@ fn copy_required_ai_pack_top_level_files(repo_root: &Path, output_dir: &Path) ->
     Ok(())
 }
 
-fn prepare_ai_pack_guidance_context(
-    repo_root: &Path,
+fn copy_public_agent_guidance(
     ai_pack_root: &Path,
     output_dir: &Path,
-    host_project_root: Option<&Path>,
     result: &mut AiPackBuildResult,
-) -> Result<AiPackGuidanceContext> {
+) -> Result<()> {
     let ai_pack_agents = ai_pack_root.join("AGENTS.md");
     let ai_pack_claude = ai_pack_root.join("CLAUDE.md");
     require_file(&ai_pack_agents, "missing required AI pack source file")?;
@@ -180,76 +161,78 @@ fn prepare_ai_pack_guidance_context(
     copy_dir_recursive(&claude_skills_source, &output_dir.join(".claude/skills"))?;
     result.claude_skills_included = true;
 
-    let mut effective_claude_source = ai_pack_claude.clone();
-    let mut host_context_root = None;
-    if let Some(host_root) = detect_host_context_root(repo_root, host_project_root)?
-        && !paths_equivalent(&host_root, repo_root)?
-    {
-        effective_claude_source = host_root.join("CLAUDE.md");
-        host_context_root = Some(host_root.clone());
-        copy_dir_recursive(
-            &host_root.join(".claude/rules"),
-            &output_dir.join(".claude/rules"),
-        )?;
-        copy_dir_recursive(
-            &host_root.join(".claude/skills"),
-            &output_dir.join(".claude/skills"),
-        )?;
-        result.host_context_included = true;
-    }
-
-    Ok(AiPackGuidanceContext {
-        effective_claude_source,
-        host_root: host_context_root,
-    })
+    copy_file(&ai_pack_claude, &output_dir.join("CLAUDE.md"))?;
+    copy_file(&ai_pack_agents, &output_dir.join("AGENTS.md"))?;
+    Ok(())
 }
 
-fn copy_writing_context(
+fn resolve_host_project_root(explicit: Option<&Path>) -> Result<Option<PathBuf>> {
+    explicit
+        .map(|path| {
+            fs::canonicalize(path)
+                .with_context(|| format!("failed to canonicalize {}", normalize_path(path)))
+        })
+        .transpose()
+}
+
+fn copy_integration_and_site_adapter(
+    repo_root: &Path,
     ai_pack_root: &Path,
     output_dir: &Path,
     host_root: Option<&Path>,
     result: &mut AiPackBuildResult,
 ) -> Result<()> {
-    let context_source = ai_pack_root.join("writing_context");
-    require_dir(&context_source, "missing writing_context directory")?;
-    let context_output = output_dir.join("writing_context");
-    let context_count = copy_writing_context_files(&context_source, &context_output)?;
-    if context_count == 0 {
-        bail!("no ai-pack/writing_context/*.md files found");
+    let integration_source = ai_pack_root.join("integration");
+    require_dir(&integration_source, "missing AI pack integration directory")?;
+    let integration_count =
+        copy_markdown_files(&integration_source, &output_dir.join("integration"))?;
+    if integration_count == 0 {
+        bail!("no ai-pack/integration/*.md files found");
     }
-    result.writing_context_included = true;
+    result.integration_included = true;
+
+    let generic_adapter = repo_root.join("config/generic-site-adapter.toml");
+    require_file(&generic_adapter, "missing generic site-adapter example")?;
+    let generic_resources = site_adapter_resource_paths(&generic_adapter)
+        .context("generic site-adapter example is invalid")?;
+    if generic_resources.len() != 1 {
+        bail!("generic site-adapter example must be self-contained");
+    }
+    copy_file(
+        &generic_adapter,
+        &output_dir.join("site_adapter/generic.toml"),
+    )?;
+    result.generic_site_adapter_included = true;
 
     let Some(host_root) = host_root else {
         return Ok(());
     };
-    let host_context_source = host_root.join("writing_context");
-    if !host_context_source.is_dir() {
-        return Ok(());
-    }
-
-    reset_directory(&context_output)?;
-    let host_context_count = copy_writing_context_files(&host_context_source, &context_output)?;
-    if host_context_count == 0 {
-        bail!(
-            "host writing_context directory has no markdown files: {}",
-            normalize_path(&host_context_source)
-        );
-    }
-    result.host_writing_context_included = true;
-    Ok(())
-}
-
-fn copy_writing_context_files(source: &Path, destination: &Path) -> Result<usize> {
-    let markdown_count = copy_markdown_files(source, destination)?;
-    let policy = source.join("profile.toml");
+    let host_adapter = host_root.join("wikitool_adapter");
+    require_dir(
+        &host_adapter,
+        "host project root is missing required wikitool_adapter directory",
+    )?;
+    let policy = host_adapter.join("profile.toml");
     if !policy.is_file() {
         bail!(
-            "writing_context is missing required typed policy: {}",
+            "host site adapter is missing required profile.toml: {}",
             normalize_path(&policy)
         );
     }
-    copy_file(&policy, &destination.join("profile.toml"))?;
-    Ok(markdown_count)
+    let resources =
+        site_adapter_resource_paths(&policy).context("host project site adapter is invalid")?;
+    let destination = output_dir.join("site_adapter/project");
+    for source in resources {
+        let relative = source.strip_prefix(&host_adapter).with_context(|| {
+            format!(
+                "declared site-adapter resource escaped {}",
+                normalize_path(&host_adapter)
+            )
+        })?;
+        copy_file(&source, &destination.join(relative))?;
+    }
+    result.host_site_adapter_included = true;
+    Ok(())
 }
 
 fn copy_markdown_files(source: &Path, destination: &Path) -> Result<usize> {
@@ -292,21 +275,20 @@ fn write_ai_pack_manifest(result: &AiPackBuildResult) -> Result<()> {
         .unwrap_or_default()
         .as_secs();
     let manifest = serde_json::json!({
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at_unix": now_unix,
-        "host_context_included": result.host_context_included,
         "claude_rules_included": result.claude_rules_included,
         "claude_skills_included": result.claude_skills_included,
-        "writing_context_included": result.writing_context_included,
-        "host_writing_context_included": result.host_writing_context_included,
+        "integration_included": result.integration_included,
+        "generic_site_adapter_included": result.generic_site_adapter_included,
+        "host_site_adapter_included": result.host_site_adapter_included,
         "codex_skills_included": result.codex_skills_included,
         "docs_bundle_included": result.docs_bundle_included,
         "notes": "AI companion pack for wikitool; content is intentionally shipped outside the binary."
     });
 
     let manifest_path = result.output_dir.join("manifest.json");
-    fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)
-        .with_context(|| format!("failed to write {}", normalize_path(&manifest_path)))?;
+    wikitool_core::support::atomic_write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
     Ok(())
 }
 
@@ -331,6 +313,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::build_ai_pack;
+
+    const VALID_ADAPTER: &str = include_str!("../../../../config/generic-site-adapter.toml");
 
     struct TestDir {
         path: PathBuf,
@@ -375,12 +359,12 @@ mod tests {
         write_file(&root.join("ai-pack/CLAUDE.md"), "# Packaged CLAUDE\n");
         write_file(&root.join("ai-pack/AGENTS.md"), "# Packaged AGENTS\n");
         write_file(
-            &root.join("ai-pack/writing_context/writing_guide.md"),
-            "# Guide\n",
+            &root.join("ai-pack/integration/agent.md"),
+            "# Integration\n",
         );
         write_file(
-            &root.join("ai-pack/writing_context/profile.toml"),
-            "schema_version = \"profile_policy_v2\"\n",
+            &root.join("config/generic-site-adapter.toml"),
+            VALID_ADAPTER,
         );
         write_file(
             &root.join("ai-pack/.claude/rules/wiki-style.md"),
@@ -402,126 +386,160 @@ mod tests {
     }
 
     #[test]
-    fn build_ai_pack_host_overlay_uses_host_claude_for_both_guidance_files() {
-        let temp = TestDir::new("fallback");
+    fn build_ai_pack_keeps_public_guidance_when_host_adapter_is_included() {
+        let temp = TestDir::new("public-guidance");
         let repo_root = temp.path.join("repo");
         let host_root = temp.path.join("host");
         let output_dir = temp.path.join("out");
         create_repo(&repo_root);
         create_host(&host_root, "# Host CLAUDE\n", None);
+        write_file(
+            &host_root.join("wikitool_adapter/profile.toml"),
+            VALID_ADAPTER,
+        );
 
         build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
 
         assert_eq!(
             fs::read_to_string(output_dir.join("CLAUDE.md")).expect("read packaged CLAUDE"),
-            "# Host CLAUDE\n"
+            "# Packaged CLAUDE\n"
         );
         assert_eq!(
             fs::read_to_string(output_dir.join("AGENTS.md")).expect("read packaged AGENTS"),
-            "# Host CLAUDE\n"
+            "# Packaged AGENTS\n"
         );
+        assert!(!output_dir.join(".claude/rules/dev.md").exists());
+        assert!(!output_dir.join(".claude/skills/wt.md").exists());
         assert!(!output_dir.join("SETUP.md").exists());
-        assert!(output_dir.join("writing_context").is_dir());
-        assert!(output_dir.join("writing_context/profile.toml").is_file());
+        assert!(output_dir.join("integration").is_dir());
+        assert!(output_dir.join("site_adapter/generic.toml").is_file());
+        assert!(
+            output_dir
+                .join("site_adapter/project/profile.toml")
+                .is_file()
+        );
         assert!(!output_dir.join("WIKITOOL_CLAUDE.md").exists());
     }
 
     #[test]
-    fn build_ai_pack_host_overlay_ignores_distinct_host_agents_file() {
-        let temp = TestDir::new("distinct-agents");
+    fn build_ai_pack_rejects_explicit_host_without_site_adapter() {
+        let temp = TestDir::new("missing-site-adapter");
         let repo_root = temp.path.join("repo");
         let host_root = temp.path.join("host");
         let output_dir = temp.path.join("out");
         create_repo(&repo_root);
         create_host(&host_root, "# Host CLAUDE\n", Some("# Host AGENTS\n"));
 
-        build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
-
-        assert_eq!(
-            fs::read_to_string(output_dir.join("CLAUDE.md")).expect("read packaged CLAUDE"),
-            "# Host CLAUDE\n"
-        );
-        assert_eq!(
-            fs::read_to_string(output_dir.join("AGENTS.md")).expect("read packaged AGENTS"),
-            "# Host CLAUDE\n"
-        );
+        let error = build_ai_pack(&repo_root, &output_dir, Some(&host_root))
+            .expect_err("explicit host without adapter must fail");
+        assert!(error.to_string().contains("wikitool_adapter directory"));
     }
 
     #[test]
-    fn build_ai_pack_host_overlay_can_replace_writing_context() {
-        let temp = TestDir::new("host-writing-context");
+    fn build_ai_pack_adds_project_site_adapter_as_a_supplement() {
+        let temp = TestDir::new("host-site-adapter");
         let repo_root = temp.path.join("repo");
         let host_root = temp.path.join("host");
         let output_dir = temp.path.join("out");
         create_repo(&repo_root);
         create_host(&host_root, "# Host CLAUDE\n", None);
         write_file(
-            &host_root.join("writing_context/writing_guide.md"),
-            "# Host Guide\n",
+            &host_root.join("wikitool_adapter/profile.toml"),
+            &VALID_ADAPTER.replace(
+                "guidance_documents = []",
+                "guidance_documents = [\"editorial.md\"]",
+            ),
         );
         write_file(
-            &host_root.join("writing_context/site_contract.md"),
-            "# Host Contract\n",
+            &host_root.join("wikitool_adapter/editorial.md"),
+            "# Host supplement\n",
         );
         write_file(
-            &host_root.join("writing_context/profile.toml"),
-            "schema_version = \"host_profile_policy_v1\"\n",
+            &host_root.join("wikitool_adapter/private-notes.md"),
+            "must not ship\n",
         );
 
         build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
 
         assert_eq!(
-            fs::read_to_string(output_dir.join("writing_context/writing_guide.md"))
-                .expect("read host guide"),
-            "# Host Guide\n"
+            fs::read_to_string(output_dir.join("site_adapter/project/editorial.md"))
+                .expect("read host supplement"),
+            "# Host supplement\n"
         );
         assert_eq!(
-            fs::read_to_string(output_dir.join("writing_context/site_contract.md"))
-                .expect("read host contract"),
-            "# Host Contract\n"
-        );
-        assert_eq!(
-            fs::read_to_string(output_dir.join("writing_context/profile.toml"))
+            fs::read_to_string(output_dir.join("site_adapter/project/profile.toml"))
                 .expect("read host policy"),
-            "schema_version = \"host_profile_policy_v1\"\n"
+            VALID_ADAPTER.replace(
+                "guidance_documents = []",
+                "guidance_documents = [\"editorial.md\"]",
+            )
         );
-        assert!(!output_dir.join("llm_instructions").exists());
+        assert!(
+            !output_dir
+                .join("site_adapter/project/private-notes.md")
+                .exists()
+        );
+        assert!(output_dir.join("site_adapter/generic.toml").is_file());
         let manifest = fs::read_to_string(output_dir.join("manifest.json")).expect("read manifest");
         assert!(
-            manifest.contains("\"host_writing_context_included\": true"),
-            "manifest must record host writing context overlay"
+            manifest.contains("\"host_site_adapter_included\": true"),
+            "manifest must record the host site adapter supplement"
         );
     }
 
     #[test]
-    fn build_ai_pack_rejects_host_writing_context_without_typed_policy() {
-        let temp = TestDir::new("host-writing-context-without-policy");
+    fn build_ai_pack_rejects_host_site_adapter_without_typed_policy() {
+        let temp = TestDir::new("host-site-adapter-without-policy");
         let repo_root = temp.path.join("repo");
         let host_root = temp.path.join("host");
         let output_dir = temp.path.join("out");
         create_repo(&repo_root);
         create_host(&host_root, "# Host CLAUDE\n", None);
         write_file(
-            &host_root.join("writing_context/writing_guide.md"),
-            "# Host Guide\n",
+            &host_root.join("wikitool_adapter/editorial.md"),
+            "# Host supplement\n",
         );
 
         let error = build_ai_pack(&repo_root, &output_dir, Some(&host_root))
-            .expect_err("host writing context without profile.toml must fail closed");
+            .expect_err("host site adapter without profile.toml must fail closed");
 
-        assert!(error.to_string().contains("missing required typed policy"));
+        assert!(error.to_string().contains("missing required profile.toml"));
+    }
+
+    #[test]
+    fn build_ai_pack_rejects_invalid_typed_host_policy() {
+        let temp = TestDir::new("invalid-host-policy");
+        let repo_root = temp.path.join("repo");
+        let host_root = temp.path.join("host");
+        let output_dir = temp.path.join("out");
+        create_repo(&repo_root);
+        create_host(&host_root, "# Host CLAUDE\n", None);
+        write_file(
+            &host_root.join("wikitool_adapter/profile.toml"),
+            &VALID_ADAPTER.replace(
+                "schema_version = \"site_adapter_v1\"",
+                "schema_version = \"site_adapter_v1\"\nunknown_policy = true",
+            ),
+        );
+
+        let error = build_ai_pack(&repo_root, &output_dir, Some(&host_root))
+            .expect_err("invalid typed policy must fail closed");
+
+        assert!(
+            error
+                .to_string()
+                .contains("host project site adapter is invalid")
+        );
     }
 
     #[test]
     fn build_ai_pack_ships_corrected_env_template() {
         let temp = TestDir::new("env-template");
         let repo_root = temp.path.join("repo");
-        let host_root = temp.path.join("host");
         let output_dir = temp.path.join("out");
         create_repo(&repo_root);
-        create_host(&host_root, "# Host CLAUDE\n", None);
 
-        build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
+        build_ai_pack(&repo_root, &output_dir, None).expect("build ai pack");
 
         let staged = output_dir.join(".env.template");
         assert!(staged.is_file(), "bundle must include .env.template");

@@ -19,8 +19,7 @@ use crate::knowledge::templates::{
 };
 use crate::knowledge::{model::*, prelude::*};
 use crate::profile::{
-    build_template_catalog_with_overlay, load_latest_template_catalog,
-    load_or_build_remilia_profile_overlay,
+    build_template_catalog_with_profile, load_latest_template_catalog, load_or_build_site_profile,
 };
 use crate::title_variants::is_translation_variant;
 
@@ -270,13 +269,10 @@ pub fn build_authoring_knowledge_pack(
             .map(|p| p.title.clone())
             .collect::<Vec<_>>(),
     )?;
-    let profile_overlay = load_or_build_remilia_profile_overlay(paths)?;
+    let site_profile = load_or_build_site_profile(paths)?;
     let fallback_catalog = match load_latest_template_catalog(paths)? {
         Some(catalog) => Some(catalog),
-        None => Some(build_template_catalog_with_overlay(
-            paths,
-            &profile_overlay,
-        )?),
+        None => Some(build_template_catalog_with_profile(paths, &site_profile)?),
     };
     let contract_query = options
         .contract_query
@@ -289,7 +285,7 @@ pub fn build_authoring_knowledge_pack(
         .unwrap_or_else(|| query_terms.clone());
     let contract_plan = contract_traversal::build_authoring_contract_plan_for_connection(
         &connection,
-        &profile_overlay.profile_id,
+        &site_profile.profile_id,
         &contract_traversal::AuthoringContractPlanOptions {
             query: contract_query.unwrap_or_else(|| query.clone()),
             query_terms: contract_query_terms,

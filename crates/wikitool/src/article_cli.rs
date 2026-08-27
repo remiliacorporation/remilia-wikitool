@@ -26,13 +26,13 @@ pub(crate) struct ArticleArgs {
 
 #[derive(Debug, Subcommand)]
 enum ArticleSubcommand {
-    #[command(about = "Record human acceptance of the exact article prose")]
+    #[command(about = "Record a hash-bound acceptance decision in the local ledger")]
     Accept(ArticleAcceptArgs),
     #[command(about = "Lint article wikitext against wiki/profile rules")]
     Lint(ArticleLintArgs),
     #[command(about = "Apply safe mechanical fixes to article wikitext")]
     Fix(ArticleFixArgs),
-    #[command(about = "Promote an exactly human-accepted draft into the sync tree")]
+    #[command(about = "Promote a draft with a current hash-bound acceptance ledger entry")]
     Promote(ArticlePromoteArgs),
 }
 
@@ -49,7 +49,7 @@ pub(crate) struct ArticleAcceptArgs {
     #[arg(
         long,
         value_name = "IDENTITY",
-        help = "Name or handle of the human editor who read and accepted the exact prose"
+        help = "Self-reported name or handle of the human editor; Wikitool does not authenticate it"
     )]
     human_editor: String,
     #[arg(
@@ -61,7 +61,7 @@ pub(crate) struct ArticleAcceptArgs {
     prose_origin: ArticleProseOriginArg,
     #[arg(
         long,
-        help = "Record that the human editor explicitly accepted remaining lint warnings"
+        help = "Record explicit caller acceptance of remaining lint warnings"
     )]
     allow_warnings: bool,
     #[arg(

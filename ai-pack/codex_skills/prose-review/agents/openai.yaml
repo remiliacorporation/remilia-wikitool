@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prose Review"
+  short_description: "Review wiki prose for fidelity, risk, and reader value"
+  default_prompt: "Use $prose-review to perform a findings-first adversarial review of this wiki article and its sources."

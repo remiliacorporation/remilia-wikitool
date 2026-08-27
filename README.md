@@ -1,101 +1,131 @@
 # Wikitool
 
-A single-binary CLI for working on a MediaWiki wiki: pull and push content, search and
-retrieve context, research sources, lint and validate articles, and sync changes back to the
-live site. It keeps a local SQLite index so an AI agent — Claude, Codex, or another — can read
-the wiki, draft an article, and check it before pushing.
+Wikitool is a general-purpose, agent-native CLI for MediaWiki. It pulls and pushes revision-bound
+wikitext, builds a disposable local knowledge index, exposes templates and capabilities, fetches
+research material, applies deterministic checks, and packages substantive agent skills for
+encyclopedic writing and review.
 
-Local article files stay plain wikitext you can edit by hand. The database is derived and
-disposable. Each release ships the agent guidance files alongside the binary, so an agent run
-from the unpacked folder already knows how to drive the tool.
+The binary does not contain an LLM and does not decide whether prose is good. Its Rust core owns
+mechanical truth and safe state transitions. Agent skills own research-to-claim reasoning,
+prose authoring, source-fidelity review, and reader judgment. A project-owned site adapter supplies
+target-specific machine policy and supplemental guidance.
 
 ## Install
 
-Download the release zip for your platform and unpack it. Everything sits at the top level:
+Download a release archive for your platform, verify it against `SHA256SUMS.txt`, and unpack it:
 
 ```text
-wikitool(.exe)        the binary
+wikitool(.exe)        end-user binary
 README.md             this file
-CLAUDE.md AGENTS.md   agent routing brief (identical content)
-.claude/              Claude skills and rules
-codex_skills/         Codex skill equivalents
-writing_context/      article-writing rules and style profile
-docs/wikitool/        operator manual and generated command reference
-contextmink/          bundled contextmink transcript guard (separate binary,
-                      templates, and setup docs; Windows bundles also carry
-                      contextmink-bridge.exe, a PowerShell -> Git Bash bridge)
+CLAUDE.md AGENTS.md   identical agent integration brief
+.claude/              Claude harness adapters
+codex_skills/         canonical substantive agent skills
+integration/          layer and adapter contracts
+site_adapter/         generic adapter and optional project supplement
+docs/wikitool/        operator guide and generated command reference
+contextmink/          separately versioned transcript guard
 manifest.json LICENSE*
 ```
 
-Put `wikitool` on your `PATH`, or run it from the unpacked folder.
-For GitHub releases, verify the downloaded zip against the published `SHA256SUMS.txt`
-before unpacking when you need a reproducible provenance check.
+Put `wikitool` on `PATH`, or run it from the unpacked directory.
 
-## First run
+## Configure a wiki
 
-Run one command. By default, `wikitool init` materializes Remilia Wiki as the target:
+Wikitool has no built-in target wiki. Initialize a project with an explicit MediaWiki endpoint:
 
 ```bash
+wikitool init \
+  --wiki-url https://wiki.example.org/ \
+  --api-url https://wiki.example.org/api.php
 wikitool workflow session-refresh
 ```
 
-For another MediaWiki target, set project config with `wikitool init --wiki-url ... --api-url ...`
-or use temporary `WIKITOOL_*` environment overrides:
+This creates `.wikitool/config.toml`, pulls content, builds the local index, and discovers the
+wiki's capability surface. Read-only work needs no credentials. Writes use bot-password credentials
+from the project-root `.env`:
 
 ```bash
-WIKITOOL_WIKI_URL=https://your-wiki.example.org/
-WIKITOOL_WIKI_API_URL=https://your-wiki.example.org/api.php
-# only needed to push or delete:
 WIKITOOL_BOT_USER=Username@BotName
 WIKITOOL_BOT_PASS=your-bot-password
 ```
 
-This creates the runtime layout, pulls content, builds the knowledge index, and syncs the
-wiki's capability profile. Run it again at the start of any session to refresh state; use
-`wikitool workflow full-refresh` to rebuild from scratch. Read-only work needs no credentials.
+Set `wiki.mark_edits_as_bot = true` only when edits should carry MediaWiki's bot flag. Human review
+or an acceptance-ledger entry does not imply bot or non-bot transport policy.
 
-## Using it with an agent
+## Site adapters
 
-Run `claude` or `codex` from the unpacked folder. The bundled `CLAUDE.md` / `AGENTS.md` and the
-`.claude/` and `codex_skills/` directories tell the agent which commands to use and in what
-order. The `/wikitool` skill drives retrieval, editorial assistance, and sync; `/review` gates content
-before a push.
+Without an adapter, Wikitool uses a conservative embedded `mediawiki-generic` profile. A project
+can opt into typed policy:
 
-## What it does
+```bash
+wikitool init --adapter-path site-adapter/profile.toml
+```
 
-- **Assist editors** — `knowledge article-start "Topic" --view brief` returns an evidence brief:
-  comparable structures, applicable templates, and explicit evidence gaps. A human writes or
-  substantively revises the prose and records acceptance before promotion or push.
-- **Research** — `research wiki-search` queries the wiki API; `research fetch` pulls a URL with
-  structured metadata; `research archive` captures a site to disk; `research session` imports
-  cookies for session-gated sources.
-- **Inspect** — `templates show`, `knowledge inspect chunks/references`, and `wiki surface`
-  expose the target wiki's templates, content, and capabilities.
-- **Check** — `article lint`/`fix`, `validate`, `module lint`, and `review` catch structural,
-  citation, and link problems before a push; `wiki render-check` enforces live rendered-HTML
-  contracts after dynamic template or Cargo changes.
-- **Sync** — `pull`, `status`, `diff`, and `push --dry-run` keep local files aligned with the
-  live wiki. Push detects conflicts against the remote and previews every change first.
+This validates the complete declared adapter bundle before recording its path. The equivalent
+configuration is:
 
-Every command has `--help`, and `docs/wikitool/reference.md` is the full generated reference.
+```toml
+[adapter]
+path = "site-adapter/profile.toml"
+```
 
-Release bundles also include a separately versioned `contextmink/` release
-pack. Run `contextmink/contextmink(.exe) setup-project <project-root>
---skill-target both --json`; Contextmink owns the installed files and writes an
-exact project receipt. Wikitool neither rebuilds nor installs Contextmink. Its
-release builder accepts only an upstream archive staged by
-`scripts/fetch_contextmink.sh` and verified against repository-pinned hashes.
+Start from `config/generic-site-adapter.toml`. Adapters may declare authoring mechanics, citation
+templates and source-review host rules, template preferences, deterministic lint configuration,
+extension contracts, and supplemental Markdown documents. Unknown fields fail closed. A source
+matcher is a review signal, not a universal source ban. Adapter Markdown is hashed and exposed to
+agents but is never interpreted as machine policy. Release packaging strictly parses the adapter
+and ships only `profile.toml` plus guidance files declared there; undeclared neighboring files are
+excluded.
 
-## Documentation
+## Agent workflow
 
-| File | Role |
-|---|---|
-| `docs/wikitool/guide.md` | Operator manual |
-| `docs/wikitool/reference.md` | Generated command reference |
-| `docs/wikitool/architecture.md` | Internals and the agent token contract |
-| `writing_context/` | Article structure, style rules, and writing guide |
-| `CLAUDE.md` / `AGENTS.md` | Agent routing brief |
-| `VERSIONING.md` / `CHANGELOG.md` | Release process and history |
+The packaged skills divide responsibility deliberately:
+
+- `wikitool-operator` — retrieval, templates, lint/fix, ledgers, sync, and diagnostics.
+- `wiki-writing` — source inspection, claim-source maps, human-notes handling, and real
+  encyclopedic drafting.
+- `prose-review` — independent source-fidelity, due-weight, BLP, structure, and reader-value review.
+- `wiki-interview` — open-ended human intake into a neutral, auditable ledger.
+
+A typical authoring lane is:
+
+```bash
+wikitool knowledge article-start "Topic" --intent new --format json --view brief
+wikitool research fetch "https://source.example/work" --format rendered-html --output json
+# use wiki-writing to build a claim-source map and draft the factual body, then the lead
+# use prose-review in a fresh context when possible
+wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
+wikitool article fix .wikitool/drafts/Title.wiki --title "Title" --apply safe
+# a named human reads and accepts the exact final prose
+wikitool article accept .wikitool/drafts/Title.wiki --title "Title" \
+  --human-editor "EDITOR" --prose-origin agent-draft --format json
+wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
+wikitool review --format json --view brief --summary "Review Title"
+wikitool push --dry-run --summary "Update Title"
+```
+
+The acceptance ledger binds a decision to the exact SHA-256 content. The editor label is a
+self-reported, unauthenticated claim; it is not identity proof, and an agent must never
+self-attest. Any prose change invalidates the entry.
+
+## Core capabilities
+
+- `pull`, `status`, `diff`, `review`, `push` — revision-aware synchronization. Existing edits use
+  `baserevid`; creates and explicit remote-deletion recreations use `createonly`; deletes recheck
+  revision identity immediately before mutation; mutating requests are not generically retried.
+- `knowledge build|status|article-start|inspect` — bounded local retrieval with explicit readiness
+  and evidence identities.
+- `templates`, `wiki capabilities|profile|surface`, `docs` — target capability and contract
+  discovery.
+- `research wiki-search|fetch|discover|session|mediawiki-templates` — source acquisition with a
+  shared outbound HTTP policy.
+- `article lint|fix`, `validate`, `module lint`, `wiki render-check` — deterministic mechanical
+  checks. Passing them is not an editorial quality verdict.
+- `knowledge interview` — stable brief paths, neutral sections, structured open items, freshness,
+  and validation; conversational judgment stays in the skill.
+
+Every command has `--help`. `docs/wikitool/reference.md` is generated from the CLI and is the flag
+authority.
 
 ## Runtime state
 
@@ -103,34 +133,50 @@ release builder accepts only an upstream archive staged by
 project-root/
   .env
   .wikitool/config.toml
-  .wikitool/data/wikitool.db    derived index — safe to delete
-  wiki_content/                 article wikitext
-  templates/                    template and module sources
+  .wikitool/data/wikitool.db       derived and disposable
+  .wikitool/drafts/
+  .wikitool/acceptance-ledger/
+  site-adapter/profile.toml        optional, project-owned
+  wiki_content/                    synchronized wikitext
+  templates/                       template and module sources
 ```
 
-Copy the bundled `.env.template` to `.env` and set `WIKITOOL_BOT_USER` / `WIKITOOL_BOT_PASS`
-(from `Special:BotPasswords`) before `push` or `delete`. The project-root `.env` is loaded
-automatically.
-
-If the local database is stale or incompatible, reset and rebuild:
+Reset stale derived state with:
 
 ```bash
 wikitool db reset --yes
 wikitool workflow full-refresh
 ```
 
+## Contextmink boundary
+
+Release bundles include a version-pinned upstream Contextmink pack. Contextmink owns its binary,
+templates, project setup, and install receipt; Wikitool does not carry a fork or second installer.
+
 ## Build from source
 
 ```bash
-cargo build --package wikitool --release
+cargo build --workspace --release
+cargo test --workspace --all-targets
 ```
 
-Normal builds produce the end-user binary. Maintainer commands (release packaging, reference
-generation, docs audit) live behind a feature flag:
+Reference generation, docs audit, and release packaging are maintainer-only:
 
 ```bash
-cargo build --package wikitool --release --features maintainer
+cargo run --features maintainer -- docs generate-reference
+cargo run --features maintainer -- docs audit
 ```
+
+## Documentation
+
+| File | Role |
+|---|---|
+| `docs/wikitool/guide.md` | Operator manual |
+| `docs/wikitool/reference.md` | Generated command reference |
+| `docs/wikitool/architecture.md` | Layering and authority boundaries |
+| `ai-pack/integration/` | Generic agent and site-adapter contracts |
+| `ai-pack/codex_skills/` | Canonical editorial and operator skills |
+| `VERSIONING.md` / `CHANGELOG.md` | Release policy and history |
 
 ## License
 

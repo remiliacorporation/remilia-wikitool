@@ -94,19 +94,29 @@ pub struct MediaWikiClientConfig {
     pub rate_limit_write_ms: u64,
     pub max_retries: usize,
     pub retry_delay_ms: u64,
+    /// Whether `action=edit` requests include MediaWiki's `bot` marker.
+    pub mark_edits_as_bot: bool,
 }
 
 impl MediaWikiClientConfig {
     pub fn from_env() -> Self {
-        Self::from_env_with_defaults("", crate::config::DEFAULT_USER_AGENT)
+        Self::from_env_with_defaults("", crate::config::DEFAULT_USER_AGENT, false)
     }
 
     pub fn from_config(config: &crate::config::WikiConfig) -> Self {
         let api_default = config.wiki.api_url.as_deref().unwrap_or("");
-        Self::from_env_with_defaults(api_default, &config.user_agent())
+        Self::from_env_with_defaults(
+            api_default,
+            &config.user_agent(),
+            config.wiki.mark_edits_as_bot,
+        )
     }
 
-    fn from_env_with_defaults(api_url_default: &str, user_agent_default: &str) -> Self {
+    fn from_env_with_defaults(
+        api_url_default: &str,
+        user_agent_default: &str,
+        mark_edits_as_bot: bool,
+    ) -> Self {
         Self {
             api_url: env_override_owned(ENV_WIKITOOL_WIKI_API_URL)
                 .unwrap_or_else(|| api_url_default.to_string()),
@@ -117,6 +127,7 @@ impl MediaWikiClientConfig {
             rate_limit_write_ms: env_value_u64("WIKITOOL_RATE_LIMIT_WRITE_MS", 1_000),
             max_retries: env_value_usize("WIKITOOL_HTTP_RETRIES", 2),
             retry_delay_ms: env_value_u64("WIKITOOL_HTTP_RETRY_DELAY_MS", 500),
+            mark_edits_as_bot,
         }
     }
 }

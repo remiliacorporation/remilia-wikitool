@@ -48,6 +48,10 @@ Schema versions are independent from SemVer and must be bumped only when their s
 
 1. `manifest.schema_version`
 2. `ai/docs-bundle-vN.json`
+3. `site_adapter_vN`
+4. `article_start_vN`
+5. `article_acceptance_ledger_vN`
+6. `knowledge_interview_vN`
 
 Local retrieval state is intentionally disposable. Starting with `0.2.0`, readiness is surfaced through manifest-backed `knowledge_artifacts` rows and the operator-facing `knowledge_generation` contract.
 
@@ -69,7 +73,8 @@ Packaged / distributable:
 
 1. Stage the pinned upstream Contextmink packs with `bash scripts/fetch_contextmink.sh --all`, then use `cargo run --package wikitool --features maintainer -- release build-matrix --contextmink-dist dist/contextmink-dist` from a source checkout to emit per-target zip bundles.
 2. Bundles are generic by default, include ai-pack baseline `.claude` + instruction files, and compile the packaged binary without the maintainer surface.
-3. Host context overlay is opt-in via `--host-project-root <PATH>` and uses host `CLAUDE.md`; release bundles still write the same guidance body to both packaged filenames.
+3. A project adapter supplement is opt-in via `--host-project-root <PATH>`. It is packaged under
+   `site_adapter/project/` and never replaces the target-neutral public guidance or skills.
 
 ## Manual release checklist
 
@@ -86,10 +91,10 @@ Packaged / distributable:
    - `TIER=live bash testbench/acceptance_workflows.sh`
 5. Validate the knowledge cutover from a fresh runtime:
    - `cargo run --package wikitool -- db reset --yes`
-   - `cargo run --package wikitool -- knowledge warm --docs-profile remilia-wiki --docs-mode missing`
+   - `cargo run --package wikitool -- knowledge warm --docs-profile mw-1.44-authoring --docs-mode missing`
    - `cargo run --package wikitool -- wiki profile sync`
-   - `cargo run --package wikitool -- knowledge status --docs-profile remilia-wiki`
-   - `cargo run --package wikitool -- knowledge article-start "Example Topic" --docs-profile remilia-wiki --format json`
+   - `cargo run --package wikitool -- knowledge status --docs-profile mw-1.44-authoring`
+   - `cargo run --package wikitool -- knowledge article-start "Example Topic" --docs-profile mw-1.44-authoring --format json`
    - `cargo run --package wikitool -- research wiki-search "Example Topic" --format json`
    - `cargo run --package wikitool -- article lint wiki_content/Main/Example_Topic.wiki --format json`
    - `cargo run --package wikitool -- knowledge inspect references duplicates --title "Example Topic" --format json`
@@ -104,8 +109,10 @@ Packaged / distributable:
    - `wikitool` or `wikitool.exe`
    - `AGENTS.md`, `CLAUDE.md`, `README.md`
    - `.claude/rules/`, `.claude/skills/`
-   - `writing_context/`, including typed `writing_context/profile.toml`
-   - `codex_skills/`
+   - `codex_skills/`, including `wiki-writing`, `prose-review`, `wiki-interview`, and `wikitool-operator`
+   - `integration/`
+   - `site_adapter/generic.toml`
+   - `site_adapter/project/profile.toml` only when `--host-project-root` was supplied
    - `docs/wikitool/`
    - `contextmink/` with `contextmink` or `contextmink.exe`
    - `contextmink/contextmink-bridge.exe` in the Windows bundle only

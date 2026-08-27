@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wiki Writing"
+  short_description: "Draft evidence-bound encyclopedic MediaWiki articles"
+  default_prompt: "Use $wiki-writing to turn the supplied evidence and human intent into a source-bound encyclopedic MediaWiki draft."

@@ -1,6 +1,6 @@
 pub mod authoring_surface;
-pub mod remilia_overlay;
 pub mod rules;
+pub mod site_adapter;
 pub mod template_catalog;
 pub mod template_data;
 pub mod wiki_capabilities;
@@ -16,20 +16,21 @@ pub use authoring_surface::{
     sync_authoring_surface_with_config, template_has_parameter_contract,
     unknown_template_parameter_keys,
 };
-pub use remilia_overlay::{
-    build_remilia_profile_overlay, load_latest_profile_overlay,
-    load_or_build_remilia_profile_overlay, load_profile_overlay, load_wiki_profile_with_config,
-    sync_remilia_profile_overlay, sync_wiki_profile_with_config,
-};
 pub use rules::{
-    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, GoldenSetRules,
-    InfoboxPreference, LintRules, ProfileOverlay, ProfileSourceDocument, RemiliaRules,
-    TemplateCatalogSummary, UnreliableSourceRule, WikiProfileSnapshot,
+    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, InfoboxPreference,
+    LintRules, ProfileSourceDocument, SiteProfile, SourceReviewRule, TemplateCatalogSummary,
+    TemplateRules, WikiProfileSnapshot,
+};
+pub use site_adapter::{
+    build_site_profile, build_site_profile_with_config, load_latest_site_profile,
+    load_or_build_site_profile, load_site_profile_artifact, load_wiki_profile_with_config,
+    site_adapter_resource_paths, sync_site_profile, sync_site_profile_with_config,
+    sync_wiki_profile_with_config,
 };
 pub use template_catalog::{
     TemplateCatalog, TemplateCatalogEntry, TemplateCatalogEntryLookup, TemplateCatalogExample,
-    TemplateCatalogParameter, build_template_catalog_with_overlay, find_template_catalog_entry,
-    load_latest_template_catalog, load_template_catalog, sync_template_catalog_with_overlay,
+    TemplateCatalogParameter, build_template_catalog_with_profile, find_template_catalog_entry,
+    load_latest_template_catalog, load_template_catalog, sync_template_catalog_with_profile,
 };
 pub use template_data::{TemplateDataParameter, TemplateDataRecord};
 pub use wiki_capabilities::{

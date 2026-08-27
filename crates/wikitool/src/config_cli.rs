@@ -38,6 +38,8 @@ struct ConfigShowJson {
     config_path: String,
     config_exists: bool,
     wiki: wikitool_core::config::WikiTargetResolution,
+    adapter_path: Option<String>,
+    mark_edits_as_bot: bool,
     paths: ConfigPathsJson,
     runtime: ConfigRuntimeJson,
     notes: Vec<&'static str>,
@@ -84,6 +86,11 @@ fn run_config_show(runtime: &RuntimeOptions, format: OutputFormat) -> Result<()>
     print_resolved_value("wiki.api_url", &output.wiki.api_url);
     print_resolved_value("wiki.article_path", &output.wiki.article_path);
     print_resolved_value("wiki.user_agent", &output.wiki.user_agent);
+    println!(
+        "adapter.path: {}",
+        output.adapter_path.as_deref().unwrap_or("<generic>")
+    );
+    println!("wiki.mark_edits_as_bot: {}", output.mark_edits_as_bot);
     if output.wiki.warnings.is_empty() {
         println!("warnings: <none>");
     } else {
@@ -100,11 +107,13 @@ fn run_config_show(runtime: &RuntimeOptions, format: OutputFormat) -> Result<()>
 fn build_config_show(paths: &ResolvedPaths, config: &WikiConfig) -> Result<ConfigShowJson> {
     let status = inspect_runtime(paths)?;
     Ok(ConfigShowJson {
-        schema_version: "wikitool_config_v1",
+        schema_version: "wikitool_config_v2",
         project_root: normalize_path(&paths.project_root),
         config_path: normalize_path(&paths.config_path),
         config_exists: status.config_exists,
         wiki: config.resolve_wiki_target(),
+        adapter_path: config.adapter.path.clone(),
+        mark_edits_as_bot: config.wiki.mark_edits_as_bot,
         paths: ConfigPathsJson {
             wiki_content_dir: normalize_path(&paths.wiki_content_dir),
             templates_dir: normalize_path(&paths.templates_dir),
@@ -123,7 +132,8 @@ fn build_config_show(paths: &ResolvedPaths, config: &WikiConfig) -> Result<Confi
             "project config is the durable wiki target; WIKITOOL_* env vars are temporary overrides",
             "bare WIKI_* env vars are not read; target overrides are WIKITOOL_WIKI_URL, WIKITOOL_WIKI_API_URL, WIKITOOL_USER_AGENT, and WIKITOOL_ARTICLE_PATH",
             "push authentication reads WIKITOOL_BOT_USER and WIKITOOL_BOT_PASS from the environment only; they are never written to config",
-            "authoring and lint overlays are currently Remilia-specific even when the sync target is changed",
+            "authoring and lint policy is generic unless adapter.path names an explicit project-owned site adapter",
+            "mark_edits_as_bot controls only MediaWiki recent-changes transport marking; it does not attest human review",
         ],
     })
 }

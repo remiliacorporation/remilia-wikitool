@@ -28,11 +28,11 @@ enum WikiSubcommand {
     Capabilities(WikiCapabilitiesArgs),
     #[command(about = "Query the live wiki's Cargo extension tables")]
     Cargo(WikiCargoArgs),
-    #[command(about = "Show the combined live/profile-aware wiki surface")]
+    #[command(about = "Show the combined live and site-adapter wiki surface")]
     Profile(WikiProfileArgs),
     #[command(about = "Validate rendered live HTML and scoped link contracts")]
     RenderCheck(WikiRenderCheckArgs),
-    #[command(about = "Show the structured local editorial rules overlay")]
+    #[command(about = "Show the typed local site-adapter rules")]
     Rules(WikiRulesArgs),
     #[command(
         about = "Show the agent-facing template, module, asset, and extension authoring surface"
@@ -162,7 +162,7 @@ struct WikiCargoRowsArgs {
     #[arg(
         long = "where",
         value_name = "CLAUSE",
-        help = "Cargo where clause, e.g. collection='Milady Maker'"
+        help = "Cargo where clause, e.g. collection='Example Collection'"
     )]
     where_clause: Option<String>,
     #[arg(
@@ -283,7 +283,7 @@ pub(crate) struct WikiProfileArgs {
 
 #[derive(Debug, Subcommand)]
 enum WikiProfileSubcommand {
-    #[command(about = "Refresh the local rules overlay and live capability snapshot")]
+    #[command(about = "Refresh the local site-adapter artifact and live capability snapshot")]
     Sync(WikiCapabilitiesFormatArgs),
     #[command(about = "Show the current combined profile snapshot")]
     Show(WikiCapabilitiesFormatArgs),
@@ -320,7 +320,7 @@ pub(crate) struct WikiRulesArgs {
 
 #[derive(Debug, Subcommand)]
 enum WikiRulesSubcommand {
-    #[command(about = "Show the current profile rules overlay")]
+    #[command(about = "Show the current typed site-adapter rules")]
     Show(WikiFormatArgs),
 }
 

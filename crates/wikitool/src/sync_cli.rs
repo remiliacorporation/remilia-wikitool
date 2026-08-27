@@ -21,18 +21,16 @@ pub(crate) use status::run_status;
 
 #[derive(Debug, Args)]
 pub(crate) struct InitArgs {
-    #[arg(
-        long,
-        value_name = "URL",
-        help = "Target wiki base URL; defaults to https://wiki.remilia.org"
-    )]
+    #[arg(long, value_name = "URL", help = "Target wiki base URL")]
     pub(crate) wiki_url: Option<String>,
+    #[arg(long, value_name = "URL", help = "Target MediaWiki API URL")]
+    pub(crate) api_url: Option<String>,
     #[arg(
         long,
-        value_name = "URL",
-        help = "Target MediaWiki API URL; defaults to https://wiki.remilia.org/api.php"
+        value_name = "PATH",
+        help = "Explicit site-adapter profile path to validate and store in project config"
     )]
-    pub(crate) api_url: Option<String>,
+    pub(crate) adapter_path: Option<PathBuf>,
     #[arg(long, help = "Create templates/ during initialization")]
     pub(crate) templates: bool,
     #[arg(long, help = "Overwrite existing config/parser files")]

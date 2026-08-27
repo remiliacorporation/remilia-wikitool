@@ -1,15 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::knowledge::model::AuthoringKnowledgePackResult;
-use crate::profile::ProfileOverlay;
+use crate::profile::SiteProfile;
 use crate::support::{compute_hash, compute_sha256};
 
 use super::model::{
-    ArticleAuthoringContract, ArticleEvidenceProfile, ArticleStartIntent, ArticleStartResult,
-    AuthoringConstraint, CategorySurfaceEntry, ContextSurfaceSource, EvidenceCoverageItem,
-    EvidenceRef, LinkSurfaceEntry, LocalExistenceState, LocalIntegrationLane, OpenQuestion,
-    QueryTermCoverage, RecommendedAction, RequiredTemplate, SectionCandidate, SubjectResearchLane,
-    SubjectTypeHint, TemplateSurfaceEntry,
+    ArticleEvidenceProfile, ArticleStartIntent, ArticleStartResult, CategorySurfaceEntry,
+    ContextSurfaceSource, EvidenceCoverageItem, EvidenceRef, LinkSurfaceEntry, LocalExistenceState,
+    LocalIntegrationLane, QueryTermCoverage, RequiredTemplate, SectionCandidate,
+    SubjectResearchLane, SubjectTypeHint, TemplateSurfaceEntry,
 };
 
 #[derive(Debug, Default)]
@@ -92,7 +91,7 @@ fn build_comparable_scope(pack: &AuthoringKnowledgePackResult) -> ComparableScop
 
 pub fn build_article_start(
     pack: &AuthoringKnowledgePackResult,
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
     intent: ArticleStartIntent,
 ) -> ArticleStartResult {
     let comparable_scope = build_comparable_scope(pack);
@@ -162,20 +161,20 @@ pub fn build_article_start(
         .map(|page| page.title.clone())
         .collect::<Vec<_>>();
     let contract_parameter_keys = build_contract_parameter_key_map(pack);
-    let required_templates = build_required_templates(overlay, &contract_parameter_keys);
-    let subject_type_hints = build_subject_type_hints(pack, overlay, &comparable_scope);
+    let required_templates = build_required_templates(profile, &contract_parameter_keys);
+    let subject_type_hints = build_subject_type_hints(pack, profile, &comparable_scope);
     let available_infoboxes =
-        build_available_infoboxes(pack, overlay, &contract_parameter_keys, &comparable_scope);
+        build_available_infoboxes(pack, profile, &contract_parameter_keys, &comparable_scope);
     let citation_templates_seen =
-        build_citation_templates(pack, overlay, &contract_parameter_keys, &comparable_scope);
-    let template_surface = build_template_surface(pack, overlay, &contract_parameter_keys);
+        build_citation_templates(pack, profile, &contract_parameter_keys, &comparable_scope);
+    let template_surface = build_template_surface(pack, profile, &contract_parameter_keys);
     let observed_categories = build_category_surface(pack, &comparable_scope);
     let observed_links = build_link_surface(pack, &comparable_scope);
-    let section_candidates = build_section_candidates(pack, overlay, &comparable_scope);
+    let section_candidates = build_section_candidates(pack, profile, &comparable_scope);
     let contract_plan = &pack.context_summary.wiki_contract_context.traversal_plan;
 
     let closest_comparable_outline =
-        build_closest_comparable_outline(pack, overlay, &comparable_scope);
+        build_closest_comparable_outline(pack, profile, &comparable_scope);
     let local_integration = LocalIntegrationLane {
         comparable_pages,
         closest_comparable_outline,
@@ -194,53 +193,14 @@ pub fn build_article_start(
         contract_warnings: contract_plan.warnings.clone(),
     };
 
-    let constraints = build_constraints(overlay);
-    let mut open_questions = Vec::new();
-    if !pack.stub_missing_links.is_empty() {
-        open_questions.push(OpenQuestion {
-            question: "Which missing linked pages represent real prerequisites for this article?"
-                .to_string(),
-            reason: "The stub references titles that do not exist locally.".to_string(),
-            blocking: false,
-            evidence: evidence.iter().take(2).cloned().collect(),
-        });
-    }
-    if pack.suggested_references.is_empty() {
-        open_questions.push(OpenQuestion {
-            question: "Which reliable sources will substantiate the core claims?".to_string(),
-            reason: "No citation templates or reference patterns were surfaced locally."
-                .to_string(),
-            blocking: true,
-            evidence: evidence.iter().take(1).cloned().collect(),
-        });
-    }
-    if !has_local_authoring_evidence(&evidence_profile) {
-        open_questions.push(OpenQuestion {
-            question:
-                "What editorial vantage, adjacency, or canon purpose should define this page?"
-                    .to_string(),
-            reason:
-                "The local index returned no exact page, chunks, backlinks, or comparable pages; ask for the article boundary without forcing a direct relationship frame."
-                    .to_string(),
-            blocking: false,
-            evidence: Vec::new(),
-        });
-    }
-
-    let next_actions = build_next_actions(intent, &local_state, &evidence_profile);
-
     ArticleStartResult {
-        schema_version: "article_start_v3".to_string(),
+        schema_version: "article_start_v4".to_string(),
         topic: pack.topic.clone(),
         intent,
         local_state,
         evidence_profile,
         subject_research,
         local_integration,
-        authoring_contract: build_authoring_contract(),
-        constraints,
-        open_questions,
-        next_actions,
     }
 }
 
@@ -444,133 +404,21 @@ fn missing_query_terms(query_terms: &[String], matched_terms: &[String]) -> Vec<
         .collect()
 }
 
-fn build_next_actions(
-    intent: ArticleStartIntent,
-    local_state: &LocalExistenceState,
-    evidence_profile: &ArticleEvidenceProfile,
-) -> Vec<RecommendedAction> {
-    match intent {
-        ArticleStartIntent::New => {
-            let mut actions = Vec::new();
-            if matches!(
-                local_state,
-                LocalExistenceState::ExactPageExists | LocalExistenceState::RedirectExists
-            ) {
-                actions.push(RecommendedAction {
-                    label: "Confirm new-page target".to_string(),
-                    why: "The requested title already resolves locally; choose a missing title or switch to expand, audit, or refresh intent.".to_string(),
-                });
-            }
-            if has_local_authoring_evidence(evidence_profile) {
-                actions.push(RecommendedAction {
-                    label: "Review local context".to_string(),
-                    why: "Use exact pages, returned chunks, backlinks, or comparables as the local fit check for terminology, scope, and structure.".to_string(),
-                });
-            } else {
-                actions.push(RecommendedAction {
-                    label: "Gather independent sources".to_string(),
-                    why: "No local evidence was returned; establish the subject from reliable external or first-party primary sources before drafting.".to_string(),
-                });
-                actions.push(RecommendedAction {
-                    label: "Decide wiki fit".to_string(),
-                    why: "Use the target wiki's scope and style once source-backed facts are available."
-                        .to_string(),
-                });
-            }
-            actions.push(RecommendedAction {
-                label: "Build a claim-source map".to_string(),
-                why: "Separate supported subject claims, contextual leads, disputed interpretations, and unknowns before writing prose.".to_string(),
-            });
-            actions.push(RecommendedAction {
-                label: "Draft encyclopedic prose".to_string(),
-                why: "Write a subject-specific factual spine, then a concise lead; use retrieved neighboring pages only for local fit, never as automatic facts or structure.".to_string(),
-            });
-            actions.push(RecommendedAction {
-                label: "Run the reader-value edit".to_string(),
-                why: "Remove generic framing, repeated significance claims, unsupported synthesis, and gratuitous relationship language before human editorial acceptance.".to_string(),
-            });
-            actions
-        }
-        ArticleStartIntent::Expand => vec![
-            RecommendedAction {
-                label: "Read the existing page".to_string(),
-                why: "Expansion should preserve current scope and add only evidenced gaps."
-                    .to_string(),
-            },
-            RecommendedAction {
-                label: "Compare section coverage".to_string(),
-                why: "Show observed related-page structures to the human editor as examples, not as a generated outline."
-                    .to_string(),
-            },
-            RecommendedAction {
-                label: "Draft the evidenced expansion".to_string(),
-                why: "Write only the sourced gaps, integrate them into the article's factual spine, and avoid wholesale generic rewrites."
-                    .to_string(),
-            },
-        ],
-        ArticleStartIntent::Audit => vec![
-            RecommendedAction {
-                label: "Run title-scoped checks".to_string(),
-                why: "Use article lint and validate --title before changing content.".to_string(),
-            },
-            RecommendedAction {
-                label: "Inspect sources and templates".to_string(),
-                why: "Verify citations, required appendices, categories, and template parameters against local evidence.".to_string(),
-            },
-            RecommendedAction {
-                label: "Perform the reader-value audit".to_string(),
-                why: "Read the page as an encyclopedia article: test the lead, factual spine, source binding, paragraph specificity, proportionality, and every relationship or significance claim."
-                    .to_string(),
-            },
-            RecommendedAction {
-                label: "Report actionable findings".to_string(),
-                why: "Separate blocking defects from ordinary future-work links and orphan signals."
-                    .to_string(),
-            },
-        ],
-        ArticleStartIntent::Refresh => vec![
-            RecommendedAction {
-                label: "Check local and live state".to_string(),
-                why: "Refresh work should start by confirming the current page and sync surface."
-                    .to_string(),
-            },
-            RecommendedAction {
-                label: "Refresh dated claims".to_string(),
-                why: "Prioritize sources, citations, template usage, categories, and stale wording."
-                    .to_string(),
-            },
-            RecommendedAction {
-                label: "Run fix and lint".to_string(),
-                why: "Close with safe mechanical fixes and article lint before push review."
-                    .to_string(),
-            },
-        ],
-    }
-}
-
-fn has_local_authoring_evidence(evidence_profile: &ArticleEvidenceProfile) -> bool {
-    evidence_profile.exact_local_title.is_some()
-        || evidence_profile.backlink_count > 0
-        || !evidence_profile.subject_context.is_empty()
-        || !evidence_profile.broad_context.is_empty()
-        || !evidence_profile.comparable_pages.is_empty()
-}
-
 fn build_required_templates(
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
     contract_parameter_keys: &BTreeMap<String, Vec<String>>,
 ) -> Vec<RequiredTemplate> {
     let mut out = Vec::new();
-    if overlay.authoring.require_article_quality_banner
-        && let Some(template_title) = overlay.authoring.article_quality_template.as_deref()
+    if profile.authoring.require_article_quality_banner
+        && let Some(template_title) = profile.authoring.article_quality_template.as_deref()
     {
         out.push(RequiredTemplate {
             template_title: template_title.to_string(),
-            reason: "Required by the current profile overlay for article starts.".to_string(),
+            reason: "Required by the configured site adapter.".to_string(),
             parameter_keys: lookup_parameter_keys(contract_parameter_keys, template_title),
         });
     }
-    if let Some(template_title) = overlay.authoring.references_template.as_deref() {
+    if let Some(template_title) = profile.authoring.references_template.as_deref() {
         out.push(RequiredTemplate {
             template_title: template_title.to_string(),
             reason: "Required to render the References appendix on this wiki.".to_string(),
@@ -663,7 +511,7 @@ fn build_article_start_docs_queries(
 /// The closest comparable page's level-2 headings in document order.
 fn build_closest_comparable_outline(
     pack: &AuthoringKnowledgePackResult,
-    overlay: &ProfileOverlay,
+    _profile: &SiteProfile,
     comparable_scope: &ComparableScope,
 ) -> Option<crate::authoring::model::ComparableOutline> {
     for closest in pack
@@ -676,11 +524,7 @@ fn build_closest_comparable_outline(
             .iter()
             .filter(|heading| heading.source_title == closest.title)
             .map(|heading| normalize_heading(&heading.section_heading))
-            .filter(|heading| {
-                !heading.is_empty()
-                    && !heading_is_low_signal(heading)
-                    && !heading_is_discouraged(heading, overlay)
-            })
+            .filter(|heading| !heading.is_empty() && !heading_is_low_signal(heading))
             .collect::<Vec<_>>();
         if !ordered_headings.is_empty() {
             return Some(crate::authoring::model::ComparableOutline {
@@ -694,7 +538,7 @@ fn build_closest_comparable_outline(
 
 fn build_subject_type_hints(
     pack: &AuthoringKnowledgePackResult,
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
     comparable_scope: &ComparableScope,
 ) -> Vec<SubjectTypeHint> {
     let mut hints = BTreeMap::<String, (BTreeSet<String>, BTreeSet<String>)>::new();
@@ -711,7 +555,7 @@ fn build_subject_type_hints(
         {
             continue;
         }
-        for preference in &overlay.remilia.infobox_preferences {
+        for preference in &profile.templates.infobox_preferences {
             if !preference
                 .template_title
                 .eq_ignore_ascii_case(&template_title)
@@ -743,11 +587,11 @@ fn build_subject_type_hints(
 
 fn build_available_infoboxes(
     pack: &AuthoringKnowledgePackResult,
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
     contract_parameter_keys: &BTreeMap<String, Vec<String>>,
     comparable_scope: &ComparableScope,
 ) -> Vec<TemplateSurfaceEntry> {
-    let profile_mappings = overlay_infobox_subject_type_map(overlay);
+    let profile_mappings = profile_infobox_subject_type_map(profile);
     let mut out = collect_template_entries(
         pack.suggested_templates
             .iter()
@@ -831,7 +675,7 @@ fn build_available_infoboxes(
 
 fn build_citation_templates(
     pack: &AuthoringKnowledgePackResult,
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
     contract_parameter_keys: &BTreeMap<String, Vec<String>>,
     comparable_scope: &ComparableScope,
 ) -> Vec<TemplateSurfaceEntry> {
@@ -865,7 +709,7 @@ fn build_citation_templates(
         extend_sorted_unique(&mut entry.supporting_pages, &supporting_pages);
     }
 
-    for rule in &overlay.citations.preferred_templates {
+    for rule in &profile.citations.preferred_templates {
         let key = rule.template_title.to_ascii_lowercase();
         if let Some(entry) = comparable_entries.get_mut(&key) {
             entry.source = ContextSurfaceSource::Both;
@@ -900,10 +744,10 @@ fn build_citation_templates(
 
 fn build_template_surface(
     pack: &AuthoringKnowledgePackResult,
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
     contract_parameter_keys: &BTreeMap<String, Vec<String>>,
 ) -> Vec<TemplateSurfaceEntry> {
-    let profile_templates = overlay
+    let profile_templates = profile
         .profile_template_titles()
         .into_iter()
         .map(|title| title.to_ascii_lowercase())
@@ -1044,7 +888,7 @@ fn build_link_surface(
 
 fn build_section_candidates(
     pack: &AuthoringKnowledgePackResult,
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
     comparable_scope: &ComparableScope,
 ) -> Vec<SectionCandidate> {
     let mut sections = Vec::new();
@@ -1070,10 +914,7 @@ fn build_section_candidates(
             continue;
         }
         let normalized = normalize_heading(&cph.section_heading);
-        if normalized.is_empty()
-            || heading_is_low_signal(&normalized)
-            || heading_is_discouraged(&normalized, overlay)
-        {
+        if normalized.is_empty() || heading_is_low_signal(&normalized) {
             continue;
         }
         let entry = heading_support
@@ -1090,10 +931,7 @@ fn build_section_candidates(
         }
         if let Some(heading) = chunk.section_heading.as_deref() {
             let normalized = normalize_heading(heading);
-            if normalized.is_empty()
-                || heading_is_low_signal(&normalized)
-                || heading_is_discouraged(&normalized, overlay)
-            {
+            if normalized.is_empty() || heading_is_low_signal(&normalized) {
                 continue;
             }
             let entry = heading_support
@@ -1120,10 +958,7 @@ fn build_section_candidates(
             continue;
         }
         let normalized = normalize_heading(&cph.section_heading);
-        if normalized.is_empty()
-            || heading_is_low_signal(&normalized)
-            || heading_is_discouraged(&normalized, overlay)
-        {
+        if normalized.is_empty() || heading_is_low_signal(&normalized) {
             continue;
         }
         let position_entry = per_page_position
@@ -1187,91 +1022,26 @@ fn build_section_candidates(
             .then_with(|| left.heading.cmp(&right.heading))
     });
     sections.extend(headings);
-    sections.push(SectionCandidate {
-        heading: "References".to_string(),
-        rationale: "Reference handling is a hard requirement for publication-quality pages."
-            .to_string(),
-        required: true,
-        content_backed: false,
-        supporting_pages: Vec::new(),
-    });
-    sections
-}
-
-fn build_constraints(overlay: &ProfileOverlay) -> Vec<AuthoringConstraint> {
-    let mut constraints = vec![
-        AuthoringConstraint {
-            level: "must".to_string(),
-            rule_id: "evidence-bound-prose".to_string(),
-            message: "Agent-authored prose is allowed, but every factual claim must be supported by inspected evidence. Model memory, retrieval rank, and neighboring-page prose are not evidence."
-                .to_string(),
-        },
-        AuthoringConstraint {
-            level: "must".to_string(),
-            rule_id: "subject-first".to_string(),
-            message: "Define the subject on its own terms. Mention Remilia, Charlotte Fang, or another adjacent entity only when a source-backed relationship is important to understanding the subject, and give it proportionate weight."
-                .to_string(),
-        },
-        AuthoringConstraint {
-            level: "must".to_string(),
-            rule_id: "reader-value".to_string(),
-            message: "Write specific encyclopedic prose that earns each paragraph: concrete facts, coherent chronology or analysis, no generic importance claims, repeated conclusions, or article-shaped filler."
-                .to_string(),
-        },
-        AuthoringConstraint {
-            level: "must".to_string(),
-            rule_id: "human-publication-gate".to_string(),
-            message: "A named human editor must read and accept the exact final prose before promotion or push; an agent may draft but must never self-attest."
-                .to_string(),
-        },
-    ];
-    if overlay.authoring.require_short_description {
-        constraints.push(AuthoringConstraint {
-            level: "must".to_string(),
-            rule_id: "short-description".to_string(),
-            message: "Add a short description before the article body.".to_string(),
-        });
-    }
-    if overlay.authoring.require_article_quality_banner
-        && let Some(template_title) = overlay.authoring.article_quality_template.as_deref()
-    {
-        constraints.push(AuthoringConstraint {
-            level: "must".to_string(),
-            rule_id: "article-quality-banner".to_string(),
-            message: format!("Include {template_title} near the start of the page."),
-        });
-    }
-    if overlay
+    if profile
         .authoring
         .required_appendix_sections
         .iter()
         .any(|section| section.eq_ignore_ascii_case("References"))
-        && let Some(template_title) = overlay.authoring.references_template.as_deref()
     {
-        constraints.push(AuthoringConstraint {
-            level: "must".to_string(),
-            rule_id: "references-section".to_string(),
-            message: format!("Keep a References section and render it with {template_title}."),
+        sections.push(SectionCandidate {
+            heading: "References".to_string(),
+            rationale: "Required by the configured site adapter.".to_string(),
+            required: true,
+            content_backed: false,
+            supporting_pages: Vec::new(),
         });
     }
-    constraints
+    sections
 }
 
-fn build_authoring_contract() -> ArticleAuthoringContract {
-    ArticleAuthoringContract {
-        mode: "encyclopedic_coauthoring".to_string(),
-        agent_may_draft_prose: true,
-        human_acceptance_required_for_publication: true,
-        model_output_is_evidence: false,
-        prose_standard: "Specific, neutral, proportionate, readable encyclopedic prose; claims remain within inspected sources and uncertainty stays visible.".to_string(),
-        structure_policy: "Derive structure from the subject's evidenced factual spine and reader needs. Comparable outlines are observations, not templates.".to_string(),
-        relationship_frame_policy: "Do not force Remilia, Charlotte Fang, or any adjacent entity into the lead or a dedicated section unless the relationship is independently relevant, source-backed, and proportionate.".to_string(),
-    }
-}
-
-fn overlay_infobox_subject_type_map(overlay: &ProfileOverlay) -> BTreeMap<String, String> {
+fn profile_infobox_subject_type_map(profile: &SiteProfile) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    for preference in &overlay.remilia.infobox_preferences {
+    for preference in &profile.templates.infobox_preferences {
         out.insert(
             preference.template_title.to_ascii_lowercase(),
             preference.subject_type.clone(),
@@ -1347,14 +1117,6 @@ fn heading_is_low_signal(heading: &str) -> bool {
     ]
     .iter()
     .any(|value| lowered.contains(value))
-}
-
-fn heading_is_discouraged(heading: &str, overlay: &ProfileOverlay) -> bool {
-    overlay
-        .lint
-        .discouraged_relationship_headings
-        .iter()
-        .any(|candidate| candidate.eq_ignore_ascii_case(heading))
 }
 
 fn dedup_sorted(values: Vec<String>) -> Vec<String> {

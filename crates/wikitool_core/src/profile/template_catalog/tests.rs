@@ -8,9 +8,12 @@ use crate::knowledge::content_index::rebuild_index;
 use crate::runtime::{ResolvedPaths, ValueSource};
 
 use super::{
-    TemplateCatalogEntryLookup, build_template_catalog_with_overlay, find_template_catalog_entry,
+    TemplateCatalogEntryLookup, build_template_catalog_with_profile, find_template_catalog_entry,
 };
-use crate::profile::remilia_overlay::build_remilia_profile_overlay;
+use crate::profile::{
+    AuthoringRules, CategoryRules, CitationRules, InfoboxPreference, LintRules, SiteProfile,
+    TemplateRules,
+};
 
 fn paths(project_root: &Path) -> ResolvedPaths {
     let state_dir = project_root.join(".wikitool");
@@ -18,8 +21,6 @@ fn paths(project_root: &Path) -> ResolvedPaths {
     fs::create_dir_all(project_root.join("wiki_content/Main")).expect("wiki content");
     fs::create_dir_all(project_root.join("templates")).expect("templates");
     fs::create_dir_all(&data_dir).expect("data");
-    fs::create_dir_all(project_root.join("tools/wikitool/ai-pack/writing_context"))
-        .expect("instructions");
     ResolvedPaths {
         project_root: project_root.to_path_buf(),
         wiki_content_dir: project_root.join("wiki_content"),
@@ -42,25 +43,49 @@ fn write_file(path: &Path, content: &str) {
     fs::write(path, content).expect("write file");
 }
 
-fn write_instruction_sources(paths: &ResolvedPaths) {
-    write_file(
-        &paths
-            .project_root
-            .join("tools/wikitool/ai-pack/writing_context/article_structure.md"),
-        "Use sections that follow the subject.\nEnd with == References == and {{Reflist}}.",
-    );
-    write_file(
-        &paths
-            .project_root
-            .join("tools/wikitool/ai-pack/writing_context/style_rules.md"),
-        "State concrete sourced facts.\nNever output placeholders or system artifacts.",
-    );
-    write_file(
-        &paths
-            .project_root
-            .join("tools/wikitool/ai-pack/writing_context/writing_guide.md"),
-        "Write source-bound encyclopedic prose in MediaWiki wikitext.\nChoose infoboxes and categories from observed subject evidence.\n",
-    );
+fn test_profile() -> SiteProfile {
+    SiteProfile {
+        schema_version: "site_profile_v1".to_string(),
+        profile_id: "test".to_string(),
+        base_profile_id: "mediawiki-generic".to_string(),
+        docs_profile: "mw-1.44-authoring".to_string(),
+        source_documents: Vec::new(),
+        authoring: AuthoringRules {
+            require_short_description: false,
+            short_description_forms: Vec::new(),
+            require_article_quality_banner: false,
+            article_quality_template: None,
+            article_quality_default_state: None,
+            required_appendix_sections: Vec::new(),
+            references_template: None,
+            prefer_sentence_case_headings: false,
+            prefer_wikitext_only: true,
+            forbid_markdown: true,
+            require_straight_quotes: false,
+        },
+        citations: CitationRules {
+            preferred_templates: Vec::new(),
+            use_named_references: false,
+            leave_archive_fields_blank: false,
+            source_review_rules: Vec::new(),
+        },
+        templates: TemplateRules {
+            infobox_preferences: vec![InfoboxPreference {
+                subject_type: "person".to_string(),
+                template_title: "Template:Infobox person".to_string(),
+            }],
+        },
+        categories: CategoryRules {
+            preferred_categories: Vec::new(),
+        },
+        lint: LintRules {
+            forbid_curly_quotes: false,
+            forbid_placeholder_fragments: Vec::new(),
+            proper_nouns: Vec::new(),
+        },
+        extension_contracts: Vec::new(),
+        refreshed_at: "1".to_string(),
+    }
 }
 
 #[test]
@@ -68,7 +93,6 @@ fn template_catalog_fuses_local_docs_templatedata_and_usage() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
     let paths = paths(&project_root);
-    write_instruction_sources(&paths);
 
     write_file(
         &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
@@ -122,8 +146,7 @@ fn template_catalog_fuses_local_docs_templatedata_and_usage() {
     );
 
     rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
-    let overlay = build_remilia_profile_overlay(&paths).expect("overlay");
-    let catalog = build_template_catalog_with_overlay(&paths, &overlay).expect("catalog");
+    let catalog = build_template_catalog_with_profile(&paths, &test_profile()).expect("catalog");
     assert!(catalog.usage_index_ready);
     assert_eq!(catalog.template_count, 1);
     let entry = &catalog.entries[0];

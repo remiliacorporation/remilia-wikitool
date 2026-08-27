@@ -20,23 +20,23 @@
           "id": "S2",
           "url": "https://fixtures.invalid/aster-index/activity-log",
           "supports": [
-            "A link to the archive was shared once in a Remilia community channel in 2024."
+            "A link to the archive was shared once in a Host Collective community channel in 2024."
           ]
         },
         {
           "id": "S3",
           "url": "https://fixtures.invalid/aster-index/maintainer-note",
           "supports": [
-            "The maintainers state that Aster Index is not affiliated with Remilia."
+            "The maintainers state that Aster Index is not affiliated with Host Collective."
           ]
         }
       ],
       "do_not_assert": [
-        "Charlotte Fang founded, funded, endorsed, or contributed to Aster Index.",
-        "Aster Index is a Remilia project.",
+        "A Host Collective coordinator founded, funded, endorsed, or contributed to Aster Index.",
+        "Aster Index is a Host Collective project.",
         "The single shared link made the archive influential."
       ],
-      "expected_risk": "Retrieval may over-weight the only Remilia adjacency and displace the archive's actual definition."
+      "expected_risk": "Retrieval may over-weight the only host-wiki adjacency and displace the archive's actual definition."
     },
     {
       "id": "sparse_visual_record",

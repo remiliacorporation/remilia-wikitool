@@ -55,7 +55,7 @@ struct KnowledgeInterviewInitArgs {
     agent: Option<String>,
     #[arg(
         long = "no-scout",
-        help = "Skip the local-evidence scout (blank brief, generic question agenda)"
+        help = "Skip the local-evidence scout and create a blank ledger"
     )]
     no_scout: bool,
     #[arg(
@@ -564,7 +564,7 @@ fn resolve_scoped_input_path(
 
 /// Run the local authoring scout and reduce it to the interview's evidence
 /// snapshot. The interview must stay usable on a cold runtime, so a missing
-/// index degrades to `None` (blank brief + generic agenda) rather than failing.
+/// index degrades to `None` (blank neutral ledger) rather than failing.
 fn build_interview_scout(
     paths: &wikitool_core::runtime::ResolvedPaths,
     title: &str,
@@ -574,7 +574,7 @@ fn build_interview_scout(
     use wikitool_core::knowledge::authoring::{
         AuthoringKnowledgePack, AuthoringKnowledgePackOptions, build_authoring_knowledge_pack,
     };
-    use wikitool_core::profile::load_or_build_remilia_profile_overlay;
+    use wikitool_core::profile::load_or_build_site_profile;
 
     let pack = build_authoring_knowledge_pack(
         paths,
@@ -585,8 +585,8 @@ fn build_interview_scout(
     let AuthoringKnowledgePack::Found(report) = pack else {
         return Ok(None);
     };
-    let overlay = load_or_build_remilia_profile_overlay(paths)?;
-    let article_start = build_article_start(&report, &overlay, intent.into_article_start_intent());
+    let profile = load_or_build_site_profile(paths)?;
+    let article_start = build_article_start(&report, &profile, intent.into_article_start_intent());
 
     let local_state = serde_json::to_value(&article_start.local_state)
         .ok()
@@ -645,14 +645,6 @@ fn print_init_report(report: &InterviewInitReport) {
     println!("wrote_brief: {}", yes_no(report.wrote_brief));
     println!("wrote_open_items: {}", yes_no(report.wrote_open_items));
     println!("scout_included: {}", yes_no(report.scout_included));
-    for area in &report.question_agenda {
-        println!("question_area: {}", area.area);
-        println!("  suggested: {}", area.suggested_question);
-        println!("  why: {}", area.why);
-    }
-    for step in &report.next_steps {
-        println!("next_step: {step}");
-    }
 }
 
 fn print_validation_report(label: &str, report: &InterviewValidationReport) {

@@ -5,7 +5,7 @@ pub(super) fn build_catalog_entry(
     usage: Option<&crate::knowledge::templates::TemplateUsageSummary>,
     implementation_pages: Option<&[crate::knowledge::templates::TemplateImplementationRecord]>,
     redirect_aliases: &[String],
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
 ) -> TemplateCatalogEntry {
     let usage_aliases = merge_titles(
         usage.map(|item| item.aliases.clone()).unwrap_or_default(),
@@ -91,7 +91,7 @@ pub(super) fn build_catalog_entry(
         declared_parameter_keys: template.declared_parameter_keys,
         parameters,
         examples: merge_examples(template.local_examples, usage),
-        recommendation_tags: recommendation_tags(&template.template_title, overlay),
+        recommendation_tags: recommendation_tags(&template.template_title, profile),
     }
 }
 
@@ -273,15 +273,15 @@ fn merge_examples(
     out
 }
 
-fn recommendation_tags(template_title: &str, overlay: &ProfileOverlay) -> Vec<String> {
+fn recommendation_tags(template_title: &str, profile: &SiteProfile) -> Vec<String> {
     let mut tags = Vec::new();
-    if overlay.authoring.article_quality_template.as_deref() == Some(template_title) {
+    if profile.authoring.article_quality_template.as_deref() == Some(template_title) {
         tags.push("required_quality_banner".to_string());
     }
-    if overlay.authoring.references_template.as_deref() == Some(template_title) {
+    if profile.authoring.references_template.as_deref() == Some(template_title) {
         tags.push("required_references_template".to_string());
     }
-    if overlay
+    if profile
         .citations
         .preferred_templates
         .iter()
@@ -289,8 +289,8 @@ fn recommendation_tags(template_title: &str, overlay: &ProfileOverlay) -> Vec<St
     {
         tags.push("preferred_citation_template".to_string());
     }
-    if overlay
-        .remilia
+    if profile
+        .templates
         .infobox_preferences
         .iter()
         .any(|rule| rule.template_title == template_title)

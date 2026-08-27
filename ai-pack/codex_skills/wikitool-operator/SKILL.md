@@ -1,47 +1,29 @@
 ---
 name: wikitool-operator
-description: Research, author, revise, review, and safely sync evidence-bound MediaWiki articles with wikitool. Use for real encyclopedic prose drafting, wiki-grounded retrieval, source handling, interviews, wikitext, lint/fix, validation, exact human acceptance, and guarded publication.
+description: Operate Wikitool for MediaWiki target configuration, capability and template discovery, local indexing, research capture, deterministic article checks and fixes, validation, revision-bound sync, diagnostics, and guarded writes. Use for mechanical or mixed wiki work; route prose judgment to the dedicated skills.
 ---
 
 # Wikitool operator
 
-Use normal reasoning and direct editing. Verify current flags with `wikitool --help`, `wikitool
-<command> --help`, and `docs/wikitool/reference.md`.
+Use Wikitool as the mechanical and evidence substrate for a configured MediaWiki project. Do not let convenience commands absorb editorial judgment that belongs in `wiki-writing`, `prose-review`, or `wiki-interview`.
 
-For article prose, read `writing_context/writing_guide.md`, `style_rules.md`, and
-`article_structure.md`; read `visual_subjects.md` when applicable. Agent-authored prose is allowed
-and should meet a real encyclopedic standard. Model memory, retrieval rank, search snippets, nearby
-pages, and fluent synthesis are not evidence.
+## Procedure
 
-At session start, inspect `wikitool status --modified --format json` and `wikitool diff --format json`,
-then run `wikitool workflow session-refresh` and `wikitool knowledge status`. Use
-`workflow full-refresh` only for deliberate rebuilds or missing state. Never use
-`pull --overwrite-local` without explicit approval.
+1. Resolve the project root. Run `wikitool config show --format json` and inspect the configured target, adapter path, and bot edit-marking policy.
+2. Inspect `wikitool status --modified --format json` and a scoped diff before changing local content. Preserve unrelated work.
+3. Run `wikitool wiki profile show --format json` to inspect the generic base, explicit site adapter, cached live capabilities, and template catalog. Read the adapter's source documents for target-specific work.
+4. Check `wikitool knowledge status --format json`. Use the narrowest warm/build operation needed; do not rebuild healthy state by reflex.
+5. Use `knowledge article-start` for typed local evidence and integration facts. Its readiness describes retrieval artifacts, not research completeness or publishability.
+6. Use `research wiki-search` only for the configured target wiki. Use `research fetch`, sessions, cache, and export to create bounded provenance for external sources. Access challenges require user help, not circumvention.
+7. Route real prose authoring to `wiki-writing`, independent editorial review to `prose-review`, and human intake to `wiki-interview`.
+8. Use `article lint` and `article fix --apply safe` only for deterministic diagnostics and mechanical edits. Inspect every fix and lint again.
+9. Use scoped `validate --verify-live` when local state may be stale. Treat live read evidence as authoritative for redirects, missing pages, and target capabilities.
+10. Before a push, inspect status and diff, run review, and verify `push --dry-run`. Wikitool uses revision constraints and does not retry writes blindly.
 
-Use `knowledge article-start --intent new|expand|audit|refresh --view brief` for the typed
-coauthoring contract, evidence coverage, local fit signals, and open questions. `drafting_ready`
-means the current retrieval artifacts are usable, not that the topic is researched or the draft is
-publishable. Comparable outlines and categories are observations, not defaults. Route new articles,
-substantial rewrites, niche history, and unclear intent through `wikitool-knowledge-interview`.
-Use `knowledge contracts` for target template and module decisions.
+## Acceptance boundary
 
-Build a claim-source map before drafting. Use normal web search to choose arbitrary external
-sources, then `research fetch`, `research discover`, and `export` for bounded extraction and
-provenance. Use `research wiki-search` only for the configured target wiki. Relay access challenges
-to the user rather than bypassing them. Inspect the exact source behind each important claim.
+`article accept` writes a hash-bound local ledger entry. Any prose edit invalidates it. The named editor is a self-reported, unauthenticated claim; Wikitool cannot prove who typed it or judge prose quality. A project workflow may require a real human review, but the tool must describe its assurance honestly.
 
-Draft from the factual spine, write the lead after the body, and perform the adversarial reader edit
-in `style_rules.md`. Define the subject on its own terms. Do not force Remilia, Charlotte Fang,
-Milady, or community framing from local adjacency. Keep uncertainty, source attribution, and
-living-person risk visible.
+## Exit conditions
 
-Use `article lint` and `article fix --apply safe` for deterministic diagnostics and mechanical
-repairs. These checks cannot establish source fidelity or prose quality. A named human must read the
-exact final prose and run or explicitly direct `article accept`, using `agent-draft`,
-`collaborative-draft`, or the other truthful origin. Never self-attest. Acceptance is hash-bound;
-the stated identity is an audit assertion, not cryptographic authentication. Promotion and changed
-Main-namespace pushes require the receipt, and `--force` does not bypass it.
-
-Use scoped `validate --verify-live`, `status`, `diff`, `review --view brief`, and `push --dry-run`
-before a live push. After dynamic rendering changes, run `wiki render-check` for every relevant
-consumer shape.
+Report the exact scope, adapter/profile used, live versus cached evidence, deterministic findings, changes made, and remaining authority or editorial gates. Do not claim prose quality from lint, research truth from retrieval rank, human identity from the ledger, or publication success from a dry run.

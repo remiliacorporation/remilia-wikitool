@@ -1,8 +1,6 @@
-use anyhow::{Context, Result};
-use wikitool_core::config::{
-    DEFAULT_WIKI_API_URL, DEFAULT_WIKI_URL, WikiConfigPatch, derive_wiki_url, load_config,
-    patch_wiki_config,
-};
+use anyhow::{Context, Result, bail};
+use wikitool_core::config::{WikiConfigPatch, derive_wiki_url, load_config, patch_wiki_config};
+use wikitool_core::profile::site_adapter_resource_paths;
 use wikitool_core::runtime::{InitOptions, init_layout};
 use wikitool_core::sync::discover_custom_namespaces;
 
@@ -14,6 +12,23 @@ use super::shared::materialize_custom_namespace_dirs;
 
 pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
+    if args.no_config && args.adapter_path.is_some() {
+        bail!("--adapter-path cannot be used with --no-config");
+    }
+    let configured_adapter_path = args.adapter_path.as_ref().map(normalize_path);
+    if let Some(adapter_path) = &args.adapter_path {
+        let absolute = if adapter_path.is_absolute() {
+            adapter_path.clone()
+        } else {
+            paths.project_root.join(adapter_path)
+        };
+        site_adapter_resource_paths(&absolute).with_context(|| {
+            format!(
+                "invalid site adapter supplied to --adapter-path: {}",
+                normalize_path(&absolute)
+            )
+        })?;
+    }
     let report = init_layout(
         &paths,
         &InitOptions {
@@ -29,6 +44,7 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     let mut namespace_discovery_status = "skipped (--no-config)".to_string();
     let mut persisted_api_url = false;
     let mut persisted_wiki_url = false;
+    let mut persisted_adapter_path = None;
 
     if !args.no_config {
         let config = load_config(&paths.config_path)
@@ -39,8 +55,7 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
         let resolved_api_url = args
             .api_url
             .clone()
-            .or_else(|| config_target.api_url.value.clone())
-            .or_else(|| Some(DEFAULT_WIKI_API_URL.to_string()));
+            .or_else(|| config_target.api_url.value.clone());
         let resolved_wiki_url = args
             .wiki_url
             .clone()
@@ -57,8 +72,7 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
                     .flatten()
             })
             .or_else(|| config_target.url.value.clone())
-            .or_else(|| resolved_api_url.as_deref().and_then(derive_wiki_url))
-            .or_else(|| Some(DEFAULT_WIKI_URL.to_string()));
+            .or_else(|| resolved_api_url.as_deref().and_then(derive_wiki_url));
         let mut discovery_config = config.clone();
         if let Some(api_url) = &resolved_api_url {
             discovery_config.wiki.api_url = Some(api_url.clone());
@@ -69,14 +83,13 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
         let discovered = if args.no_network {
             namespace_discovery_status = "skipped (--no-network)".to_string();
             Vec::new()
+        } else if resolved_api_url.is_none() {
+            namespace_discovery_status = "skipped (no API URL configured)".to_string();
+            Vec::new()
         } else {
             namespace_discovery_status = "pending".to_string();
             match discover_custom_namespaces(&discovery_config) {
                 Ok(ns) => ns,
-                Err(_) if resolved_api_url.is_none() => {
-                    namespace_discovery_status = "skipped (no API URL configured)".to_string();
-                    Vec::new()
-                }
                 Err(err) => {
                     namespace_discovery_status = format!("failed: {err:#}");
                     Vec::new()
@@ -87,15 +100,19 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
             set_url: None,
             set_api_url: None,
             set_custom_namespaces: Some(discovered.clone()),
+            set_adapter_path: configured_adapter_path,
         };
-        if args.api_url.is_some() || config_api_url_from_env || config.wiki.api_url.is_none() {
+        if resolved_api_url.is_some()
+            && (args.api_url.is_some() || config_api_url_from_env || config.wiki.api_url.is_none())
+        {
             patch.set_api_url = resolved_api_url;
         }
-        if args.wiki_url.is_some()
-            || args.api_url.is_some()
-            || config_wiki_url_from_env
-            || config_api_url_from_env
-            || config.wiki.url.is_none()
+        if resolved_wiki_url.is_some()
+            && (args.wiki_url.is_some()
+                || args.api_url.is_some()
+                || config_wiki_url_from_env
+                || config_api_url_from_env
+                || config.wiki.url.is_none())
         {
             patch.set_url = resolved_wiki_url;
         }
@@ -106,6 +123,7 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
             .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
         persisted_api_url = refreshed.wiki.api_url.is_some();
         persisted_wiki_url = refreshed.wiki.url.is_some();
+        persisted_adapter_path = refreshed.adapter.path.clone();
         let created = materialize_custom_namespace_dirs(&paths, &refreshed)?;
         created_namespace_dirs = created.len();
         discovered_namespaces = discovered.len();
@@ -139,6 +157,10 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     println!("created_namespace_dirs: {created_namespace_dirs}");
     println!("persisted_wiki_api_url: {persisted_api_url}");
     println!("persisted_wiki_url: {persisted_wiki_url}");
+    println!(
+        "persisted_site_adapter: {}",
+        persisted_adapter_path.as_deref().unwrap_or("none")
+    );
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
     if runtime.diagnostics {
         println!("\n[diagnostics]\n{}", paths.diagnostics());

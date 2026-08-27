@@ -1,0 +1,82 @@
+schema_version = "site_adapter_v1"
+profile_id = "example-wiki"
+base_profile_id = "mediawiki-generic"
+docs_profile = "mw-1.44-authoring"
+guidance_documents = []
+
+[authoring]
+require_short_description = true
+short_description_forms = ["magic_word:SHORTDESC"]
+require_article_quality_banner = true
+article_quality_template = "Template:Article quality"
+article_quality_default_state = "unverified"
+required_appendix_sections = ["References"]
+references_template = "Template:Reflist"
+prefer_sentence_case_headings = true
+prefer_wikitext_only = true
+forbid_markdown = true
+require_straight_quotes = true
+
+[citations]
+use_named_references = true
+leave_archive_fields_blank = true
+
+[[citations.preferred_templates]]
+family = "web"
+template_title = "Template:Cite web"
+
+[[citations.source_review_rules]]
+label = "Wikipedia"
+host = "wikipedia.org"
+reason = "Review whether this citation should instead bind the claim to Wikipedia's underlying source."
+
+[templates]
+
+[[templates.infobox_preferences]]
+subject_type = "Person"
+template_title = "Template:Infobox person"
+
+[[templates.infobox_preferences]]
+subject_type = "Collection"
+template_title = "Template:Infobox NFT collection"
+
+[categories]
+preferred_categories = []
+
+[lint]
+forbid_curly_quotes = true
+proper_nouns = ["Webring"]
+forbid_placeholder_fragments = [
+  "INSERT_SOURCE_URL",
+  "citeturn0search0",
+  "contentReference[oaicite:0]",
+  "oai_citation",
+]
+
+[[extension_contracts]]
+kind = "tag"
+name = "tabber"
+provider = "TabberNeue"
+syntax = "paired"
+body_required = true
+
+[[extension_contracts]]
+kind = "tag"
+name = "gallery"
+provider = "core"
+syntax = "paired"
+body_required = true
+
+[[extension_contracts]]
+kind = "tag"
+name = "dpl"
+provider = "DPL4"
+syntax = "paired"
+body_required = true
+
+[[extension_contracts]]
+kind = "module"
+name = "D3Chart"
+provider = "local"
+syntax = "module_invoke"
+body_required = false

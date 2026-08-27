@@ -3,8 +3,7 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 use wikitool_core::profile::{
     TemplateCatalog, TemplateCatalogEntry, TemplateCatalogEntryLookup, find_template_catalog_entry,
-    load_or_build_remilia_profile_overlay, load_template_catalog,
-    sync_template_catalog_with_overlay,
+    load_or_build_site_profile, load_template_catalog, sync_template_catalog_with_profile,
 };
 
 use crate::briefs::{BriefCommand, BriefView, brief_command_owned, capped_strings, text_preview};
@@ -105,8 +104,8 @@ fn run_templates_catalog(runtime: &RuntimeOptions, args: TemplatesCatalogArgs) -
 
 fn run_templates_catalog_build(runtime: &RuntimeOptions, format: OutputFormat) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let overlay = load_or_build_remilia_profile_overlay(&paths)?;
-    let catalog = sync_template_catalog_with_overlay(&paths, &overlay)?;
+    let profile = load_or_build_site_profile(&paths)?;
+    let catalog = sync_template_catalog_with_profile(&paths, &profile)?;
 
     if format.is_json() {
         println!("{}", serde_json::to_string_pretty(&catalog)?);
@@ -215,11 +214,11 @@ fn run_templates_examples(runtime: &RuntimeOptions, args: TemplatesExamplesArgs)
 }
 
 fn load_or_sync_catalog(paths: &wikitool_core::runtime::ResolvedPaths) -> Result<TemplateCatalog> {
-    let overlay = load_or_build_remilia_profile_overlay(paths)?;
-    if let Some(catalog) = load_template_catalog(paths, &overlay.profile_id)? {
+    let profile = load_or_build_site_profile(paths)?;
+    if let Some(catalog) = load_template_catalog(paths, &profile.profile_id)? {
         return Ok(catalog);
     }
-    sync_template_catalog_with_overlay(paths, &overlay)
+    sync_template_catalog_with_profile(paths, &profile)
 }
 
 fn print_catalog_summary(catalog: &TemplateCatalog) {

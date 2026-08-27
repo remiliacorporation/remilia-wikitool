@@ -157,8 +157,7 @@ pub(super) fn pull_from_remote_with_api<A: WikiReadApi>(
         }
 
         let existed_before = absolute_path.exists();
-        fs::write(&absolute_path, &page.content)
-            .with_context(|| format!("failed to write {}", absolute_path.display()))?;
+        crate::support::atomic_write(&absolute_path, &page.content)?;
         files_changed = true;
         remove_stale_synced_path(stale_synced_path.as_deref())?;
         upsert_sync_ledger(

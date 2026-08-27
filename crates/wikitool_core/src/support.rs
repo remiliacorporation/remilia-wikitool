@@ -1,11 +1,37 @@
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
+use tempfile::NamedTempFile;
+
+/// Replace a file with fully written bytes from a temporary file in the same
+/// directory. Persisting within one directory preserves the filesystem's atomic
+/// rename boundary, including replacement of an existing target on Windows.
+pub fn atomic_write(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("atomic write target has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
+    let mut temporary = NamedTempFile::new_in(parent)
+        .with_context(|| format!("failed to create temporary file in {}", parent.display()))?;
+    temporary
+        .write_all(content.as_ref())
+        .with_context(|| format!("failed to stage bytes for {}", path.display()))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .with_context(|| format!("failed to flush staged bytes for {}", path.display()))?;
+    temporary
+        .persist(path)
+        .map_err(|error| error.error)
+        .with_context(|| format!("failed to atomically replace {}", path.display()))?;
+    Ok(())
+}
 
 pub fn compute_hash(content: &str) -> String {
     let digest = Sha256::digest(content.as_bytes());
@@ -182,9 +208,21 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        compute_hash, compute_sha256, compute_wiki_sync_hash, format_iso8601_utc, normalize_path,
-        normalize_pathbuf, normalize_wiki_content, parse_redirect,
+        atomic_write, compute_hash, compute_sha256, compute_wiki_sync_hash, format_iso8601_utc,
+        normalize_path, normalize_pathbuf, normalize_wiki_content, parse_redirect,
     };
+
+    #[test]
+    fn atomic_write_replaces_complete_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = temp.path().join("state.json");
+        std::fs::write(&target, "old").expect("seed");
+        atomic_write(&target, b"new complete state").expect("atomic replace");
+        assert_eq!(
+            std::fs::read_to_string(target).expect("read target"),
+            "new complete state"
+        );
+    }
 
     #[test]
     fn short_hash_is_stable() {

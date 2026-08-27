@@ -361,20 +361,14 @@ impl WikiWriteApi for MediaWikiClient {
         constraint: EditConstraint,
     ) -> Result<RemotePage> {
         let token = self.ensure_csrf_token()?;
-        let mut params = vec![
-            ("action", "edit".to_string()),
-            ("title", title.to_string()),
-            ("text", content.to_string()),
-            ("summary", summary.to_string()),
-            ("bot", "1".to_string()),
-            ("token", token),
-        ];
-        match constraint {
-            EditConstraint::CreateOnly => params.push(("createonly", "1".to_string())),
-            EditConstraint::ExistingRevision { revision_id } => {
-                params.push(("baserevid", revision_id.to_string()));
-            }
-        }
+        let params = build_edit_parameters(
+            title,
+            content,
+            summary,
+            &token,
+            constraint,
+            self.config.mark_edits_as_bot,
+        );
         let response = self.request_json_post(&params, true)?;
         let edit_payload: EditResponse =
             serde_json::from_value(response).context("failed to decode edit response")?;
@@ -418,6 +412,33 @@ impl WikiWriteApi for MediaWikiClient {
             }
         }
     }
+}
+
+fn build_edit_parameters(
+    title: &str,
+    content: &str,
+    summary: &str,
+    token: &str,
+    constraint: EditConstraint,
+    mark_as_bot: bool,
+) -> Vec<(&'static str, String)> {
+    let mut params = vec![
+        ("action", "edit".to_string()),
+        ("title", title.to_string()),
+        ("text", content.to_string()),
+        ("summary", summary.to_string()),
+        ("token", token.to_string()),
+    ];
+    if mark_as_bot {
+        params.push(("bot", "1".to_string()));
+    }
+    match constraint {
+        EditConstraint::CreateOnly => params.push(("createonly", "1".to_string())),
+        EditConstraint::ExistingRevision { revision_id } => {
+            params.push(("baserevid", revision_id.to_string()));
+        }
+    }
+    params
 }
 
 impl MediaWikiClient {
@@ -1017,5 +1038,52 @@ mod move_tests {
         )
         .expect_err("must reject missing payload");
         assert!(error.to_string().contains("missing undelete payload"));
+    }
+}
+
+#[cfg(test)]
+mod edit_parameter_tests {
+    use super::*;
+
+    #[test]
+    fn new_page_edit_is_create_only_and_not_bot_marked_by_default() {
+        let params = build_edit_parameters(
+            "New page",
+            "body",
+            "summary",
+            "token",
+            EditConstraint::CreateOnly,
+            false,
+        );
+        assert!(
+            params
+                .iter()
+                .any(|(key, value)| *key == "createonly" && value == "1")
+        );
+        assert!(!params.iter().any(|(key, _)| *key == "baserevid"));
+        assert!(!params.iter().any(|(key, _)| *key == "bot"));
+    }
+
+    #[test]
+    fn existing_page_edit_binds_revision_and_bot_marker_is_explicit() {
+        let params = build_edit_parameters(
+            "Existing page",
+            "body",
+            "summary",
+            "token",
+            EditConstraint::ExistingRevision { revision_id: 4242 },
+            true,
+        );
+        assert!(
+            params
+                .iter()
+                .any(|(key, value)| *key == "baserevid" && value == "4242")
+        );
+        assert!(!params.iter().any(|(key, _)| *key == "createonly"));
+        assert!(
+            params
+                .iter()
+                .any(|(key, value)| *key == "bot" && value == "1")
+        );
     }
 }

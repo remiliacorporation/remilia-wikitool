@@ -1,0 +1,51 @@
+{
+  "schema_version": "prose_review_cases_v1",
+  "notice": "Closed-world fictional review inputs. Review these before opening prose_review_expectations.json.",
+  "cases": [
+    {
+      "id": "sensitive_claim_without_support",
+      "title": "Mara Vale",
+      "article_wikitext": "{{SHORTDESC:Fictional software artist}}\n\n'''Mara Vale''' is a software artist known for the installation ''Folded Clock''. Vale was arrested for cocaine possession in 2021 and later entered rehabilitation.<ref>{{Cite news|url=https://fixtures.invalid/mara-vale/profile|title=Inside Mara Vale's practice}}</ref>\n\n== Work ==\nVale presented ''Folded Clock'' at North Room in June 2023. The work used twelve synchronized e-paper displays.<ref>{{Cite web|url=https://fixtures.invalid/mara-vale/exhibition|title=Folded Clock}}</ref>\n\n== References ==\n{{Reflist}}",
+      "inspected_sources": [
+        {
+          "url": "https://fixtures.invalid/mara-vale/profile",
+          "content": "A short studio profile about Vale's use of e-paper. It contains no arrest, drug, health, or rehabilitation claim."
+        },
+        {
+          "url": "https://fixtures.invalid/mara-vale/exhibition",
+          "content": "North Room checklist: Folded Clock, June 2023, twelve synchronized e-paper displays."
+        }
+      ]
+    },
+    {
+      "id": "gratuitous_host_relationship",
+      "title": "Aster Index",
+      "article_wikitext": "{{SHORTDESC:Archive shared in a fictional host-wiki community}}\n\n'''Aster Index''' entered the orbit of the Host Collective when a member shared it in the collective's chat in 2024. This connection situates the archive within a broader network of online cultural projects.<ref>{{Cite web|url=https://fixtures.invalid/aster-index/activity-log|title=Activity log}}</ref>\n\n== Archive ==\nThe volunteer-maintained archive was established in 2022. It catalogues 480 scanned posters from bulletin-board communities active from 1998 through 2007 and organizes them by community, year, and credited designer.<ref>{{Cite web|url=https://fixtures.invalid/aster-index/about|title=About Aster Index}}</ref>\n\n== References ==\n{{Reflist}}",
+      "inspected_sources": [
+        {
+          "url": "https://fixtures.invalid/aster-index/activity-log",
+          "content": "A link to Aster Index was posted once in a Host Collective chat in 2024. No collaboration or affiliation is stated."
+        },
+        {
+          "url": "https://fixtures.invalid/aster-index/about",
+          "content": "Aster Index is a volunteer-maintained digital archive established in 2022. It catalogues 480 scanned posters from small bulletin-board communities active from 1998 through 2007, organized by community, year, and credited designer when known."
+        }
+      ]
+    },
+    {
+      "id": "source_specific_clean_article",
+      "title": "Null Assembly",
+      "article_wikitext": "{{SHORTDESC:Fictional online reading group announced in 2020}}\n\n'''Null Assembly''' is a monthly online reading group announced on 14 March 2020.<ref name=\"announcement\">{{Cite web|url=https://fixtures.invalid/null-assembly/announcement|title=Null Assembly announcement}}</ref> Its earliest preserved public session page is dated 9 May 2020.<ref name=\"archive\">{{Cite web|url=https://fixtures.invalid/null-assembly/archive|title=Session archive}}</ref>\n\n== Records ==\nThe announcement described the project as launched on 14 March. The surviving archive begins with the May session and contains no preserved session page for March or April; the available records therefore do not establish when the first meeting occurred.<ref name=\"announcement\"/><ref name=\"archive\"/>\n\n== References ==\n{{Reflist}}",
+      "inspected_sources": [
+        {
+          "url": "https://fixtures.invalid/null-assembly/announcement",
+          "content": "Announcement dated 14 March 2020: Null Assembly launches today as a monthly online reading group."
+        },
+        {
+          "url": "https://fixtures.invalid/null-assembly/archive",
+          "content": "The earliest preserved public session page is dated 9 May 2020. The archive contains no preserved March or April session page."
+        }
+      ]
+    }
+  ]
+}

@@ -5,12 +5,12 @@ mod resources;
 mod rules;
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use crate::runtime::ResolvedPaths;
+use crate::support::atomic_write;
 
 pub use model::{
     AppliedFixRecord, ArticleFixApplyMode, ArticleFixResult, ArticleLintIssue, ArticleLintReport,
@@ -31,9 +31,7 @@ use crate::schema::open_initialized_database_connection;
 
 const ARTICLE_LINT_SCHEMA_VERSION: &str = "article_lint_v2";
 const ARTICLE_FIX_SCHEMA_VERSION: &str = "article_fix_v1";
-const REMILIA_PROFILE_ID: &str = "remilia";
-
-/// Project-wide lint context (profile overlay, template catalog, local scans,
+/// Project-wide lint context (site profile, template catalog, local scans,
 /// index connection). Loading it walks the whole project, so batch callers must
 /// load once and lint every file through [`lint_article_with_resources`].
 #[derive(Debug)]
@@ -99,15 +97,14 @@ pub fn fix_article_with_title(
                 .collect::<Vec<_>>(),
         )?;
         let absolute_path = paths.project_root.join(&document.relative_path);
-        fs::write(&absolute_path, new_content)
-            .with_context(|| format!("failed to write {}", absolute_path.display()))?;
+        atomic_write(&absolute_path, new_content)?;
     }
 
     let remaining_report =
         lint_article_with_resources(paths, article_path, title_override, &resources)?;
     Ok(ArticleFixResult {
         schema_version: ARTICLE_FIX_SCHEMA_VERSION.to_string(),
-        profile_id: REMILIA_PROFILE_ID.to_string(),
+        profile_id: resources.inner.profile.profile_id.clone(),
         relative_path: remaining_report.relative_path.clone(),
         title: remaining_report.title.clone(),
         namespace: remaining_report.namespace.clone(),
@@ -154,7 +151,7 @@ fn build_report(
 
     ArticleLintReport {
         schema_version: ARTICLE_LINT_SCHEMA_VERSION.to_string(),
-        profile_id: REMILIA_PROFILE_ID.to_string(),
+        profile_id: resources.profile.profile_id.clone(),
         relative_path: document.relative_path.clone(),
         title: document.title.clone(),
         namespace: document.namespace.clone(),

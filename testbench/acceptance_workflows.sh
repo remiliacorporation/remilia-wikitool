@@ -59,6 +59,15 @@ resolve_wikitool_cmd() {
         return
     fi
 
+    # On WSL/Git Bash, prefer the host Rust toolchain when it is available.
+    # A distro Cargo may be older than the workspace's declared Rust edition,
+    # while the surrounding Windows checkout is already built with cargo.exe.
+    if command -v cargo.exe > /dev/null 2>&1; then
+        WIKITOOL_CMD=(cargo.exe run --quiet --)
+        WIKITOOL_PATH_MODE="windows"
+        return
+    fi
+
     if command -v cargo > /dev/null 2>&1; then
         local cargo_path
         cargo_path=$(command -v cargo)
@@ -68,12 +77,6 @@ resolve_wikitool_cmd() {
         else
             WIKITOOL_PATH_MODE="posix"
         fi
-        return
-    fi
-
-    if command -v cargo.exe > /dev/null 2>&1; then
-        WIKITOOL_CMD=(cargo.exe run --quiet --)
-        WIKITOOL_PATH_MODE="windows"
         return
     fi
 
@@ -130,36 +133,12 @@ wt() {
     "${WIKITOOL_CMD[@]}" --project-root "$root" "$@"
 }
 
-write_authoring_guidance() {
+write_site_adapter() {
     local root="$1"
-    mkdir -p "$root/tools/wikitool/ai-pack/writing_context"
-    cp "$REPO_ROOT/ai-pack/writing_context/profile.toml" "$root/tools/wikitool/ai-pack/writing_context/profile.toml"
-    cat > "$root/tools/wikitool/ai-pack/writing_context/article_structure.md" << 'MDEOF'
-{{SHORTDESC:Example}}
-{{Article quality|unverified}}
-== References ==
-{{Reflist}}
-Use sections that follow the subject.
-MDEOF
-    cat > "$root/tools/wikitool/ai-pack/writing_context/style_rules.md" << 'MDEOF'
-### No placeholder content
-- Never output: `INSERT_SOURCE_URL`
-Straight quotes only
-MDEOF
-    cat > "$root/tools/wikitool/ai-pack/writing_context/writing_guide.md" << 'MDEOF'
-raw MediaWiki wikitext
-Never output Markdown
-Use only categories evidenced by the subject.
-{{Article quality|unverified}}
-### Citation templates
-```wikitext
-{{Cite web|url=}}
-```
-## Infobox selection
-| Subject type | Infobox |
-|---|---|
-| NFT Collection | `{{Infobox NFT collection}}` |
-MDEOF
+    mkdir -p "$root/site-adapter"
+    cp "$REPO_ROOT/crates/wikitool_core/testdata/site-adapter.toml" "$root/site-adapter/profile.toml"
+    sed -i.bak 's|# path = "site-adapter/profile.toml"|path = "site-adapter/profile.toml"|' "$root/.wikitool/config.toml"
+    rm -f "$root/.wikitool/config.toml.bak"
 }
 
 write_minimal_templates() {
@@ -240,25 +219,25 @@ section "article-lint"
 LINT_PROJ=$(setup_project article-lint)
 wt "$LINT_PROJ" init --templates > /dev/null 2>&1
 mkdir -p "$LINT_PROJ/wiki_content/Main"
-write_authoring_guidance "$LINT_PROJ"
+write_site_adapter "$LINT_PROJ"
 write_minimal_templates "$LINT_PROJ"
-cat > "$LINT_PROJ/wiki_content/Main/Milady_Draft.wiki" << 'WIKIEOF'
+cat > "$LINT_PROJ/wiki_content/Main/Example_Draft.wiki" << 'WIKIEOF'
 {{SHORTDESC:Draft article}}
 {{Article quality|unverified}}
 {{Infobox NFT collection
-| name = Milady Draft
-| creator = Remilia
+| name = Example Draft
+| creator = Example Studio
 }}
 
 ## History
-'''Milady Draft''' is a test<ref>{{Cite web|title=Source|url=https://example.org/source}}</ref>.
+'''Example Draft''' is a test<ref>{{Cite web|title=Source|url=https://en.wikipedia.org/wiki/Example}}</ref>.
 
 == References ==
 WIKIEOF
-OUTPUT=$(wt "$LINT_PROJ" article lint "$LINT_PROJ/wiki_content/Main/Milady_Draft.wiki" --format json 2>&1 || true)
+OUTPUT=$(wt "$LINT_PROJ" article lint "$LINT_PROJ/wiki_content/Main/Example_Draft.wiki" --format json 2>&1 || true)
 if echo "$OUTPUT" | grep -q '"rule_id": "structure.markdown_heading"' \
     && echo "$OUTPUT" | grep -q '"rule_id": "structure.require_reflist"' \
-    && echo "$OUTPUT" | grep -q '"rule_id": "editorial.lead_relationship_frame"' \
+    && echo "$OUTPUT" | grep -q '"rule_id": "citation.source_review"' \
     && echo "$OUTPUT" | grep -q '"rule_id": "citation.after_punctuation"' \
     && echo "$OUTPUT" | grep -Eq '"content_sha256": "[0-9a-f]{64}"'; then
     pass "article lint reports the expected profile-aware draft issues"
@@ -269,7 +248,7 @@ fi
 section "exact human acceptance and promotion"
 ACCEPT_PROJ=$(setup_project article-accept)
 wt "$ACCEPT_PROJ" init --templates > /dev/null 2>&1
-write_authoring_guidance "$ACCEPT_PROJ"
+write_site_adapter "$ACCEPT_PROJ"
 write_minimal_templates "$ACCEPT_PROJ"
 mkdir -p "$ACCEPT_PROJ/.wikitool/drafts"
 ACCEPT_DRAFT="$ACCEPT_PROJ/.wikitool/drafts/Accepted_Draft.wiki"
@@ -286,30 +265,31 @@ The subject was documented for this test.<ref>{{Cite web|title=Workflow fixture|
 {{Reflist}}
 WIKIEOF
 OUTPUT=$(wt "$ACCEPT_PROJ" article accept "$ACCEPT_DRAFT" --title "Accepted Draft" --human-editor "fixture-editor" --prose-origin agent-draft --format json 2>&1)
-if echo "$OUTPUT" | grep -q '"schema_version": "article_accept_v1"' \
-    && echo "$OUTPUT" | grep -q '"human_editor": "fixture-editor"' \
+if echo "$OUTPUT" | grep -q '"schema_version": "article_accept_v2"' \
+    && echo "$OUTPUT" | grep -q '"human_editor_claim": "fixture-editor"' \
+    && echo "$OUTPUT" | grep -q '"editor_identity_assurance": "self_reported_unverified"' \
     && echo "$OUTPUT" | grep -q '"prose_origin": "agent_draft"' \
     && echo "$OUTPUT" | grep -Eq '"content_sha256": "[0-9a-f]{64}"' \
     && echo "$OUTPUT" | grep -q '"lint_errors": 0' \
     && echo "$OUTPUT" | grep -q '"lint_warnings": 0'; then
-    pass "article accept records a full-hash human receipt for exact agent-authored prose"
+    pass "article accept records a full-hash exact-content ledger decision"
 else
-    fail "article accept records a full-hash human receipt for exact agent-authored prose (got: $OUTPUT)"
+    fail "article accept records a full-hash exact-content ledger decision (got: $OUTPUT)"
 fi
 
 cp "$ACCEPT_DRAFT" "$ACCEPT_DRAFT.accepted"
 printf '\nPost-acceptance mutation.\n' >> "$ACCEPT_DRAFT"
 OUTPUT=$(wt "$ACCEPT_PROJ" article promote "$ACCEPT_DRAFT" --title "Accepted Draft" --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q 'changed after human acceptance'; then
-    pass "article promote rejects prose changed after human acceptance"
+if echo "$OUTPUT" | grep -q 'changed after the recorded acceptance decision'; then
+    pass "article promote rejects prose changed after its ledger decision"
 else
-    fail "article promote rejects prose changed after human acceptance (got: $OUTPUT)"
+    fail "article promote rejects prose changed after its ledger decision (got: $OUTPUT)"
 fi
 mv "$ACCEPT_DRAFT.accepted" "$ACCEPT_DRAFT"
 
 OUTPUT=$(wt "$ACCEPT_PROJ" article promote "$ACCEPT_DRAFT" --title "Accepted Draft" --format json 2>&1)
 PROMOTED="$ACCEPT_PROJ/wiki_content/Main/Accepted_Draft.wiki"
-if echo "$OUTPUT" | grep -q '"schema_version": "article_promote_v2"' \
+if echo "$OUTPUT" | grep -q '"schema_version": "article_promote_v3"' \
     && echo "$OUTPUT" | grep -q '"prose_origin": "agent_draft"' \
     && cmp -s "$ACCEPT_DRAFT" "$PROMOTED"; then
     pass "article promote consumes the exact accepted snapshot"
@@ -319,29 +299,29 @@ fi
 
 WARNING_DRAFT="$ACCEPT_PROJ/.wikitool/drafts/Warning_Draft.wiki"
 cat > "$WARNING_DRAFT" << 'WIKIEOF'
-{{SHORTDESC:Remilia-adjacent fictional subject}}
+{{SHORTDESC:Fictional subject with a source-review warning}}
 {{Article quality|unverified}}
 
-'''Warning Draft''' is a fictional Remilia-adjacent subject used to verify explicit warning acceptance.
+'''Warning Draft''' is a fictional subject used to verify explicit warning acceptance.
 
 == History ==
-The subject was documented for this test.<ref>{{Cite web|title=Warning fixture|url=https://example.org/warning}}</ref>
+The subject was documented for this test.<ref>{{Cite web|title=Warning fixture|url=https://en.wikipedia.org/wiki/Example}}</ref>
 
 == References ==
 {{Reflist}}
 WIKIEOF
 OUTPUT=$(wt "$ACCEPT_PROJ" article accept "$WARNING_DRAFT" --title "Warning Draft" --human-editor "fixture-editor" --prose-origin collaborative-draft --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q 'a human must resolve them or explicitly accept them'; then
-    pass "article accept rejects unresolved editorial warnings"
+if echo "$OUTPUT" | grep -q 'resolve them or explicitly record their acceptance'; then
+    pass "article accept rejects warnings without explicit acknowledgement"
 else
-    fail "article accept rejects unresolved editorial warnings (got: $OUTPUT)"
+    fail "article accept rejects warnings without explicit acknowledgement (got: $OUTPUT)"
 fi
 OUTPUT=$(wt "$ACCEPT_PROJ" article accept "$WARNING_DRAFT" --title "Warning Draft" --human-editor "fixture-editor" --prose-origin collaborative-draft --allow-warnings --format json 2>&1)
 if echo "$OUTPUT" | grep -q '"warnings_explicitly_accepted": true' \
     && echo "$OUTPUT" | grep -Eq '"lint_warnings": [1-9][0-9]*'; then
-    pass "article accept records an explicit human warning decision"
+    pass "article accept records an explicit caller warning decision"
 else
-    fail "article accept records an explicit human warning decision (got: $OUTPUT)"
+    fail "article accept records an explicit caller warning decision (got: $OUTPUT)"
 fi
 
 if [ "$TIER" != "live" ]; then

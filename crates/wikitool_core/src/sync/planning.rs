@@ -116,6 +116,7 @@ pub(super) fn collect_sync_planning_context(
                 synced_hash: None,
                 synced_wiki_timestamp: None,
                 remote_conflict: false,
+                remote_exists: None,
                 remote_wiki_timestamp: None,
                 remote_revision_id: None,
             }),
@@ -128,6 +129,7 @@ pub(super) fn collect_sync_planning_context(
                     synced_hash: Some(entry.content_hash.clone()),
                     synced_wiki_timestamp: entry.wiki_modified_at.clone(),
                     remote_conflict: false,
+                    remote_exists: None,
                     remote_wiki_timestamp: None,
                     remote_revision_id: None,
                 });
@@ -150,6 +152,7 @@ pub(super) fn collect_sync_planning_context(
                 synced_hash: Some(entry.content_hash.clone()),
                 synced_wiki_timestamp: entry.wiki_modified_at.clone(),
                 remote_conflict: false,
+                remote_exists: None,
                 remote_wiki_timestamp: None,
                 remote_revision_id: None,
             });
@@ -192,6 +195,7 @@ fn build_sync_plan_report(context: &SyncPlanningContext) -> SyncPlanReport {
                 synced_hash: change.synced_hash.clone(),
                 synced_wiki_timestamp: change.synced_wiki_timestamp.clone(),
                 remote_conflict: change.remote_conflict,
+                remote_exists: change.remote_exists,
                 remote_wiki_timestamp: change.remote_wiki_timestamp.clone(),
                 remote_revision_id: change.remote_revision_id,
             })
@@ -227,18 +231,16 @@ pub(super) fn hydrate_remote_conflicts<A: WikiWriteApi>(
         .collect::<BTreeMap<_, _>>();
 
     for change in &mut context.changes {
+        let remote = remote_timestamps.get(&normalized_title_key(&change.title));
         change.remote_conflict = push_has_conflict(
             &change.title,
             &change.change_type,
             &context.ledger,
             &remote_timestamps,
         );
-        change.remote_wiki_timestamp = remote_timestamps
-            .get(&normalized_title_key(&change.title))
-            .map(|item| item.timestamp.clone());
-        change.remote_revision_id = remote_timestamps
-            .get(&normalized_title_key(&change.title))
-            .map(|item| item.revision_id);
+        change.remote_exists = Some(remote.is_some());
+        change.remote_wiki_timestamp = remote.map(|item| item.timestamp.clone());
+        change.remote_revision_id = remote.map(|item| item.revision_id);
     }
     context.request_count = api.request_count();
     Ok(())
@@ -354,7 +356,19 @@ fn push_has_conflict(
     let remote = remote_timestamps.get(&key);
     match change_type {
         DiffChangeType::NewLocal => remote.is_some(),
-        DiffChangeType::ModifiedLocal | DiffChangeType::DeletedLocal => {
+        DiffChangeType::ModifiedLocal => {
+            let Some(remote) = remote else {
+                return true;
+            };
+            let Some(stored) = ledger
+                .get(&key)
+                .and_then(|entry| entry.wiki_modified_at.as_deref())
+            else {
+                return false;
+            };
+            !timestamps_match_with_tolerance(stored, &remote.timestamp, 30)
+        }
+        DiffChangeType::DeletedLocal => {
             let Some(remote) = remote else {
                 return false;
             };

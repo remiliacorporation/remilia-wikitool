@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -9,580 +9,264 @@ fn repo_root() -> PathBuf {
 }
 
 fn read_repo_file(relative: &str) -> String {
-    fs::read_to_string(repo_root().join(relative)).unwrap_or_else(|error| {
-        panic!("failed to read {relative}: {error}");
-    })
+    fs::read_to_string(repo_root().join(relative))
+        .unwrap_or_else(|error| panic!("failed to read {relative}: {error}"))
 }
 
-fn read_host_repo_file(relative: &str) -> Option<String> {
+fn host_root() -> Option<PathBuf> {
     let wikitool_root = repo_root();
-    let host_root = wikitool_root.join("../..");
-    let nested_wikitool = host_root.join("tools/wikitool").canonicalize().ok()?;
-    if nested_wikitool != wikitool_root {
-        return None;
-    }
-
-    Some(
-        fs::read_to_string(host_root.join(relative)).unwrap_or_else(|error| {
-            panic!("failed to read host repo file {relative}: {error}");
-        }),
-    )
+    let candidate = wikitool_root.join("../..").canonicalize().ok()?;
+    let nested = candidate.join("tools/wikitool").canonicalize().ok()?;
+    (nested == wikitool_root).then_some(candidate)
 }
 
-fn markdown_files_under(relative_dir: &str) -> Vec<String> {
-    let root = repo_root();
-    let mut files = fs::read_dir(root.join(relative_dir))
-        .unwrap_or_else(|error| panic!("failed to read directory {relative_dir}: {error}"))
-        .map(|entry| {
-            let entry = entry
-                .unwrap_or_else(|error| panic!("failed to read entry in {relative_dir}: {error}"));
-            entry
-                .path()
-                .strip_prefix(&root)
-                .expect("strip repo root")
-                .to_string_lossy()
-                .replace('\\', "/")
-        })
-        .filter(|path| path.ends_with(".md"))
-        .collect::<Vec<_>>();
+fn collect_files(root: &Path) -> Vec<PathBuf> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut files = Vec::new();
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", directory.display()))
+        {
+            let path = entry.expect("directory entry").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
     files.sort();
     files
 }
 
-fn collapse_whitespace(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+fn assert_skill_shape(name: &str, required_references: &[&str]) {
+    let root = repo_root().join("ai-pack/codex_skills").join(name);
+    let skill = fs::read_to_string(root.join("SKILL.md")).expect("read skill");
+    let lines = skill.lines().collect::<Vec<_>>();
+    assert_eq!(lines.first(), Some(&"---"), "{name} needs frontmatter");
+    let closing = lines
+        .iter()
+        .skip(1)
+        .position(|line| *line == "---")
+        .map(|index| index + 1)
+        .expect("closing frontmatter");
+    let frontmatter = &lines[1..closing];
+    assert_eq!(
+        frontmatter
+            .iter()
+            .filter(|line| line.starts_with("name:") || line.starts_with("description:"))
+            .count(),
+        2,
+        "{name} frontmatter must contain only name and description"
+    );
+    assert!(
+        frontmatter.iter().all(|line| {
+            line.starts_with("name:") || line.starts_with("description:") || line.trim().is_empty()
+        }),
+        "{name} frontmatter contains unsupported keys"
+    );
+    assert!(
+        skill.contains("## Procedure") && skill.contains("## Exit conditions"),
+        "{name} must be a substantive procedure with exit conditions"
+    );
+    assert!(
+        root.join("agents/openai.yaml").is_file(),
+        "{name} must include agents/openai.yaml"
+    );
+    for reference in required_references {
+        assert!(
+            root.join("references").join(reference).is_file(),
+            "{name} is missing routed reference {reference}"
+        );
+        assert!(
+            skill.contains(reference),
+            "{name} must route {reference} from SKILL.md"
+        );
+    }
 }
 
-fn assert_contextmink_shell_routing_contract(label: &str, body: &str) {
-    let body = collapse_whitespace(body);
-    for needle in [
-        "active shell",
-        "scripts/contextmink",
-        "Windows PowerShell",
-        "contextmink-bridge.exe --script scripts/contextmink",
+#[test]
+fn public_editorial_skills_are_substantive_and_complete() {
+    assert_skill_shape(
+        "wiki-writing",
+        &[
+            "evidence-to-prose.md",
+            "human-notes.md",
+            "mediawiki-structure.md",
+        ],
+    );
+    assert_skill_shape(
+        "prose-review",
+        &["source-fidelity.md", "reader-value.md", "blp-sensitive.md"],
+    );
+    assert_skill_shape("wiki-interview", &["interview-ledger.md"]);
+    assert_skill_shape("wikitool-operator", &[]);
+}
+
+#[test]
+fn generic_ai_pack_contains_no_remilia_policy() {
+    let ai_pack = repo_root().join("ai-pack");
+    for path in collect_files(&ai_pack) {
+        let extension = path.extension().and_then(|value| value.to_str());
+        if !matches!(extension, Some("md" | "yaml" | "toml")) {
+            continue;
+        }
+        let body = fs::read_to_string(&path).expect("read AI pack text");
+        let lowered = body.to_ascii_lowercase();
+        for forbidden in [
+            "remilia",
+            "charlotte fang",
+            "milady maker",
+            "wiki.remilia.org",
+            "d3chart",
+        ] {
+            assert!(
+                !lowered.contains(forbidden),
+                "generic AI pack leaked target-specific token {forbidden:?} in {}",
+                path.display()
+            );
+        }
+    }
+    assert!(
+        !ai_pack.join("writing_context").exists(),
+        "retired binary-adjacent writing_context must stay removed"
+    );
+}
+
+#[test]
+fn claude_entrypoints_route_to_canonical_skills() {
+    for (wrapper, canonical) in [
+        ("wikitool.md", "codex_skills/wikitool-operator/SKILL.md"),
+        ("wiki-writing.md", "codex_skills/wiki-writing/SKILL.md"),
+        ("prose-review.md", "codex_skills/prose-review/SKILL.md"),
+        ("wiki-interview.md", "codex_skills/wiki-interview/SKILL.md"),
     ] {
+        let body = read_repo_file(&format!("ai-pack/.claude/skills/{wrapper}"));
         assert!(
-            body.contains(needle),
-            "{label} must preserve contextmink shell-routing guidance: missing {needle:?}"
+            body.contains(canonical),
+            "Claude wrapper {wrapper} must route to {canonical}"
         );
     }
+}
+
+#[test]
+fn authoring_and_review_boundaries_are_explicit() {
+    let author = read_repo_file("ai-pack/codex_skills/wiki-writing/SKILL.md");
+    let review = read_repo_file("ai-pack/codex_skills/prose-review/SKILL.md");
+    let interview = read_repo_file("ai-pack/codex_skills/wiki-interview/SKILL.md");
+    let operator = read_repo_file("ai-pack/codex_skills/wikitool-operator/SKILL.md");
+
+    assert!(author.contains("claim-source map") && author.contains("no inspected source document"));
     assert!(
-        body.contains("contextmink.exe") || body.contains("contextmink(.exe)"),
-        "{label} must name the native Windows contextmink binary path"
+        author.contains("Use the `prose-review` skill") && author.contains("exact final prose")
     );
+    assert!(review.contains("Would someone") && review.contains("findings first"));
+    assert!(review.contains("## Independence") && review.contains("P1 — block"));
+    assert!(review.contains("must not create an acceptance ledger entry"));
+    assert!(interview.contains("Do not read a canned questionnaire"));
     assert!(
-        body.contains("extensionless") || body.contains("directly from Windows PowerShell"),
-        "{label} must warn against direct PowerShell invocation of scripts/contextmink"
+        interview.contains("neutral ledger") && interview.contains("not automatic publication")
     );
+    assert!(operator.contains("self-reported, unauthenticated claim"));
 }
 
 #[test]
-fn packaged_guidance_stays_in_sync_with_current_authoring_front_door() {
-    let claude = read_repo_file("ai-pack/CLAUDE.md");
-    let agents = read_repo_file("ai-pack/AGENTS.md");
-
-    assert_eq!(claude, agents, "shipped AGENTS.md must mirror CLAUDE.md");
-    for body in [&claude, &agents] {
-        assert!(
-            body.contains("wikitool knowledge article-start"),
-            "packaged guidance must mention article-start"
-        );
-        assert!(
-            body.contains("Use normal reasoning"),
-            "packaged guidance must keep the normal-reasoning boundary explicit"
-        );
-        assert!(
-            body.contains("wikitool --help") && body.contains("docs/wikitool/reference.md"),
-            "packaged guidance must defer to CLI help/reference"
-        );
-        assert!(
-            !body.contains("wiki.remilia.org/w/api.php"),
-            "packaged guidance must not regress to the stale /w/api.php example"
-        );
-        assert!(
-            body.contains("same guidance body"),
-            "packaged guidance must explain that both shipped filenames carry the same instructions"
-        );
-        assert!(
-            body.contains("## Token Discipline")
-                && body.contains("Agent-facing defaults are intentionally compact")
-                && body.contains("--view brief")
-                && body.contains("--view full"),
-            "packaged guidance must preserve the compact-default/token-discipline contract"
-        );
-        assert!(
-            body.contains("## Session Start")
-                && body.contains("wikitool diff --format json")
-                && body.contains("wikitool workflow session-refresh")
-                && body.contains("Do not use `pull --overwrite-local`"),
-            "packaged guidance must define the normal session refresh sequence"
-        );
-        assert!(
-            body.contains("knowledge-interview")
-                && body.contains(".wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md")
-                && body.contains("wikitool knowledge interview init")
-                && body.contains("knowledge interview open-item")
-                && body.contains("knowledge interview validate")
-                && body.contains("knowledge article-start --brief-path")
-                && body.contains("review --brief-path")
-                && body.contains("write genuine encyclopedic prose")
-                && body.contains("Model memory")
-                && body.contains("drafting_ready")
-                && body.contains("claim-source map")
-                && body.contains("article accept")
-                && body.contains("never self-attest")
-                && body.contains("not cryptographic authentication"),
-            "packaged guidance must enforce evidence-bound coauthoring and human publication acceptance"
-        );
-        assert!(
-            !body.contains("Docs bootstrap")
-                && !body.contains("WIKITOOL_CLAUDE.md")
-                && !body.contains("llm_instructions")
-                && !body.contains("wikitool search")
-                && !body.contains("wikitool fetch")
-                && !body.contains("wikitool context")
-                && !body.contains("wikitool seo")
-                && !body.contains("wikitool net")
-                && !body.contains("agent-card")
-                && !body.contains("function-card")
-                && !body.contains("function-context"),
-            "packaged guidance must not refer to removed setup/backcompat artifacts"
-        );
-        assert!(
-            body.contains("those files become the packaged writing context"),
-            "packaged guidance must document host writing context overlay behavior"
-        );
-    }
+fn acceptance_code_describes_a_ledger_not_identity_proof() {
+    let acceptance = read_repo_file("crates/wikitool_core/src/article_acceptance.rs");
+    assert!(acceptance.contains("article_acceptance_ledger_v1"));
+    assert!(acceptance.contains("self_reported_unverified"));
+    assert!(acceptance.contains("accepted_for_main_namespace_promotion"));
+    assert!(!acceptance.contains("EDITORIAL_QUALITY_ATTESTATION"));
+    assert!(!acceptance.contains("human_judged_article_specific"));
 }
 
 #[test]
-fn contextmink_shell_routing_guidance_stays_aligned_across_surfaces() {
-    for path in ["ai-pack/AGENTS.md", "ai-pack/CLAUDE.md"] {
-        assert_contextmink_shell_routing_contract(path, &read_repo_file(path));
-    }
-
-    if let Some(host_claude) = read_host_repo_file("CLAUDE.md") {
-        let host_agents = read_host_repo_file("AGENTS.md").expect("host repo already detected");
-        assert_contextmink_shell_routing_contract("host CLAUDE.md", &host_claude);
-        assert_contextmink_shell_routing_contract("host AGENTS.md", &host_agents);
-    }
-}
-
-#[test]
-fn ai_pack_readme_keeps_shipping_and_scratch_boundaries_explicit() {
-    let readme = read_repo_file("ai-pack/README.md");
-    assert!(
-        readme.contains("writing_context/")
-            && readme.contains("Do not put local experiments")
-            && readme.contains("Host `writing_context/` replaces")
-            && !readme.contains("llm_instructions"),
-        "ai-pack README must keep packaging, writing context, and scratch-space boundaries explicit"
-    );
-}
-
-#[test]
-fn thin_wrappers_reference_help_and_keep_article_start_primary() {
-    let claude_skill = read_repo_file("ai-pack/.claude/skills/wikitool.md");
-    let codex_skill = read_repo_file("ai-pack/codex_skills/wikitool-operator/SKILL.md");
-    let local_skill = read_repo_file(".claude/skills/wikitool/SKILL.md");
-
-    for body in [&claude_skill, &codex_skill, &local_skill] {
-        assert!(
-            body.contains("Use normal reasoning"),
-            "thin wrappers must preserve the normal-reasoning boundary"
-        );
-        assert!(
-            body.contains("wikitool --help") && body.contains("docs/wikitool/reference.md"),
-            "thin wrappers must defer to CLI help/reference"
-        );
-        assert!(
-            body.contains("knowledge article-start"),
-            "thin wrappers must point to article-start"
-        );
-        assert!(
-            body.contains("knowledge-interview")
-                || body.contains("/knowledge-interview")
-                || body.contains("knowledge-interview guidance"),
-            "thin wrappers must route substantial authoring to the interview faculty"
-        );
-        assert!(
-            body.contains("diff --format json")
-                && body.contains("workflow session-refresh")
-                && body.contains("knowledge status"),
-            "thin wrappers must tell agents to inspect local changes and refresh wiki state at session start"
-        );
-        assert!(
-            !body.contains("knowledge pack"),
-            "thin wrappers must not refer to the retired raw pack command"
-        );
-        assert!(
-            body.contains("--view brief"),
-            "thin wrappers must preserve compact-first retrieval guidance"
-        );
-    }
-    for body in [&claude_skill, &codex_skill] {
-        assert!(
-            body.contains("--intent new|expand|audit|refresh")
-                && body.contains("knowledge contracts")
-                && body.contains("--verify-live"),
-            "packaged operator wrappers must stay aligned on current authoring and validation surfaces"
-        );
-    }
-}
-
-#[test]
-fn packaged_review_wrappers_stay_aligned_on_gate_sequence() {
-    for path in [
-        "ai-pack/.claude/skills/review.md",
-        "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
+fn article_start_has_no_embedded_editorial_prompt_contract() {
+    let model = read_repo_file("crates/wikitool_core/src/authoring/model.rs");
+    let builder = read_repo_file("crates/wikitool_core/src/authoring/article_start.rs");
+    for forbidden in [
+        "ArticleAuthoringContract",
+        "RecommendedAction",
+        "suggested_question",
+        "next_actions",
+        "synthetic_phrase_prompts",
+        "discouraged_relationship",
     ] {
-        let body = read_repo_file(path);
-        assert!(
-            body.contains("wikitool review --draft-path")
-                && body.contains("--view brief")
-                && body.contains("article accept")
-                && body.contains("article promote")
-                && body.contains("next_steps")
-                && body.contains("must not self-attest")
-                && body.contains("--force")
-                && body.contains("validate --summary")
-                && body.contains("--verify-live"),
-            "{path} must preserve acceptance before promotion and push"
-        );
+        assert!(!model.contains(forbidden), "model leaked {forbidden}");
+        assert!(!builder.contains(forbidden), "builder leaked {forbidden}");
     }
 }
 
 #[test]
-fn packaged_extension_guidance_scopes_d3charts_to_local_contract() {
-    let extensions = read_repo_file("ai-pack/writing_context/extensions.md");
-    assert!(
-        extensions.contains("D3Charts (Remilia local contract)")
-            && extensions.contains("Module:D3Chart")
-            && extensions.contains("Do not add raw `<script>` tags")
-            && extensions.contains("bespoke extension"),
-        "extension guidance must scope D3Charts as the current local contract, not universal MediaWiki syntax"
-    );
-}
+fn site_adapter_is_explicit_and_host_owned() {
+    let integration = read_repo_file("ai-pack/integration/site_adapters.md");
+    assert!(integration.contains("mediawiki-generic"));
+    assert!(integration.contains("Unknown fields are rejected"));
+    assert!(integration.contains("routing signals, not universal bans"));
 
-#[test]
-fn knowledge_interview_skill_and_playbook_are_packaged() {
-    let claude_skill = read_repo_file("ai-pack/.claude/skills/knowledge-interview.md");
-    let codex_skill = read_repo_file("ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md");
-    let playbook = read_repo_file("ai-pack/writing_context/interview_playbook.md");
-    let codex_readme = read_repo_file("ai-pack/codex_skills/README.md");
-    let writing_readme = read_repo_file("ai-pack/writing_context/README.md");
-
-    for body in [&claude_skill, &codex_skill] {
-        assert!(
-            body.contains("wikitool --help")
-                && body.contains("docs/wikitool/reference.md")
-                && body.contains("writing_context/interview_playbook.md")
-                && body.contains("knowledge interview init")
-                && body.contains("open-item")
-                && body.contains("article-start")
-                && body.contains("--brief-path")
-                && body.contains("draft")
-                && body.contains("not independent evidence")
-                && body.contains("model memory")
-                && body.contains("article accept")
-                && body.contains("never self-attest")
-                && body.contains(".wikitool/interviews/<Title-safe>/<YYYYMMDDTHHMMSSZ>.brief.md"),
-            "knowledge interview wrappers must be help-backed, ledger-aware, and coauthoring-aware"
-        );
-    }
-
-    assert!(
-        playbook.contains("Scout with")
-            && playbook.contains("freeform account")
-            && playbook.contains("Read every supplied")
-            && playbook.contains("The human does not need to pre-write")
-            && playbook.contains("agent may draft")
-            && playbook.contains("model memory")
-            && playbook.contains("Run a critic pass")
-            && playbook.contains("wikitool knowledge interview init")
-            && playbook.contains("knowledge interview open-item add")
-            && playbook.contains("rejected-source")
-            && playbook.contains("inaccessible-source")
-            && playbook.contains("knowledge interview audit")
-            && playbook.contains("not automatically independent evidence"),
-        "interview playbook must preserve adaptive intake and evidence-bound drafting"
-    );
-    assert!(
-        !playbook.contains(
-            "Reach for it when your specific knowledge reaches further than public sources do"
-        ),
-        "interview playbook must not narrow usage to public-source gaps"
-    );
-    assert!(
-        !playbook.contains("There is not yet a Rust `knowledge interview` command")
-            && !claude_skill.contains("Do not invent a `knowledge interview` CLI command")
-            && !codex_skill.contains("Do not invent a `knowledge interview` CLI command"),
-        "guidance must not retain pre-CLI interview wording"
-    );
-    assert!(
-        codex_readme.contains("wikitool-knowledge-interview")
-            && writing_readme.contains("interview_playbook.md"),
-        "bundle indexes must expose the interview skill and playbook"
-    );
-
-    let changelog = read_repo_file("CHANGELOG.md");
-    assert!(
-        changelog.to_ascii_lowercase().contains("coauthor"),
-        "release notes must record the coauthoring reset"
-    );
-}
-
-#[test]
-fn coauthoring_boundary_is_consistent_across_public_surfaces() {
-    for path in [
-        "ai-pack/AGENTS.md",
-        "ai-pack/CLAUDE.md",
-        "ai-pack/codex_skills/wikitool-operator/SKILL.md",
-        "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
-        "ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md",
-        "ai-pack/writing_context/writing_guide.md",
-        "docs/wikitool/guide.md",
-        "docs/wikitool/architecture.md",
-    ] {
-        let body = read_repo_file(path);
-        let normalized = body.to_ascii_lowercase();
-        assert!(
-            normalized.contains("human")
-                && normalized.contains("article accept")
-                && normalized.contains("draft")
-                && (normalized.contains("model output is not evidence")
-                    || normalized.contains("model memory")
-                    || normalized.contains("model output") && normalized.contains("not evidence")),
-            "{path} must allow evidence-bound drafting and require exact human acceptance"
-        );
-    }
-}
-
-#[test]
-fn host_repo_routes_knowledge_interview_for_claude_and_codex() {
-    let packaged_claude = read_repo_file("ai-pack/.claude/skills/knowledge-interview.md");
-    let packaged_codex =
-        read_repo_file("ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md");
-
-    assert!(
-        packaged_claude.contains("# /knowledge-interview - Thin wrapper")
-            && packaged_codex.contains("name: wikitool-knowledge-interview")
-            && packaged_codex.contains("writing_context/interview_playbook.md"),
-        "packaged Claude and Codex interview skills must both be present"
-    );
-
-    let Some(host_claude) = read_host_repo_file("CLAUDE.md") else {
+    let Some(host) = host_root() else {
         return;
     };
-    let host_stub = read_host_repo_file(".claude/skills/knowledge-interview.md")
-        .expect("host repo already detected");
-
-    assert!(
-        host_claude.contains("| `/knowledge-interview` | `wikitool-knowledge-interview` |")
-            && host_claude.contains("interview_playbook.md"),
-        "host CLAUDE.md must route the Claude skill and name the Codex equivalent"
-    );
-    assert!(
-        host_stub.contains("tools/wikitool/ai-pack/.claude/skills/knowledge-interview.md")
-            && host_stub.contains("Frontmatter (permissions) is repo-level"),
-        "repo-root Claude skill must be a redirect stub to the canonical ai-pack skill"
-    );
+    let profile = fs::read_to_string(host.join("wikitool_adapter/profile.toml"))
+        .expect("host must own an explicit site adapter");
+    assert!(profile.contains("profile_id = \"remilia-wiki\""));
+    assert!(profile.contains("host = \"wikipedia.org\""));
+    assert!(host.join("wikitool_adapter/editorial.md").is_file());
+    assert!(host.join("wikitool_adapter/extensions.md").is_file());
 }
 
 #[test]
-fn generated_reference_documents_knowledge_interview_commands() {
+fn generated_reference_documents_interview_and_acceptance_commands() {
     let reference = read_repo_file("docs/wikitool/reference.md");
     for heading in [
+        "## article accept",
+        "## article promote",
         "## knowledge interview init",
         "## knowledge interview validate",
-        "## knowledge interview show",
-        "## knowledge interview audit",
         "## knowledge interview open-item",
-        "## knowledge interview open-item add",
-        "## knowledge interview open-item list",
-        "## knowledge interview open-item update",
     ] {
         assert!(
             reference.contains(heading),
-            "generated reference must document `{heading}`"
+            "missing generated heading {heading}"
         );
     }
+}
+
+#[test]
+fn prose_review_eval_inputs_and_expectations_are_isolated_and_aligned() {
+    let cases: serde_json::Value =
+        serde_json::from_str(&read_repo_file("testbench/prose_review_cases.json"))
+            .expect("parse prose review cases");
+    let expectations: serde_json::Value =
+        serde_json::from_str(&read_repo_file("testbench/prose_review_expectations.json"))
+            .expect("parse prose review expectations");
+
+    let case_entries = cases["cases"].as_array().expect("case array");
+    let expectation_entries = expectations["expectations"]
+        .as_array()
+        .expect("expectation array");
+    let case_ids = case_entries
+        .iter()
+        .map(|entry| entry["id"].as_str().expect("case id"))
+        .collect::<Vec<_>>();
+    let expectation_ids = expectation_entries
+        .iter()
+        .map(|entry| entry["id"].as_str().expect("expectation id"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(case_ids, expectation_ids, "review fixture ids must align");
     assert!(
-        reference.contains("--brief-path <PATH>")
-            && reference.contains("Optional knowledge interview brief")
-            && reference.contains("Validate and include a knowledge interview brief"),
-        "generated reference must document article-start/review brief-path integration"
+        case_ids.len() >= 3,
+        "review eval needs positive and negative controls"
     );
-}
-
-#[test]
-fn db_wrapper_hint_matches_current_public_surface() {
-    let db_skill = read_repo_file(".claude/skills/wikitool/db.md");
-    assert!(
-        db_skill.contains("argument-hint: <stats|reset> [options]"),
-        "db wrapper hint must match the live db surface"
-    );
-    assert!(
-        !db_skill.contains("<stats|sync|migrate>"),
-        "db wrapper hint must not mention removed commands"
-    );
-}
-
-#[test]
-fn packaged_skill_wrappers_stay_thin_and_do_not_reintroduce_removed_surfaces() {
-    for path in markdown_files_under("ai-pack/.claude/skills") {
-        let body = read_repo_file(&path);
+    for case in case_entries {
+        assert!(case.get("required_findings").is_none());
+        assert!(case.get("forbidden_findings").is_none());
+        assert!(case["article_wikitext"].as_str().is_some());
         assert!(
-            body.contains("Thin wrapper"),
-            "{path} must stay a thin wrapper"
-        );
-        assert!(
-            body.contains("docs/wikitool/reference.md"),
-            "{path} must defer to the generated CLI reference"
-        );
-        assert!(
-            !body.contains("wikitool perf") && !body.contains("perf lighthouse"),
-            "{path} must not mention removed perf surfaces"
+            case["inspected_sources"]
+                .as_array()
+                .is_some_and(|v| !v.is_empty())
         );
     }
-}
-
-#[test]
-fn writing_context_does_not_reintroduce_retired_top_level_commands() {
-    for path in markdown_files_under("ai-pack/writing_context") {
-        let body = read_repo_file(&path);
-        for retired in [
-            "wikitool context",
-            "wikitool search",
-            "wikitool fetch",
-            "wikitool seo",
-            "wikitool net",
-            "agent-card",
-            "function-card",
-            "function-context",
-        ] {
-            assert!(
-                !body.contains(retired),
-                "{path} must not mention retired top-level command `{retired}`"
-            );
-        }
-    }
-}
-
-#[test]
-fn visual_subjects_guidance_is_present_and_indexed() {
-    let visual = read_repo_file("ai-pack/writing_context/visual_subjects.md");
-    assert!(
-        visual.contains("primary source")
-            && visual.contains("describe / interpret boundary")
-            && visual.contains("do_not_assert"),
-        "visual_subjects.md must define the artifact-as-source and describe/interpret rules"
-    );
-    for index in [
-        "ai-pack/CLAUDE.md",
-        "ai-pack/AGENTS.md",
-        "ai-pack/writing_context/README.md",
-        "ai-pack/writing_context/writing_guide.md",
-        "ai-pack/writing_context/article_structure.md",
-    ] {
-        let body = read_repo_file(index);
-        assert!(
-            body.contains("visual_subjects.md"),
-            "{index} must reference visual_subjects.md so agents discover it"
-        );
-    }
-    if let Some(host_claude) = read_host_repo_file("CLAUDE.md") {
-        let host_agents = read_host_repo_file("AGENTS.md").expect("host repo already detected");
-        assert!(
-            host_claude.contains("visual_subjects.md")
-                && host_agents.contains("visual_subjects.md"),
-            "host CLAUDE.md and AGENTS.md writing-guidelines tables must list visual_subjects.md"
-        );
-    }
-}
-
-#[test]
-fn local_wikitool_command_wrappers_remain_reference_backed() {
-    for path in markdown_files_under(".claude/skills/wikitool") {
-        let body = read_repo_file(&path);
-        assert!(
-            !body.contains("wikitool perf") && !body.contains("perf lighthouse"),
-            "{path} must not mention removed perf surfaces"
-        );
-        if path.ends_with("/SKILL.md") {
-            continue;
-        }
-        assert!(
-            body.contains("docs/wikitool/reference.md"),
-            "{path} must defer to the generated CLI reference"
-        );
-    }
-}
-
-#[test]
-fn codex_skill_wrappers_remain_help_backed_and_perf_free() {
-    for path in [
-        "ai-pack/codex_skills/wikitool-operator/SKILL.md",
-        "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
-        "ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md",
-    ] {
-        let body = read_repo_file(path);
-        assert!(
-            body.contains("wikitool --help") && body.contains("docs/wikitool/reference.md"),
-            "{path} must defer to CLI help/reference"
-        );
-        assert!(
-            !body.contains("wikitool perf") && !body.contains("perf lighthouse"),
-            "{path} must not mention removed perf surfaces"
-        );
-    }
-}
-
-#[test]
-fn article_quality_guidance_uses_review_state_semantics() {
-    let writing_guide = read_repo_file("ai-pack/writing_context/writing_guide.md");
-    let article_structure = read_repo_file("ai-pack/writing_context/article_structure.md");
-    let host_template_guidance =
-        read_host_repo_file("templates/message/Module_Message.lua").map(|message_module| {
-            let template_docs =
-                read_host_repo_file("templates/message/Template_Article_quality.wiki")
-                    .expect("host repo already detected");
-            (message_module, template_docs)
-        });
-    let structure_rule = read_repo_file("crates/wikitool_core/src/article_lint/rules/structure.rs");
-
-    for body in [&writing_guide, &article_structure] {
-        assert!(
-            !body.contains("Risk of hallucination")
-                && !body.contains("generated by AI")
-                && !body.contains("AI-generated article"),
-            "article quality guidance must not describe review states as AI authorship labels"
-        );
-    }
-    if let Some((message_module, template_docs)) = &host_template_guidance {
-        for body in [message_module, template_docs] {
-            assert!(
-                !body.contains("Risk of hallucination")
-                    && !body.contains("generated by AI")
-                    && !body.contains("AI-generated article"),
-                "article quality guidance must not describe review states as AI authorship labels"
-            );
-        }
-        assert!(
-            message_module.contains("reviewed for factual accuracy")
-                && template_docs.contains("Hidden marker"),
-            "host article quality templates must describe editorial review states"
-        );
-    }
-    assert!(
-        writing_guide.contains("Preserve an existing `wip` or `verified` state")
-            && article_structure.contains("Preserve existing `wip` or `verified`"),
-        "packaged article quality guidance must describe editorial review states"
-    );
-    assert!(
-        !structure_rule.contains("structure.article_quality_state")
-            && structure_rule.contains("structure.require_article_quality_banner")
-            && structure_rule.contains("{{Article quality|unverified}}"),
-        "article lint must require the banner without normalizing intentional review states"
-    );
 }

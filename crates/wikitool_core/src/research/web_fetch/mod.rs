@@ -223,7 +223,6 @@ pub(crate) fn fetch_web_url(
             let next = base
                 .join(location)
                 .with_context(|| format!("invalid redirect Location: {location}"))?;
-            validate_outbound_research_url(next.as_str())?;
             attempts.push(ExternalFetchAttempt {
                 mode: "http_redirect".to_string(),
                 url: current_url.clone(),

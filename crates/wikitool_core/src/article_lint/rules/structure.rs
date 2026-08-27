@@ -11,7 +11,7 @@ use crate::filesystem::Namespace;
 use super::common::{
     canonical_sentence_case_heading, line_has_short_description, parse_markdown_heading,
     preferred_short_description_snippet, safe_fix_for_edit, safe_heading_rewrite_available,
-    section_body_contains_template,
+    section_body_contains_template, template_invocation,
 };
 use super::{IssueMatch, SafeFixEdit};
 use crate::article_lint::resources::LoadedResources;
@@ -24,7 +24,7 @@ pub(super) fn lint_missing_short_description(
     if document.namespace != Namespace::Main.as_str() || document.is_redirect {
         return;
     }
-    if !resources.overlay.authoring.require_short_description {
+    if !resources.profile.authoring.require_short_description {
         return;
     }
     if document
@@ -49,7 +49,7 @@ pub(super) fn lint_missing_short_description(
             suggested_fixes: vec![SuggestedFix {
                 label: "Insert short description header".to_string(),
                 kind: SuggestedFixKind::AssistedFix,
-                replacement_preview: Some(preferred_short_description_snippet(&resources.overlay)),
+                replacement_preview: Some(preferred_short_description_snippet(&resources.profile)),
                 patch: None,
             }],
         },
@@ -65,15 +65,34 @@ pub(super) fn lint_article_quality_banner(
     if document.namespace != Namespace::Main.as_str() || document.is_redirect {
         return;
     }
-    if !resources.overlay.authoring.require_article_quality_banner {
+    if !resources.profile.authoring.require_article_quality_banner {
         return;
     }
 
+    let Some(template_title) = resources
+        .profile
+        .authoring
+        .article_quality_template
+        .as_deref()
+    else {
+        return;
+    };
+    let state = resources
+        .profile
+        .authoring
+        .article_quality_default_state
+        .as_deref();
+    let invocation = template_invocation(template_title, state);
+
     let top_lines = document.top_nonblank_lines(8);
-    let banner_line = top_lines
-        .iter()
-        .find(|line| line.text.trim_start().starts_with("{{Article quality|"));
-    if banner_line.is_none() {
+    let top_end = top_lines
+        .last()
+        .map(|line| line.end)
+        .unwrap_or(document.content.len());
+    let banner_present = document.templates.iter().any(|template| {
+        template.start <= top_end && template.template_title.eq_ignore_ascii_case(template_title)
+    });
+    if !banner_present {
         let insertion_offset = top_lines
             .iter()
             .find(|line| line_has_short_description(&line.text))
@@ -84,9 +103,9 @@ pub(super) fn lint_article_quality_banner(
             .iter()
             .any(|line| line_has_short_description(&line.text))
         {
-            "\n{{Article quality|unverified}}".to_string()
+            format!("\n{invocation}")
         } else {
-            "{{Article quality|unverified}}\n".to_string()
+            format!("{invocation}\n")
         };
         let edit = TextEdit {
             start: insertion_offset,
@@ -100,9 +119,9 @@ pub(super) fn lint_article_quality_banner(
                 message: "Main-namespace articles should include the article quality review banner near the top.".to_string(),
                 span: document.first_nonblank_line().and_then(|line| document.span_for_line(line)),
                 evidence: document.first_nonblank_line().map(|line| make_content_preview(&line.text, 96)),
-                suggested_remediation: Some(
-                    "Insert {{Article quality|unverified}} immediately below the short description.".to_string(),
-                ),
+                suggested_remediation: Some(format!(
+                    "Insert {invocation} immediately below the short description."
+                )),
                 suggested_fixes: vec![safe_fix_for_edit(
                     document,
                     &edit,
@@ -310,7 +329,7 @@ pub(super) fn lint_missing_references_section(
         return;
     }
     if !resources
-        .overlay
+        .profile
         .authoring
         .required_appendix_sections
         .iter()
@@ -336,13 +355,23 @@ pub(super) fn lint_missing_references_section(
                 .first_nonblank_line()
                 .and_then(|line| document.span_for_line(line)),
             evidence: Some("== References ==".to_string()),
-            suggested_remediation: Some(
-                "Add a References section near the end of the article and render it with {{Reflist}}.".to_string(),
-            ),
+            suggested_remediation: Some(match resources.profile.authoring.references_template.as_deref() {
+                Some(template) => format!(
+                    "Add a References section near the end of the article and render it with {}.",
+                    template_invocation(template, None)
+                ),
+                None => "Add a References section near the end of the article.".to_string(),
+            }),
             suggested_fixes: vec![SuggestedFix {
                 label: "Insert References section".to_string(),
                 kind: SuggestedFixKind::AssistedFix,
-                replacement_preview: Some("== References ==\n{{Reflist}}".to_string()),
+                replacement_preview: Some(match resources.profile.authoring.references_template.as_deref() {
+                    Some(template) => format!(
+                        "== References ==\n{}",
+                        template_invocation(template, None)
+                    ),
+                    None => "== References ==".to_string(),
+                }),
                 patch: None,
             }],
         },
@@ -358,7 +387,7 @@ pub(super) fn lint_missing_reflist(
     let Some(section) = document.find_section("References") else {
         return;
     };
-    let Some(references_template) = resources.overlay.authoring.references_template.as_deref()
+    let Some(references_template) = resources.profile.authoring.references_template.as_deref()
     else {
         return;
     };
@@ -369,7 +398,7 @@ pub(super) fn lint_missing_reflist(
     let edit = TextEdit {
         start: section.body_start,
         end: section.body_start,
-        replacement: "{{Reflist}}\n".to_string(),
+        replacement: format!("{}\n", template_invocation(references_template, None)),
     };
     let safe_fixes = vec![SafeFixEdit {
         rule_id: "structure.require_reflist".to_string(),

@@ -91,7 +91,7 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
     if !acceptance_errors.is_empty() {
         for (title, detail) in &acceptance_errors {
             report.errors.push(format!(
-                "{title}: human editorial acceptance required: {detail}"
+                "{title}: exact-content acceptance ledger entry required: {detail}"
             ));
             report.pages.push(PushPageResult {
                 title: title.clone(),
@@ -106,7 +106,7 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                 }
                 report.pages.push(PushPageResult {
                     title: change.title.clone(),
-                    action: push_dry_run_action(&change.change_type).to_string(),
+                    action: push_dry_run_action(change).to_string(),
                     detail: None,
                 });
             }
@@ -122,14 +122,14 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                 report.pages.push(PushPageResult {
                     title: change.title.clone(),
                     action: "conflict".to_string(),
-                    detail: Some("remote page changed since last sync".to_string()),
+                    detail: Some(remote_conflict_detail(change).to_string()),
                 });
                 continue;
             }
 
             report.pages.push(PushPageResult {
                 title: change.title.clone(),
-                action: push_dry_run_action(&change.change_type).to_string(),
+                action: push_dry_run_action(change).to_string(),
                 detail: None,
             });
         }
@@ -147,7 +147,7 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
             report.pages.push(PushPageResult {
                 title: change.title.clone(),
                 action: "conflict".to_string(),
-                detail: Some("remote page changed since last sync".to_string()),
+                detail: Some(remote_conflict_detail(change).to_string()),
             });
             continue;
         }
@@ -196,8 +196,13 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                     }
                 };
 
+                let recreating_deleted_remote = change.change_type == DiffChangeType::ModifiedLocal
+                    && change.remote_exists == Some(false);
                 let constraint = match change.change_type {
                     DiffChangeType::NewLocal => EditConstraint::CreateOnly,
+                    DiffChangeType::ModifiedLocal if recreating_deleted_remote => {
+                        EditConstraint::CreateOnly
+                    }
                     DiffChangeType::ModifiedLocal => {
                         let Some(revision_id) = change.remote_revision_id else {
                             report.errors.push(format!(
@@ -261,6 +266,17 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                                     detail: None,
                                 });
                             }
+                            DiffChangeType::ModifiedLocal if recreating_deleted_remote => {
+                                report.created += 1;
+                                report.pages.push(PushPageResult {
+                                    title: file.title.clone(),
+                                    action: "recreated".to_string(),
+                                    detail: Some(
+                                        "remote page was absent and was recreated with createonly"
+                                            .to_string(),
+                                    ),
+                                });
+                            }
                             DiffChangeType::ModifiedLocal => {
                                 report.updated += 1;
                                 report.pages.push(PushPageResult {
@@ -282,47 +298,101 @@ pub(super) fn push_to_remote_with_api<A: WikiWriteApi>(
                     }
                 }
             }
-            DiffChangeType::DeletedLocal => match api.delete_page(
-                &change.title,
-                &format!("wikitool push delete: {}", options.summary),
-            ) {
-                Ok(()) => {
-                    if let Err(error) = remove_sync_ledger_entry(&context.connection, &change.title)
-                    {
+            DiffChangeType::DeletedLocal => {
+                let current_remote = match api
+                    .get_page_timestamps(std::slice::from_ref(&change.title))
+                {
+                    Ok(pages) => pages
+                        .into_iter()
+                        .find(|page| normalized_title_key(&page.title) == key),
+                    Err(error) => {
                         report.errors.push(format!("{}: {error}", change.title));
                         report.pages.push(PushPageResult {
                             title: change.title.clone(),
                             action: "error".to_string(),
-                            detail: Some("failed to update sync ledger".to_string()),
+                            detail: Some("failed immediate pre-delete revision check".to_string()),
                         });
                         continue;
                     }
-                    if let Err(error) = remove_sync_snapshot(&context.connection, &change.title) {
+                };
+
+                let Some(current_remote) = current_remote else {
+                    if let Err(error) = remove_local_sync_state(&context, &change.title) {
                         report.errors.push(format!("{}: {error}", change.title));
                         report.pages.push(PushPageResult {
                             title: change.title.clone(),
                             action: "error".to_string(),
-                            detail: Some("failed to update sync snapshot".to_string()),
+                            detail: Some("failed to clean already-deleted sync state".to_string()),
                         });
                         continue;
                     }
-                    report.pushed += 1;
-                    report.deleted += 1;
+                    report.unchanged += 1;
                     report.pages.push(PushPageResult {
                         title: change.title.clone(),
-                        action: "deleted".to_string(),
-                        detail: None,
+                        action: "already_deleted".to_string(),
+                        detail: Some(
+                            "remote page is already absent; no delete was sent".to_string(),
+                        ),
                     });
-                }
-                Err(error) => {
-                    report.errors.push(format!("{}: {error}", change.title));
+                    continue;
+                };
+
+                let Some(observed_revision_id) = change.remote_revision_id else {
+                    report.conflicts.push(change.title.clone());
                     report.pages.push(PushPageResult {
                         title: change.title.clone(),
-                        action: "error".to_string(),
-                        detail: Some("delete failed".to_string()),
+                        action: "conflict".to_string(),
+                        detail: Some(
+                            "remote page appeared after planning; refusing delete".to_string(),
+                        ),
                     });
+                    continue;
+                };
+                if current_remote.revision_id != observed_revision_id {
+                    report.conflicts.push(change.title.clone());
+                    report.pages.push(PushPageResult {
+                        title: change.title.clone(),
+                        action: "conflict".to_string(),
+                        detail: Some(format!(
+                            "remote revision changed during push planning: observed {observed_revision_id}, current {}",
+                            current_remote.revision_id
+                        )),
+                    });
+                    continue;
                 }
-            },
+
+                match api.delete_page(
+                    &change.title,
+                    &format!("wikitool push delete: {}", options.summary),
+                ) {
+                    Ok(()) => {
+                        if let Err(error) = remove_local_sync_state(&context, &change.title) {
+                            report.errors.push(format!("{}: {error}", change.title));
+                            report.pages.push(PushPageResult {
+                                title: change.title.clone(),
+                                action: "error".to_string(),
+                                detail: Some("failed to update local sync state".to_string()),
+                            });
+                            continue;
+                        }
+                        report.pushed += 1;
+                        report.deleted += 1;
+                        report.pages.push(PushPageResult {
+                            title: change.title.clone(),
+                            action: "deleted".to_string(),
+                            detail: None,
+                        });
+                    }
+                    Err(error) => {
+                        report.errors.push(format!("{}: {error}", change.title));
+                        report.pages.push(PushPageResult {
+                            title: change.title.clone(),
+                            action: "error".to_string(),
+                            detail: Some("delete failed".to_string()),
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -359,10 +429,30 @@ fn collect_article_acceptance_errors(
     errors
 }
 
-fn push_dry_run_action(change_type: &DiffChangeType) -> &'static str {
-    match change_type {
+fn remove_local_sync_state(context: &SyncPlanningContext, title: &str) -> Result<()> {
+    remove_sync_ledger_entry(&context.connection, title)?;
+    remove_sync_snapshot(&context.connection, title)?;
+    Ok(())
+}
+
+fn push_dry_run_action(change: &PlannedSyncChangeInternal) -> &'static str {
+    match change.change_type {
         DiffChangeType::NewLocal => "would_create",
+        DiffChangeType::ModifiedLocal if change.remote_exists == Some(false) => "would_recreate",
         DiffChangeType::ModifiedLocal => "would_update",
+        DiffChangeType::DeletedLocal if change.remote_exists == Some(false) => "already_deleted",
         DiffChangeType::DeletedLocal => "would_delete",
+    }
+}
+
+fn remote_conflict_detail(change: &PlannedSyncChangeInternal) -> &'static str {
+    match change.change_type {
+        DiffChangeType::ModifiedLocal if change.remote_exists == Some(false) => {
+            "remote page was deleted since last sync; use --force to recreate with createonly"
+        }
+        DiffChangeType::NewLocal if change.remote_exists == Some(true) => {
+            "remote page now exists; createonly prevents overwriting it"
+        }
+        _ => "remote page changed since last sync",
     }
 }

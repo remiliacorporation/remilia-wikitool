@@ -1,6 +1,4 @@
 use std::fs;
-#[cfg(unix)]
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -9,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::runtime::ResolvedPaths;
-use crate::support::{format_iso8601_utc, normalize_path, now_iso8601_utc, unix_timestamp};
+use crate::support::{
+    atomic_write, format_iso8601_utc, normalize_path, now_iso8601_utc, unix_timestamp,
+};
 
 use super::model::ExternalFetchSession;
 
@@ -149,26 +149,7 @@ pub fn import_research_session(
 
 fn write_session_file(path: &Path, session: &ResearchSession) -> Result<()> {
     let payload = serde_json::to_string_pretty(session)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .mode(0o600)
-            .open(path)
-            .with_context(|| format!("failed to write {}", normalize_path(path)))?;
-        file.write_all(payload.as_bytes())
-            .with_context(|| format!("failed to write {}", normalize_path(path)))?;
-    }
-    #[cfg(not(unix))]
-    {
-        fs::write(path, payload.as_bytes())
-            .with_context(|| format!("failed to write {}", normalize_path(path)))?;
-    }
-    Ok(())
+    atomic_write(path, payload.as_bytes())
 }
 
 pub fn list_research_sessions(paths: &ResolvedPaths) -> Result<Vec<ResearchSessionSummary>> {

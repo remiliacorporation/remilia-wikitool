@@ -169,9 +169,9 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
     );
     let accept = steps
         .iter()
-        .find(|step| step.kind == "human_accept_draft")
+        .find(|step| step.kind == "record_acceptance_decision")
         .and_then(|step| step.command.as_ref())
-        .expect("human acceptance command");
+        .expect("acceptance decision command");
     assert!(
         accept
             .argv

@@ -6,6 +6,8 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
+use crate::support::atomic_write;
+
 // Wikimedia's User-Agent policy asks automated clients to identify themselves with
 // a contact URL; a bare "wikitool/x.y" agent risks rate limiting or blocking when
 // hitting mediawiki.org for docs. Keep the project URL in the default agent.
@@ -15,34 +17,49 @@ pub const DEFAULT_USER_AGENT: &str = concat!(
     " (+https://github.com/remiliacorporation/remilia-wikitool)"
 );
 pub const DEFAULT_ARTICLE_PATH: &str = "/$1";
-pub const DEFAULT_WIKI_URL: &str = "https://wiki.remilia.org";
-pub const DEFAULT_WIKI_API_URL: &str = "https://wiki.remilia.org/api.php";
 pub const ENV_WIKITOOL_WIKI_URL: &str = "WIKITOOL_WIKI_URL";
 pub const ENV_WIKITOOL_WIKI_API_URL: &str = "WIKITOOL_WIKI_API_URL";
 pub const ENV_WIKITOOL_USER_AGENT: &str = "WIKITOOL_USER_AGENT";
 pub const ENV_WIKITOOL_ARTICLE_PATH: &str = "WIKITOOL_ARTICLE_PATH";
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct WikiConfig {
     #[serde(default)]
     pub wiki: WikiSection,
+    #[serde(default)]
+    pub adapter: AdapterSection,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct WikiSection {
     pub url: Option<String>,
     pub api_url: Option<String>,
     pub article_path: Option<String>,
     pub user_agent: Option<String>,
+    /// Mark edits with MediaWiki's `bot` flag. This controls recent-changes
+    /// presentation only; it is independent of authorship or editorial review.
+    #[serde(default)]
+    pub mark_edits_as_bot: bool,
     #[serde(default)]
     pub custom_namespaces: Vec<CustomNamespace>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct CustomNamespace {
     pub name: String,
     pub id: i32,
     pub folder: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AdapterSection {
+    /// Explicit site-adapter policy. Relative paths resolve from the project
+    /// root. When omitted, wikitool uses its embedded generic MediaWiki policy.
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -285,14 +302,16 @@ pub struct WikiConfigPatch {
     pub set_url: Option<String>,
     pub set_api_url: Option<String>,
     pub set_custom_namespaces: Option<Vec<CustomNamespace>>,
+    pub set_adapter_path: Option<String>,
 }
 
-/// Update selected keys under `[wiki]` while preserving all other config sections.
+/// Update selected wiki and adapter keys while preserving all other config sections.
 /// Returns `true` when a write occurred.
 pub fn patch_wiki_config(config_path: &Path, patch: &WikiConfigPatch) -> Result<bool> {
     if patch.set_url.is_none()
         && patch.set_api_url.is_none()
         && patch.set_custom_namespaces.is_none()
+        && patch.set_adapter_path.is_none()
     {
         return Ok(false);
     }
@@ -348,18 +367,25 @@ pub fn patch_wiki_config(config_path: &Path, patch: &WikiConfigPatch) -> Result<
             wiki_table.insert("custom_namespaces".to_string(), Value::Array(array));
         }
     }
+    if let Some(adapter_path) = &patch.set_adapter_path {
+        if adapter_path.trim().is_empty() {
+            bail!("site-adapter path cannot be empty");
+        }
+        let adapter_entry = root_table
+            .entry("adapter".to_string())
+            .or_insert_with(|| Value::Table(Default::default()));
+        let adapter_table = adapter_entry.as_table_mut().ok_or_else(|| {
+            anyhow::anyhow!("[adapter] must be a table in {}", config_path.display())
+        })?;
+        adapter_table.insert("path".to_string(), Value::String(adapter_path.clone()));
+    }
 
     if root == original {
         return Ok(false);
     }
 
-    let parent = config_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("config path has no parent: {}", config_path.display()))?;
-    fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
     let rendered = toml::to_string_pretty(&root).context("failed to serialize config TOML")?;
-    fs::write(config_path, rendered)
-        .with_context(|| format!("failed to write {}", config_path.display()))?;
+    atomic_write(config_path, rendered)?;
     Ok(true)
 }
 
@@ -435,14 +461,13 @@ folder = "Custom"
     }
 
     #[test]
-    fn load_config_tolerates_partial_toml() {
+    fn load_config_rejects_unknown_sections() {
         let temp = tempdir().expect("tempdir");
         let config_path = temp.path().join("config.toml");
         fs::write(&config_path, "[paths]\nproject_root = \"/foo\"\n").expect("write config");
 
-        let config = load_config(&config_path).expect("load config");
-        assert!(config.wiki.url.is_none());
-        assert!(config.wiki.custom_namespaces.is_empty());
+        let error = load_config(&config_path).expect_err("unknown section must fail");
+        assert!(error.to_string().contains("failed to parse"));
     }
 
     #[test]
@@ -458,7 +483,11 @@ folder = "Custom"
     fn patch_wiki_config_updates_custom_namespaces() {
         let temp = tempdir().expect("tempdir");
         let config_path = temp.path().join("config.toml");
-        fs::write(&config_path, "[paths]\nproject_root = \"/repo\"\n").expect("write config");
+        fs::write(
+            &config_path,
+            "[adapter]\npath = \"site-adapter/profile.toml\"\n",
+        )
+        .expect("write config");
 
         let wrote = patch_wiki_config(
             &config_path,
@@ -470,6 +499,7 @@ folder = "Custom"
                     id: 3000,
                     folder: Some("Lore".to_string()),
                 }]),
+                set_adapter_path: Some("project-adapter/profile.toml".to_string()),
             },
         )
         .expect("patch");
@@ -483,6 +513,10 @@ folder = "Custom"
         );
         assert_eq!(config.wiki.custom_namespaces.len(), 1);
         assert_eq!(config.wiki.custom_namespaces[0].name, "Lore");
+        assert_eq!(
+            config.adapter.path.as_deref(),
+            Some("project-adapter/profile.toml")
+        );
     }
 
     #[test]

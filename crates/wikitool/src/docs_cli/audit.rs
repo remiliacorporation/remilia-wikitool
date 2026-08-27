@@ -13,7 +13,7 @@ pub(crate) struct DocsAuditArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional host project root whose redirect stubs should be audited"
+        help = "Optional host project root whose redirects and site adapter should be audited"
     )]
     pub(crate) host_project_root: Option<PathBuf>,
     #[arg(
@@ -55,28 +55,28 @@ pub(crate) fn run_docs_audit(args: DocsAuditArgs) -> Result<()> {
                 path.clone()
             } else {
                 std::env::current_dir()
-                    .context("failed to resolve current directory")
-                    .map(|cwd| cwd.join(path))
-                    .unwrap_or_else(|_| path.clone())
+                    .context("failed to resolve current directory")?
+                    .join(path)
             }
+            .canonicalize()
+            .context("failed to resolve host project root")
         })
-        .map(|path| path.canonicalize().unwrap_or(path));
+        .transpose()?;
 
     let mut checks = Vec::new();
     audit_reference(&repo_root, &mut checks);
     audit_default_features(&repo_root, &mut checks);
-    audit_packaged_guidance(&repo_root, &mut checks);
+    audit_ai_pack_layout(&repo_root, &mut checks);
+    audit_canonical_skills(&repo_root, &mut checks);
+    audit_generic_boundary(&repo_root, &mut checks);
     audit_no_retired_public_terms(&repo_root, &mut checks);
-    audit_brief_guidance(&repo_root, &mut checks);
-    audit_workflow_guidance(&repo_root, &mut checks);
-    audit_coauthoring_guidance(&repo_root, &mut checks);
     if let Some(host_root) = host_project_root.as_ref() {
         audit_host_project(host_root, &mut checks);
     }
 
     let failure_count = checks.iter().filter(|check| check.status == "fail").count();
     let report = DocsAuditReport {
-        schema_version: "docs_audit_v1",
+        schema_version: "docs_audit_v2",
         status: if failure_count == 0 { "pass" } else { "fail" },
         repo_root: normalize_path(&repo_root),
         host_project_root: host_project_root.as_ref().map(normalize_path),
@@ -102,53 +102,30 @@ fn audit_reference(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     let path = repo_root.join("docs/wikitool/reference.md");
     let actual = read_to_string(&path);
     let expected = generate_docs_reference_markdown();
-    match (actual, expected) {
-        (Ok(actual), Ok(expected)) => {
-            let actual = normalize_newlines(&actual);
-            let expected = normalize_newlines(&expected);
-            push_check(
-                checks,
-                "reference.generated",
-                actual == expected,
-                Some(&path),
-                if actual == expected {
-                    "generated CLI reference is current".to_string()
-                } else {
-                    "generated CLI reference is stale; run `cargo run --features maintainer -- docs generate-reference`".to_string()
-                },
-            );
-        }
-        (Err(error), _) => push_check(
-            checks,
-            "reference.generated",
-            false,
-            Some(&path),
-            format!("failed to read generated reference: {error}"),
-        ),
-        (_, Err(error)) => push_check(
-            checks,
-            "reference.generated",
-            false,
-            Some(&path),
-            format!("failed to render generated reference: {error}"),
-        ),
-    }
+    let ok = matches!((&actual, &expected), (Ok(left), Ok(right)) if normalize_newlines(left) == normalize_newlines(right));
+    let message = match (actual, expected) {
+        (Ok(_), Ok(_)) if ok => "generated CLI reference is current".to_string(),
+        (Ok(_), Ok(_)) => "generated CLI reference is stale; run `cargo run --features maintainer -- docs generate-reference`".to_string(),
+        (Err(error), _) => format!("failed to read generated reference: {error}"),
+        (_, Err(error)) => format!("failed to render generated reference: {error}"),
+    };
+    push_check(checks, "reference.generated", ok, Some(&path), message);
 }
 
 fn audit_default_features(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     let path = repo_root.join("crates/wikitool/Cargo.toml");
     match read_to_string(&path) {
         Ok(body) => {
-            let default_is_empty = body.lines().any(|line| line.trim() == "default = []");
+            let ok = body.lines().any(|line| line.trim() == "default = []");
             push_check(
                 checks,
                 "cargo.default_surface",
-                default_is_empty,
+                ok,
                 Some(&path),
-                if default_is_empty {
-                    "normal source and release builds use the end-user surface".to_string()
+                if ok {
+                    "normal builds use the end-user surface".to_string()
                 } else {
-                    "Cargo default features must stay empty; maintainer commands require `--features maintainer`".to_string()
+                    "Cargo default features must stay empty".to_string()
                 },
             );
         }
@@ -162,86 +139,164 @@ fn audit_default_features(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     }
 }
 
-fn audit_packaged_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
+fn audit_ai_pack_layout(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     let claude_path = repo_root.join("ai-pack/CLAUDE.md");
     let agents_path = repo_root.join("ai-pack/AGENTS.md");
-    match (read_to_string(&claude_path), read_to_string(&agents_path)) {
-        (Ok(claude), Ok(agents)) => {
-            push_check(
-                checks,
-                "ai_pack.agent_guidance_mirror",
-                claude == agents,
-                Some(&agents_path),
-                if claude == agents {
-                    "packaged CLAUDE.md and AGENTS.md are identical".to_string()
-                } else {
-                    "packaged CLAUDE.md and AGENTS.md must remain identical".to_string()
-                },
-            );
-        }
-        (Err(error), _) => push_check(
+    let mirrored = read_to_string(&claude_path)
+        .and_then(|claude| read_to_string(&agents_path).map(|agents| claude == agents))
+        .unwrap_or(false);
+    push_check(
+        checks,
+        "ai_pack.agent_guidance_mirror",
+        mirrored,
+        Some(&agents_path),
+        if mirrored {
+            "packaged CLAUDE.md and AGENTS.md are identical".to_string()
+        } else {
+            "packaged CLAUDE.md and AGENTS.md must remain identical".to_string()
+        },
+    );
+
+    for relative in [
+        "ai-pack/integration/agent_integration.md",
+        "ai-pack/integration/site_adapters.md",
+        "config/generic-site-adapter.toml",
+    ] {
+        let path = repo_root.join(relative);
+        push_check(
             checks,
-            "ai_pack.agent_guidance_mirror",
-            false,
-            Some(&claude_path),
-            format!("failed to read ai-pack CLAUDE.md: {error}"),
-        ),
-        (_, Err(error)) => push_check(
-            checks,
-            "ai_pack.agent_guidance_mirror",
-            false,
-            Some(&agents_path),
-            format!("failed to read ai-pack AGENTS.md: {error}"),
-        ),
+            "ai_pack.layered_layout",
+            path.is_file(),
+            Some(&path),
+            if path.is_file() {
+                format!("{relative} is present")
+            } else {
+                format!("required layered AI-pack resource is missing: {relative}")
+            },
+        );
     }
 
-    for (id, left, right, required) in [
+    let retired = repo_root.join("ai-pack/writing_context");
+    push_check(
+        checks,
+        "ai_pack.no_retired_writing_context",
+        !retired.exists(),
+        Some(&retired),
+        if retired.exists() {
+            "retired writing_context directory must stay removed".to_string()
+        } else {
+            "prose procedures live in agent skills, not writing_context".to_string()
+        },
+    );
+}
+
+fn audit_canonical_skills(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
+    for (name, references) in [
         (
-            "skills.operator_alignment",
-            "ai-pack/.claude/skills/wikitool.md",
-            "ai-pack/codex_skills/wikitool-operator/SKILL.md",
-            "brief",
+            "wiki-writing",
+            &[
+                "evidence-to-prose.md",
+                "human-notes.md",
+                "mediawiki-structure.md",
+            ][..],
         ),
         (
-            "skills.review_alignment",
-            "ai-pack/.claude/skills/review.md",
-            "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
-            "review --format json",
+            "prose-review",
+            &["source-fidelity.md", "reader-value.md", "blp-sensitive.md"][..],
         ),
+        ("wiki-interview", &["interview-ledger.md"][..]),
+        ("wikitool-operator", &[][..]),
     ] {
-        let left_path = repo_root.join(left);
-        let right_path = repo_root.join(right);
-        match (read_to_string(&left_path), read_to_string(&right_path)) {
-            (Ok(left_body), Ok(right_body)) => {
-                let ok = left_body.contains(required) && right_body.contains(required);
-                push_check(
-                    checks,
-                    id,
-                    ok,
-                    Some(&right_path),
-                    if ok {
-                        format!("Claude and Codex skill wrappers both mention `{required}`")
-                    } else {
-                        format!("Claude and Codex skill wrappers must both mention `{required}`")
-                    },
-                );
+        let root = repo_root.join("ai-pack/codex_skills").join(name);
+        let skill_path = root.join("SKILL.md");
+        let mut failures = Vec::new();
+        match read_to_string(&skill_path) {
+            Ok(body) => {
+                if !valid_skill_frontmatter(&body, name) {
+                    failures.push("invalid name/description-only frontmatter".to_string());
+                }
+                if !body.contains("## Procedure") || !body.contains("## Exit conditions") {
+                    failures.push("missing procedure or exit conditions".to_string());
+                }
+                for reference in references {
+                    if !body.contains(reference)
+                        || !root.join("references").join(reference).is_file()
+                    {
+                        failures.push(format!("missing routed reference {reference}"));
+                    }
+                }
             }
-            (Err(error), _) => push_check(
-                checks,
-                id,
-                false,
-                Some(&left_path),
-                format!("failed to read Claude skill: {error}"),
-            ),
-            (_, Err(error)) => push_check(
-                checks,
-                id,
-                false,
-                Some(&right_path),
-                format!("failed to read Codex skill: {error}"),
-            ),
+            Err(error) => failures.push(format!("failed to read SKILL.md: {error}")),
+        }
+        if !root.join("agents/openai.yaml").is_file() {
+            failures.push("missing agents/openai.yaml".to_string());
+        }
+        push_check(
+            checks,
+            "skills.canonical_shape",
+            failures.is_empty(),
+            Some(&skill_path),
+            if failures.is_empty() {
+                format!("{name} has a substantive canonical skill package")
+            } else {
+                format!("{name}: {}", failures.join("; "))
+            },
+        );
+    }
+}
+
+fn valid_skill_frontmatter(body: &str, expected_name: &str) -> bool {
+    let mut lines = body.lines();
+    if lines.next() != Some("---") {
+        return false;
+    }
+    let mut fields = Vec::new();
+    for line in &mut lines {
+        if line == "---" {
+            break;
+        }
+        if !line.trim().is_empty() {
+            fields.push(line);
         }
     }
+    fields.len() == 2
+        && fields
+            .iter()
+            .any(|line| *line == format!("name: {expected_name}"))
+        && fields.iter().any(|line| line.starts_with("description: "))
+}
+
+fn audit_generic_boundary(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
+    let root = repo_root.join("ai-pack");
+    let mut leaks = Vec::new();
+    for path in text_files(&root) {
+        let Ok(body) = read_to_string(&path) else {
+            continue;
+        };
+        let lowered = body.to_ascii_lowercase();
+        for token in [
+            "remilia",
+            "charlotte fang",
+            "milady maker",
+            "wiki.remilia.org",
+            "d3chart",
+        ] {
+            if lowered.contains(token) {
+                leaks.push(format!("{} contains {token:?}", normalize_path(&path)));
+            }
+        }
+    }
+    push_check(
+        checks,
+        "ai_pack.target_neutral",
+        leaks.is_empty(),
+        Some(&root),
+        if leaks.is_empty() {
+            "generic AI pack contains no target-specific policy".to_string()
+        } else {
+            leaks.join("; ")
+        },
+    );
 }
 
 fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
@@ -250,14 +305,8 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
         let Ok(body) = read_to_string(&path) else {
             continue;
         };
-        let is_changelog = path.file_name().is_some_and(|name| name == "CHANGELOG.md");
-        if !is_changelog
-            && (contains_retired_wikitool_context(&body) || body.contains("wikitool contextmink"))
-        {
-            failures.push(format!(
-                "{} contains a retired wikitool-owned Contextmink command",
-                normalize_path(&path)
-            ));
+        if path.file_name().is_some_and(|name| name == "CHANGELOG.md") {
+            continue;
         }
         for term in [
             "wikitool search",
@@ -265,7 +314,6 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
             "wikitool seo",
             "wikitool net",
             "--view agent-card",
-            "agent-card",
             "function-card",
             "function-context",
         ] {
@@ -280,258 +328,7 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
         failures.is_empty(),
         Some(repo_root),
         if failures.is_empty() {
-            "guidance and docs do not mention retired public surfaces or rejected brief names"
-                .to_string()
-        } else {
-            failures.join("; ")
-        },
-    );
-}
-
-fn contains_retired_wikitool_context(body: &str) -> bool {
-    body.match_indices("wikitool context")
-        .any(|(index, needle)| !body[index + needle.len()..].starts_with("mink"))
-}
-
-fn audit_brief_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    let required = [
-        ("ai-pack/CLAUDE.md", "--view brief"),
-        ("ai-pack/AGENTS.md", "--view brief"),
-        (
-            "ai-pack/codex_skills/wikitool-operator/SKILL.md",
-            "--view brief",
-        ),
-        ("ai-pack/.claude/skills/wikitool.md", "--view brief"),
-        ("docs/wikitool/guide.md", "--view brief"),
-        ("docs/wikitool/architecture.md", "--view brief"),
-    ];
-    for (relative, needle) in required {
-        let path = repo_root.join(relative);
-        match read_to_string(&path) {
-            Ok(body) => push_check(
-                checks,
-                "guidance.brief_surface",
-                body.contains(needle),
-                Some(&path),
-                if body.contains(needle) {
-                    format!("{relative} documents `{needle}`")
-                } else {
-                    format!("{relative} must document `{needle}`")
-                },
-            ),
-            Err(error) => push_check(
-                checks,
-                "guidance.brief_surface",
-                false,
-                Some(&path),
-                format!("failed to read {relative}: {error}"),
-            ),
-        }
-    }
-}
-
-fn audit_workflow_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    let required = [
-        ("README.md", "wikitool workflow session-refresh"),
-        (
-            "docs/wikitool/guide.md",
-            "wikitool workflow session-refresh",
-        ),
-        ("ai-pack/CLAUDE.md", "wikitool workflow session-refresh"),
-        ("ai-pack/AGENTS.md", "wikitool workflow session-refresh"),
-        (
-            "ai-pack/.claude/skills/wikitool.md",
-            "wikitool workflow session-refresh",
-        ),
-        (
-            "ai-pack/codex_skills/wikitool-operator/SKILL.md",
-            "wikitool workflow session-refresh",
-        ),
-        (
-            "ai-pack/writing_context/writing_guide.md",
-            "wikitool workflow session-refresh",
-        ),
-    ];
-    for (relative, needle) in required {
-        let path = repo_root.join(relative);
-        match read_to_string(&path) {
-            Ok(body) => push_check(
-                checks,
-                "guidance.workflow_surface",
-                body.contains(needle),
-                Some(&path),
-                if body.contains(needle) {
-                    format!("{relative} documents `{needle}`")
-                } else {
-                    format!("{relative} must document `{needle}` as the public refresh lane")
-                },
-            ),
-            Err(error) => push_check(
-                checks,
-                "guidance.workflow_surface",
-                false,
-                Some(&path),
-                format!("failed to read {relative}: {error}"),
-            ),
-        }
-    }
-
-    let local_skill = repo_root.join(".claude/skills/wikitool/SKILL.md");
-    match read_to_string(&local_skill) {
-        Ok(body) => {
-            let ok = body.contains("Maintainer-only lanes")
-                && !body.contains("`release`, `workflow`")
-                && !body.contains("release, workflow");
-            push_check(
-                checks,
-                "guidance.workflow_public",
-                ok,
-                Some(&local_skill),
-                if ok {
-                    "local Claude wrapper treats workflow as an end-user lane".to_string()
-                } else {
-                    "local Claude wrapper must not list workflow as maintainer-only".to_string()
-                },
-            );
-        }
-        Err(error) => push_check(
-            checks,
-            "guidance.workflow_public",
-            false,
-            Some(&local_skill),
-            format!("failed to read local Claude wrapper: {error}"),
-        ),
-    }
-}
-
-fn audit_coauthoring_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    let required = [
-        (
-            "ai-pack/CLAUDE.md",
-            &[
-                "write genuine encyclopedic prose",
-                "Model memory",
-                "article accept",
-                "never self-attest",
-            ][..],
-        ),
-        (
-            "ai-pack/AGENTS.md",
-            &[
-                "write genuine encyclopedic prose",
-                "Model memory",
-                "article accept",
-                "never self-attest",
-            ][..],
-        ),
-        (
-            "ai-pack/writing_context/interview_playbook.md",
-            &[
-                "agent may draft",
-                "not automatically independent evidence",
-                "article accept",
-            ][..],
-        ),
-        (
-            "ai-pack/codex_skills/wikitool-knowledge-interview/SKILL.md",
-            &[
-                "draft genuine encyclopedic prose",
-                "not independent evidence",
-                "article accept",
-            ][..],
-        ),
-        (
-            "ai-pack/codex_skills/wikitool-content-gate/SKILL.md",
-            &[
-                "Agent authorship is allowed",
-                "article accept",
-                "must not self-attest",
-            ][..],
-        ),
-        (
-            "docs/wikitool/guide.md",
-            &[
-                "external agent may research and write",
-                "drafting_ready",
-                "article accept",
-            ][..],
-        ),
-        (
-            "docs/wikitool/architecture.md",
-            &["External agents may", "article_acceptance_v2", "--force"][..],
-        ),
-        (
-            "ai-pack/writing_context/writing_guide.md",
-            &[
-                "An agent may research, select, organize, and draft",
-                "model output is never evidence",
-                "article accept",
-            ][..],
-        ),
-        ("CHANGELOG.md", &["coauthoring", "article accept"][..]),
-    ];
-
-    for (relative, needles) in required {
-        let path = repo_root.join(relative);
-        match read_to_string(&path) {
-            Ok(body) => {
-                let normalized = normalize_whitespace(&body);
-                let missing = needles
-                    .iter()
-                    .filter(|needle| !normalized.contains(&normalize_whitespace(needle)))
-                    .copied()
-                    .collect::<Vec<_>>();
-                push_check(
-                    checks,
-                    "guidance.coauthoring",
-                    missing.is_empty(),
-                    Some(&path),
-                    if missing.is_empty() {
-                        format!("{relative} preserves the coauthoring and acceptance boundary")
-                    } else {
-                        format!(
-                            "{relative} is missing coauthoring contract term(s): {}",
-                            missing.join(", ")
-                        )
-                    },
-                );
-            }
-            Err(error) => push_check(
-                checks,
-                "guidance.coauthoring",
-                false,
-                Some(&path),
-                format!("failed to read {relative}: {error}"),
-            ),
-        }
-    }
-
-    let retired = [
-        "Reach for it when your specific knowledge reaches further than public sources do, and skip it when they do not",
-        "Reach for it when an editor knows more than the public sources do, and skip it when they do not",
-    ];
-    let mut failures = Vec::new();
-    for path in markdown_files(repo_root) {
-        let Ok(body) = read_to_string(&path) else {
-            continue;
-        };
-        let normalized = normalize_whitespace(&body);
-        for phrase in retired {
-            if normalized.contains(&normalize_whitespace(phrase)) {
-                failures.push(format!(
-                    "{} contains retired interview framing",
-                    normalize_path(&path)
-                ));
-            }
-        }
-    }
-    push_check(
-        checks,
-        "guidance.interview_retired_framing",
-        failures.is_empty(),
-        Some(repo_root),
-        if failures.is_empty() {
-            "guidance does not retain the retired public-sources-only interview framing".to_string()
+            "guidance does not mention retired public surfaces".to_string()
         } else {
             failures.join("; ")
         },
@@ -539,94 +336,78 @@ fn audit_coauthoring_guidance(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>
 }
 
 fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    for relative in ["AGENTS.md", "CLAUDE.md"] {
-        let path = host_root.join(relative);
-        match read_to_string(&path) {
-            Ok(body) => {
-                let ok = body.contains("tools/wikitool/ai-pack/.claude/skills/")
-                    && body.contains("tools/wikitool/docs/wikitool/reference.md")
-                    && !body.contains("wikitool search");
-                push_check(
-                    checks,
-                    "host.root_guidance",
-                    ok,
-                    Some(&path),
-                    if ok {
-                        format!("{relative} routes to public ai-pack guidance")
-                    } else {
-                        format!(
-                            "{relative} must route to public ai-pack guidance and avoid retired commands"
-                        )
-                    },
-                );
-            }
-            Err(error) => push_check(
-                checks,
-                "host.root_guidance",
-                false,
-                Some(&path),
-                format!("failed to read host guidance: {error}"),
-            ),
-        }
-    }
+    let adapter = host_root.join("wikitool_adapter/profile.toml");
+    let adapter_ok = read_to_string(&adapter)
+        .is_ok_and(|body| body.contains("schema_version = \"site_adapter_v1\""));
+    push_check(
+        checks,
+        "host.site_adapter",
+        adapter_ok,
+        Some(&adapter),
+        if adapter_ok {
+            "host owns an explicit typed site adapter".to_string()
+        } else {
+            "host must own wikitool_adapter/profile.toml with site_adapter_v1".to_string()
+        },
+    );
 
-    for relative in [".claude/skills/wikitool.md", ".claude/skills/review.md"] {
+    for relative in [
+        ".claude/skills/wikitool.md",
+        ".claude/skills/wiki-writing.md",
+        ".claude/skills/prose-review.md",
+        ".claude/skills/wiki-interview.md",
+        ".claude/skills/review.md",
+        ".claude/skills/knowledge-interview.md",
+    ] {
         let path = host_root.join(relative);
-        match read_to_string(&path) {
-            Ok(body) => {
-                let ok = body.contains("tools/wikitool/ai-pack/.claude/skills/")
-                    && !body.contains("wikitool search");
-                push_check(
-                    checks,
-                    "host.skill_redirects",
-                    ok,
-                    Some(&path),
-                    if ok {
-                        format!("{relative} is a thin redirect stub")
-                    } else {
-                        format!("{relative} must remain a thin redirect stub to ai-pack")
-                    },
-                );
-            }
-            Err(error) => push_check(
-                checks,
-                "host.skill_redirects",
-                false,
-                Some(&path),
-                format!("failed to read host skill redirect: {error}"),
-            ),
-        }
+        let ok = read_to_string(&path).is_ok_and(|body| {
+            body.contains("tools/wikitool/ai-pack/") && !body.contains("wikitool search")
+        });
+        push_check(
+            checks,
+            "host.skill_redirects",
+            ok,
+            Some(&path),
+            if ok {
+                format!("{relative} routes to the public AI pack")
+            } else {
+                format!("{relative} must route to the public AI pack")
+            },
+        );
     }
+}
+
+fn text_files(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    collect_files(root, &mut out, &["md", "yaml", "toml"]);
+    out
 }
 
 fn markdown_files(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    collect_markdown_files(root, root, &mut out);
+    collect_files(root, &mut out, &["md"]);
     out
 }
 
-fn collect_markdown_files(root: &Path, path: &Path, out: &mut Vec<PathBuf>) {
+fn collect_files(path: &Path, out: &mut Vec<PathBuf>, extensions: &[&str]) {
     let Ok(entries) = std::fs::read_dir(path) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let file_name = path
+        let name = path
             .file_name()
             .and_then(|value| value.to_str())
             .unwrap_or("");
         if path.is_dir() {
-            if matches!(file_name, ".git" | "target" | ".wikitool" | "dist") {
-                continue;
+            if !matches!(name, ".git" | "target" | ".wikitool" | "dist") {
+                collect_files(&path, out, extensions);
             }
-            collect_markdown_files(root, &path, out);
-            continue;
-        }
-        let is_markdown = path
+        } else if path
             .extension()
             .and_then(|value| value.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("md"));
-        if is_markdown && path.starts_with(root) {
+            .is_some_and(|extension| extensions.iter().any(|item| item == &extension))
+        {
             out.push(path);
         }
     }
@@ -656,10 +437,6 @@ fn normalize_newlines(value: &str) -> String {
     value.replace("\r\n", "\n")
 }
 
-fn normalize_whitespace(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 fn print_docs_audit_report(report: &DocsAuditReport) {
     println!("docs audit");
     println!("status: {}", report.status);
@@ -682,15 +459,17 @@ fn print_docs_audit_report(report: &DocsAuditReport) {
 
 #[cfg(test)]
 mod tests {
-    use super::contains_retired_wikitool_context;
+    use super::valid_skill_frontmatter;
 
     #[test]
-    fn retired_context_audit_distinguishes_the_old_bare_command() {
-        assert!(!contains_retired_wikitool_context(
-            "Run `contextmink files`."
+    fn skill_frontmatter_rejects_extra_policy_keys() {
+        assert!(valid_skill_frontmatter(
+            "---\nname: demo\ndescription: A useful demo skill.\n---\n",
+            "demo"
         ));
-        assert!(contains_retired_wikitool_context(
-            "The retired command was `wikitool context`."
+        assert!(!valid_skill_frontmatter(
+            "---\nname: demo\ndescription: A useful demo skill.\nallowed-tools: Bash\n---\n",
+            "demo"
         ));
     }
 }

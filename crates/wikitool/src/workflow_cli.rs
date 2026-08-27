@@ -108,6 +108,7 @@ fn run_workflow_session_refresh(
         InitArgs {
             wiki_url: None,
             api_url: None,
+            adapter_path: None,
             templates: include_templates,
             force: false,
             no_config: false,
@@ -152,7 +153,7 @@ fn sync_profile_for_workflow(runtime: &RuntimeOptions) -> Result<()> {
     println!("workflow session-refresh: wiki profile synced");
     println!(
         "workflow session-refresh.profile.refreshed_at: {}",
-        snapshot.overlay.refreshed_at
+        snapshot.adapter.refreshed_at
     );
     Ok(())
 }
@@ -187,6 +188,7 @@ fn run_workflow_full_refresh(
         InitArgs {
             wiki_url: None,
             api_url: None,
+            adapter_path: None,
             templates: include_templates,
             force: false,
             no_config: false,

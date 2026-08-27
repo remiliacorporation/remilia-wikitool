@@ -134,30 +134,6 @@ pub(crate) fn prompt_yes_no(prompt: &str) -> Result<bool> {
 }
 
 #[cfg(feature = "maintainer")]
-pub(crate) fn detect_host_context_root(
-    repo_root: &Path,
-    explicit: Option<&Path>,
-) -> Result<Option<PathBuf>> {
-    let _ = repo_root;
-    let Some(path) = explicit else {
-        return Ok(None);
-    };
-
-    let root = fs::canonicalize(path)
-        .with_context(|| format!("failed to canonicalize {}", normalize_path(path)))?;
-    if !root.join("CLAUDE.md").is_file()
-        || !root.join(".claude/rules").is_dir()
-        || !root.join(".claude/skills").is_dir()
-    {
-        bail!(
-            "invalid host project root {}: expected CLAUDE.md and .claude/{{rules,skills}}",
-            normalize_path(&root)
-        );
-    }
-    Ok(Some(root))
-}
-
-#[cfg(feature = "maintainer")]
 pub(crate) fn resolve_git_hooks_dir(repo_root: &Path) -> Result<Option<PathBuf>> {
     let git_path = repo_root.join(".git");
     if git_path.is_dir() {
@@ -265,15 +241,6 @@ pub(crate) fn copy_dir_contents(source: &Path, destination: &Path) -> Result<()>
         }
     }
     Ok(())
-}
-
-#[cfg(feature = "maintainer")]
-pub(crate) fn paths_equivalent(left: &Path, right: &Path) -> Result<bool> {
-    let left = fs::canonicalize(left)
-        .with_context(|| format!("failed to canonicalize {}", normalize_path(left)))?;
-    let right = fs::canonicalize(right)
-        .with_context(|| format!("failed to canonicalize {}", normalize_path(right)))?;
-    Ok(left == right)
 }
 
 #[cfg(feature = "maintainer")]
@@ -472,99 +439,4 @@ pub(crate) fn path_is_under_directory(candidate: &Path, directory: &Path) -> boo
 
 pub(crate) fn format_flag(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
-}
-
-#[cfg(all(test, feature = "maintainer"))]
-mod tests {
-    use std::fs;
-    use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    use super::detect_host_context_root;
-
-    struct TestDir {
-        path: PathBuf,
-    }
-
-    impl TestDir {
-        fn new(label: &str) -> Self {
-            let unique = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system time")
-                .as_nanos();
-            let path = std::env::temp_dir().join(format!(
-                "wikitool-cli-support-{label}-{}-{unique}",
-                std::process::id()
-            ));
-            fs::create_dir_all(&path).expect("create temp test dir");
-            Self { path }
-        }
-    }
-
-    impl Drop for TestDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.path);
-        }
-    }
-
-    fn write_host_context(root: &Path, claude: &str, agents: Option<&str>) {
-        fs::create_dir_all(root.join(".claude").join("rules")).expect("create rules dir");
-        fs::create_dir_all(root.join(".claude").join("skills")).expect("create skills dir");
-        fs::write(root.join("CLAUDE.md"), claude).expect("write CLAUDE.md");
-        if let Some(agents) = agents {
-            fs::write(root.join("AGENTS.md"), agents).expect("write AGENTS.md");
-        }
-    }
-
-    #[test]
-    fn detect_host_context_root_accepts_matching_guidance_files() {
-        let temp = TestDir::new("accepts");
-        let host_root = temp.path.join("host");
-        write_host_context(&host_root, "# Host guidance\n", Some("# Host guidance\n"));
-
-        let detected = detect_host_context_root(&temp.path, Some(&host_root))
-            .expect("detect host root")
-            .expect("host root should be present");
-
-        assert_eq!(
-            detected,
-            host_root.canonicalize().expect("canonical host root")
-        );
-    }
-
-    #[test]
-    fn detect_host_context_root_accepts_missing_agents_file() {
-        let temp = TestDir::new("missing-agents");
-        let host_root = temp.path.join("host");
-        write_host_context(&host_root, "# Host guidance\n", None);
-
-        let detected = detect_host_context_root(&temp.path, Some(&host_root))
-            .expect("detect host root")
-            .expect("host root should be present");
-
-        assert_eq!(
-            detected,
-            host_root.canonicalize().expect("canonical host root")
-        );
-    }
-
-    #[test]
-    fn detect_host_context_root_accepts_distinct_agents_file() {
-        let temp = TestDir::new("drift");
-        let host_root = temp.path.join("host");
-        write_host_context(
-            &host_root,
-            "# Host guidance\n",
-            Some("# Diverged host guidance\n"),
-        );
-
-        let detected = detect_host_context_root(&temp.path, Some(&host_root))
-            .expect("detect host root")
-            .expect("host root should be present");
-
-        assert_eq!(
-            detected,
-            host_root.canonicalize().expect("canonical host root")
-        );
-    }
 }

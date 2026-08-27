@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 
 use crate::config::{
-    DEFAULT_ARTICLE_PATH, DEFAULT_USER_AGENT, DEFAULT_WIKI_API_URL, DEFAULT_WIKI_URL,
-    ENV_WIKITOOL_ARTICLE_PATH, ENV_WIKITOOL_USER_AGENT, ENV_WIKITOOL_WIKI_API_URL,
-    ENV_WIKITOOL_WIKI_URL,
+    DEFAULT_ARTICLE_PATH, DEFAULT_USER_AGENT, ENV_WIKITOOL_ARTICLE_PATH, ENV_WIKITOOL_USER_AGENT,
+    ENV_WIKITOOL_WIKI_API_URL, ENV_WIKITOOL_WIKI_URL,
 };
 use crate::schema::LOCAL_DB_POLICY_MESSAGE;
+use crate::support::atomic_write;
 
 const EMBEDDED_PARSER_CONFIG: &str = include_str!("../../../config/default-parser.json");
 
@@ -300,7 +300,7 @@ pub fn init_layout(paths: &ResolvedPaths, options: &InitOptions) -> Result<InitR
     let wrote_config = if options.materialize_config {
         write_text_file(
             &paths.config_path,
-            &render_materialized_config(paths, options.include_templates),
+            &render_materialized_config(),
             options.force,
         )?
     } else {
@@ -328,17 +328,9 @@ pub fn embedded_parser_config() -> &'static str {
     EMBEDDED_PARSER_CONFIG
 }
 
-pub fn render_materialized_config(paths: &ResolvedPaths, include_templates: bool) -> String {
-    let project_root = normalize_for_display(&paths.project_root);
-    let wiki_content_dir = normalize_for_display(&paths.wiki_content_dir);
-    let templates_dir = normalize_for_display(&paths.templates_dir);
-    let state_dir = normalize_for_display(&paths.state_dir);
-    let data_dir = normalize_for_display(&paths.data_dir);
-    let db_path = normalize_for_display(&paths.db_path);
-    let parser_config_path = normalize_for_display(&paths.parser_config_path);
-
+pub fn render_materialized_config() -> String {
     format!(
-        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Local DB policy: derived + disposable; delete `.wikitool/data/wikitool.db` if you need a clean rebuild.\n\n[wiki]\n# Defaults to Remilia Wiki so first-run agents can work immediately.\n# Replace these for another MediaWiki target. Temporary overrides are {ENV_WIKITOOL_WIKI_URL},\n# {ENV_WIKITOOL_WIKI_API_URL}, {ENV_WIKITOOL_ARTICLE_PATH}, and {ENV_WIKITOOL_USER_AGENT}.\nurl = \"{DEFAULT_WIKI_URL}\"\napi_url = \"{DEFAULT_WIKI_API_URL}\"\narticle_path = \"{DEFAULT_ARTICLE_PATH}\"\n# user_agent = \"{DEFAULT_USER_AGENT}\"\n\n# Populated by `wikitool init` namespace discovery when API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[paths]\nproject_root = \"{project_root}\"\nwiki_content_dir = \"{wiki_content_dir}\"\ntemplates_dir = \"{templates_dir}\"\nstate_dir = \"{state_dir}\"\ndata_dir = \"{data_dir}\"\ndb_path = \"{db_path}\"\nparser_config_path = \"{parser_config_path}\"\n\n[features]\ntemplates_enabled = {include_templates}\n",
+        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Local DB policy: derived + disposable; delete `.wikitool/data/wikitool.db` for a clean rebuild.\n\n[wiki]\n# Configure a target explicitly or pass --wiki-url/--api-url to `wikitool init`.\n# Temporary overrides are {ENV_WIKITOOL_WIKI_URL}, {ENV_WIKITOOL_WIKI_API_URL},\n# {ENV_WIKITOOL_ARTICLE_PATH}, and {ENV_WIKITOOL_USER_AGENT}.\n# url = \"https://wiki.example.org\"\n# api_url = \"https://wiki.example.org/api.php\"\narticle_path = \"{DEFAULT_ARTICLE_PATH}\"\n# user_agent = \"{DEFAULT_USER_AGENT}\"\n# mark_edits_as_bot = false\n\n# Populated by `wikitool init` namespace discovery when an API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[adapter]\n# Optional project-owned machine policy. Relative paths resolve from project root.\n# path = \"site-adapter/profile.toml\"\n"
     )
 }
 
@@ -443,12 +435,7 @@ fn write_text_file(path: &Path, content: &str, force: bool) -> Result<bool> {
         return Ok(false);
     }
 
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("path has no parent: {}", path.display()))?;
-    fs::create_dir_all(parent)
-        .with_context(|| format!("failed to create parent directory {}", parent.display()))?;
-    fs::write(path, content).with_context(|| format!("failed to write {}", path.display()))?;
+    atomic_write(path, content)?;
     Ok(true)
 }
 
@@ -529,8 +516,10 @@ mod tests {
         assert!(paths.parser_config_path.exists());
 
         let config = fs::read_to_string(&paths.config_path).expect("read config");
-        assert!(config.contains(crate::config::DEFAULT_WIKI_URL));
-        assert!(config.contains(crate::config::DEFAULT_WIKI_API_URL));
+        assert!(config.contains("# api_url = \"https://wiki.example.org/api.php\""));
+        assert!(config.contains("[adapter]"));
+        assert!(!config.contains("[paths]"));
+        assert!(!config.contains("[features]"));
     }
 
     #[test]

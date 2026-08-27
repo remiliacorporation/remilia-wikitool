@@ -8,11 +8,11 @@ use crate::content_store::parsing::normalize_template_parameter_key;
 use crate::runtime::ResolvedPaths;
 use crate::support::now_iso8601_utc;
 
-use super::remilia_overlay::load_or_build_remilia_profile_overlay;
 use super::rules::ExtensionContractRule;
+use super::site_adapter::load_or_build_site_profile;
 use super::template_catalog::{
     TemplateCatalog, TemplateCatalogEntry, TemplateCatalogExample, TemplateCatalogParameter,
-    build_template_catalog_with_overlay, load_template_catalog, sync_template_catalog_with_overlay,
+    build_template_catalog_with_profile, load_template_catalog, sync_template_catalog_with_profile,
 };
 use super::wiki_capabilities::{
     WikiCapabilityManifest, load_wiki_capabilities_with_config, sync_wiki_capabilities_with_config,
@@ -201,7 +201,7 @@ pub struct AuthoringExtensionTagSurface {
     pub self_closing_syntax: String,
     pub source: String,
     pub docs_query: String,
-    /// True when writing_context/extensions.md carries a contract for this tag.
+    /// True when the active site adapter carries a contract for this tag.
     #[serde(default)]
     pub documented: bool,
     #[serde(default)]
@@ -254,24 +254,24 @@ pub fn build_authoring_surface_with_config(
     config: &WikiConfig,
     options: AuthoringSurfaceOptions,
 ) -> Result<AuthoringSurface> {
-    let overlay = load_or_build_remilia_profile_overlay(paths)?;
+    let profile = load_or_build_site_profile(paths)?;
     let capabilities = load_wiki_capabilities_with_config(paths, config)?;
-    let catalog = match load_template_catalog(paths, &overlay.profile_id)? {
+    let catalog = match load_template_catalog(paths, &profile.profile_id)? {
         Some(catalog) => Some(catalog),
-        None => Some(build_template_catalog_with_overlay(paths, &overlay)?),
+        None => Some(build_template_catalog_with_profile(paths, &profile)?),
     };
     let local_modules = scan_local_modules(paths)?;
     let local_module_functions = scan_local_module_functions(paths)?;
     let local_assets = scan_local_assets(paths)?;
     Ok(build_authoring_surface_from_parts(
-        &overlay.profile_id,
+        &profile.profile_id,
         capabilities.as_ref(),
         catalog.as_ref(),
         AuthoringSurfaceSources {
             local_modules: Some(&local_modules),
             local_module_functions: Some(&local_module_functions),
             local_assets: Some(&local_assets),
-            extension_contracts: &overlay.extension_contracts,
+            extension_contracts: &profile.extension_contracts,
         },
         options,
     ))
@@ -282,21 +282,21 @@ pub fn sync_authoring_surface_with_config(
     config: &WikiConfig,
     options: AuthoringSurfaceOptions,
 ) -> Result<AuthoringSurface> {
-    let overlay = load_or_build_remilia_profile_overlay(paths)?;
+    let profile = load_or_build_site_profile(paths)?;
     let capabilities = sync_wiki_capabilities_with_config(paths, config)?;
-    let catalog = sync_template_catalog_with_overlay(paths, &overlay)?;
+    let catalog = sync_template_catalog_with_profile(paths, &profile)?;
     let local_modules = scan_local_modules(paths)?;
     let local_module_functions = scan_local_module_functions(paths)?;
     let local_assets = scan_local_assets(paths)?;
     Ok(build_authoring_surface_from_parts(
-        &overlay.profile_id,
+        &profile.profile_id,
         Some(&capabilities),
         Some(&catalog),
         AuthoringSurfaceSources {
             local_modules: Some(&local_modules),
             local_module_functions: Some(&local_module_functions),
             local_assets: Some(&local_assets),
-            extension_contracts: &overlay.extension_contracts,
+            extension_contracts: &profile.extension_contracts,
         },
         options,
     ))
@@ -402,7 +402,7 @@ fn build_authoring_surface_from_parts(
         capabilities_refreshed_at: capabilities.map(|manifest| manifest.refreshed_at.clone()),
         template_catalog_refreshed_at: catalog.map(|catalog| catalog.refreshed_at.clone()),
         template_source:
-            "local template source, local TemplateData, local usage index, and profile overlay"
+            "local template source, local TemplateData, local usage index, and site profile"
                 .to_string(),
         template_count_total: catalog.map(|catalog| catalog.entries.len()).unwrap_or(0),
         template_count_returned: templates.len(),

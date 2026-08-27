@@ -155,6 +155,7 @@ pub struct SyncPlanChange {
     pub synced_hash: Option<String>,
     pub synced_wiki_timestamp: Option<String>,
     pub remote_conflict: bool,
+    pub remote_exists: Option<bool>,
     pub remote_wiki_timestamp: Option<String>,
     pub remote_revision_id: Option<i64>,
 }
@@ -194,6 +195,7 @@ pub(super) struct PlannedSyncChangeInternal {
     pub(super) synced_hash: Option<String>,
     pub(super) synced_wiki_timestamp: Option<String>,
     pub(super) remote_conflict: bool,
+    pub(super) remote_exists: Option<bool>,
     pub(super) remote_wiki_timestamp: Option<String>,
     pub(super) remote_revision_id: Option<i64>,
 }

@@ -15,8 +15,6 @@ fn paths(project_root: &Path) -> ResolvedPaths {
     fs::create_dir_all(project_root.join("wiki_content/Main")).expect("wiki content");
     fs::create_dir_all(project_root.join("templates")).expect("templates");
     fs::create_dir_all(&data_dir).expect("data");
-    fs::create_dir_all(project_root.join("tools/wikitool/ai-pack/writing_context"))
-        .expect("instructions");
     ResolvedPaths {
         project_root: project_root.to_path_buf(),
         wiki_content_dir: project_root.join("wiki_content"),
@@ -41,34 +39,12 @@ fn write_file(path: &Path, content: &str) {
 
 fn write_instruction_sources(paths: &ResolvedPaths) {
     write_file(
-        &paths
-            .project_root
-            .join("tools/wikitool/ai-pack/writing_context/profile.toml"),
-        include_str!("../../../../ai-pack/writing_context/profile.toml"),
+        &paths.project_root.join("site-adapter/profile.toml"),
+        include_str!("../../testdata/site-adapter.toml"),
     );
     write_file(
-        &paths
-            .project_root
-            .join("tools/wikitool/ai-pack/writing_context/article_structure.md"),
-        "Use sections that follow the subject.\nEnd with == References == and {{Reflist}}.",
-    );
-    write_file(
-        &paths
-            .project_root
-            .join("tools/wikitool/ai-pack/writing_context/style_rules.md"),
-        "State specific sourced facts.\nNever output placeholders or system artifacts.\nUse straight quotes.",
-    );
-    write_file(
-        &paths
-            .project_root
-            .join("tools/wikitool/ai-pack/writing_context/writing_guide.md"),
-        "Write source-bound encyclopedic prose in MediaWiki wikitext.\nUse only categories evidenced by the subject.\nA Remilia relationship is never a default.\n",
-    );
-    write_file(
-        &paths
-            .project_root
-            .join("tools/wikitool/ai-pack/writing_context/extensions.md"),
-        "# Extension contracts\n",
+        &paths.config_path,
+        "[adapter]\npath = \"site-adapter/profile.toml\"\n",
     );
 }
 
@@ -373,7 +349,7 @@ fn sentence_case_heading_does_not_promote_lowercase_title_words() {
 }
 
 #[test]
-fn flags_synthetic_phrases_for_human_review_without_a_mechanical_fix() {
+fn source_review_rule_matches_a_citation_url_without_deciding_reliability() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
     let paths = paths(&project_root);
@@ -382,77 +358,22 @@ fn flags_synthetic_phrases_for_human_review_without_a_mechanical_fix() {
     let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
     write_file(
         &article_path,
-        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' serves as a testament to the project.\n\n== References ==\n{{Reflist}}\n",
+        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a subject.<ref>{{Cite web|url=https://en.wikipedia.org/wiki/Alpha|title=Alpha}}</ref>\n\n== References ==\n{{Reflist}}\n",
     );
 
     let report = lint_article(&paths, &article_path).expect("lint");
     let issue = report
         .issues
         .iter()
-        .find(|issue| issue.rule_id == "style.synthetic_phrase")
-        .expect("synthetic phrase issue");
-
-    assert_eq!(issue.severity, ArticleLintSeverity::Suggestion);
-    assert!(issue.suggested_fixes.is_empty());
+        .find(|issue| issue.rule_id == "citation.source_review")
+        .expect("source review warning");
+    assert_eq!(issue.severity, ArticleLintSeverity::Warning);
     assert!(
         issue
-            .suggested_remediation
+            .evidence
             .as_deref()
-            .is_some_and(|remediation| remediation.contains("human editor"))
+            .is_some_and(|value| value.contains("wikipedia.org"))
     );
-}
-
-#[test]
-fn flags_forced_remilia_relationship_headings_for_human_judgment() {
-    let temp = tempdir().expect("tempdir");
-    let project_root = temp.path().join("project");
-    let paths = paths(&project_root);
-    write_instruction_sources(&paths);
-    write_common_templates(&paths);
-    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
-    write_file(
-        &article_path,
-        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a subject.\n\n== Relation to Remilia ==\nA generic adjacency claim.\n\n== References ==\n{{Reflist}}\n",
-    );
-
-    let report = lint_article(&paths, &article_path).expect("lint");
-    let issue = report
-        .issues
-        .iter()
-        .find(|issue| issue.rule_id == "editorial.forced_relationship_frame")
-        .expect("relationship framing issue");
-
-    assert_eq!(issue.severity, ArticleLintSeverity::Warning);
-    assert!(issue.suggested_fixes.is_empty());
-    assert!(
-        issue
-            .suggested_remediation
-            .as_deref()
-            .is_some_and(|remediation| remediation.contains("subject-defining"))
-    );
-}
-
-#[test]
-fn flags_profile_owner_framing_in_an_adjacent_subject_lead() {
-    let temp = tempdir().expect("tempdir");
-    let project_root = temp.path().join("project");
-    let paths = paths(&project_root);
-    write_instruction_sources(&paths);
-    write_common_templates(&paths);
-    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
-    write_file(
-        &article_path,
-        "{{SHORTDESC:Alpha}}\n{{Article quality|unverified}}\n\n'''Alpha''' is a performer associated with Remilia.\n\n== References ==\n{{Reflist}}\n",
-    );
-
-    let report = lint_article(&paths, &article_path).expect("lint");
-    let issue = report
-        .issues
-        .iter()
-        .find(|issue| issue.rule_id == "editorial.lead_relationship_frame")
-        .expect("lead relationship warning");
-    assert_eq!(issue.severity, ArticleLintSeverity::Warning);
-    assert_eq!(issue.evidence.as_deref(), Some("Remilia"));
     assert!(issue.suggested_fixes.is_empty());
 }
 
@@ -537,7 +458,7 @@ fn detects_unavailable_module_functions_from_local_lua_exports() {
 }
 
 #[test]
-fn detects_d3chart_semantic_contract_errors() {
+fn site_specific_module_semantics_are_not_hardcoded_in_generic_lint() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
     let paths = paths(&project_root);
@@ -559,9 +480,12 @@ fn detects_d3chart_semantic_contract_errors() {
 
     let report = lint_article(&paths, &article_path).expect("lint");
 
-    assert!(has_rule(&report, "module.d3chart_missing_data_source"));
-    assert!(has_rule(&report, "module.d3chart_invalid_data"));
-    assert!(has_rule(&report, "module.d3chart_unknown_type"));
+    assert!(
+        !report
+            .issues
+            .iter()
+            .any(|issue| issue.rule_id.starts_with("module.d3chart_"))
+    );
 }
 
 #[test]

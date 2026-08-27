@@ -1,30 +1,5 @@
-# Wiki Writing Style Rules (AI Pack)
+# Wiki content routing
 
-Use this compact rule set in every wiki-content task.
+For authoring, read and follow `codex_skills/wiki-writing/SKILL.md`. For editorial review, use `codex_skills/prose-review/SKILL.md`. For human intake, use `codex_skills/wiki-interview/SKILL.md`.
 
-## Non-negotiable references
-
-1. `writing_context/style_rules.md`
-2. `writing_context/article_structure.md`
-3. `writing_context/writing_guide.md`
-
-## Output requirements
-
-1. Return raw MediaWiki wikitext, not Markdown.
-2. Use straight quotes (`"` and `'`), never curly quotes.
-3. Keep prose neutral, factual, and encyclopedic.
-
-## Structure requirements
-
-Every new AI-drafted article must include:
-
-1. `{{SHORTDESC:...}}` on line 1
-2. `{{Article quality|unverified}}` on line 2
-3. references and valid categories
-
-## Citation requirements
-
-1. Use reliable primary/official sources for factual claims.
-2. Use named refs for repeated citations.
-3. Strip URL tracking params.
-4. Keep archive fields blank for later human completion.
+Site-specific mechanical requirements come from the active adapter. Do not hard-code `SHORTDESC`, quality banners, citation templates, categories, extension tags, quote style, or local relationship framing as universal MediaWiki rules.

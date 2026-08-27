@@ -1,6 +1,6 @@
 use serde::Serialize;
 use wikitool_core::profile::{
-    ProfileOverlay, TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
+    SiteProfile, TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
 };
 #[derive(Debug, Serialize)]
 pub(super) struct WikiCapabilityManifestSummary<'a> {
@@ -34,7 +34,7 @@ pub(super) struct WikiCapabilityManifestSummary<'a> {
 #[derive(Debug, Serialize)]
 pub(super) struct WikiProfileSnapshotSummary<'a> {
     base_profile_id: &'a str,
-    overlay: ProfileOverlaySummary<'a>,
+    adapter: SiteProfileSummary<'a>,
     pub(super) capabilities: Option<WikiCapabilityManifestSummary<'a>>,
     template_catalog: Option<TemplateCatalogSummaryView<'a>>,
 }
@@ -60,7 +60,7 @@ pub(super) struct RemoteWikiProfileSummary<'a> {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct ProfileOverlaySummary<'a> {
+pub(super) struct SiteProfileSummary<'a> {
     pub(super) schema_version: &'a str,
     profile_id: &'a str,
     base_profile_id: &'a str,
@@ -68,10 +68,10 @@ pub(super) struct ProfileOverlaySummary<'a> {
     source_document_count: usize,
     authoring: ProfileAuthoringSummary<'a>,
     citations: ProfileCitationSummary<'a>,
-    remilia: ProfileRemiliaSummary<'a>,
+    templates: ProfileTemplateSummary<'a>,
     categories: ProfileCategorySummary<'a>,
     lint: ProfileLintSummary,
-    golden_set: ProfileGoldenSetSummary<'a>,
+    extension_contract_count: usize,
     refreshed_at: &'a str,
 }
 
@@ -95,11 +95,11 @@ pub(super) struct ProfileCitationSummary<'a> {
     preferred_templates: &'a [wikitool_core::profile::CitationTemplateRule],
     use_named_references: bool,
     leave_archive_fields_blank: bool,
-    unreliable_source_count: usize,
+    source_review_rule_count: usize,
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct ProfileRemiliaSummary<'a> {
+pub(super) struct ProfileTemplateSummary<'a> {
     infobox_preferences: &'a [wikitool_core::profile::InfoboxPreference],
 }
 
@@ -110,16 +110,8 @@ pub(super) struct ProfileCategorySummary<'a> {
 
 #[derive(Debug, Serialize)]
 pub(super) struct ProfileLintSummary {
-    synthetic_phrase_prompt_count: usize,
     forbid_curly_quotes: bool,
     forbid_placeholder_fragment_count: usize,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct ProfileGoldenSetSummary<'a> {
-    article_corpus_available: bool,
-    source_document_count: usize,
-    source_documents: &'a [String],
 }
 
 #[derive(Debug, Serialize)]
@@ -170,7 +162,7 @@ pub(super) fn summarize_profile_snapshot<'a>(
 ) -> WikiProfileSnapshotSummary<'a> {
     WikiProfileSnapshotSummary {
         base_profile_id: &snapshot.base_profile_id,
-        overlay: summarize_overlay(&snapshot.overlay),
+        adapter: summarize_profile(&snapshot.adapter),
         capabilities: snapshot
             .capabilities
             .as_ref()
@@ -195,52 +187,47 @@ pub(super) fn summarize_remote_profile_report<'a>(
     }
 }
 
-fn summarize_overlay<'a>(overlay: &'a ProfileOverlay) -> ProfileOverlaySummary<'a> {
-    ProfileOverlaySummary {
-        schema_version: &overlay.schema_version,
-        profile_id: &overlay.profile_id,
-        base_profile_id: &overlay.base_profile_id,
-        docs_profile: &overlay.docs_profile,
-        source_document_count: overlay.source_documents.len(),
+fn summarize_profile<'a>(profile: &'a SiteProfile) -> SiteProfileSummary<'a> {
+    SiteProfileSummary {
+        schema_version: &profile.schema_version,
+        profile_id: &profile.profile_id,
+        base_profile_id: &profile.base_profile_id,
+        docs_profile: &profile.docs_profile,
+        source_document_count: profile.source_documents.len(),
         authoring: ProfileAuthoringSummary {
-            require_short_description: overlay.authoring.require_short_description,
-            short_description_forms: &overlay.authoring.short_description_forms,
-            require_article_quality_banner: overlay.authoring.require_article_quality_banner,
-            article_quality_template: overlay.authoring.article_quality_template.as_deref(),
-            article_quality_default_state: overlay
+            require_short_description: profile.authoring.require_short_description,
+            short_description_forms: &profile.authoring.short_description_forms,
+            require_article_quality_banner: profile.authoring.require_article_quality_banner,
+            article_quality_template: profile.authoring.article_quality_template.as_deref(),
+            article_quality_default_state: profile
                 .authoring
                 .article_quality_default_state
                 .as_deref(),
-            required_appendix_sections: &overlay.authoring.required_appendix_sections,
-            references_template: overlay.authoring.references_template.as_deref(),
-            prefer_sentence_case_headings: overlay.authoring.prefer_sentence_case_headings,
-            prefer_wikitext_only: overlay.authoring.prefer_wikitext_only,
-            forbid_markdown: overlay.authoring.forbid_markdown,
-            require_straight_quotes: overlay.authoring.require_straight_quotes,
+            required_appendix_sections: &profile.authoring.required_appendix_sections,
+            references_template: profile.authoring.references_template.as_deref(),
+            prefer_sentence_case_headings: profile.authoring.prefer_sentence_case_headings,
+            prefer_wikitext_only: profile.authoring.prefer_wikitext_only,
+            forbid_markdown: profile.authoring.forbid_markdown,
+            require_straight_quotes: profile.authoring.require_straight_quotes,
         },
         citations: ProfileCitationSummary {
-            preferred_templates: &overlay.citations.preferred_templates,
-            use_named_references: overlay.citations.use_named_references,
-            leave_archive_fields_blank: overlay.citations.leave_archive_fields_blank,
-            unreliable_source_count: overlay.citations.unreliable_sources.len(),
+            preferred_templates: &profile.citations.preferred_templates,
+            use_named_references: profile.citations.use_named_references,
+            leave_archive_fields_blank: profile.citations.leave_archive_fields_blank,
+            source_review_rule_count: profile.citations.source_review_rules.len(),
         },
-        remilia: ProfileRemiliaSummary {
-            infobox_preferences: &overlay.remilia.infobox_preferences,
+        templates: ProfileTemplateSummary {
+            infobox_preferences: &profile.templates.infobox_preferences,
         },
         categories: ProfileCategorySummary {
-            preferred_categories: &overlay.categories.preferred_categories,
+            preferred_categories: &profile.categories.preferred_categories,
         },
         lint: ProfileLintSummary {
-            synthetic_phrase_prompt_count: overlay.lint.synthetic_phrase_prompts.len(),
-            forbid_curly_quotes: overlay.lint.forbid_curly_quotes,
-            forbid_placeholder_fragment_count: overlay.lint.forbid_placeholder_fragments.len(),
+            forbid_curly_quotes: profile.lint.forbid_curly_quotes,
+            forbid_placeholder_fragment_count: profile.lint.forbid_placeholder_fragments.len(),
         },
-        golden_set: ProfileGoldenSetSummary {
-            article_corpus_available: overlay.golden_set.article_corpus_available,
-            source_document_count: overlay.golden_set.source_documents.len(),
-            source_documents: &overlay.golden_set.source_documents,
-        },
-        refreshed_at: &overlay.refreshed_at,
+        extension_contract_count: profile.extension_contracts.len(),
+        refreshed_at: &profile.refreshed_at,
     }
 }
 

@@ -5,7 +5,9 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::filesystem::{NamespaceMapper, validate_scoped_path};
+use crate::profile::{SiteProfile, load_or_build_site_profile};
 use crate::runtime::ResolvedPaths;
+use crate::support::atomic_write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportSourceType {
@@ -131,6 +133,10 @@ pub fn import_to_cargo(
 
     let mut result = ImportResult::default();
     let namespace_mapper = NamespaceMapper::load(paths)?;
+    let site_profile = options
+        .article_header
+        .then(|| load_or_build_site_profile(paths))
+        .transpose()?;
 
     for (index, row) in rows.iter().enumerate() {
         let row_number = index + 1;
@@ -169,7 +175,7 @@ pub fn import_to_cargo(
             continue;
         }
 
-        let content = generate_cargo_page(row, options, &title);
+        let content = generate_cargo_page(row, options, &title, site_profile.as_ref());
         let action = if exists {
             ImportPageAction::Update
         } else {
@@ -177,16 +183,7 @@ pub fn import_to_cargo(
         };
 
         if options.write {
-            if let Some(parent) = absolute_path.parent() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!(
-                        "failed to create import output directory {}",
-                        parent.display()
-                    )
-                })?;
-            }
-            fs::write(&absolute_path, &content)
-                .with_context(|| format!("failed to write {}", absolute_path.display()))?;
+            atomic_write(&absolute_path, &content)?;
         }
 
         match action {
@@ -263,19 +260,46 @@ pub fn parse_json(content: &str) -> Result<Vec<CargoRow>> {
     Ok(output)
 }
 
-pub fn generate_cargo_page(row: &CargoRow, options: &CargoImportOptions, title: &str) -> String {
+pub fn generate_cargo_page(
+    row: &CargoRow,
+    options: &CargoImportOptions,
+    title: &str,
+    site_profile: Option<&SiteProfile>,
+) -> String {
     let mut blocks = Vec::new();
     if options.article_header && is_main_namespace(title) {
         let mut header_lines = Vec::new();
-        if let Some(shortdesc) = pick_shortdesc(row, title) {
+        if site_profile.is_some_and(|profile| profile.authoring.require_short_description)
+            && let Some(shortdesc) = pick_shortdesc(row, title)
+        {
             let mut truncated = shortdesc;
             if truncated.chars().count() > 100 {
                 truncated = truncated.chars().take(100).collect();
             }
-            header_lines.push(format!("{{{{SHORTDESC:{truncated}}}}}"));
+            let profile = site_profile.expect("checked above");
+            if profile
+                .authoring
+                .short_description_forms
+                .iter()
+                .any(|form| form.eq_ignore_ascii_case("magic_word:SHORTDESC"))
+            {
+                header_lines.push(format!("{{{{SHORTDESC:{truncated}}}}}"));
+            } else {
+                header_lines.push(format!("{{{{Short description|{truncated}}}}}"));
+            }
         }
-        header_lines.push("{{Article quality|unverified}}".to_string());
-        blocks.push(header_lines.join("\n"));
+        if let Some(profile) = site_profile
+            && profile.authoring.require_article_quality_banner
+            && let Some(template) = profile.authoring.article_quality_template.as_deref()
+        {
+            header_lines.push(template_invocation(
+                template,
+                profile.authoring.article_quality_default_state.as_deref(),
+            ));
+        }
+        if !header_lines.is_empty() {
+            blocks.push(header_lines.join("\n"));
+        }
     }
 
     let params = row
@@ -306,6 +330,17 @@ pub fn generate_cargo_page(row: &CargoRow, options: &CargoImportOptions, title: 
     }
 
     blocks.join("\n\n")
+}
+
+fn template_invocation(template_title: &str, positional: Option<&str>) -> String {
+    let name = template_title
+        .trim()
+        .strip_prefix("Template:")
+        .unwrap_or(template_title.trim());
+    match positional.filter(|value| !value.trim().is_empty()) {
+        Some(value) => format!("{{{{{name}|{value}}}}}"),
+        None => format!("{{{{{name}}}}}"),
+    }
 }
 
 fn resolve_title(row: &CargoRow, options: &CargoImportOptions) -> Option<String> {
@@ -455,6 +490,7 @@ mod tests {
         CargoImportOptions, ImportSourceType, ImportUpdateMode, generate_cargo_page,
         import_to_cargo, parse_csv, parse_json,
     };
+    use crate::profile::load_or_build_site_profile;
     use crate::runtime::{ResolvedPaths, ValueSource};
 
     fn paths(project_root: PathBuf) -> ResolvedPaths {
@@ -523,6 +559,11 @@ mod tests {
 
     #[test]
     fn generate_cargo_page_emits_header_and_nowiki_escape() {
+        let temp = tempdir().expect("tempdir");
+        let mut profile = load_or_build_site_profile(&paths(temp.path().join("project")))
+            .expect("generic site profile");
+        profile.authoring.require_short_description = true;
+        profile.authoring.short_description_forms = vec!["magic_word:SHORTDESC".to_string()];
         let row = vec![
             ("name".to_string(), "Alpha".to_string()),
             ("payload".to_string(), "left|right".to_string()),
@@ -540,6 +581,7 @@ mod tests {
                 write: false,
             },
             "Alpha",
+            Some(&profile),
         );
         assert!(content.contains("{{SHORTDESC:Alpha}}"));
         assert!(content.contains("<nowiki>left|right</nowiki>"));

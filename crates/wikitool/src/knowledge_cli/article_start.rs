@@ -2,9 +2,8 @@ use anyhow::{Result, bail};
 use serde::Serialize;
 use wikitool_core::authoring::article_start::build_article_start;
 use wikitool_core::authoring::model::{
-    ArticleAuthoringContract, ArticleStartIntent, ArticleStartResult, ContextSurfaceSource,
-    EvidenceCoverageItem, LocalExistenceState, OpenQuestion, RecommendedAction, RequiredTemplate,
-    SectionCandidate, TemplateSurfaceEntry,
+    ArticleStartIntent, ArticleStartResult, ContextSurfaceSource, EvidenceCoverageItem,
+    LocalExistenceState, RequiredTemplate, SectionCandidate, TemplateSurfaceEntry,
 };
 use wikitool_core::filesystem::validate_scoped_path;
 use wikitool_core::knowledge::authoring::{
@@ -14,9 +13,9 @@ use wikitool_core::knowledge::authoring::{
 use wikitool_core::knowledge::status::{KnowledgeReadinessLevel, knowledge_status};
 use wikitool_core::knowledge_interview::{
     InterviewBriefSummary, InterviewValidationReport, InterviewValidationStatus,
-    parse_brief_draft_plan, validate_interview_brief,
+    validate_interview_brief,
 };
-use wikitool_core::profile::load_or_build_remilia_profile_overlay;
+use wikitool_core::profile::load_or_build_site_profile;
 
 use crate::briefs::{
     BriefCommand, brief_command, brief_command_owned, capped_strings, text_preview,
@@ -59,7 +58,7 @@ pub(super) fn run_knowledge_article_start(
 
     let use_diversify = !args.no_diversify;
     let paths = resolve_runtime_paths(runtime)?;
-    let (mut interview_brief, brief_abs) = match args.brief_path.as_deref() {
+    let interview_brief = match args.brief_path.as_deref() {
         Some(path) => {
             let absolute = if path.is_absolute() {
                 path.to_path_buf()
@@ -68,9 +67,9 @@ pub(super) fn run_knowledge_article_start(
             };
             validate_scoped_path(&paths, &absolute)?;
             let report = validate_interview_brief(&absolute, args.brief_stale_days)?;
-            (Some(report), Some(absolute))
+            Some(report)
         }
-        None => (None, None),
+        None => None,
     };
     let topic = normalize_option(args.topic.as_deref())
         .or_else(|| derive_topic_from_stub_path(args.stub_path.as_deref()));
@@ -113,17 +112,8 @@ pub(super) fn run_knowledge_article_start(
             result: KnowledgeArticleStartPayload::QueryMissing,
         },
         AuthoringKnowledgePack::Found(report) => {
-            let overlay = load_or_build_remilia_profile_overlay(&paths)?;
-            let mut article_start = build_article_start(&report, &overlay, args.intent.into());
-            if let (Some(brief_report), Some(brief_path)) =
-                (interview_brief.as_mut(), brief_abs.as_deref())
-            {
-                fold_interview_brief_into_article_start(
-                    &mut article_start,
-                    brief_report,
-                    brief_path,
-                );
-            }
+            let profile = load_or_build_site_profile(&paths)?;
+            let article_start = build_article_start(&report, &profile, args.intent.into());
             KnowledgeArticleStartOutput {
                 docs_profile_requested: status.docs_profile_requested.clone(),
                 readiness: status.readiness.clone(),
@@ -184,20 +174,6 @@ pub(super) fn run_knowledge_article_start(
             println!(
                 "article_start.local_state: {}",
                 serde_json::to_string(&article_start.local_state)?
-            );
-            println!(
-                "article_start.authoring.mode: {}",
-                article_start.authoring_contract.mode
-            );
-            println!(
-                "article_start.authoring.agent_may_draft_prose: {}",
-                article_start.authoring_contract.agent_may_draft_prose
-            );
-            println!(
-                "article_start.authoring.human_acceptance_required_for_publication: {}",
-                article_start
-                    .authoring_contract
-                    .human_acceptance_required_for_publication
             );
             println!(
                 "article_start.evidence.subject_context.count: {}",
@@ -323,13 +299,6 @@ pub(super) fn run_knowledge_article_start(
             {
                 println!("article_start.contract_warning: {warning}");
             }
-            println!(
-                "article_start.open_questions.count: {}",
-                article_start.open_questions.len()
-            );
-            for question in article_start.open_questions.iter().take(6) {
-                println!("article_start.open_question: {}", question.question);
-            }
         }
     }
     println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
@@ -337,161 +306,6 @@ pub(super) fn run_knowledge_article_start(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
-}
-
-const BRIEF_SECTION_RATIONALE: &str =
-    "Planned in the interview brief Draft Plan; not observed on comparable pages.";
-const BRIEF_BLOCKING_GAP_REASON: &str = "The interview brief records this as a blocking evidence gap; resolve it or explicitly defer it before drafting.";
-const BRIEF_OPEN_QUESTION_REASON: &str =
-    "Recorded as an open question before drafting in the interview brief.";
-
-/// Fold the interview brief's Draft Plan into the article-start result: add planned
-/// sections the comparables missed, surface pre-draft open questions as non-blocking
-/// open questions, and flag a skipped interviewer/critic loop.
-fn fold_interview_brief_into_article_start(
-    article_start: &mut ArticleStartResult,
-    brief_report: &mut InterviewValidationReport,
-    brief_path: &std::path::Path,
-) {
-    // Handoff signals live on the validation summary; fold them before the file
-    // read so an unreadable brief cannot silently drop a recorded blocker.
-    fold_blocking_evidence_gaps(
-        &mut article_start.open_questions,
-        &brief_report.summary.handoff.blocking_evidence_gaps,
-    );
-    let Ok(body) = std::fs::read_to_string(brief_path) else {
-        return;
-    };
-    let plan = parse_brief_draft_plan(&body);
-
-    merge_brief_planned_sections(
-        &mut article_start.local_integration.section_candidates,
-        &plan.likely_sections,
-    );
-
-    let existing: std::collections::BTreeSet<String> = article_start
-        .open_questions
-        .iter()
-        .map(|question| question.question.to_ascii_lowercase())
-        .collect();
-    for question in &plan.open_questions {
-        if existing.contains(&question.to_ascii_lowercase()) {
-            continue;
-        }
-        article_start.open_questions.push(OpenQuestion {
-            question: question.clone(),
-            reason: BRIEF_OPEN_QUESTION_REASON.to_string(),
-            blocking: false,
-            evidence: Vec::new(),
-        });
-    }
-
-    if !plan.critic_notes_present {
-        brief_report.warnings.push(
-            "interview brief has no Interviewer Critic Notes; run the interviewer/critic loop before drafting"
-                .to_string(),
-        );
-    }
-}
-
-/// The human explicitly recorded these as blocking; honor the semantics by
-/// making them blocking open questions, which force readiness to not_ready
-/// through the normal blocking machinery. The remaining handoff signals
-/// (framing, related pages) ride on the embedded brief summary.
-fn fold_blocking_evidence_gaps(open_questions: &mut Vec<OpenQuestion>, gaps: &[String]) {
-    let existing: std::collections::BTreeSet<String> = open_questions
-        .iter()
-        .map(|question| question.question.to_ascii_lowercase())
-        .collect();
-    for gap in gaps {
-        let question = format!("Blocking evidence gap from the interview: {gap}");
-        if existing.contains(&question.to_ascii_lowercase()) {
-            continue;
-        }
-        open_questions.push(OpenQuestion {
-            question,
-            reason: BRIEF_BLOCKING_GAP_REASON.to_string(),
-            blocking: true,
-            evidence: Vec::new(),
-        });
-    }
-}
-
-fn merge_brief_planned_sections(
-    section_candidates: &mut Vec<SectionCandidate>,
-    planned: &[String],
-) {
-    let mut planned_keys = std::collections::BTreeSet::new();
-    let mut planned_sections = Vec::new();
-
-    for name in planned {
-        let key = normalized_heading_key(name);
-        if key.is_empty() || is_structural_heading_key(&key) || !planned_keys.insert(key.clone()) {
-            continue;
-        }
-
-        if let Some(index) = section_candidates
-            .iter()
-            .position(|section| normalized_heading_key(&section.heading) == key)
-        {
-            planned_sections.push(section_candidates.remove(index));
-        } else {
-            planned_sections.push(SectionCandidate {
-                heading: name.trim().to_string(),
-                rationale: BRIEF_SECTION_RATIONALE.to_string(),
-                required: false,
-                content_backed: false,
-                supporting_pages: Vec::new(),
-            });
-        }
-    }
-
-    if planned_sections.is_empty() {
-        return;
-    }
-
-    let mut remaining_body_sections = Vec::new();
-    let mut appendix_sections = Vec::new();
-
-    for section in std::mem::take(section_candidates) {
-        let key = normalized_heading_key(&section.heading);
-        if is_terminal_appendix_key(&key) {
-            appendix_sections.push(section);
-        } else {
-            remaining_body_sections.push(section);
-        }
-    }
-
-    section_candidates.extend(planned_sections);
-    section_candidates.extend(remaining_body_sections);
-    section_candidates.extend(appendix_sections);
-}
-
-fn normalized_heading_key(heading: &str) -> String {
-    heading.trim().to_ascii_lowercase()
-}
-
-fn is_structural_heading_key(key: &str) -> bool {
-    matches!(
-        key,
-        "lead"
-            | "overview"
-            | "introduction"
-            | "summary"
-            | "references"
-            | "see also"
-            | "external links"
-            | "further reading"
-            | "notes"
-            | "citations"
-    )
-}
-
-fn is_terminal_appendix_key(key: &str) -> bool {
-    matches!(
-        key,
-        "see also" | "references" | "external links" | "further reading" | "notes" | "citations"
-    )
 }
 
 #[derive(Debug, Serialize)]
@@ -506,8 +320,6 @@ struct ArticleStartBrief<'a> {
     topic: Option<&'a str>,
     intent: Option<&'a ArticleStartIntent>,
     local_state: Option<&'a LocalExistenceState>,
-    authoring_contract: Option<&'a ArticleAuthoringContract>,
-    editorial_actions: Vec<&'a RecommendedAction>,
     interview_brief: Option<InterviewBriefCard<'a>>,
     evidence: Option<ArticleStartEvidenceCard<'a>>,
     local_integration: Option<ArticleStartIntegrationCard<'a>>,
@@ -622,8 +434,6 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             topic: None,
             intent: None,
             local_state: None,
-            authoring_contract: None,
-            editorial_actions: Vec::new(),
             interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
             evidence: None,
             local_integration: None,
@@ -652,8 +462,6 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
             topic: None,
             intent: None,
             local_state: None,
-            authoring_contract: None,
-            editorial_actions: Vec::new(),
             interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
             evidence: None,
             local_integration: None,
@@ -712,31 +520,6 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                     warnings.push("interview brief is stale".to_string());
                 }
                 warnings.extend(brief.warnings.iter().take(6).cloned());
-
-                let brief_section_count = article_start
-                    .local_integration
-                    .section_candidates
-                    .iter()
-                    .filter(|section| section.rationale == BRIEF_SECTION_RATIONALE)
-                    .count();
-                if brief_section_count > 0 {
-                    warnings.push(format!(
-                        "interview brief contributed {brief_section_count} planned section(s) beyond comparables; confirm they fit the subject"
-                    ));
-                }
-                for question in article_start
-                    .open_questions
-                    .iter()
-                    .filter(|question| {
-                        !question.blocking && question.reason == BRIEF_OPEN_QUESTION_REASON
-                    })
-                    .take(6)
-                {
-                    warnings.push(format!(
-                        "open question before drafting: {}",
-                        question.question
-                    ));
-                }
             }
 
             let mut next_commands = Vec::new();
@@ -837,8 +620,6 @@ fn build_article_start_brief<'a>(output: &'a KnowledgeArticleStartOutput) -> Art
                 topic: Some(&article_start.topic),
                 intent: Some(&article_start.intent),
                 local_state: Some(&article_start.local_state),
-                authoring_contract: Some(&article_start.authoring_contract),
-                editorial_actions: article_start.next_actions.iter().collect(),
                 interview_brief: output.interview_brief.as_ref().map(interview_brief_card),
                 evidence: Some(ArticleStartEvidenceCard {
                     query: &article_start.evidence_profile.query,
@@ -1010,25 +791,28 @@ fn article_start_output_readiness(output: &KnowledgeArticleStartOutput) -> Knowl
 }
 
 fn article_start_blocking(
-    article_start: &ArticleStartResult,
+    _article_start: &ArticleStartResult,
     interview_brief: Option<&InterviewValidationReport>,
 ) -> Vec<String> {
     // Only genuine blockers belong here. A contract query term miss is advisory
     // (already surfaced via contract_warnings) and is expected for niche
     // subjects, so it must not force readiness to not_ready.
-    let mut blocking = article_start
-        .open_questions
-        .iter()
-        .filter(|question| question.blocking)
-        .map(|question| question.question.clone())
-        .collect::<Vec<_>>();
-    if let Some(brief) = interview_brief
-        && brief.status == InterviewValidationStatus::Invalid
-    {
-        blocking.push(format!(
-            "interview brief is invalid: {}",
-            brief.errors.join("; ")
-        ));
+    let mut blocking = Vec::new();
+    if let Some(brief) = interview_brief {
+        blocking.extend(
+            brief
+                .summary
+                .ledger
+                .blocking_evidence_gaps
+                .iter()
+                .map(|gap| format!("interview brief records a blocking evidence gap: {gap}")),
+        );
+        if brief.status == InterviewValidationStatus::Invalid {
+            blocking.push(format!(
+                "interview brief is invalid: {}",
+                brief.errors.join("; ")
+            ));
+        }
     }
     blocking
 }
@@ -1098,30 +882,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use std::path::PathBuf;
-    use wikitool_core::knowledge_interview::{BriefDraftPlan, InterviewOpenItemCounts};
-
-    fn section(heading: &str, rationale: &str, required: bool) -> SectionCandidate {
-        SectionCandidate {
-            heading: heading.to_string(),
-            rationale: rationale.to_string(),
-            required,
-            content_backed: false,
-            supporting_pages: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn blocking_evidence_gaps_become_blocking_open_questions() {
-        let mut open_questions = Vec::new();
-        fold_blocking_evidence_gaps(&mut open_questions, &["mint date unverified".to_string()]);
-        assert_eq!(open_questions.len(), 1);
-        assert!(open_questions[0].blocking);
-        assert!(open_questions[0].question.contains("mint date unverified"));
-
-        // Deduplicates on refold instead of stacking.
-        fold_blocking_evidence_gaps(&mut open_questions, &["mint date unverified".to_string()]);
-        assert_eq!(open_questions.len(), 1);
-    }
+    use wikitool_core::knowledge_interview::{BriefLedgerSignals, InterviewOpenItemCounts};
 
     fn valid_interview_report() -> InterviewValidationReport {
         InterviewValidationReport {
@@ -1148,70 +909,11 @@ mod tests {
                     by_status: BTreeMap::new(),
                     ..InterviewOpenItemCounts::default()
                 },
-                draft_plan: BriefDraftPlan::default(),
-                handoff: wikitool_core::knowledge_interview::BriefHandoffSignals::default(),
+                ledger: BriefLedgerSignals::default(),
             },
             errors: Vec::new(),
             warnings: Vec::new(),
         }
-    }
-
-    #[test]
-    fn brief_planned_sections_define_body_order_before_appendices() {
-        let mut skeleton = vec![
-            section("Background", "Seen on comparables.", false),
-            section("References", "Required appendix.", true),
-            section("Reception", "Seen on comparables.", false),
-        ];
-
-        merge_brief_planned_sections(
-            &mut skeleton,
-            &[
-                "Design, aesthetic, and presentation".to_string(),
-                "Reception".to_string(),
-                "References".to_string(),
-            ],
-        );
-
-        let headings = skeleton
-            .iter()
-            .map(|section| section.heading.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            headings,
-            vec![
-                "Design, aesthetic, and presentation",
-                "Reception",
-                "Background",
-                "References"
-            ]
-        );
-        assert_eq!(
-            skeleton[0].rationale,
-            "Planned in the interview brief Draft Plan; not observed on comparable pages."
-        );
-        assert_eq!(skeleton[1].rationale, "Seen on comparables.");
-    }
-
-    #[test]
-    fn brief_planned_sections_ignore_duplicates_and_structural_labels() {
-        let mut skeleton = vec![section("References", "Required appendix.", true)];
-
-        merge_brief_planned_sections(
-            &mut skeleton,
-            &[
-                "Lead".to_string(),
-                "Design".to_string(),
-                "design".to_string(),
-                "See also".to_string(),
-            ],
-        );
-
-        let headings = skeleton
-            .iter()
-            .map(|section| section.heading.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(headings, vec!["Design", "References"]);
     }
 
     #[test]

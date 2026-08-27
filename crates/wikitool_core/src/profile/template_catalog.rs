@@ -20,7 +20,7 @@ use crate::schema::open_initialized_database_connection;
 use crate::support::table_exists;
 use crate::support::{normalize_path, unix_timestamp};
 
-use super::rules::{ProfileOverlay, TemplateCatalogSummary};
+use super::rules::{SiteProfile, TemplateCatalogSummary};
 use super::template_data::{
     LocalTemplateExample, TemplateDataParameter, TemplateDataRecord, extract_module_references,
     extract_source_parameters, extract_summary_text, extract_template_data,
@@ -44,9 +44,9 @@ pub use model::{
 use storage::{
     decode_current_template_catalog, store_template_catalog, template_catalog_artifact_key,
 };
-pub fn build_template_catalog_with_overlay(
+pub fn build_template_catalog_with_profile(
     paths: &ResolvedPaths,
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
 ) -> Result<TemplateCatalog> {
     let (local_templates, redirect_aliases) = load_local_templates(paths)?;
 
@@ -87,14 +87,14 @@ pub fn build_template_catalog_with_overlay(
                 .get(&normalized_title)
                 .map(Vec::as_slice),
             &redirect_aliases_for_template,
-            overlay,
+            profile,
         ));
     }
     entries.sort_by(|left, right| left.template_title.cmp(&right.template_title));
 
     Ok(TemplateCatalog {
         schema_version: TEMPLATE_CATALOG_SCHEMA_VERSION.to_string(),
-        profile_id: overlay.profile_id.clone(),
+        profile_id: profile.profile_id.clone(),
         refreshed_at: unix_timestamp()?.to_string(),
         template_count: entries.len(),
         templatedata_count,
@@ -104,11 +104,11 @@ pub fn build_template_catalog_with_overlay(
     })
 }
 
-pub fn sync_template_catalog_with_overlay(
+pub fn sync_template_catalog_with_profile(
     paths: &ResolvedPaths,
-    overlay: &ProfileOverlay,
+    profile: &SiteProfile,
 ) -> Result<TemplateCatalog> {
-    let catalog = build_template_catalog_with_overlay(paths, overlay)?;
+    let catalog = build_template_catalog_with_profile(paths, profile)?;
     store_template_catalog(paths, &catalog)?;
     Ok(catalog)
 }

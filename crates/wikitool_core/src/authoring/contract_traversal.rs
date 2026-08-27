@@ -13,8 +13,8 @@ use crate::knowledge::model::{
     TemplateReference, TemplateUsageSummary,
 };
 use crate::profile::{
-    TemplateCatalog, TemplateCatalogEntry, build_template_catalog_with_overlay,
-    load_latest_template_catalog, load_or_build_remilia_profile_overlay,
+    TemplateCatalog, TemplateCatalogEntry, build_template_catalog_with_profile,
+    load_latest_template_catalog, load_or_build_site_profile,
 };
 use crate::runtime::ResolvedPaths;
 use crate::support::table_exists;
@@ -84,24 +84,24 @@ pub fn query_authoring_contract_plan(
     options: AuthoringContractPlanOptions,
 ) -> Result<AuthoringContractTraversalPlan> {
     let connection = crate::content_store::parsing::open_indexed_connection(paths)?;
-    let overlay = load_or_build_remilia_profile_overlay(paths)?;
+    let profile = load_or_build_site_profile(paths)?;
     if let Some(connection) = connection.as_ref() {
         let fallback_catalog = match load_latest_template_catalog(paths)? {
             Some(catalog) => Some(catalog),
-            None => Some(build_template_catalog_with_overlay(paths, &overlay)?),
+            None => Some(build_template_catalog_with_profile(paths, &profile)?),
         };
         build_authoring_contract_plan_for_connection(
             connection,
-            &overlay.profile_id,
+            &profile.profile_id,
             &options,
             fallback_catalog.as_ref(),
         )
     } else {
         let catalog = match load_latest_template_catalog(paths)? {
             Some(catalog) => catalog,
-            None => build_template_catalog_with_overlay(paths, &overlay)?,
+            None => build_template_catalog_with_profile(paths, &profile)?,
         };
-        build_authoring_contract_plan_from_catalog(&overlay.profile_id, &catalog, &options)
+        build_authoring_contract_plan_from_catalog(&profile.profile_id, &catalog, &options)
     }
 }
 

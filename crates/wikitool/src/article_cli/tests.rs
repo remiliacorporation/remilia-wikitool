@@ -179,7 +179,7 @@ fn article_promote_rejects_draft_without_human_acceptance() {
     assert!(
         error
             .to_string()
-            .contains("human acceptance receipt is missing")
+            .contains("acceptance ledger entry is missing")
     );
 }
 

@@ -11,7 +11,7 @@ Mark each `pass` or `fail` and cite the sentence/source involved:
 | Closed evidence | No fact exceeds the inspected packet or source |
 | Citation binding | Every citation directly supports its attached claim |
 | Subject definition | The lead identifies the subject on its own terms |
-| Relationship proportion | Adjacent Remilia/Charlotte/Milady context has only evidenced weight |
+| Relationship proportion | Adjacent host, founder, or community context has only evidenced weight |
 | Sensitive claims | Contentious or biographical material is necessary and adequately supported |
 | Uncertainty | Contradictions and gaps remain visible |
 | No filler | No paragraph exists to reach a length, section, or category target |

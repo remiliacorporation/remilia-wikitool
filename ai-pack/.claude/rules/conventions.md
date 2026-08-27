@@ -1,49 +1,7 @@
-# Team Conventions (AI Pack)
+# Wikitool conventions
 
-These conventions are always active for Remilia Wiki editing work.
+Run commands from the active project root or pass `--project-root`. Use CLI help for flags. Read the canonical substantive skill under `codex_skills/` rather than relying on a wrapper.
 
-## Canonical references
+The generic binary has no implicit target-wiki policy. Inspect `wikitool config show --format json` and `wikitool wiki profile show --format json`; then read project-owned adapter guidance before site-specific work.
 
-Use this lookup order:
-
-1. `CLAUDE.md` (same content as `AGENTS.md`)
-2. `writing_context/style_rules.md`
-3. `writing_context/article_structure.md`
-4. `writing_context/writing_guide.md`
-5. `docs/wikitool/guide.md`
-6. `docs/wikitool/reference.md`
-7. `wikitool --help` and `wikitool <command> --help`
-
-## Path context mapping
-
-Packaged release artifacts use bundle-root paths:
-
-1. `writing_context/*`
-2. `docs/wikitool/*`
-3. `.claude/rules/*`
-4. `.claude/skills/*`
-
-Source repository layout uses:
-
-1. `ai-pack/writing_context/*`
-2. `docs/wikitool/*`
-3. `ai-pack/.claude/rules/*`
-4. `ai-pack/.claude/skills/*`
-
-## Editing scope
-
-This pack targets content/editorial work:
-
-1. Article and template editing
-2. Research and source verification
-3. Cleanup/review and page-level SEO diagnostics
-
-Out of scope by default:
-
-1. Infrastructure/deployment/server operations
-2. Release engineering workflows
-3. Risky write operations without explicit user direction
-
-## Working directory
-
-Run `wikitool` commands from the active project root (the folder that contains `.wikitool/` and `wiki_content/`).
+Keep mechanical operations, editorial judgment, and human acceptance distinct in reports and commits.

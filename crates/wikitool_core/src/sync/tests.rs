@@ -26,6 +26,7 @@ struct MockApi {
     category_members: Vec<String>,
     page_contents: BTreeMap<String, RemotePage>,
     page_timestamps: BTreeMap<String, PageTimestampInfo>,
+    timestamp_responses: Vec<Vec<PageTimestampInfo>>,
     timestamp_batches: Vec<Vec<String>>,
     search_hits: Vec<ExternalSearchHit>,
     edited_pages: Vec<String>,
@@ -96,6 +97,9 @@ impl WikiWriteApi for MockApi {
     fn get_page_timestamps(&mut self, titles: &[String]) -> anyhow::Result<Vec<PageTimestampInfo>> {
         self.request_count += 1;
         self.timestamp_batches.push(titles.to_vec());
+        if !self.timestamp_responses.is_empty() {
+            return Ok(self.timestamp_responses.remove(0));
+        }
         let mut output = Vec::new();
         for title in titles {
             if let Some(item) = self.page_timestamps.get(title) {
@@ -686,7 +690,6 @@ fn diff_detects_new_modified_and_deleted_local_pages() {
         &mut api,
     )
     .expect("seed pull");
-
     write_file(
         &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
         "alpha local edit",
@@ -754,6 +757,14 @@ fn push_dry_run_reports_local_changes_without_writes() {
         &mut api,
     )
     .expect("seed pull");
+    api.page_timestamps.insert(
+        "Alpha".to_string(),
+        PageTimestampInfo {
+            title: "Alpha".to_string(),
+            timestamp: "2026-02-19T00:00:00Z".to_string(),
+            revision_id: 200,
+        },
+    );
 
     write_file(
         &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
@@ -798,6 +809,302 @@ fn push_dry_run_reports_local_changes_without_writes() {
             .iter()
             .any(|item| item.title == "Gamma" && item.action == "would_create")
     );
+}
+
+#[test]
+fn push_binds_existing_edits_and_new_pages_to_server_constraints() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    let remote = base_page("Alpha", "alpha body");
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace
+        .insert(NS_MAIN, vec!["Alpha".to_string()]);
+    api.page_contents
+        .insert("Alpha".to_string(), remote.clone());
+    pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: false,
+        },
+        &mut api,
+    )
+    .expect("seed pull");
+    api.page_timestamps.insert(
+        "Alpha".to_string(),
+        PageTimestampInfo {
+            title: "Alpha".to_string(),
+            timestamp: remote.timestamp,
+            revision_id: remote.revision_id,
+        },
+    );
+
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "alpha local edit",
+    );
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Gamma.wiki"),
+        "gamma local",
+    );
+    accept_main_article(&paths, "Alpha");
+    accept_main_article(&paths, "Gamma");
+
+    let report = push_to_remote_with_api(
+        &paths,
+        &PushOptions {
+            summary: "test constrained writes".to_string(),
+            dry_run: false,
+            force: false,
+            delete: false,
+            include_templates: false,
+            categories_only: false,
+            selection: SyncSelection::default(),
+        },
+        &mut api,
+        Some(("bot", "pass")),
+    )
+    .expect("push");
+
+    assert!(report.success);
+    assert!(api.edit_constraints.iter().any(|(title, constraint)| {
+        title == "Alpha" && *constraint == EditConstraint::ExistingRevision { revision_id: 200 }
+    }));
+    assert!(
+        api.edit_constraints.iter().any(
+            |(title, constraint)| title == "Gamma" && *constraint == EditConstraint::CreateOnly
+        )
+    );
+}
+
+#[test]
+fn remote_deleted_modified_page_requires_force_and_recreates_with_createonly() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace
+        .insert(NS_MAIN, vec!["Alpha".to_string()]);
+    api.page_contents
+        .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+    pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: false,
+        },
+        &mut api,
+    )
+    .expect("seed pull");
+    write_file(
+        &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
+        "alpha local edit after remote deletion",
+    );
+    accept_main_article(&paths, "Alpha");
+
+    let blocked = push_to_remote_with_api(
+        &paths,
+        &PushOptions {
+            summary: "test deleted remote conflict".to_string(),
+            dry_run: true,
+            force: false,
+            delete: false,
+            include_templates: false,
+            categories_only: false,
+            selection: SyncSelection::default(),
+        },
+        &mut api,
+        None,
+    )
+    .expect("push dry run");
+    assert_eq!(blocked.conflicts, vec!["Alpha".to_string()]);
+    assert!(blocked.pages.iter().any(|page| {
+        page.title == "Alpha"
+            && page.action == "conflict"
+            && page
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("deleted since last sync"))
+    }));
+
+    let recreated = push_to_remote_with_api(
+        &paths,
+        &PushOptions {
+            summary: "test explicit recreation".to_string(),
+            dry_run: false,
+            force: true,
+            delete: false,
+            include_templates: false,
+            categories_only: false,
+            selection: SyncSelection::default(),
+        },
+        &mut api,
+        Some(("bot", "pass")),
+    )
+    .expect("forced recreation");
+    assert!(recreated.success);
+    assert_eq!(recreated.created, 1);
+    assert!(
+        recreated
+            .pages
+            .iter()
+            .any(|page| page.title == "Alpha" && page.action == "recreated")
+    );
+    assert_eq!(
+        api.edit_constraints.last(),
+        Some(&("Alpha".to_string(), EditConstraint::CreateOnly))
+    );
+}
+
+#[test]
+fn already_deleted_remote_cleans_local_sync_state_without_delete_request() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace
+        .insert(NS_MAIN, vec!["Alpha".to_string()]);
+    api.page_contents
+        .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+    pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: false,
+        },
+        &mut api,
+    )
+    .expect("seed pull");
+    fs::remove_file(paths.wiki_content_dir.join("Main").join("Alpha.wiki"))
+        .expect("delete local page");
+
+    let report = push_to_remote_with_api(
+        &paths,
+        &PushOptions {
+            summary: "test already deleted remote".to_string(),
+            dry_run: false,
+            force: false,
+            delete: true,
+            include_templates: false,
+            categories_only: false,
+            selection: SyncSelection::default(),
+        },
+        &mut api,
+        Some(("bot", "pass")),
+    )
+    .expect("push delete reconciliation");
+
+    assert!(report.success);
+    assert_eq!(report.unchanged, 1);
+    assert!(api.deleted_pages.is_empty());
+    assert!(
+        report
+            .pages
+            .iter()
+            .any(|page| page.title == "Alpha" && page.action == "already_deleted")
+    );
+    let plan = plan_sync_changes(
+        &paths,
+        &SyncPlanOptions {
+            include_templates: false,
+            categories_only: false,
+            include_deletes: true,
+            include_remote_conflicts: false,
+            selection: SyncSelection::default(),
+        },
+    )
+    .expect("plan after cleanup")
+    .expect("plan report");
+    assert!(plan.changes.is_empty());
+}
+
+#[test]
+fn delete_rechecks_revision_immediately_and_refuses_same_run_race() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create root");
+    let paths = paths(&project_root);
+    fs::create_dir_all(&paths.wiki_content_dir).expect("create wiki_content");
+    fs::create_dir_all(&paths.state_dir).expect("create state");
+
+    let mut api = MockApi::default();
+    api.all_pages_by_namespace
+        .insert(NS_MAIN, vec!["Alpha".to_string()]);
+    api.page_contents
+        .insert("Alpha".to_string(), base_page("Alpha", "alpha body"));
+    pull_from_remote_with_api(
+        &paths,
+        &PullOptions {
+            namespaces: vec![NS_MAIN],
+            category: None,
+            full: true,
+            overwrite_local: false,
+        },
+        &mut api,
+    )
+    .expect("seed pull");
+    fs::remove_file(paths.wiki_content_dir.join("Main").join("Alpha.wiki"))
+        .expect("delete local page");
+    api.timestamp_responses = vec![
+        vec![PageTimestampInfo {
+            title: "Alpha".to_string(),
+            timestamp: "2026-02-19T00:00:00Z".to_string(),
+            revision_id: 200,
+        }],
+        vec![PageTimestampInfo {
+            title: "Alpha".to_string(),
+            timestamp: "2026-02-19T00:00:01Z".to_string(),
+            revision_id: 201,
+        }],
+    ];
+
+    let report = push_to_remote_with_api(
+        &paths,
+        &PushOptions {
+            summary: "test delete revision race".to_string(),
+            dry_run: false,
+            force: false,
+            delete: true,
+            include_templates: false,
+            categories_only: false,
+            selection: SyncSelection::default(),
+        },
+        &mut api,
+        Some(("bot", "pass")),
+    )
+    .expect("push delete race");
+
+    assert!(!report.success);
+    assert_eq!(report.conflicts, vec!["Alpha".to_string()]);
+    assert!(api.deleted_pages.is_empty());
+    assert_eq!(api.timestamp_batches.len(), 2);
+    assert!(report.pages.iter().any(|page| {
+        page.title == "Alpha"
+            && page.action == "conflict"
+            && page
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("changed during push planning"))
+    }));
 }
 
 #[test]
@@ -851,7 +1158,7 @@ fn push_dry_run_blocks_unaccepted_main_article_prose_even_with_force() {
         report
             .errors
             .iter()
-            .any(|error| error.contains("human editorial acceptance required"))
+            .any(|error| error.contains("exact-content acceptance ledger entry required"))
     );
     assert!(
         report

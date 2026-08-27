@@ -106,7 +106,6 @@ INSERT OR IGNORE INTO template_category_mappings (prefix, category) VALUES
     ('Template:Verse', 'quotation'),
     ('Module:Quotation', 'quotation'),
     ('Template:Ambox', 'message'),
-    ('Template:Article quality', 'message'),
     ('Template:Stub', 'message'),
     ('Template:Update', 'message'),
     ('Template:Citation needed', 'message'),
@@ -117,22 +116,17 @@ INSERT OR IGNORE INTO template_category_mappings (prefix, category) VALUES
     ('Module:Message', 'message'),
     ('Template:Sidebar', 'sidebar'),
     ('Template:Portal', 'sidebar'),
-    ('Template:Remilia events', 'sidebar'),
     ('Module:Sidebar', 'sidebar'),
     ('Template:Repost', 'repost'),
     ('Template:Mirror', 'repost'),
-    ('Template:Goldenlight repost', 'repost'),
     ('Module:Repost', 'repost'),
-    ('Template:Etherscan', 'blockchain'),
     ('Template:Explorer', 'blockchain'),
-    ('Template:OpenSea', 'blockchain'),
     ('Template:Translation', 'translations'),
     ('Module:Translation', 'translations'),
     ('Template:Birth date', 'date'),
     ('Template:Start date', 'date'),
     ('Template:End date', 'date'),
-    ('Module:Age', 'date'),
-    ('Template:Remilia navigation', 'navigation');
+    ('Module:Age', 'date');
 
 CREATE TABLE IF NOT EXISTS indexed_page_chunks (
     source_relative_path TEXT NOT NULL,

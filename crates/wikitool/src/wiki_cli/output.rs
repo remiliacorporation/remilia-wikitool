@@ -1,5 +1,5 @@
 use wikitool_core::profile::{
-    ProfileOverlay, TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
+    SiteProfile, TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
 };
 pub(super) fn print_manifest(manifest: &WikiCapabilityManifest) {
     println!("wiki_id: {}", manifest.wiki_id);
@@ -64,9 +64,9 @@ pub(super) fn print_manifest(manifest: &WikiCapabilityManifest) {
 }
 
 pub(super) fn print_profile_snapshot(snapshot: &WikiProfileSnapshot) {
-    println!("profile_id: {}", snapshot.overlay.profile_id);
+    println!("profile_id: {}", snapshot.adapter.profile_id);
     println!("base_profile_id: {}", snapshot.base_profile_id);
-    println!("docs_profile: {}", snapshot.overlay.docs_profile);
+    println!("docs_profile: {}", snapshot.adapter.docs_profile);
     if let Some(manifest) = snapshot.capabilities.as_ref() {
         println!("capabilities.wiki_id: {}", manifest.wiki_id);
         println!(
@@ -89,7 +89,7 @@ pub(super) fn print_profile_snapshot(snapshot: &WikiProfileSnapshot) {
     } else {
         println!("template_catalog: <none>");
     }
-    print_overlay(&snapshot.overlay);
+    print_profile(&snapshot.adapter);
 }
 
 fn print_template_catalog_summary(summary: &TemplateCatalogSummary) {
@@ -121,22 +121,22 @@ fn print_template_catalog_summary(summary: &TemplateCatalogSummary) {
     println!("template_catalog.refreshed_at: {}", summary.refreshed_at);
 }
 
-pub(super) fn print_overlay(overlay: &ProfileOverlay) {
+pub(super) fn print_profile(profile: &SiteProfile) {
     println!(
         "rules.source_document_count: {}",
-        overlay.source_documents.len()
+        profile.source_documents.len()
     );
     println!(
         "rules.require_short_description: {}",
-        format_flag(overlay.authoring.require_short_description)
+        format_flag(profile.authoring.require_short_description)
     );
     println!(
         "rules.require_article_quality_banner: {}",
-        format_flag(overlay.authoring.require_article_quality_banner)
+        format_flag(profile.authoring.require_article_quality_banner)
     );
     println!(
         "rules.article_quality_template: {}",
-        overlay
+        profile
             .authoring
             .article_quality_template
             .as_deref()
@@ -144,7 +144,7 @@ pub(super) fn print_overlay(overlay: &ProfileOverlay) {
     );
     println!(
         "rules.references_template: {}",
-        overlay
+        profile
             .authoring
             .references_template
             .as_deref()
@@ -152,20 +152,20 @@ pub(super) fn print_overlay(overlay: &ProfileOverlay) {
     );
     println!(
         "rules.prefer_sentence_case_headings: {}",
-        format_flag(overlay.authoring.prefer_sentence_case_headings)
+        format_flag(profile.authoring.prefer_sentence_case_headings)
     );
     println!(
         "rules.prefer_wikitext_only: {}",
-        format_flag(overlay.authoring.prefer_wikitext_only)
+        format_flag(profile.authoring.prefer_wikitext_only)
     );
     println!(
         "rules.require_straight_quotes: {}",
-        format_flag(overlay.authoring.require_straight_quotes)
+        format_flag(profile.authoring.require_straight_quotes)
     );
     println!(
         "rules.preferred_citation_templates: {}",
         join_or_none(
-            &overlay
+            &profile
                 .citations
                 .preferred_templates
                 .iter()
@@ -176,8 +176,8 @@ pub(super) fn print_overlay(overlay: &ProfileOverlay) {
     println!(
         "rules.preferred_infobox_templates: {}",
         join_or_none(
-            &overlay
-                .remilia
+            &profile
+                .templates
                 .infobox_preferences
                 .iter()
                 .map(|rule| rule.template_title.clone())
@@ -186,21 +186,17 @@ pub(super) fn print_overlay(overlay: &ProfileOverlay) {
     );
     println!(
         "rules.preferred_categories: {}",
-        join_or_none(&overlay.categories.preferred_categories)
+        join_or_none(&profile.categories.preferred_categories)
     );
     println!(
-        "rules.synthetic_phrase_prompt_count: {}",
-        overlay.lint.synthetic_phrase_prompts.len()
+        "rules.source_review_rule_count: {}",
+        profile.citations.source_review_rules.len()
     );
     println!(
-        "rules.unreliable_source_count: {}",
-        overlay.citations.unreliable_sources.len()
+        "rules.extension_contract_count: {}",
+        profile.extension_contracts.len()
     );
-    println!(
-        "rules.article_corpus_available: {}",
-        format_flag(overlay.golden_set.article_corpus_available)
-    );
-    println!("rules.refreshed_at: {}", overlay.refreshed_at);
+    println!("rules.refreshed_at: {}", profile.refreshed_at);
 }
 
 pub(super) fn join_or_none(values: &[String]) -> String {

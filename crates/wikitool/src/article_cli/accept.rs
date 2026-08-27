@@ -21,12 +21,12 @@ struct ArticleAcceptReport {
     source_path: String,
     title: String,
     target_path: String,
-    receipt_path: String,
+    acceptance_ledger_path: String,
     content_sha256: String,
-    human_editor: String,
+    human_editor_claim: String,
+    editor_identity_assurance: String,
     prose_origin: String,
-    human_acceptance_attestation: String,
-    editorial_quality_attestation: String,
+    decision: String,
     lint_errors: usize,
     lint_warnings: usize,
     lint_suggestions: usize,
@@ -54,7 +54,7 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
         bail!("article accept only supports Main-namespace article titles, got: {title}");
     }
     let lint = lint_article_with_title(&paths, &source_absolute, Some(&title))?;
-    let (receipt, receipt_path) = record_article_acceptance(
+    let (ledger_entry, ledger_path) = record_article_acceptance(
         &paths,
         &source_absolute,
         &title,
@@ -70,21 +70,21 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
         },
     )?;
     let report = ArticleAcceptReport {
-        schema_version: "article_accept_v1",
+        schema_version: "article_accept_v2",
         project_root: normalize_path(&paths.project_root),
         source_path: normalize_path(&source_absolute),
         title,
         target_path,
-        receipt_path: normalize_path(&receipt_path),
-        content_sha256: receipt.content_sha256,
-        human_editor: receipt.human_editor,
-        prose_origin: receipt.prose_origin.as_str().to_string(),
-        human_acceptance_attestation: receipt.attestation,
-        editorial_quality_attestation: receipt.editorial_quality_attestation,
-        lint_errors: receipt.lint_errors,
-        lint_warnings: receipt.lint_warnings,
-        lint_suggestions: receipt.lint_suggestions,
-        warnings_explicitly_accepted: receipt.warnings_explicitly_accepted,
+        acceptance_ledger_path: normalize_path(&ledger_path),
+        content_sha256: ledger_entry.content_sha256,
+        human_editor_claim: ledger_entry.human_editor_claim,
+        editor_identity_assurance: ledger_entry.editor_identity_assurance,
+        prose_origin: ledger_entry.prose_origin.as_str().to_string(),
+        decision: ledger_entry.decision,
+        lint_errors: ledger_entry.lint_errors,
+        lint_warnings: ledger_entry.lint_warnings,
+        lint_suggestions: ledger_entry.lint_suggestions,
+        warnings_explicitly_accepted: ledger_entry.warnings_explicitly_accepted,
     };
 
     if args.format.is_json() {
@@ -96,18 +96,15 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
         println!("source_path: {}", report.source_path);
         println!("title: {}", report.title);
         println!("target_path: {}", report.target_path);
-        println!("receipt_path: {}", report.receipt_path);
+        println!("acceptance_ledger_path: {}", report.acceptance_ledger_path);
         println!("content_sha256: {}", report.content_sha256);
-        println!("human_editor: {}", report.human_editor);
+        println!("human_editor_claim: {}", report.human_editor_claim);
+        println!(
+            "editor_identity_assurance: {}",
+            report.editor_identity_assurance
+        );
         println!("prose_origin: {}", report.prose_origin);
-        println!(
-            "human_acceptance_attestation: {}",
-            report.human_acceptance_attestation
-        );
-        println!(
-            "editorial_quality_attestation: {}",
-            report.editorial_quality_attestation
-        );
+        println!("decision: {}", report.decision);
         println!("lint_errors: {}", report.lint_errors);
         println!("lint_warnings: {}", report.lint_warnings);
         println!("lint_suggestions: {}", report.lint_suggestions);
@@ -117,9 +114,8 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
         );
         println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
         println!(
-            "editorial_policy: this receipt records a human decision; agents must not self-attest"
+            "ledger_scope: exact-content decision record; editor identity is self-reported and unauthenticated"
         );
-        println!("quality_attestation: specific, readable, proportionate, and source-bound");
         if runtime.diagnostics {
             println!("\n[diagnostics]\n{}", paths.diagnostics());
         }

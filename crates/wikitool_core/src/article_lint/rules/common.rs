@@ -4,7 +4,7 @@ use crate::article_lint::document::{ArticleSection, ParsedArticleDocument, Templ
 use crate::article_lint::fix::TextEdit;
 use crate::article_lint::model::{SuggestedFix, SuggestedFixKind};
 use crate::content_store::parsing::{make_content_preview, normalize_spaces};
-use crate::profile::ProfileOverlay;
+use crate::profile::SiteProfile;
 
 const COMMON_SENTENCE_CASE_HEADINGS: &[(&str, &str)] = &[
     ("see also", "See also"),
@@ -38,8 +38,8 @@ pub(super) fn line_has_short_description(line: &str) -> bool {
         || lowered.starts_with("{{short description |")
 }
 
-pub(super) fn preferred_short_description_snippet(overlay: &ProfileOverlay) -> String {
-    if overlay
+pub(super) fn preferred_short_description_snippet(profile: &SiteProfile) -> String {
+    if profile
         .authoring
         .short_description_forms
         .iter()
@@ -48,6 +48,17 @@ pub(super) fn preferred_short_description_snippet(overlay: &ProfileOverlay) -> S
         return "{{SHORTDESC:Brief one-line description}}".to_string();
     }
     "{{Short description|Brief one-line description}}".to_string()
+}
+
+pub(super) fn template_invocation(template_title: &str, positional: Option<&str>) -> String {
+    let name = template_title
+        .trim()
+        .strip_prefix("Template:")
+        .unwrap_or(template_title.trim());
+    match positional.filter(|value| !value.trim().is_empty()) {
+        Some(value) => format!("{{{{{name}|{value}}}}}"),
+        None => format!("{{{{{name}}}}}"),
+    }
 }
 
 pub(super) fn section_body_contains_template(

@@ -6,7 +6,7 @@ use crate::runtime::ResolvedPaths;
 use crate::schema::open_initialized_database_connection;
 use crate::support::{table_exists, unix_timestamp};
 
-pub const DEFAULT_DOCS_PROFILE: &str = "remilia-wiki";
+pub const DEFAULT_DOCS_PROFILE: &str = "mw-1.44-authoring";
 pub const KNOWLEDGE_GENERATION: &str = concat!("knowledge-v", env!("CARGO_PKG_VERSION"));
 
 const CONTENT_INDEX_ARTIFACT_KEY: &str = "content_index";

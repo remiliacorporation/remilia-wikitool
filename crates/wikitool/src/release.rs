@@ -43,7 +43,7 @@ struct ReleaseBuildAiPackArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional host project root containing CLAUDE.md + .claude/{rules,skills}"
+        help = "Optional host project root containing a wikitool_adapter/ supplement"
     )]
     host_project_root: Option<PathBuf>,
 }
@@ -71,7 +71,7 @@ struct ReleasePackageArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional host project root containing CLAUDE.md + .claude/{rules,skills}"
+        help = "Optional host project root containing a wikitool_adapter/ supplement"
     )]
     host_project_root: Option<PathBuf>,
     #[arg(
@@ -129,7 +129,7 @@ struct ReleaseBuildMatrixArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional host project root containing CLAUDE.md + .claude/{rules,skills}"
+        help = "Optional host project root containing a wikitool_adapter/ supplement"
     )]
     host_project_root: Option<PathBuf>,
     #[arg(

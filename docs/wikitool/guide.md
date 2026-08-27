@@ -9,8 +9,11 @@ For command flags: `wikitool <command> --help` or `reference.md`.
 ## First Run
 
 ```bash
+wikitool init --wiki-url https://wiki.example.org/ --api-url https://wiki.example.org/api.php
+# If the project owns a site adapter, select and validate it explicitly:
+wikitool init --adapter-path site-adapter/profile.toml
 wikitool workflow session-refresh
-wikitool knowledge status --docs-profile remilia-wiki --format json
+wikitool knowledge status --docs-profile mw-1.44-authoring --format json
 ```
 
 ## Session Refresh
@@ -22,7 +25,7 @@ content, template/module state, docs, and live capability signals through the wo
 wikitool status --modified --format json
 wikitool diff --format json
 wikitool workflow session-refresh
-wikitool knowledge status --docs-profile remilia-wiki --format json
+wikitool knowledge status --docs-profile mw-1.44-authoring --format json
 ```
 
 Use `wikitool workflow full-refresh` for deliberate rebuilds or missing sync state. Do not use
@@ -33,13 +36,14 @@ Use `wikitool workflow full-refresh` for deliberate rebuilds or missing sync sta
 - Pull/push use the MediaWiki API. Local state lives in SQLite under `.wikitool/data/wikitool.db`.
 - The DB is disposable — delete it and repull/rebuild any time.
 - Authoring retrieval uses semantic page profiles, a DB-backed template/module contract graph, normalized source authorities, and bridged MediaWiki docs to narrow context for agents.
-- `knowledge article-start` returns a typed coauthoring contract plus evidence and local-fit signals. Agent drafting is allowed, but model output and neighboring pages are not evidence. Use `--contract-query` when the subject and the wiki-contract lookup are different, for example a cheetah article whose contract search should ask for `species infobox taxonomy`.
+- `knowledge article-start` returns a typed machine-evidence surface plus local-fit signals. It does not embed an editorial prompt. Agent drafting is allowed through the writing skill, but model output and neighboring pages are not evidence. Use `--contract-query` when the subject and the wiki-contract lookup are different, for example a cheetah article whose contract search should ask for `species infobox taxonomy`.
 - Token-efficient agent workflows should start from wikitool briefs and drill down only as needed. Prefer `knowledge article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, and `review --view brief`; reserve `--view full` for cases where implementation bodies or complete capability arrays are explicitly needed.
 - `article lint` / `article fix` are profile-aware. `validate` is the lower-level index integrity check; use `--summary` for the global signal and scoped `--category`/`--title` slices for targeted investigation. `module lint` is the Lua/module lane.
 - `article lint` / `article fix` accept repeated `--title`, repeated `--path`, `--titles-file`, and `--changed` for batch work.
-- `review` is the structured pre-push gate: status plan, changed article lint, validation summary, and push dry-run in one JSON report.
+- `review` is a structured mechanical pre-push report: status plan, changed article lint, validation summary, and push dry-run in one JSON result. It is distinct from the `prose-review` skill.
 - A named human must accept the exact prose before promotion or any changed Main-namespace push.
-  Acceptance is content-hash-bound; `--force` cannot bypass it.
+  The acceptance ledger is content-hash-bound; `--force` cannot bypass it. Its editor label is a
+  self-reported, unauthenticated claim.
 - Push flows require `--dry-run` first. Existing-page writes are bound to the observed remote
   revision and creates use create-only semantics. `--force` requires explicit user approval.
 
@@ -79,17 +83,17 @@ rewrite. The target is real encyclopedic prose: direct, neutral, specific, propo
 and useful to a reader. A named human editor owns the publication decision and accepts the exact
 final bytes.
 
-Start with `knowledge article-start --view brief`. Its `article_start_v3` payload says that agent
-drafting is allowed, model output is not evidence, structure must come from the evidenced factual
-spine, and host-wiki relationships require independent editorial justification. `drafting_ready`
-means current content/docs artifacts are available; it does not mean the topic is researched or a
-draft can be published.
+Start with `knowledge article-start --view brief`. Its `article_start_v4` payload exposes local
+state, evidence identities, retrieval coverage, available target-wiki mechanics, and explicit
+ledger gaps. It deliberately carries no prompt prose or recommended editorial action.
+`drafting_ready` means current content/docs artifacts are available; it does not mean the topic is
+researched or a draft can be published.
 
 Before prose, build a claim-source map. Inspect the exact source behind load-bearing, sensitive,
 interpretive, quoted, and surprising claims. Treat an exact local page as coverage to audit and a
-neighboring page as local fit context, not independent verification. Write the factual body before
-the lead, then apply `writing_context/style_rules.md` as an adversarial reader review. Delete
-generic padding rather than editing it into smoother padding.
+neighboring page as local fit context, not independent verification. Follow the canonical
+`wiki-writing` skill, write the factual body before the lead, then run the independent
+`prose-review` skill. Delete generic padding rather than editing it into smoother padding.
 
 For new articles, substantial revisions, niche history, and unclear framing, use the packaged
 interview skill. Read supplied materials before narrowing questions. Ask only questions that can
@@ -103,15 +107,12 @@ Reusable interview distillations should be saved as:
 ```
 
 The brief is an editorial ledger, not automatic independent evidence, proof, or acceptance.
-Agent- or human-authored prose may use quality-gated firsthand knowledge under the target policy;
-cite when research surfaces a source, when a claim is external or contested, or when a primary
-record exists. For Remilia Wiki, source paths may include target-wiki records, hosted artifacts,
-first-party sources, archived primary records, creator-published statements, or target-wiki source
-notes; they do not have to be outside secondary coverage. Adjacent subjects should be defined on
-their own terms. Include a Remilia or Charlotte Fang relationship only when it is important,
-supported, and proportionate. Use stable
-open-item IDs for unresolved source work, do-not-assert holds, and negative evidence that need
-tracking through research and review.
+Keep firsthand knowledge, human notes, source leads, and inspected sources distinct. A project's
+site adapter may describe how its own records and first-party sources should be used, but this does
+not waive claim-level provenance or source-role judgment. Define adjacent subjects on their own
+terms and give relationships only the weight supported by the evidence. Use stable open-item IDs
+for unresolved source work, do-not-assert holds, and negative evidence that need tracking through
+research and review.
 
 Use the Rust interview ledger commands for deterministic paths, starter files, validation, compact
 handoff summaries, and ledger audits:
@@ -126,7 +127,7 @@ wikitool knowledge interview open-item list .wikitool/interviews/Title/20260601T
 wikitool knowledge interview audit --view brief --format json
 ```
 
-The conversational interview loop still belongs in the agent skill. The CLI does not infer source
+The conversational interview loop belongs in the `wiki-interview` skill. The CLI does not infer source
 support from user prose, call a model, or decide that an interview is editorially sufficient; it
 validates structured metadata, required sections, sidecars, typed open-items JSONL records,
 negative-evidence counts, and freshness.
@@ -136,10 +137,10 @@ the interview should shape research planning or gate review. These integrations 
 brief metadata, do-not-assert holds, open research items, and negative-evidence counts; they do not
 treat mechanical validation as editorial acceptance or factual support.
 
-For local custom content features, use the deployed target contract rather than raw HTML/JavaScript.
-Remilia's current D3Charts surface is `Module:D3Chart` plus ResourceLoader, so agents should inspect
-it through `knowledge contracts`, `templates show`, and `article lint`; a future D3 extension may
-supersede that module form.
+For custom content features, inspect the active site adapter and deployed target contract rather
+than assuming raw HTML, JavaScript, a parser tag, or a module is portable. Use `wiki profile show`,
+`wiki surface`, `knowledge contracts`, `templates show`, and `article lint` to verify the actual
+mechanism.
 
 ## Sync
 
@@ -163,6 +164,12 @@ wikitool wiki render-check "Consumer title" --scope-class card --expect-scopes 1
 wikitool delete "Title" --reason "x" --dry-run
 ```
 
+Inspect `remote_exists`, `remote_revision_id`, and conflict details in the dry-run output. A locally
+modified page that was deleted remotely is not an unconstrained update: it is blocked as a
+conflict, and `--force` can only recreate it through MediaWiki `createonly`. Delete pushes perform
+another revision lookup immediately before mutation; a same-run revision change is never waived,
+and an already absent page is reconciled locally without sending a delete request.
+
 Run `wiki render-check` after pushing templates, Cargo queries, or other dynamic
 rendering changes. It checks production parser output rather than source text,
 rejects parser-error markup and literal rendered wikilinks by default, can
@@ -179,8 +186,8 @@ bounded `prop=pageimages` request and reports the selected thumbnail URL.
 
 ```bash
 wikitool knowledge build                # content index only
-wikitool knowledge warm --docs-profile remilia-wiki --docs-mode missing  # index + docs readiness
-wikitool knowledge status --docs-profile remilia-wiki --format json
+wikitool knowledge warm --docs-profile mw-1.44-authoring --docs-mode missing  # index + docs readiness
+wikitool knowledge status --docs-profile mw-1.44-authoring --format json
 wikitool knowledge article-start "Topic" --intent new --format json --view brief
 wikitool knowledge interview init "Topic" --intent new --format json
 wikitool knowledge interview validate .wikitool/interviews/Title/20260601T172430Z.brief.md --format json
@@ -195,7 +202,7 @@ wikitool knowledge inspect stats
 wikitool knowledge inspect chunks "Title" --query "aspect" --limit 6 --token-budget 480
 wikitool knowledge inspect chunks --across-pages --query "topic" --max-pages 8 --token-budget 1200 --format json --diversify
 wikitool knowledge inspect references summary --format json
-wikitool knowledge inspect references list --title "Title" --domain remilia.org --format json
+wikitool knowledge inspect references list --title "Title" --domain example.org --format json
 wikitool knowledge inspect references duplicates --all --identifier-key doi --format json
 wikitool knowledge inspect backlinks "Title"
 wikitool knowledge inspect orphans
@@ -245,9 +252,10 @@ wikitool article accept .wikitool/drafts/Title.wiki --title "Title" --human-edit
 wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
 ```
 
-Acceptance records an asserted editor identity, truthful prose origin, lint summary, warning
-decision, quality attestation, and exact content hash. It is auditable but not cryptographic
-authentication. Any later content change invalidates the receipt. Use `agent-draft`,
+Acceptance records a self-reported editor claim, truthful prose origin, lint summary, warning
+decision, exact-content decision, and SHA-256. It is an auditable ledger and workflow interlock,
+not identity authentication or a prose-quality certificate. Any later content change invalidates
+the entry. Use `agent-draft`,
 `collaborative-draft`, `human-draft`, `human-revision`,
 `mechanical-conversion-of-human-prose`, or `human-reviewed-legacy` as accurate.
 
@@ -262,11 +270,11 @@ wikitool lsp info
 ## Docs
 
 ```bash
-wikitool docs import-profile remilia-wiki
+wikitool docs import-profile mw-1.44-authoring
 wikitool docs import --bundle ./ai/docs-bundle-v1.json
-wikitool docs search "topic" --profile remilia-wiki
-wikitool docs context "Extension" --profile remilia-wiki --format json
-wikitool docs symbols "$wg" --profile remilia-wiki
+wikitool docs search "topic" --profile mw-1.44-authoring
+wikitool docs context "Extension" --profile mw-1.44-authoring --format json
+wikitool docs symbols "$wg" --profile mw-1.44-authoring
 wikitool docs list
 wikitool docs update
 ```
@@ -305,9 +313,10 @@ cargo run --features maintainer -- release build-matrix --targets x86_64-unknown
 cargo run --features maintainer -- release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
 ```
 
-Host overlays replace packaged `CLAUDE.md`, `AGENTS.md`, and `.claude/`. If the host project also
-has `writing_context/`, those files become the packaged writing context at the same release-root
-path.
+The public guidance and canonical skills always remain target-neutral. With
+`--host-project-root`, packaging accepts only the host's `wikitool_adapter/` and places it under
+`site_adapter/project/`; it never replaces `CLAUDE.md`, `AGENTS.md`, `.claude/`, or
+`codex_skills/`. A missing typed `profile.toml` fails the build.
 
 ## Troubleshooting
 

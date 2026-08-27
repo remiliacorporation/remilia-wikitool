@@ -1,56 +1,18 @@
-# AI Pack Source
+# Wikitool AI pack
 
-Canonical source for the agent companion files shipped in release artifacts.
+Public agent companion for general MediaWiki work with Wikitool.
 
-The packaged release root is intentionally flat and ready to use: `AGENTS.md`, `CLAUDE.md`,
-`.claude/`, `codex_skills/`, `writing_context/`, and `docs/wikitool/` sit next to the binary.
+## Boundary
 
-## Ownership
+| Layer | Owns |
+|---|---|
+| Wikitool binary | MediaWiki transport, capability discovery, parsing, local knowledge artifacts, deterministic lint/fix, revision CAS, atomic writes, sync receipts, acceptance ledger |
+| Agent skills | research-to-claim reasoning, article prose, source fidelity, due weight, BLP/sensitive review, reader value, adaptive interviews |
+| Project site adapter | target templates, citation forms, source-review signals, categories, extensions, mechanical style, supplemental editorial guidance |
+| Human editor | publication intent, private context, disputed judgments, and acceptance of the exact final prose |
 
-| Source | Packaged path | Role |
-|---|---|---|
-| `AGENTS.md` | `AGENTS.md` | Agent routing brief |
-| `CLAUDE.md` | `CLAUDE.md` | Same body as `AGENTS.md` |
-| `.claude/rules/*` | `.claude/rules/*` | Claude always-on editing rules |
-| `.claude/skills/*` | `.claude/skills/*` | Claude operator/review/interview wrappers |
-| `codex_skills/*` | `codex_skills/*` | Codex equivalents |
-| `writing_context/profile.toml` | `writing_context/profile.toml` | Required typed machine policy |
-| `writing_context/*.md` | `writing_context/*.md` | Encyclopedic coauthoring and editorial guidance |
-| `docs-bundle-v1.json` | `ai/docs-bundle-v1.json` | Optional offline docs preload |
+`codex_skills/` contains the canonical substantive procedures. `.claude/skills/` contains harness entrypoints that route to those same files. `integration/` documents the architecture. Generic Wikitool ships no target-specific editorial behavior.
 
-`writing_context/` is deliberately not named after a model family. `profile.toml` is the typed
-machine-policy authority; Markdown files explain the evidence-to-prose workflow, style,
-structure, sourcing, interviews, and extensions. Wikitool must not infer policy from prose examples.
-Global agent behavior belongs in `AGENTS.md` / `CLAUDE.md` and the skill wrappers.
+When a host project is packaged, its explicit adapter directory is copied as a supplement; it never replaces the public skills.
 
-## Host Overlay
-
-Maintainer release commands run from a source checkout with `--features maintainer`.
-`release package --host-project-root <PATH>` and `release build-matrix --host-project-root <PATH>`
-may overlay host context:
-
-1. Host `CLAUDE.md` becomes the active guidance body and is written to both packaged `CLAUDE.md`
-   and packaged `AGENTS.md`.
-2. Host `.claude/{rules,skills}` overlays packaged `.claude/{rules,skills}`.
-3. Host `writing_context/` replaces the packaged writing profile at the same release-root path and
-   must include both Markdown guidance and a typed `profile.toml`.
-
-Without a host overlay, release bundles ship the generic wikitool-maintained context.
-
-## Development Contract
-
-1. Do not put local experiments, mock drafts, probe outputs, or one-off research notes under
-   `ai-pack/` unless they are intended to ship in the next release.
-2. Use `.wikitool/drafts/`, `plans/`, or test fixtures for scratch work.
-3. Keep target-specific writing rules explicit. If a rule only applies to one wiki, label it as
-   target-specific or ship it through a host overlay.
-4. After CLI, output-schema, or workflow changes, update the owning agent/docs surface, preserve the
-   compact default payload contract, regenerate `docs/wikitool/reference.md` when help changes, and
-   run the guidance contract tests plus `cargo run --features maintainer -- docs audit`.
-
-## Packaging Contract
-
-1. `cargo run --features maintainer -- release build-ai-pack` stages these files.
-2. `cargo run --features maintainer -- release package` stages one local binary with the AI companion files.
-3. `cargo run --features maintainer -- release build-matrix` builds target binaries and emits zip artifacts that unpack into
-   ready-to-run agent bundles.
+See `integration/agent_integration.md` and `integration/site_adapters.md`.

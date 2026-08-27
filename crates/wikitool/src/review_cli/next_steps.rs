@@ -74,8 +74,8 @@ pub(super) fn build_review_next_steps(
             review_draft_argv,
         ),
         command_next_step(
-            "human_accept_draft",
-            "A human editor reads the exact prose and records acceptance; agents must not self-attest.",
+            "record_acceptance_decision",
+            "Record an exact-content acceptance decision. Wikitool stores the supplied editor identity as a self-reported, unauthenticated claim.",
             vec![
                 "wikitool",
                 "article",
@@ -93,8 +93,9 @@ pub(super) fn build_review_next_steps(
         ),
         ReviewNextStep {
             kind: "promote_draft",
-            description: "Copy the exact hash-bound, human-accepted draft to the sync path before push review."
-                .to_string(),
+            description:
+                "Copy the exact hash-bound accepted draft to the sync path before push review."
+                    .to_string(),
             command: Some(review_next_step_command(vec![
                 "wikitool",
                 "article",
@@ -114,7 +115,7 @@ pub(super) fn build_review_next_steps(
         ),
         command_next_step(
             "push_dry_run",
-            "Preview the scoped push only after the promoted review is clean and its human acceptance receipt still matches.",
+            "Preview the scoped push only after the promoted review is clean and its exact-content acceptance ledger entry still matches.",
             vec![
                 "wikitool",
                 "push",

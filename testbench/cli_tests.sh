@@ -8,7 +8,7 @@
 set -euo pipefail
 
 TIER="${TIER:-offline}"
-KNOWLEDGE_DOCS_PROFILE="${KNOWLEDGE_DOCS_PROFILE:-remilia-wiki}"
+KNOWLEDGE_DOCS_PROFILE="${KNOWLEDGE_DOCS_PROFILE:-mw-1.44-authoring}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
@@ -70,6 +70,16 @@ resolve_wikitool_cmd() {
         return
     fi
 
+    # On WSL/Git Bash, prefer the host Rust toolchain when it is available.
+    # A distro Cargo may be older than the workspace's declared Rust edition,
+    # while the surrounding Windows checkout is already built with cargo.exe.
+    if command -v cargo.exe > /dev/null 2>&1; then
+        WIKITOOL_CMD=(cargo.exe run --quiet --)
+        WIKITOOL_MAINTAINER_CMD=(cargo.exe run --quiet --features maintainer --)
+        WIKITOOL_PATH_MODE="windows"
+        return
+    fi
+
     if command -v cargo > /dev/null 2>&1; then
         local cargo_path
         cargo_path=$(command -v cargo)
@@ -80,13 +90,6 @@ resolve_wikitool_cmd() {
         else
             WIKITOOL_PATH_MODE="posix"
         fi
-        return
-    fi
-
-    if command -v cargo.exe > /dev/null 2>&1; then
-        WIKITOOL_CMD=(cargo.exe run --quiet --)
-        WIKITOOL_MAINTAINER_CMD=(cargo.exe run --quiet --features maintainer --)
-        WIKITOOL_PATH_MODE="windows"
         return
     fi
 
@@ -128,6 +131,14 @@ setup_project() {
     local dir="$TMPDIR_ROOT/project-$1"
     mkdir -p "$dir"
     echo "$dir"
+}
+
+write_site_adapter() {
+    local root="$1"
+    mkdir -p "$root/site-adapter"
+    cp "$REPO_ROOT/crates/wikitool_core/testdata/site-adapter.toml" "$root/site-adapter/profile.toml"
+    sed -i.bak 's|# path = "site-adapter/profile.toml"|path = "site-adapter/profile.toml"|' "$root/.wikitool/config.toml"
+    rm -f "$root/.wikitool/config.toml.bak"
 }
 
 resolve_local_binary_candidate() {
@@ -236,6 +247,17 @@ else
     fail "creates templates directory"
 fi
 
+ADAPTER_PROJ=$(setup_project init-adapter)
+mkdir -p "$ADAPTER_PROJ/site-adapter"
+cp "$REPO_ROOT/crates/wikitool_core/testdata/site-adapter.toml" "$ADAPTER_PROJ/site-adapter/profile.toml"
+OUTPUT=$(wt "$ADAPTER_PROJ" init --templates --adapter-path site-adapter/profile.toml 2>&1)
+if echo "$OUTPUT" | grep -q 'persisted_site_adapter: site-adapter/profile.toml' \
+    && grep -q 'path = "site-adapter/profile.toml"' "$ADAPTER_PROJ/.wikitool/config.toml"; then
+    pass "init validates and persists an explicit site adapter"
+else
+    fail "init validates and persists an explicit site adapter (got: $OUTPUT)"
+fi
+
 # --- diff ---
 section "diff"
 PROJ=$(setup_project diff)
@@ -331,34 +353,7 @@ ARTICLE_PROJ=$(setup_project article-lint)
 wt "$ARTICLE_PROJ" init --templates > /dev/null 2>&1
 mkdir -p "$ARTICLE_PROJ/wiki_content/Main"
 mkdir -p "$ARTICLE_PROJ/templates/misc"
-mkdir -p "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context"
-cp "$REPO_ROOT/ai-pack/writing_context/profile.toml" "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/profile.toml"
-cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/article_structure.md" << 'MDEOF'
-{{SHORTDESC:Example}}
-{{Article quality|unverified}}
-== References ==
-{{Reflist}}
-Use sections that follow the subject.
-MDEOF
-cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/style_rules.md" << 'MDEOF'
-### No placeholder content
-- Never output: `INSERT_SOURCE_URL`
-Straight quotes only
-MDEOF
-cat > "$ARTICLE_PROJ/tools/wikitool/ai-pack/writing_context/writing_guide.md" << 'MDEOF'
-raw MediaWiki wikitext
-Never output Markdown
-Use only categories evidenced by the subject.
-{{Article quality|unverified}}
-### Citation templates
-```wikitext
-{{Cite web|url=}}
-```
-## Infobox selection
-| Subject type | Infobox |
-|---|---|
-| NFT Collection | `{{Infobox NFT collection}}` |
-MDEOF
+write_site_adapter "$ARTICLE_PROJ"
 cat > "$ARTICLE_PROJ/templates/misc/Template_Article_quality.wiki" << 'WIKIEOF'
 <includeonly>{{{1|unverified}}}</includeonly>
 WIKIEOF
@@ -387,15 +382,15 @@ else
     fail "article fix applies safe markdown, reflist, and citation-order fixes (got: $OUTPUT)"
 fi
 
-# --- review draft gate ---
-section "review draft gate"
+# --- draft review ---
+section "draft review"
 mkdir -p "$ARTICLE_PROJ/.wikitool/drafts"
 cp "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki"
 OUTPUT=$(wt "$ARTICLE_PROJ" review --draft-path "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki" --title "Article Draft" --format json --view brief --summary "Draft review" 2>&1 || true)
 if echo "$OUTPUT" | grep -q '"mode": "draft"' && echo "$OUTPUT" | grep -q '"skipped_reason": "draft review skips push dry-run' && echo "$OUTPUT" | grep -q '"kind": "promote_draft"'; then
-    pass "review draft gate emits draft mode, skipped push dry-run, and promotion next step"
+    pass "draft review emits draft mode, skipped push dry-run, and promotion next step"
 else
-    fail "review draft gate emits draft mode, skipped push dry-run, and promotion next step (got: $OUTPUT)"
+    fail "draft review emits draft mode, skipped push dry-run, and promotion next step (got: $OUTPUT)"
 fi
 
 # --- knowledge inspect stats ---
@@ -708,17 +703,21 @@ fi
 # --- knowledge interview init/validate ---
 section "knowledge interview"
 OUTPUT=$(wt "$PROJ" knowledge interview init "Interview Smoke" --no-scout --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"question_agenda"' && echo "$OUTPUT" | grep -q '"scout_included": false'; then
-    pass "interview init returns a question agenda without a scout"
+if echo "$OUTPUT" | grep -q '"schema_version": "knowledge_interview_init_v2"' \
+    && echo "$OUTPUT" | grep -q '"scout_included": false' \
+    && ! echo "$OUTPUT" | grep -q '"question_agenda"'; then
+    pass "interview init creates a neutral blank ledger without embedded prompts"
 else
-    fail "interview init returns a question agenda without a scout (got: ${OUTPUT:0:300})"
+    fail "interview init creates a neutral blank ledger without embedded prompts (got: ${OUTPUT:0:300})"
 fi
 IB_PATH=$(echo "$OUTPUT" | grep -o '"brief_path": "[^"]*"' | cut -d'"' -f4)
 OUTPUT=$(wt "$PROJ" knowledge interview validate "$IB_PATH" --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"status": "warning"' && echo "$OUTPUT" | grep -q 'template state'; then
-    pass "interview validate flags template-state sections advisorily"
+if echo "$OUTPUT" | grep -q '"status": "warning"' \
+    && echo "$OUTPUT" | grep -q '"sections_unfilled": \[' \
+    && echo "$OUTPUT" | grep -q '"Article Object"'; then
+    pass "interview validate reports unresolved blank ledger sections"
 else
-    fail "interview validate flags template-state sections advisorily (got: ${OUTPUT:0:300})"
+    fail "interview validate reports unresolved blank ledger sections (got: ${OUTPUT:0:300})"
 fi
 
 # --- independent contextmink setup ---
@@ -803,7 +802,8 @@ AI_PACK_OUT="$TMPDIR_ROOT/release-ai-pack"
 if has_maintainer_surface; then
     OUTPUT=$(wt_maintainer "$PROJ" release build-ai-pack --repo-root "$REPO_ROOT" --output-dir "$AI_PACK_OUT" 2>&1 || true)
     if [ -f "$AI_PACK_OUT/manifest.json" ] && [ -f "$AI_PACK_OUT/CLAUDE.md" ] \
-        && [ -d "$AI_PACK_OUT/.claude/skills" ] && [ -d "$AI_PACK_OUT/writing_context" ] \
+        && [ -d "$AI_PACK_OUT/.claude/skills" ] && [ -d "$AI_PACK_OUT/codex_skills" ] \
+        && [ -d "$AI_PACK_OUT/integration" ] && [ -f "$AI_PACK_OUT/site_adapter/generic.toml" ] \
         && [ ! -e "$AI_PACK_OUT/SETUP.md" ]; then
         pass "release build-ai-pack stages the packaged AI companion"
     else
@@ -822,7 +822,8 @@ elif [ -n "$LOCAL_BINARY" ]; then
     RELEASE_OUT="$TMPDIR_ROOT/release-package"
     OUTPUT=$(wt_maintainer "$PROJ" release package --repo-root "$REPO_ROOT" --binary-path "$LOCAL_BINARY" --output-dir "$RELEASE_OUT" 2>&1 || true)
     if [ -f "$RELEASE_OUT/CLAUDE.md" ] && [ -f "$RELEASE_OUT/README.md" ] \
-        && [ -d "$RELEASE_OUT/writing_context" ] && [ ! -e "$RELEASE_OUT/SETUP.md" ] \
+        && [ -d "$RELEASE_OUT/codex_skills" ] && [ -d "$RELEASE_OUT/integration" ] \
+        && [ -f "$RELEASE_OUT/site_adapter/generic.toml" ] && [ ! -e "$RELEASE_OUT/SETUP.md" ] \
         && { [ -f "$RELEASE_OUT/wikitool" ] || [ -f "$RELEASE_OUT/wikitool.exe" ]; }; then
         pass "release package stages a distributable bundle"
     else

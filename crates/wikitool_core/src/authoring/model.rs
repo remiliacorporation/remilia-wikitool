@@ -51,20 +51,6 @@ pub struct EvidenceRef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct OpenQuestion {
-    pub question: String,
-    pub reason: String,
-    pub blocking: bool,
-    pub evidence: Vec<EvidenceRef>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RecommendedAction {
-    pub label: String,
-    pub why: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RequiredTemplate {
     pub template_title: String,
     pub reason: String,
@@ -200,24 +186,6 @@ pub struct LocalIntegrationLane {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AuthoringConstraint {
-    pub level: String,
-    pub rule_id: String,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ArticleAuthoringContract {
-    pub mode: String,
-    pub agent_may_draft_prose: bool,
-    pub human_acceptance_required_for_publication: bool,
-    pub model_output_is_evidence: bool,
-    pub prose_standard: String,
-    pub structure_policy: String,
-    pub relationship_frame_policy: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArticleStartResult {
     pub schema_version: String,
     pub topic: String,
@@ -226,10 +194,6 @@ pub struct ArticleStartResult {
     pub evidence_profile: ArticleEvidenceProfile,
     pub subject_research: SubjectResearchLane,
     pub local_integration: LocalIntegrationLane,
-    pub authoring_contract: ArticleAuthoringContract,
-    pub constraints: Vec<AuthoringConstraint>,
-    pub open_questions: Vec<OpenQuestion>,
-    pub next_actions: Vec<RecommendedAction>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

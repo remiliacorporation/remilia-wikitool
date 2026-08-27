@@ -8,22 +8,28 @@ The release workflow extracts the section for the requested version and fails if
 
 ### Added
 
-- Evidence-bound coauthoring now has an exact-content acceptance lane: `article accept` records a named human editor, truthful human/agent/collaborative prose origin, lint summary, explicit warning decision, editorial-quality attestation, and full 256-bit SHA-256 receipt; draft promotion and changed Main-namespace pushes consume the accepted snapshot and reject missing or stale receipts, and `--force` cannot bypass the gate.
-- `ai-pack/writing_context/profile.toml` is the typed profile-policy authority for authoring, citations, categories, lint, golden pages, and extension contracts; release packaging now requires and ships the policy instead of deriving machine defaults from prose examples.
-- Article lint reports narrow synthetic/inflated phrases as human-review suggestions and gratuitous relationship framing in headings or subject leads as editorial warnings without mechanical rewrites.
+- The strict `site_adapter_v1` boundary gives each MediaWiki project an explicit typed policy and hashed supplemental-guidance layer while the embedded `mediawiki-generic` profile remains target-neutral; `init --adapter-path` validates and persists an explicit selection, while unknown fields, missing or undeclared adapter files, malformed source-review hosts, and escaping guidance paths fail closed.
+- Four substantive public agent skills now own the operator, `wiki-interview`, evidence-to-prose authoring, and independent prose-review workflows; source fidelity, reader value, BLP care, human-notes preservation, and MediaWiki structure are procedures with explicit exit conditions rather than binary prompt strings.
+- `article_acceptance_ledger_v1` binds a self-reported, unauthenticated human editor claim, prose origin, lint decision, and publication decision to the exact SHA-256 article bytes; promotion and changed Main-namespace pushes reject missing or stale entries, including under `--force`.
+- Closed-world prose-review fixtures physically separate review inputs from expected findings and include sensitive-claim, gratuitous-framing, and clean-source controls.
 - `wiki render-check` now enforces live rendered-HTML contracts for dynamic template and Cargo cutovers, including parser-error and literal-wikilink rejection, exact component counts, interactive-link requirements that exclude crawler-only anchors, required href fragments, required interactive-link classes such as MediaViewer's `mw-file-description`, and exact PageImages/Popups representative files via `--require-page-image`.
 
 ### Changed
 
-- The authoring surface has been reset around real encyclopedic coauthoring: agents may write article prose from inspected evidence, while shipped guidance requires a claim-source map, subject-derived structure, an adversarial reader edit, truthful provenance, and exact human publication acceptance. Model output and neighboring pages are explicitly not evidence.
-- `article-start_v3` exposes the coauthoring contract, excludes the exact subject from comparable structure, scopes existing-page peers to pages sharing its observed infobox type, filters discouraged relationship headings, labels categories, links, and sections as observations instead of recommendations, and gives context references stable source paths and full SHA-256 hashes.
+- The authoring surface is now layered: Rust owns evidence, parsing, lint, revision safety, and ledger interlocks; agent skills own prose and editorial judgment; projects own site-specific adapters; named humans own the exact final publication decision.
+- `article_start_v4` exposes only machine evidence and local-integration state. Embedded authoring contracts, recommended actions, canned questions, and prose instructions were removed from its JSON surface.
+- Knowledge interviews now create neutral ledgers for article object, scope, supplied materials, human notes, chronology, entities, source leads, exclusions, holds, and possible article shape; the agent skill owns conversational questioning and editorial interpretation.
+- Release bundles always preserve the public target-neutral guidance and skills. `--host-project-root` may only add a strictly parsed adapter policy and its declared guidance resources under `site_adapter/project/`; undeclared host files cannot ship and host guidance cannot overwrite packaged `CLAUDE.md`, `AGENTS.md`, rules, or skill wrappers.
+- MediaWiki's `bot` edit marker is now an explicit `wiki.mark_edits_as_bot` transport policy instead of being sent on every write.
+- Local acceptance, promotion, configuration, import, interview, pull, backup, and research-session writes now use same-directory atomic replacement.
 - Knowledge readiness now reports `drafting_ready`, checks the current artifact generation, and exposes docs import failures instead of claiming readiness from stale or degraded state; readiness does not claim topic or prose quality.
-- Existing-page edits use MediaWiki `baserevid`, creates use `createonly`, and generic mutation retries are disabled so ambiguous writes are not silently replayed.
+- Existing-page edits use MediaWiki `baserevid`, creates use `createonly`, remotely deleted modified pages require an explicit force-and-createonly recreation, and deletes recheck the exact revision immediately before mutation. Generic mutation retries remain disabled so ambiguous writes are not silently replayed.
 - Research fetches validate and DNS-pin every HTTP redirect against a shared outbound-network policy, cookie matching honors Secure/host-only/path rules, and the v3 cache uses full SHA-256 keys over schema, extractor, user-agent, session fingerprint, and request identity; returned source content also carries a full SHA-256 fingerprint.
 - Release bundles consume Contextmink 0.9.0 from upstream archives verified against repository-pinned SHA-256 values; Contextmink owns project setup through `setup-project` instead of a second wikitool installer.
 
 ### Removed
 
+- Removed the binary-owned `ai-pack/writing_context/` doctrine layer, the synthetic-phrase and relationship-substring lints, Remilia-specific core defaults, prose-snapshot documentation tests, and executable-ancestor adapter discovery.
 - Removed the stale vendored Contextmink 0.6 source tree and `wikitool contextmink` installer. Wikitool no longer carries a fork or source-build fallback for an independent project.
 
 ## [0.6.1] - 2026-07-07

@@ -153,9 +153,6 @@ pub(super) fn citation_family_for_reference(
 }
 
 pub(super) fn source_origin_for_reference(source_domain: &str, source_type: &str) -> String {
-    if source_domain.ends_with("remilia.org") {
-        return "first-party".to_string();
-    }
     if source_type == "wiki" {
         return "wiki".to_string();
     }

@@ -5,30 +5,39 @@ use serde::{Deserialize, Serialize};
 use super::wiki_capabilities::WikiCapabilityManifest;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ProfileSourceDocument {
     pub relative_path: String,
     pub content_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct CitationTemplateRule {
     pub family: String,
     pub template_title: String,
 }
 
+/// A deterministic URL matcher that asks for source review. Matching is not a
+/// reliability verdict: the agent-owned review procedure decides whether the
+/// source is appropriate for the particular claim and subject.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct UnreliableSourceRule {
+#[serde(deny_unknown_fields)]
+pub struct SourceReviewRule {
     pub label: String,
-    pub matcher: String,
+    pub host: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct InfoboxPreference {
     pub subject_type: String,
     pub template_title: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct AuthoringRules {
     pub require_short_description: bool,
     pub short_description_forms: Vec<String>,
@@ -44,83 +53,69 @@ pub struct AuthoringRules {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct CitationRules {
     pub preferred_templates: Vec<CitationTemplateRule>,
     pub use_named_references: bool,
     pub leave_archive_fields_blank: bool,
-    pub unreliable_sources: Vec<UnreliableSourceRule>,
+    #[serde(default)]
+    pub source_review_rules: Vec<SourceReviewRule>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RemiliaRules {
+#[serde(deny_unknown_fields)]
+pub struct TemplateRules {
     pub infobox_preferences: Vec<InfoboxPreference>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct CategoryRules {
     pub preferred_categories: Vec<String>,
 }
 
+/// Deterministic, locally decidable lint configuration. Reader value, source
+/// fidelity, due weight, BLP judgment, and prose quality deliberately do not
+/// belong here; those are agent-skill and human-editor responsibilities.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct LintRules {
-    /// Narrow prompts for human rereading when prose uses canned significance
-    /// language. These are suggestions, never a word blacklist or mechanical
-    /// substitute for editorial judgment.
-    pub synthetic_phrase_prompts: Vec<String>,
-    /// Headings that commonly force an adjacent subject into the profile owner's
-    /// frame. These are review prompts, not unconditional errors: a human editor
-    /// may keep a relationship section when that relationship is genuinely
-    /// subject-defining and proportionate.
-    #[serde(default)]
-    pub discouraged_relationship_headings: Vec<String>,
-    /// Profile-owner or adjacent-person terms whose appearance in another
-    /// subject's lead requires an explicit proportionality check.
-    #[serde(default)]
-    pub discouraged_lead_relationship_terms: Vec<String>,
     pub forbid_curly_quotes: bool,
     pub forbid_placeholder_fragments: Vec<String>,
-    /// Proper nouns that may stay capitalized mid-heading without tripping the
-    /// sentence-case rule. Local page titles are folded in automatically; this list
-    /// covers recurring proper nouns that are not standalone page titles (e.g. the
-    /// non-leading word of a multi-word brand). Defaulted for older cached overlays.
+    /// Proper nouns that may remain capitalized mid-heading. Local page titles
+    /// are folded in automatically.
     #[serde(default)]
     pub proper_nouns: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct GoldenSetRules {
-    pub article_corpus_available: bool,
-    pub source_documents: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProfileOverlay {
+#[serde(deny_unknown_fields)]
+pub struct SiteProfile {
     pub schema_version: String,
     pub profile_id: String,
     pub base_profile_id: String,
     pub docs_profile: String,
+    /// The adapter TOML and any project-owned supplemental guidance named by it.
+    /// Wikitool hashes and exposes these documents but never interprets prose as
+    /// machine policy.
     pub source_documents: Vec<ProfileSourceDocument>,
     pub authoring: AuthoringRules,
     pub citations: CitationRules,
-    pub remilia: RemiliaRules,
+    pub templates: TemplateRules,
     pub categories: CategoryRules,
     pub lint: LintRules,
-    pub golden_set: GoldenSetRules,
-    /// Content-extension contracts parsed from writing_context/extensions.md:
-    /// one record per invocable mechanism (tag, parser function, template,
-    /// module). Lint, the authoring surface, and the packaged guidance all
-    /// consume these, so the document and the checks cannot drift apart.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extension_contracts: Vec<ExtensionContractRule>,
     pub refreshed_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ExtensionContractRule {
     /// Mechanism kind: `tag`, `parser_function`, `template`, or `module`.
     pub kind: String,
-    /// Invocable name: tag name, parser-function name (no `#`), template
-    /// name, or module title tail.
+    /// Invocable name: tag name, parser-function name (no `#`), template name,
+    /// or module title tail.
     pub name: String,
     /// Providing extension (or `core` / `local`).
     pub provider: String,
@@ -135,7 +130,7 @@ pub struct ExtensionContractRule {
     pub example: String,
 }
 
-impl ProfileOverlay {
+impl SiteProfile {
     pub fn profile_template_titles(&self) -> Vec<String> {
         let mut titles = BTreeSet::new();
         if let Some(value) = self.authoring.article_quality_template.as_deref() {
@@ -147,7 +142,7 @@ impl ProfileOverlay {
         for rule in &self.citations.preferred_templates {
             titles.insert(rule.template_title.clone());
         }
-        for preference in &self.remilia.infobox_preferences {
+        for preference in &self.templates.infobox_preferences {
             titles.insert(preference.template_title.clone());
         }
         titles.into_iter().collect()
@@ -155,6 +150,7 @@ impl ProfileOverlay {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct TemplateCatalogSummary {
     pub profile_id: String,
     pub template_count: usize,
@@ -166,9 +162,10 @@ pub struct TemplateCatalogSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct WikiProfileSnapshot {
     pub base_profile_id: String,
-    pub overlay: ProfileOverlay,
+    pub adapter: SiteProfile,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<WikiCapabilityManifest>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -13,15 +13,15 @@ maximize length or satisfy a generic article shape.
 ## Method
 
 1. Read the current article when one exists.
-2. Run `knowledge article-start` with the selected intent and retain its evidence IDs, warnings, and
-   contract.
+2. Run `knowledge article-start` with the selected intent and retain its evidence IDs, warnings,
+   and local integration signals.
 3. Inspect the actual sources behind load-bearing and sensitive claims. Build a claim-source map
    that records support, locators, contradictions, and omissions.
 4. Define the subject on its own terms and select a factual spine. Do not copy a comparable outline
    or infer importance from profile/category frequency.
 5. Draft the body, then the lead, as raw MediaWiki wikitext.
-6. Apply `writing_context/style_rules.md` and record what was removed or reframed in the adversarial
-   reader edit.
+6. Run the canonical `prose-review` skill in a fresh context when possible and record what was
+   removed or reframed in the adversarial reader edit.
 7. Run lint and review, but do not treat mechanical success as a quality score.
 8. Stop short of `article accept`, promotion, or push; a named human reviewer owns those decisions.
 

@@ -38,8 +38,8 @@ use crate::knowledge::templates::{
     query_template_reference,
 };
 use crate::profile::{
-    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, GoldenSetRules,
-    InfoboxPreference, LintRules, ProfileOverlay, RemiliaRules, sync_template_catalog_with_overlay,
+    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, InfoboxPreference,
+    LintRules, SiteProfile, TemplateRules, sync_template_catalog_with_profile,
 };
 use crate::runtime::{ResolvedPaths, ValueSource};
 
@@ -70,9 +70,9 @@ fn paths(project_root: &Path) -> ResolvedPaths {
     }
 }
 
-fn test_profile_overlay() -> ProfileOverlay {
-    ProfileOverlay {
-        schema_version: "profile_overlay_v1".to_string(),
+fn test_site_profile() -> SiteProfile {
+    SiteProfile {
+        schema_version: "site_profile_v1".to_string(),
         profile_id: "test-profile".to_string(),
         base_profile_id: "test-base".to_string(),
         docs_profile: "remilia-wiki".to_string(),
@@ -97,9 +97,9 @@ fn test_profile_overlay() -> ProfileOverlay {
             }],
             use_named_references: true,
             leave_archive_fields_blank: true,
-            unreliable_sources: Vec::new(),
+            source_review_rules: Vec::new(),
         },
-        remilia: RemiliaRules {
+        templates: TemplateRules {
             infobox_preferences: vec![
                 InfoboxPreference {
                     subject_type: "concept".to_string(),
@@ -115,16 +115,9 @@ fn test_profile_overlay() -> ProfileOverlay {
             preferred_categories: vec!["Category:Ideas".to_string()],
         },
         lint: LintRules {
-            synthetic_phrase_prompts: Vec::new(),
-            discouraged_relationship_headings: Vec::new(),
-            discouraged_lead_relationship_terms: Vec::new(),
             forbid_curly_quotes: true,
             forbid_placeholder_fragments: Vec::new(),
             proper_nouns: Vec::new(),
-        },
-        golden_set: GoldenSetRules {
-            article_corpus_available: false,
-            source_documents: Vec::new(),
         },
         extension_contracts: Vec::new(),
         refreshed_at: "1739000000".to_string(),
@@ -486,7 +479,7 @@ fn extract_module_invocations_captures_functions_and_parameter_keys() {
 
 #[test]
 fn extract_reference_records_parses_named_refs_and_template_summaries() {
-    let content = "Lead <ref name=\"alpha\">{{Cite web|title=Alpha Source|url=https://remilia.org/alpha|website=Remilia|author=Jane Example|date=2025-01-01|doi=10.1234/Alpha-01}}</ref> tail <ref group=\"note\" name=\"reuse\" />";
+    let content = "Lead <ref name=\"alpha\">{{Cite web|title=Alpha Source|url=https://example.org/alpha|website=Example|author=Jane Example|date=2025-01-01|doi=10.1234/Alpha-01}}</ref> tail <ref group=\"note\" name=\"reuse\" />";
     let references = extract_reference_records(content);
 
     assert_eq!(references.len(), 2);
@@ -501,16 +494,16 @@ fn extract_reference_records_parses_named_refs_and_template_summaries() {
         Some("Template:Cite web")
     );
     assert_eq!(references[0].source_type, "web");
-    assert_eq!(references[0].source_origin, "first-party");
-    assert_eq!(references[0].source_family, "first-party-web");
+    assert_eq!(references[0].source_origin, "external");
+    assert_eq!(references[0].source_family, "web");
     assert_eq!(references[0].authority_kind, "domain");
-    assert_eq!(references[0].source_authority, "remilia.org");
+    assert_eq!(references[0].source_authority, "example.org");
     assert_eq!(references[0].reference_title, "Alpha Source");
-    assert_eq!(references[0].source_container, "Remilia");
+    assert_eq!(references[0].source_container, "Example");
     assert_eq!(references[0].source_author, "Jane Example");
-    assert_eq!(references[0].source_domain, "remilia.org");
+    assert_eq!(references[0].source_domain, "example.org");
     assert_eq!(references[0].source_date, "2025-01-01");
-    assert_eq!(references[0].canonical_url, "https://remilia.org/alpha");
+    assert_eq!(references[0].canonical_url, "https://example.org/alpha");
     assert!(
         references[0]
             .identifier_entries
@@ -521,12 +514,12 @@ fn extract_reference_records_parses_named_refs_and_template_summaries() {
         references[0]
             .source_urls
             .iter()
-            .any(|url| url == "https://remilia.org/alpha")
+            .any(|url| url == "https://example.org/alpha")
     );
     assert!(references[0].citation_profile.contains("web"));
-    assert!(references[0].citation_profile.contains("remilia.org"));
+    assert!(references[0].citation_profile.contains("example.org"));
     assert!(
-        references[0]
+        !references[0]
             .retrieval_signals
             .iter()
             .any(|flag| flag == "first-party")
@@ -1284,7 +1277,7 @@ fn authoring_contract_plan_uses_indexed_template_module_graph() {
         "return { render = function(frame) return frame.args.name end }",
     );
     rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
-    sync_template_catalog_with_overlay(&paths, &test_profile_overlay()).expect("sync catalog");
+    sync_template_catalog_with_profile(&paths, &test_site_profile()).expect("sync catalog");
 
     let connection =
         crate::schema::open_initialized_database_connection(&paths.db_path).expect("open db");
@@ -1365,7 +1358,7 @@ fn authoring_contract_index_preserves_case_distinct_template_titles() {
         "Lowercase internal title.",
     );
     rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
-    sync_template_catalog_with_overlay(&paths, &test_profile_overlay()).expect("sync catalog");
+    sync_template_catalog_with_profile(&paths, &test_site_profile()).expect("sync catalog");
 
     let connection =
         crate::schema::open_initialized_database_connection(&paths.db_path).expect("open db");
@@ -1524,7 +1517,7 @@ fn build_authoring_knowledge_pack_bridges_templates_modules_and_docs() {
         crate::schema::open_initialized_database_connection(&paths.db_path).expect("open db");
     connection
         .execute(
-            "UPDATE docs_corpora SET source_profile = 'remilia-wiki'",
+            "UPDATE docs_corpora SET source_profile = 'mw-1.44-authoring'",
             [],
         )
         .expect("set docs profile");
@@ -1793,18 +1786,13 @@ fn build_article_start_uses_neutral_surfaces_without_forced_type() {
         AuthoringKnowledgePack::Found(report) => *report,
         other => panic!("expected found authoring pack, got {other:?}"),
     };
-    let article_start =
-        build_article_start(&report, &test_profile_overlay(), ArticleStartIntent::New);
+    let article_start = build_article_start(&report, &test_site_profile(), ArticleStartIntent::New);
     let serialized = serde_json::to_string(&article_start).expect("serialize article start");
 
-    assert_eq!(article_start.schema_version, "article_start_v3");
-    assert!(article_start.authoring_contract.agent_may_draft_prose);
-    assert!(
-        article_start
-            .authoring_contract
-            .human_acceptance_required_for_publication
-    );
-    assert!(!article_start.authoring_contract.model_output_is_evidence);
+    assert_eq!(article_start.schema_version, "article_start_v4");
+    assert!(!serialized.contains("authoring_contract"));
+    assert!(!serialized.contains("next_actions"));
+    assert!(!serialized.contains("open_questions"));
     assert_eq!(article_start.intent, ArticleStartIntent::New);
     assert!(!serialized.contains("\"article_type\""));
     assert!(!serialized.contains("confidence"));
@@ -1895,7 +1883,7 @@ fn build_article_start_scopes_existing_page_comparables_to_its_infobox_type() {
         other => panic!("expected found authoring pack, got {other:?}"),
     };
     let article_start =
-        build_article_start(&report, &test_profile_overlay(), ArticleStartIntent::Audit);
+        build_article_start(&report, &test_site_profile(), ArticleStartIntent::Audit);
 
     assert!(
         article_start
@@ -1951,8 +1939,7 @@ fn build_article_start_marks_empty_local_evidence_without_forcing_comparables() 
         AuthoringKnowledgePack::Found(report) => *report,
         other => panic!("expected found authoring pack, got {other:?}"),
     };
-    let article_start =
-        build_article_start(&report, &test_profile_overlay(), ArticleStartIntent::New);
+    let article_start = build_article_start(&report, &test_site_profile(), ArticleStartIntent::New);
 
     assert_eq!(
         article_start.evidence_profile.missing_query_terms,
@@ -1967,18 +1954,6 @@ fn build_article_start_marks_empty_local_evidence_without_forcing_comparables() 
             .map(|section| section.heading.as_str())
             .collect::<Vec<_>>(),
         vec!["References"]
-    );
-    assert!(
-        article_start
-            .next_actions
-            .iter()
-            .any(|action| action.label == "Gather independent sources")
-    );
-    assert!(
-        article_start
-            .open_questions
-            .iter()
-            .any(|question| question.question.contains("editorial vantage"))
     );
 }
 

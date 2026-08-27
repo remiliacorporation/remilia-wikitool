@@ -17,7 +17,7 @@ pub(super) fn lint_extension_contracts(
     // tag to the doc adds its empty-body lint without code changes.
     lint_tabber_blocks(document, matches);
     lint_gallery_blocks(document, matches);
-    for contract in &resources.overlay.extension_contracts {
+    for contract in &resources.profile.extension_contracts {
         if contract.kind != "tag"
             || !contract.body_required
             || contract.name.eq_ignore_ascii_case("tabber")

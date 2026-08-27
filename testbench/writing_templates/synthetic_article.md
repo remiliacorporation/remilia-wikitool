@@ -24,7 +24,7 @@ and source scope explicitly.
 4. Cite fixture source IDs using the supplied `.invalid` URLs exactly; never invent metadata.
 5. Add headings, an infobox, appendices, links, and categories only when the packet and target
    fixture justify them. There is no required count.
-6. Apply `writing_context/style_rules.md` and record the reader-value judgment.
+6. Run the canonical `prose-review` skill and record the reader-value judgment.
 
 If a required fact or source is absent, omit it or state the gap in the review note—not in fluent
 replacement prose.

@@ -65,12 +65,13 @@ Usage: wikitool init [OPTIONS]
 
 Options:
       --project-root <PATH>
-      --wiki-url <URL>       Target wiki base URL; defaults to https://wiki.remilia.org
-      --api-url <URL>        Target MediaWiki API URL; defaults to https://wiki.remilia.org/api.php
+      --wiki-url <URL>       Target wiki base URL
+      --api-url <URL>        Target MediaWiki API URL
       --data-dir <PATH>
+      --adapter-path <PATH>  Explicit site-adapter profile path to validate and store in project config
       --config <PATH>
-      --templates            Create templates/ during initialization
       --diagnostics          Print resolved runtime diagnostics
+      --templates            Create templates/ during initialization
       --force                Overwrite existing config/parser files
       --no-config            Skip writing .wikitool/config.toml
       --no-parser-config     Skip writing parser config
@@ -595,7 +596,7 @@ Hydrate a named docs profile
 Usage: wikitool docs import-profile [OPTIONS] [PROFILE]
 
 Arguments:
-  [PROFILE]  [default: remilia-wiki]
+  [PROFILE]  [default: mw-1.44-authoring]
 
 Options:
       --installed              Discover installed extensions from the configured wiki
@@ -823,7 +824,7 @@ Build content knowledge and hydrate a docs profile
 Usage: wikitool knowledge warm [OPTIONS]
 
 Options:
-      --docs-profile <PROFILE>  Docs profile to hydrate during warmup [default: remilia-wiki]
+      --docs-profile <PROFILE>  Docs profile to hydrate during warmup [default: mw-1.44-authoring]
       --project-root <PATH>
       --data-dir <PATH>
       --docs-mode <MODE>        Docs hydration mode: missing|refresh|skip [default: missing] [possible values: missing, refresh, skip]
@@ -841,7 +842,7 @@ Report knowledge readiness and degradations
 Usage: wikitool knowledge status [OPTIONS]
 
 Options:
-      --docs-profile <PROFILE>  Docs profile to assess for editorial-support readiness [default: remilia-wiki]
+      --docs-profile <PROFILE>  Docs profile to assess for editorial-support readiness [default: mw-1.44-authoring]
       --project-root <PATH>
       --data-dir <PATH>
       --format <FORMAT>         Output format: text|json [default: text] [possible values: text, json]
@@ -875,7 +876,7 @@ Options:
       --link-limit <N>              Maximum internal link suggestions [default: 18]
       --category-limit <N>          Maximum category suggestions [default: 8]
       --template-limit <N>          Maximum template summaries [default: 16]
-      --docs-profile <PROFILE>      Docs profile to use for bridged authoring retrieval [default: remilia-wiki]
+      --docs-profile <PROFILE>      Docs profile to use for bridged authoring retrieval [default: mw-1.44-authoring]
       --contract-profile <PROFILE>  Contract traversal profile: index|author|implementation [default: author] [possible values: index, author, implementation]
       --contract-query <QUERY>      Optional contract traversal query separate from TOPIC, such as "species infobox taxonomy"
       --format <FORMAT>             Output format: text|json [default: json] [possible values: text, json]
@@ -991,7 +992,7 @@ Options:
       --agent <AGENT>                 Agent label for brief metadata
       --data-dir <PATH>
       --config <PATH>
-      --no-scout                      Skip the local-evidence scout (blank brief, generic question agenda)
+      --no-scout                      Skip the local-evidence scout and create a blank ledger
       --diagnostics                   Print resolved runtime diagnostics
       --source-article <TITLE>        Existing article title this interview concerns
       --related-draft <PATH>          Related draft path to record in brief metadata
@@ -1694,9 +1695,9 @@ Usage: wikitool wiki [OPTIONS] <COMMAND>
 Commands:
   capabilities  Sync and inspect live wiki capability manifests
   cargo         Query the live wiki's Cargo extension tables
-  profile       Show the combined live/profile-aware wiki surface
+  profile       Show the combined live and site-adapter wiki surface
   render-check  Validate rendered live HTML and scoped link contracts
-  rules         Show the structured local editorial rules overlay
+  rules         Show the typed local site-adapter rules
   surface       Show the agent-facing template, module, asset, and extension authoring surface
   help          Print this message or the help of the given subcommand(s)
 
@@ -1833,7 +1834,7 @@ Options:
       --field <FIELD>        Field to select (repeat or comma-separate); defaults to the table's full schema
       --project-root <PATH>
       --data-dir <PATH>
-      --where <CLAUSE>       Cargo where clause, e.g. collection='Milady Maker'
+      --where <CLAUSE>       Cargo where clause, e.g. collection='Example Collection'
       --config <PATH>
       --order-by <CLAUSE>    Cargo order_by clause
       --diagnostics          Print resolved runtime diagnostics
@@ -1865,12 +1866,12 @@ Options:
 ## wiki profile
 
 ```text
-Show the combined live/profile-aware wiki surface
+Show the combined live and site-adapter wiki surface
 
 Usage: wikitool wiki profile [OPTIONS] <COMMAND>
 
 Commands:
-  sync    Refresh the local rules overlay and live capability snapshot
+  sync    Refresh the local site-adapter artifact and live capability snapshot
   show    Show the current combined profile snapshot
   remote  Inspect a remote target wiki capability profile without storing it locally
   help    Print this message or the help of the given subcommand(s)
@@ -1886,7 +1887,7 @@ Options:
 ## wiki profile sync
 
 ```text
-Refresh the local rules overlay and live capability snapshot
+Refresh the local site-adapter artifact and live capability snapshot
 
 Usage: wikitool wiki profile sync [OPTIONS]
 
@@ -1967,12 +1968,12 @@ Options:
 ## wiki rules
 
 ```text
-Show the structured local editorial rules overlay
+Show the typed local site-adapter rules
 
 Usage: wikitool wiki rules [OPTIONS] <COMMAND>
 
 Commands:
-  show  Show the current profile rules overlay
+  show  Show the current typed site-adapter rules
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1986,7 +1987,7 @@ Options:
 ## wiki rules show
 
 ```text
-Show the current profile rules overlay
+Show the current typed site-adapter rules
 
 Usage: wikitool wiki rules show [OPTIONS]
 
@@ -2171,10 +2172,10 @@ Lint and mechanically remediate article drafts
 Usage: wikitool article [OPTIONS] <COMMAND>
 
 Commands:
-  accept   Record human acceptance of the exact article prose
+  accept   Record a hash-bound acceptance decision in the local ledger
   lint     Lint article wikitext against wiki/profile rules
   fix      Apply safe mechanical fixes to article wikitext
-  promote  Promote an exactly human-accepted draft into the sync tree
+  promote  Promote a draft with a current hash-bound acceptance ledger entry
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -2188,7 +2189,7 @@ Options:
 ## article accept
 
 ```text
-Record human acceptance of the exact article prose
+Record a hash-bound acceptance decision in the local ledger
 
 Usage: wikitool article accept [OPTIONS] --title <TITLE> --human-editor <IDENTITY> --prose-origin <ORIGIN> <PATH>
 
@@ -2199,10 +2200,10 @@ Options:
       --project-root <PATH>
       --title <TITLE>            Canonical Main-namespace article title
       --data-dir <PATH>
-      --human-editor <IDENTITY>  Name or handle of the human editor who read and accepted the exact prose
+      --human-editor <IDENTITY>  Self-reported name or handle of the human editor; Wikitool does not authenticate it
       --config <PATH>
       --prose-origin <ORIGIN>    Prose origin: human-draft|human-revision|agent-draft|collaborative-draft|mechanical-conversion-of-human-prose|human-reviewed-legacy [possible values: human-draft, human-revision, agent-draft, collaborative-draft, mechanical-conversion-of-human-prose, human-reviewed-legacy]
-      --allow-warnings           Record that the human editor explicitly accepted remaining lint warnings
+      --allow-warnings           Record explicit caller acceptance of remaining lint warnings
       --diagnostics              Print resolved runtime diagnostics
       --format <FORMAT>          Output format: text|json [default: text] [possible values: text, json]
   -h, --help                     Print help
@@ -2259,7 +2260,7 @@ Options:
 ## article promote
 
 ```text
-Promote an exactly human-accepted draft into the sync tree
+Promote a draft with a current hash-bound acceptance ledger entry
 
 Usage: wikitool article promote [OPTIONS] --title <TITLE> <PATH>
 
@@ -2382,7 +2383,7 @@ Options:
       --diagnostics             Print resolved runtime diagnostics
       --pull                    Pull content after initialization (default: true)
       --no-pull                 Skip content pull during session refresh
-      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-wiki]
+      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: mw-1.44-authoring]
       --docs-mode <MODE>        Docs hydration mode for knowledge warmup: missing|refresh|skip [default: missing] [possible values: missing, refresh, skip]
   -h, --help                    Print help
 ```
@@ -2402,6 +2403,6 @@ Options:
       --config <PATH>
       --no-templates            Do not create templates/ during initialization
       --diagnostics             Print resolved runtime diagnostics
-      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: remilia-wiki]
+      --docs-profile <PROFILE>  Docs profile to hydrate during knowledge warmup [default: mw-1.44-authoring]
   -h, --help                    Print help
 ```

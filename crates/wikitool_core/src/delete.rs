@@ -7,7 +7,9 @@ use serde::Serialize;
 use crate::filesystem::{ScanOptions, scan_files, validate_scoped_path};
 use crate::runtime::ResolvedPaths;
 use crate::schema::open_initialized_database_connection;
-use crate::support::{normalize_path, normalize_pathbuf, table_exists, unix_timestamp};
+use crate::support::{
+    atomic_write, normalize_path, normalize_pathbuf, table_exists, unix_timestamp,
+};
 
 #[derive(Debug, Clone)]
 pub struct DeleteOptions {
@@ -90,12 +92,7 @@ pub fn delete_local_page_if_present(
     if let Some(backup_path) = &backup_path {
         let content = fs::read_to_string(&absolute_path)
             .with_context(|| format!("failed to read {}", absolute_path.display()))?;
-        if let Some(parent) = backup_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create backup dir {}", parent.display()))?;
-        }
-        fs::write(backup_path, content)
-            .with_context(|| format!("failed to write backup {}", backup_path.display()))?;
+        atomic_write(backup_path, content)?;
     }
 
     fs::remove_file(&absolute_path)

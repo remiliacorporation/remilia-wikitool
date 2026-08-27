@@ -1,9 +1,9 @@
 use super::WikiJsonView;
 use super::summary::{summarize_capability_manifest, summarize_profile_snapshot};
 use wikitool_core::profile::{
-    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, GoldenSetRules,
-    InfoboxPreference, LintRules, ProfileOverlay, ProfileSourceDocument, RemiliaRules,
-    TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
+    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, InfoboxPreference,
+    LintRules, ProfileSourceDocument, SiteProfile, TemplateCatalogSummary, TemplateRules,
+    WikiCapabilityManifest, WikiProfileSnapshot,
 };
 
 fn sample_manifest() -> WikiCapabilityManifest {
@@ -46,11 +46,11 @@ fn sample_manifest() -> WikiCapabilityManifest {
 
 fn sample_snapshot() -> WikiProfileSnapshot {
     WikiProfileSnapshot {
-        base_profile_id: "remilia-base".to_string(),
-        overlay: ProfileOverlay {
-            schema_version: "profile_overlay_v1".to_string(),
-            profile_id: "remilia".to_string(),
-            base_profile_id: "remilia-base".to_string(),
+        base_profile_id: "mediawiki-generic".to_string(),
+        adapter: SiteProfile {
+            schema_version: "site_profile_v1".to_string(),
+            profile_id: "example-wiki".to_string(),
+            base_profile_id: "mediawiki-generic".to_string(),
             docs_profile: "remilia-wiki".to_string(),
             source_documents: vec![ProfileSourceDocument {
                 relative_path: "docs/profile.md".to_string(),
@@ -76,9 +76,9 @@ fn sample_snapshot() -> WikiProfileSnapshot {
                 }],
                 use_named_references: true,
                 leave_archive_fields_blank: true,
-                unreliable_sources: Vec::new(),
+                source_review_rules: Vec::new(),
             },
-            remilia: RemiliaRules {
+            templates: TemplateRules {
                 infobox_preferences: vec![InfoboxPreference {
                     subject_type: "concept".to_string(),
                     template_title: "Template:Infobox concept".to_string(),
@@ -88,23 +88,16 @@ fn sample_snapshot() -> WikiProfileSnapshot {
                 preferred_categories: vec!["Category:Ideas".to_string()],
             },
             lint: LintRules {
-                synthetic_phrase_prompts: vec!["foo".to_string()],
-                discouraged_relationship_headings: Vec::new(),
-                discouraged_lead_relationship_terms: Vec::new(),
                 forbid_curly_quotes: true,
                 forbid_placeholder_fragments: vec!["todo".to_string()],
                 proper_nouns: vec!["Webring".to_string()],
-            },
-            golden_set: GoldenSetRules {
-                article_corpus_available: true,
-                source_documents: vec!["alpha".to_string()],
             },
             extension_contracts: Vec::new(),
             refreshed_at: "1739000000".to_string(),
         },
         capabilities: Some(sample_manifest()),
         template_catalog: Some(TemplateCatalogSummary {
-            profile_id: "remilia".to_string(),
+            profile_id: "example-wiki".to_string(),
             template_count: 2,
             templatedata_count: 1,
             redirect_alias_count: 1,
@@ -168,4 +161,6 @@ fn profile_summary_json_uses_profile_template_titles() {
             .and_then(|value| value.get("extensions"))
             .is_some()
     );
+    assert!(summary_json.get("adapter").is_some());
+    assert!(summary_json.get("overlay").is_none());
 }
