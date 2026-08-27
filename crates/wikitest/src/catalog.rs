@@ -9,11 +9,16 @@ use walkdir::WalkDir;
 
 use crate::artifact::portable;
 use crate::model::{SCENARIO_SCHEMA, SUITE_SCHEMA, ScenarioManifest, SuiteManifest};
+use crate::prose_model::{
+    PROSE_ASSIGNMENT_SCHEMA, PROSE_SUITE_SCHEMA, ProseAssignment, ProseSuite,
+};
 
 #[derive(Debug, Clone)]
 pub enum Manifest {
     Scenario(ScenarioManifest),
     Suite(SuiteManifest),
+    ProseAssignment(Box<ProseAssignment>),
+    ProseSuite(ProseSuite),
 }
 
 impl Manifest {
@@ -21,6 +26,8 @@ impl Manifest {
         match self {
             Self::Scenario(value) => &value.id,
             Self::Suite(value) => &value.id,
+            Self::ProseAssignment(value) => &value.id,
+            Self::ProseSuite(value) => &value.id,
         }
     }
 
@@ -28,6 +35,8 @@ impl Manifest {
         match self {
             Self::Scenario(_) => "scenario",
             Self::Suite(_) => "suite",
+            Self::ProseAssignment(_) => "prose_assignment",
+            Self::ProseSuite(_) => "prose_suite",
         }
     }
 
@@ -35,6 +44,8 @@ impl Manifest {
         match self {
             Self::Scenario(value) => &value.title,
             Self::Suite(value) => &value.title,
+            Self::ProseAssignment(value) => &value.title,
+            Self::ProseSuite(value) => &value.title,
         }
     }
 
@@ -42,6 +53,8 @@ impl Manifest {
         match self {
             Self::Scenario(value) => value.validate(),
             Self::Suite(value) => value.validate(),
+            Self::ProseAssignment(value) => value.validate(),
+            Self::ProseSuite(value) => value.validate(),
         }
     }
 }
@@ -82,6 +95,14 @@ pub fn load_manifest(path: &Path) -> Result<(Manifest, Vec<u8>)> {
             serde_json::from_slice(&bytes)
                 .with_context(|| format!("invalid suite {}", path.display()))?,
         ),
+        PROSE_ASSIGNMENT_SCHEMA => Manifest::ProseAssignment(Box::new(
+            serde_json::from_slice(&bytes)
+                .with_context(|| format!("invalid prose assignment {}", path.display()))?,
+        )),
+        PROSE_SUITE_SCHEMA => Manifest::ProseSuite(
+            serde_json::from_slice(&bytes)
+                .with_context(|| format!("invalid prose suite {}", path.display()))?,
+        ),
         schema => bail!(
             "unsupported manifest schema '{schema}' in {}",
             path.display()
@@ -104,7 +125,11 @@ pub fn scan_catalogs(roots: &[PathBuf]) -> Result<Vec<CatalogEntry>> {
                 continue;
             }
             let file_name = entry.file_name().to_string_lossy();
-            if file_name != "scenario.json" && file_name != "suite.json" {
+            if file_name != "scenario.json"
+                && file_name != "suite.json"
+                && file_name != "assignment.json"
+                && file_name != "prose-suite.json"
+            {
                 continue;
             }
             let (manifest, _) = load_manifest(entry.path())?;

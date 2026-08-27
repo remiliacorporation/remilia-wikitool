@@ -1,0 +1,8 @@
+Document title: Cataloguing and scan notes
+Publisher: Aster Index
+Published: 3 April 2024
+Fixture URL: https://fixtures.invalid/aster-index/cataloguing
+
+The archive accepts scans contributed by former bulletin-board operators and community members. Volunteers record the physical source, contributor, scan date, legible printed date, community name, and designer credit. Posters with uncertain dates are assigned a date range and marked as estimates. Duplicate scans are retained only when they document a materially different physical copy.
+
+The public catalogue provides filters for community, year, and credited designer. Original physical posters remain with their contributors; Aster Index stores and publishes the digital files and catalogue records.

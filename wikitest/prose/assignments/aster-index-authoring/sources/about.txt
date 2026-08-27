@@ -1,0 +1,8 @@
+Document title: About Aster Index
+Publisher: Aster Index
+Published: 12 February 2024
+Fixture URL: https://fixtures.invalid/aster-index/about
+
+Aster Index is a volunteer-maintained digital archive established in 2022. It catalogues 480 scanned posters made for small bulletin-board communities active from 1998 through 2007. The archive was created to keep dispersed event notices, server advertisements, and community artwork available in one searchable collection.
+
+Entries are organized by community, year, and credited designer when a credit appears on the poster. The maintainers do not assign a designer when the surviving image has no credit.

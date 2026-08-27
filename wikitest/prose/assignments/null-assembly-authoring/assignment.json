@@ -1,0 +1,54 @@
+{
+  "schema": "wikitest.prose-assignment.v1",
+  "id": "null-assembly-authoring",
+  "title": "Null Assembly chronology authoring",
+  "description": "Tests whether an author preserves the distinction between an announcement, an earliest preserved page, and an unknown first meeting.",
+  "mode": "authoring",
+  "coverage": [
+    "closed-world-authoring",
+    "claim-source-map",
+    "chronology-uncertainty",
+    "source-fidelity",
+    "independent-review"
+  ],
+  "article": {
+    "title": "Null Assembly",
+    "namespace": "Main",
+    "article_object": "A concise encyclopedia article about the documented reading group.",
+    "reader_need": "Explain the group and distinguish its announcement date from the earliest preserved session record.",
+    "sensitive": false
+  },
+  "author_instructions": [
+    {"id": "wiki-writing", "root": "repository", "locator": "ai-pack/codex_skills/wiki-writing/SKILL.md", "sha256": "2a0ce92541d31460171681021a742745da98e082bbe791f2ed5c4ae001968771"},
+    {"id": "evidence-to-prose", "root": "repository", "locator": "ai-pack/codex_skills/wiki-writing/references/evidence-to-prose.md", "sha256": "2106c5cb8c6503460fc94aea54c94466ddac422d4826f17a7d7bcc37cc017085"},
+    {"id": "mediawiki-structure", "root": "repository", "locator": "ai-pack/codex_skills/wiki-writing/references/mediawiki-structure.md", "sha256": "8e0ccc2c4f971cc133b1fcd1cb4cd18ac8e97004bd1ccc3cf856d09a6098af6c"}
+  ],
+  "review_instructions": [
+    {"id": "prose-review", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/SKILL.md", "sha256": "560097c3b15f5fbf04be53f960da3517ae1c4a08be79e5eab9d74cfdfdf6df37"},
+    {"id": "source-fidelity", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
+    {"id": "reader-value", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"}
+  ],
+  "sources": [
+    {"id": "s1", "title": "Null Assembly announcement", "locator": "sources/announcement.txt", "sha256": "828fa89097bdcb2ffd7b1ebad8258cdf77c794c3f2c2ddc4cd6cbe3cec2f99e6", "role": "primary", "citation": "Null Assembly, Null Assembly announcement, 14 March 2020, https://fixtures.invalid/null-assembly/announcement"},
+    {"id": "s2", "title": "Null Assembly public session archive", "locator": "sources/archive.txt", "sha256": "6bf57dbb2b08286b6c100841f71865d881cef945200a79b6456c18212dbf218c", "role": "primary", "citation": "Null Assembly, Null Assembly public session archive, updated 2 December 2023, https://fixtures.invalid/null-assembly/archive"}
+  ],
+  "do_not_assert": [
+    "The first meeting occurred on 14 March 2020.",
+    "No March or April 2020 meeting occurred.",
+    "The archive proves that the announcement was false."
+  ],
+  "allowed_decisions": ["article", "hold"],
+  "review_axes": [
+    "article-object",
+    "source-fidelity",
+    "citation-integrity",
+    "due-weight",
+    "subject-control",
+    "reader-value",
+    "structure",
+    "prose-specificity",
+    "sensitive-claims",
+    "mechanical-validity",
+    "residual-risk"
+  ]
+}

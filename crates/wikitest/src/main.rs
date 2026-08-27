@@ -17,6 +17,17 @@ use wikitest::model::{
     RECEIPT_SCHEMA, RunStatus, SCENARIO_SCHEMA, SUITE_RECEIPT_SCHEMA, SUITE_SCHEMA,
 };
 use wikitest::runner::{RunOptions, run_scenario, run_suite};
+use wikitest::{
+    prose::{
+        ProseOptions, prepare_assignment, prepare_suite as prepare_prose_suite, submit_author,
+        submit_review,
+    },
+    prose_model::{
+        AUTHOR_REQUEST_SCHEMA, AUTHOR_SUBMISSION_SCHEMA, CLAIM_MAP_SCHEMA, PROSE_ASSIGNMENT_SCHEMA,
+        PROSE_RECEIPT_SCHEMA, PROSE_SUITE_RECEIPT_SCHEMA, PROSE_SUITE_SCHEMA,
+        REVIEW_REQUEST_SCHEMA, REVIEW_SUBMISSION_SCHEMA,
+    },
+};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -80,6 +91,31 @@ enum Command {
     },
     /// Verify a run or suite receipt against its retained artifacts.
     Inspect { receipt: PathBuf },
+    /// Prepare and record externally authored or reviewed prose evaluations.
+    Prose {
+        #[command(subcommand)]
+        command: ProseCommand,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum ProseCommand {
+    /// Freeze one assignment and emit a harness-neutral author or review request.
+    Prepare { assignment: String },
+    /// Prepare every assignment in a prose suite.
+    PrepareSuite { suite: String },
+    /// Bind an external author's candidate and claim map to a prepared run.
+    SubmitAuthor {
+        run: PathBuf,
+        #[arg(long)]
+        submission: PathBuf,
+    },
+    /// Bind an independent review to the exact frozen candidate and packet.
+    SubmitReview {
+        run: PathBuf,
+        #[arg(long)]
+        submission: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -96,6 +132,7 @@ struct CatalogRow {
     path: String,
     scenario_kind: Option<String>,
     environment: Option<String>,
+    prose_mode: Option<String>,
 }
 
 fn main() -> ExitCode {
@@ -115,14 +152,16 @@ fn execute(cli: Cli) -> Result<u8> {
         Command::Describe => {
             let value = json!({
                 "schema": "wikitest.driver.v1",
-                "manifest_schemas": [SCENARIO_SCHEMA, SUITE_SCHEMA],
-                "receipt_schemas": [RECEIPT_SCHEMA, SUITE_RECEIPT_SCHEMA],
-                "commands": ["describe", "list", "validate", "run", "suite", "inspect"],
+                "manifest_schemas": [SCENARIO_SCHEMA, SUITE_SCHEMA, PROSE_ASSIGNMENT_SCHEMA, PROSE_SUITE_SCHEMA],
+                "receipt_schemas": [RECEIPT_SCHEMA, SUITE_RECEIPT_SCHEMA, PROSE_RECEIPT_SCHEMA, PROSE_SUITE_RECEIPT_SCHEMA],
+                "submission_schemas": [AUTHOR_SUBMISSION_SCHEMA, CLAIM_MAP_SCHEMA, REVIEW_SUBMISSION_SCHEMA],
+                "request_schemas": [AUTHOR_REQUEST_SCHEMA, REVIEW_REQUEST_SCHEMA],
+                "commands": ["describe", "list", "validate", "run", "suite", "prose", "inspect"],
                 "scenario_kinds": ["mechanical", "knowledge"],
                 "environments": ["isolated", "host_read_only"],
                 "authority": {
                     "deterministic": "Wikitest can assert process, structured output, file, hash, and completeness facts.",
-                    "editorial": "Prose quality is outside deterministic scenario authority and requires a separate named adjudicator.",
+                    "editorial": "Wikitest binds prose evidence, instructions, candidates, identities, and review records; quality comes only from a distinct named reviewer, never lint or author self-attestation.",
                     "host_safety": "host_read_only manifests are schema-checked against an explicit command allowlist."
                 }
             });
@@ -141,7 +180,7 @@ fn execute(cli: Cli) -> Result<u8> {
             let rows = scan_catalogs(&catalogs)?
                 .into_iter()
                 .map(|entry| {
-                    let (scenario_kind, environment) = match &entry.manifest {
+                    let (scenario_kind, environment, prose_mode) = match &entry.manifest {
                         Manifest::Scenario(value) => (
                             Some(
                                 match value.kind {
@@ -159,8 +198,20 @@ fn execute(cli: Cli) -> Result<u8> {
                                 }
                                 .to_owned(),
                             ),
+                            None,
                         ),
-                        Manifest::Suite(_) => (None, None),
+                        Manifest::ProseAssignment(value) => (
+                            None,
+                            None,
+                            Some(
+                                match value.mode {
+                                    wikitest::prose_model::ProseMode::Authoring => "authoring",
+                                    wikitest::prose_model::ProseMode::Review => "review",
+                                }
+                                .to_owned(),
+                            ),
+                        ),
+                        Manifest::Suite(_) | Manifest::ProseSuite(_) => (None, None, None),
                     };
                     CatalogRow {
                         kind: entry.manifest.kind().to_owned(),
@@ -169,6 +220,7 @@ fn execute(cli: Cli) -> Result<u8> {
                         path: display_catalog_path(&repository, &entry.path),
                         scenario_kind,
                         environment,
+                        prose_mode,
                     }
                 })
                 .collect::<Vec<_>>();
@@ -187,6 +239,9 @@ fn execute(cli: Cli) -> Result<u8> {
             } else {
                 scan_catalogs(&catalogs)?
             };
+            for entry in &rows {
+                validate_manifest_closure(&entry.manifest, &catalogs)?;
+            }
             let validated = rows
                 .iter()
                 .map(|entry| {
@@ -251,7 +306,7 @@ fn execute(cli: Cli) -> Result<u8> {
             let value = serde_json::to_value(&inspection)?;
             render_value(cli.format, &value, || {
                 let mut lines = vec![format!(
-                    "verified: {} ({:?})",
+                    "verified: {} ({})",
                     inspection.verified, inspection.source_status
                 )];
                 lines.extend(inspection.checks.iter().map(|check| {
@@ -266,7 +321,115 @@ fn execute(cli: Cli) -> Result<u8> {
             })?;
             Ok(if inspection.verified { 0 } else { 1 })
         }
+        Command::Prose { command } => {
+            validate_output_budget(cli.max_output_bytes)?;
+            let options = prose_options(&cli, &repository, &catalogs)?;
+            match command {
+                ProseCommand::Prepare { assignment } => {
+                    let path = resolve_manifest(&assignment, &catalogs, "prose_assignment")?;
+                    let prepared = prepare_assignment(&path, &options)?;
+                    let value = serde_json::to_value(&prepared.receipt)?;
+                    render_value(cli.format, &value, || {
+                        format!(
+                            "{}: {:?}\nreceipt: {}\nrequest: {}",
+                            prepared.receipt.assignment.id,
+                            prepared.receipt.status,
+                            portable(&prepared.receipt_path),
+                            prose_request_path(&prepared.receipt_path, &prepared.receipt)
+                                .unwrap_or_else(|| "<none>".to_owned())
+                        )
+                    })?;
+                    Ok(0)
+                }
+                ProseCommand::PrepareSuite { suite } => {
+                    let path = resolve_manifest(&suite, &catalogs, "prose_suite")?;
+                    let prepared = prepare_prose_suite(&path, &options)?;
+                    let value = serde_json::to_value(&prepared.receipt)?;
+                    render_value(cli.format, &value, || {
+                        let mut lines = vec![format!(
+                            "{}: prepared {} assignment(s)\nreceipt: {}",
+                            prepared.receipt.suite.id,
+                            prepared.receipt.runs.len(),
+                            portable(&prepared.receipt_path)
+                        )];
+                        lines.extend(
+                            prepared
+                                .receipt
+                                .runs
+                                .iter()
+                                .map(|run| format!("{}: {}", run.assignment_id, run.run_locator)),
+                        );
+                        lines.join("\n")
+                    })?;
+                    Ok(0)
+                }
+                ProseCommand::SubmitAuthor { run, submission } => {
+                    let prepared = submit_author(&run, &submission, &options)?;
+                    let value = serde_json::to_value(&prepared.receipt)?;
+                    render_value(cli.format, &value, || {
+                        format!(
+                            "{}: {:?}\nreceipt: {}\nreview request: {}",
+                            prepared.receipt.assignment.id,
+                            prepared.receipt.status,
+                            portable(&prepared.receipt_path),
+                            prose_request_path(&prepared.receipt_path, &prepared.receipt)
+                                .unwrap_or_else(|| "<none>".to_owned())
+                        )
+                    })?;
+                    Ok(0)
+                }
+                ProseCommand::SubmitReview { run, submission } => {
+                    let prepared = submit_review(&run, &submission)?;
+                    let oracle = prepared
+                        .receipt
+                        .review
+                        .as_ref()
+                        .and_then(|review| review.oracle.as_ref());
+                    let oracle_passed = oracle.is_none_or(|oracle| oracle.passed);
+                    let value = serde_json::to_value(&prepared.receipt)?;
+                    render_value(cli.format, &value, || {
+                        format!(
+                            "{}: {:?}\nreceipt: {}\noracle: {}",
+                            prepared.receipt.assignment.id,
+                            prepared.receipt.status,
+                            portable(&prepared.receipt_path),
+                            match oracle {
+                                None => "not configured",
+                                Some(oracle) if oracle.passed => "satisfied",
+                                Some(_) => "not satisfied",
+                            }
+                        )
+                    })?;
+                    Ok(if oracle_passed { 0 } else { 1 })
+                }
+            }
+        }
     }
+}
+
+fn prose_options(cli: &Cli, repository: &Path, catalogs: &[PathBuf]) -> Result<ProseOptions> {
+    Ok(ProseOptions {
+        repository: repository.to_path_buf(),
+        artifacts_root: cli
+            .artifacts
+            .clone()
+            .unwrap_or_else(|| repository.join(".wikitest/runs")),
+        wikitool: resolve_wikitool(cli.wikitool.as_deref(), repository)?,
+        catalogs: catalogs.to_vec(),
+        maximum_output_bytes: cli.max_output_bytes,
+    })
+}
+
+fn prose_request_path(
+    receipt_path: &Path,
+    receipt: &wikitest::prose_model::ProseReceipt,
+) -> Option<String> {
+    let root = receipt_path.parent()?;
+    let artifact = receipt
+        .review_request
+        .as_ref()
+        .or(receipt.author_request.as_ref())?;
+    Some(portable(&root.join(&artifact.locator)))
 }
 
 fn run_options(cli: &Cli, repository: &Path, catalogs: &[PathBuf]) -> Result<RunOptions> {
@@ -321,6 +484,44 @@ fn resolve_any_manifest(
         [] => bail!("no manifest named '{selector}' in configured catalogs"),
         _ => bail!("manifest id '{selector}' is ambiguous across kinds"),
     }
+}
+
+fn validate_manifest_closure(manifest: &Manifest, catalogs: &[PathBuf]) -> Result<()> {
+    let (required, members, expected_kind) = match manifest {
+        Manifest::Suite(suite) => (&suite.required_coverage, &suite.scenarios, "scenario"),
+        Manifest::ProseSuite(suite) => (
+            &suite.required_coverage,
+            &suite.assignments,
+            "prose_assignment",
+        ),
+        Manifest::Scenario(_) | Manifest::ProseAssignment(_) => return Ok(()),
+    };
+    let mut observed = std::collections::BTreeSet::new();
+    for member in members {
+        let path = resolve_manifest(member, catalogs, expected_kind)?;
+        let (resolved, _) = load_manifest(&path)?;
+        match resolved {
+            Manifest::Scenario(scenario) if expected_kind == "scenario" => {
+                observed.extend(scenario.coverage);
+            }
+            Manifest::ProseAssignment(assignment) if expected_kind == "prose_assignment" => {
+                observed.extend(assignment.coverage);
+            }
+            _ => bail!("suite member '{member}' resolved to the wrong manifest kind"),
+        }
+    }
+    let missing = required
+        .iter()
+        .filter(|capability| !observed.contains(capability.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        bail!(
+            "suite '{}' is missing required coverage {missing:?}",
+            manifest.id()
+        );
+    }
+    Ok(())
 }
 
 fn canonicalize_existing(path: &Path) -> Result<PathBuf> {

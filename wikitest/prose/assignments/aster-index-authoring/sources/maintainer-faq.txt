@@ -1,0 +1,6 @@
+Document title: Maintainer FAQ
+Publisher: Aster Index
+Published: 7 January 2025
+Fixture URL: https://fixtures.invalid/aster-index/faq
+
+The maintainers state that Aster Index is independent and is not affiliated with Host Collective. They say that links to the archive are often shared in community channels and that such links should not be read as sponsorship or membership.

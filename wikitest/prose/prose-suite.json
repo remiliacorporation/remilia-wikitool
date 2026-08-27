@@ -1,0 +1,27 @@
+{
+  "schema": "wikitest.prose-suite.v1",
+  "id": "prose-dogfood",
+  "title": "Evidence-bound encyclopedic prose dogfood",
+  "required_coverage": [
+    "closed-world-authoring",
+    "claim-source-map",
+    "independent-review",
+    "controlled-review",
+    "clean-control",
+    "source-fidelity",
+    "citation-laundering",
+    "chronology-uncertainty",
+    "blp-sensitive",
+    "due-weight",
+    "gratuitous-framing",
+    "subject-control",
+    "reader-value"
+  ],
+  "assignments": [
+    "aster-index-authoring",
+    "null-assembly-authoring",
+    "review-sensitive-claim",
+    "review-host-framing",
+    "review-clean-date-record"
+  ]
+}

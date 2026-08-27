@@ -24,7 +24,13 @@ pub fn unix_ms() -> Result<u128> {
 }
 
 pub fn portable(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let value = path.to_string_lossy();
+    let value = value
+        .strip_prefix(r"\\?\UNC\")
+        .map(|rest| format!(r"\\{rest}"))
+        .or_else(|| value.strip_prefix(r"\\?\").map(str::to_owned))
+        .unwrap_or_else(|| value.into_owned());
+    value.replace('\\', "/")
 }
 
 pub fn relative_locator(root: &Path, path: &Path) -> Result<String> {
@@ -197,6 +203,15 @@ mod tests {
         assert_eq!(
             sha256_bytes(b"wikitest"),
             "ccd9e4b198436f47e42cada7755bbb2a150cc75ab2d6757dfc8f1f511c2edab0"
+        );
+    }
+
+    #[test]
+    fn portable_paths_hide_windows_verbatim_prefixes() {
+        assert_eq!(portable(Path::new(r"\\?\F:\AI\wiki")), "F:/AI/wiki");
+        assert_eq!(
+            portable(Path::new(r"\\?\UNC\server\share\wiki")),
+            "//server/share/wiki"
         );
     }
 

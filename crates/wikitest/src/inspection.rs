@@ -10,6 +10,12 @@ use crate::model::{
     ArtifactIdentity, RECEIPT_SCHEMA, RunReceipt, RunStatus, SUITE_RECEIPT_SCHEMA,
     ScenarioManifest, SuiteManifest, SuiteReceipt,
 };
+use crate::prose_model::{
+    AUTHOR_REQUEST_SCHEMA, AuthorRequest, PROSE_RECEIPT_SCHEMA, PROSE_SUITE_RECEIPT_SCHEMA,
+    ProseAssignment, ProseMode, ProseReceipt, ProseRunStatus, ProseSuite, ProseSuiteReceipt,
+    REVIEW_REQUEST_SCHEMA, REVIEW_SUBMISSION_SCHEMA, ReviewDisposition, ReviewPacketBinding,
+    ReviewRequest, ReviewSubmission,
+};
 
 pub const INSPECTION_SCHEMA: &str = "wikitest.receipt-inspection.v1";
 
@@ -18,7 +24,7 @@ pub const INSPECTION_SCHEMA: &str = "wikitest.receipt-inspection.v1";
 pub struct ReceiptInspection {
     pub schema: String,
     pub source_schema: String,
-    pub source_status: RunStatus,
+    pub source_status: String,
     pub verified: bool,
     pub checks: Vec<InspectionCheck>,
 }
@@ -57,6 +63,16 @@ pub fn inspect_receipt(path: &Path, repository: &Path) -> Result<ReceiptInspecti
             path,
             repository,
             serde_json::from_slice(&bytes).context("invalid suite receipt")?,
+        ),
+        PROSE_RECEIPT_SCHEMA => inspect_prose(
+            path,
+            repository,
+            serde_json::from_slice(&bytes).context("invalid prose receipt")?,
+        ),
+        PROSE_SUITE_RECEIPT_SCHEMA => inspect_prose_suite(
+            path,
+            repository,
+            serde_json::from_slice(&bytes).context("invalid prose suite receipt")?,
         ),
         _ => bail!("unsupported receipt schema '{schema}'"),
     }
@@ -183,7 +199,7 @@ fn inspect_run(path: &Path, repository: &Path, receipt: RunReceipt) -> Result<Re
     Ok(ReceiptInspection {
         schema: INSPECTION_SCHEMA.to_owned(),
         source_schema: RECEIPT_SCHEMA.to_owned(),
-        source_status: receipt.status,
+        source_status: enum_name(receipt.status),
         verified,
         checks,
     })
@@ -352,10 +368,473 @@ fn inspect_suite(
     Ok(ReceiptInspection {
         schema: INSPECTION_SCHEMA.to_owned(),
         source_schema: SUITE_RECEIPT_SCHEMA.to_owned(),
-        source_status: receipt.status,
+        source_status: enum_name(receipt.status),
         verified,
         checks,
     })
+}
+
+fn inspect_prose(
+    path: &Path,
+    repository: &Path,
+    receipt: ProseReceipt,
+) -> Result<ReceiptInspection> {
+    let root = path.parent().context("prose receipt path has no parent")?;
+    let mut checks = Vec::new();
+    checks.push(verify_artifact(root, &receipt.packet, "prose packet"));
+    for input in &receipt.inputs {
+        checks.push(verify_artifact(root, input, "prose input"));
+    }
+    let assignment_input = receipt
+        .inputs
+        .iter()
+        .find(|artifact| artifact.locator == "inputs/assignment.json");
+    let assignment = assignment_input.and_then(|artifact| {
+        resolve_output_path(root, &artifact.locator)
+            .ok()
+            .and_then(|path| fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<ProseAssignment>(&bytes).ok())
+    });
+    checks.push(InspectionCheck {
+        name: "prose_assignment_identity".to_owned(),
+        passed: assignment.as_ref().is_some_and(|assignment| {
+            assignment.validate().is_ok()
+                && assignment.id == receipt.assignment.id
+                && assignment.title == receipt.assignment.title
+                && assignment.mode == receipt.assignment.mode
+                && assignment.coverage == receipt.assignment.coverage
+                && assignment.oracle.is_none()
+        }),
+        detail: "reviewer-visible assignment must match the receipt with holdout oracle removed"
+            .to_owned(),
+    });
+    let authority_path = resolve_output_path(root, &receipt.authority.locator)?;
+    let authority_assignment = fs::read(&authority_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<ProseAssignment>(&bytes).ok());
+    let authority_check = verify_artifact(root, &receipt.authority, "prose assignment authority");
+    checks.push(InspectionCheck {
+        name: "prose_assignment_authority".to_owned(),
+        passed: authority_check.passed
+            && receipt.authority.sha256 == receipt.assignment.sha256
+            && authority_assignment.as_ref().is_some_and(|assignment| {
+                assignment.validate().is_ok()
+                    && assignment.id == receipt.assignment.id
+                    && assignment.mode == receipt.assignment.mode
+            }),
+        detail: authority_check.detail,
+    });
+    let packet_valid = resolve_output_path(root, &receipt.packet.locator)
+        .ok()
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice::<crate::prose_model::PacketBinding>(&bytes).ok())
+        .is_some_and(|packet| {
+            packet.schema == crate::prose_model::PROSE_PACKET_SCHEMA
+                && packet.assignment.id == receipt.assignment.id
+                && packet.inputs.len() == receipt.inputs.len()
+                && packet
+                    .inputs
+                    .iter()
+                    .zip(&receipt.inputs)
+                    .all(|(left, right)| {
+                        left.locator == right.locator
+                            && left.sha256 == right.sha256
+                            && left.bytes == right.bytes
+                    })
+        });
+    checks.push(InspectionCheck {
+        name: "prose_packet_binding".to_owned(),
+        passed: packet_valid,
+        detail: "base packet must bind the retained assignment and all prepared inputs".to_owned(),
+    });
+
+    for artifact in [
+        receipt.author_request.as_ref(),
+        receipt.review_packet.as_ref(),
+        receipt.review_request.as_ref(),
+        receipt.author.as_ref().map(|author| &author.submission),
+        receipt
+            .author
+            .as_ref()
+            .and_then(|author| author.candidate.as_ref()),
+        receipt
+            .author
+            .as_ref()
+            .and_then(|author| author.claim_map.as_ref()),
+        receipt.review.as_ref().map(|review| &review.submission),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        checks.push(verify_artifact(root, artifact, "prose stage"));
+    }
+    if let Some(author) = &receipt.author {
+        for observation in &author.mechanical_observations {
+            checks.push(verify_output(
+                root,
+                &observation.stdout,
+                "prose mechanical stdout",
+            ));
+            checks.push(verify_output(
+                root,
+                &observation.stderr,
+                "prose mechanical stderr",
+            ));
+        }
+    }
+
+    let author_request = receipt.author_request.as_ref().and_then(|artifact| {
+        resolve_output_path(root, &artifact.locator)
+            .ok()
+            .and_then(|path| fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<AuthorRequest>(&bytes).ok())
+    });
+    if let Some(request) = &author_request {
+        checks.push(verify_artifact(
+            root,
+            &request.submission_template,
+            "author submission template",
+        ));
+        checks.push(verify_artifact(
+            root,
+            &request.claim_map_template,
+            "claim map template",
+        ));
+    }
+    checks.push(InspectionCheck {
+        name: "author_request_binding".to_owned(),
+        passed: match (&receipt.author_request, &author_request) {
+            (Some(_), Some(request)) => {
+                request.schema == AUTHOR_REQUEST_SCHEMA
+                    && request.packet_sha256 == receipt.packet.sha256
+                    && request.run_id == receipt.run_id
+                    && request.assignment_id == receipt.assignment.id
+            }
+            (None, None) => receipt.assignment.mode == ProseMode::Review,
+            _ => false,
+        },
+        detail: "author request must name the exact base packet and generated templates".to_owned(),
+    });
+
+    let review_request = receipt.review_request.as_ref().and_then(|artifact| {
+        resolve_output_path(root, &artifact.locator)
+            .ok()
+            .and_then(|path| fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<ReviewRequest>(&bytes).ok())
+    });
+    let review_export_root = receipt.review_request.as_ref().and_then(|artifact| {
+        resolve_output_path(root, &artifact.locator)
+            .ok()
+            .and_then(|path| path.parent().map(Path::to_path_buf))
+    });
+    if let Some(request) = &review_request {
+        checks.push(verify_artifact(
+            root,
+            &request.submission_template,
+            "review submission template",
+        ));
+        for observation in &request.mechanical_observations {
+            checks.push(verify_output(
+                root,
+                &observation.stdout,
+                "review packet stdout",
+            ));
+            checks.push(verify_output(
+                root,
+                &observation.stderr,
+                "review packet stderr",
+            ));
+            if let Some(export_root) = &review_export_root {
+                checks.push(verify_output(
+                    export_root,
+                    &observation.stdout,
+                    "review export stdout",
+                ));
+                checks.push(verify_output(
+                    export_root,
+                    &observation.stderr,
+                    "review export stderr",
+                ));
+            }
+        }
+    }
+    let review_binding = receipt.review_packet.as_ref().and_then(|artifact| {
+        resolve_output_path(root, &artifact.locator)
+            .ok()
+            .and_then(|path| fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<ReviewPacketBinding>(&bytes).ok())
+    });
+    if let Some(binding) = &review_binding {
+        for input in &binding.inputs {
+            checks.push(verify_artifact(root, input, "review packet input"));
+            if let Some(export_root) = &review_export_root {
+                checks.push(verify_artifact(export_root, input, "review export input"));
+            }
+        }
+    }
+    checks.push(InspectionCheck {
+        name: "review_packet_binding".to_owned(),
+        passed: match (&receipt.review_packet, &review_request) {
+            (Some(packet), Some(request)) => {
+                request.schema == REVIEW_REQUEST_SCHEMA
+                    && request.review_packet_sha256 == packet.sha256
+                    && request.run_id == receipt.run_id
+                    && request.assignment_id == receipt.assignment.id
+                    && review_binding.as_ref().is_some_and(|binding| {
+                        binding.schema == crate::prose_model::PROSE_PACKET_SCHEMA
+                            && binding.assignment.id == receipt.assignment.id
+                            && binding.inputs.iter().any(|input| {
+                                input.locator == request.submission_template.locator
+                                    && input.sha256 == request.submission_template.sha256
+                            })
+                    })
+            }
+            (None, None) => receipt.status == ProseRunStatus::AwaitingAuthor,
+            _ => false,
+        },
+        detail: "review request must name the exact retained review packet".to_owned(),
+    });
+
+    let review_submission = receipt.review.as_ref().and_then(|stage| {
+        resolve_output_path(root, &stage.submission.locator)
+            .ok()
+            .and_then(|path| fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<ReviewSubmission>(&bytes).ok())
+    });
+    let review_submission_valid = match (
+        authority_assignment.as_ref().or(assignment.as_ref()),
+        &receipt.review,
+        &review_submission,
+    ) {
+        (Some(assignment), Some(stage), Some(submission)) => {
+            let expected_candidate = receipt
+                .author
+                .as_ref()
+                .and_then(|author| author.candidate.as_ref())
+                .or_else(|| {
+                    receipt
+                        .inputs
+                        .iter()
+                        .find(|artifact| artifact.locator.starts_with("inputs/candidate/"))
+                })
+                .map(|artifact| artifact.sha256.as_str());
+            submission.schema == REVIEW_SUBMISSION_SCHEMA
+                && submission.validate(assignment).is_ok()
+                && submission.run_id == receipt.run_id
+                && submission.assignment_id == receipt.assignment.id
+                && submission.candidate_sha256.as_deref() == expected_candidate
+                && submission.reviewer.id == stage.reviewer.id
+                && submission.disposition == stage.disposition
+        }
+        (_, None, None) => true,
+        _ => false,
+    };
+    checks.push(InspectionCheck {
+        name: "review_submission_binding".to_owned(),
+        passed: review_submission_valid,
+        detail: "review stage must reproduce the strict submission bound to the candidate"
+            .to_owned(),
+    });
+    let oracle_consistent = match (
+        authority_assignment
+            .as_ref()
+            .and_then(|assignment| assignment.oracle.as_ref()),
+        receipt.review.as_ref(),
+        review_submission.as_ref(),
+    ) {
+        (Some(oracle), Some(stage), Some(submission)) => {
+            let expected = crate::prose::evaluate_oracle(oracle, submission);
+            stage.oracle.as_ref().is_some_and(|observed| {
+                observed.passed == expected.passed
+                    && observed.missing_required_tags == expected.missing_required_tags
+                    && observed.present_forbidden_tags == expected.present_forbidden_tags
+                    && observed.failed_axis_expectations == expected.failed_axis_expectations
+                    && observed.disposition_allowed == expected.disposition_allowed
+            })
+        }
+        (None, Some(stage), Some(_)) => stage.oracle.is_none(),
+        (_, None, None) => true,
+        _ => false,
+    };
+    checks.push(InspectionCheck {
+        name: "oracle_evaluation".to_owned(),
+        passed: oracle_consistent,
+        detail: "held-out oracle result must be recomputable from the strict review submission"
+            .to_owned(),
+    });
+
+    let independent = receipt.review.as_ref().is_none_or(|review| {
+        receipt
+            .author
+            .as_ref()
+            .is_none_or(|author| author.author.id != review.reviewer.id)
+    });
+    checks.push(InspectionCheck {
+        name: "reviewer_independence".to_owned(),
+        passed: independent,
+        detail: "an authoring run cannot use the recorded author identity as reviewer".to_owned(),
+    });
+    let expected_status = receipt.review.as_ref().map_or_else(
+        || {
+            if receipt.author.is_some() || receipt.assignment.mode == ProseMode::Review {
+                ProseRunStatus::AwaitingReview
+            } else {
+                ProseRunStatus::AwaitingAuthor
+            }
+        },
+        |review| match review.disposition {
+            ReviewDisposition::Accept => ProseRunStatus::ReviewedAccept,
+            ReviewDisposition::Revise => ProseRunStatus::ReviewedRevise,
+            ReviewDisposition::Block => ProseRunStatus::ReviewedBlock,
+        },
+    );
+    checks.push(InspectionCheck {
+        name: "prose_status_consistent".to_owned(),
+        passed: receipt.status == expected_status
+            && receipt.evaluation_complete == receipt.review.is_some(),
+        detail: format!(
+            "recorded {:?}, recomputed {:?}, evaluation_complete={}",
+            receipt.status, expected_status, receipt.evaluation_complete
+        ),
+    });
+    checks.push(tool_identity_check(repository, &receipt.tool));
+    let verified = checks.iter().all(|check| check.passed);
+    Ok(ReceiptInspection {
+        schema: INSPECTION_SCHEMA.to_owned(),
+        source_schema: PROSE_RECEIPT_SCHEMA.to_owned(),
+        source_status: enum_name(receipt.status),
+        verified,
+        checks,
+    })
+}
+
+fn inspect_prose_suite(
+    path: &Path,
+    repository: &Path,
+    receipt: ProseSuiteReceipt,
+) -> Result<ReceiptInspection> {
+    let root = path.parent().context("prose suite receipt has no parent")?;
+    let mut checks = Vec::new();
+    let suite_path = root.join("inputs/prose-suite.json");
+    let suite = fs::read(&suite_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<ProseSuite>(&bytes).ok());
+    checks.push(match sha256_file(&suite_path) {
+        Ok((digest, _)) => InspectionCheck {
+            name: "prose_suite_input".to_owned(),
+            passed: digest == receipt.suite.sha256
+                && suite.as_ref().is_some_and(|suite| {
+                    suite.validate().is_ok()
+                        && suite.id == receipt.suite.id
+                        && suite.title == receipt.suite.title
+                        && suite.required_coverage == receipt.required_coverage
+                }),
+            detail: format!("expected {}, observed {digest}", receipt.suite.sha256),
+        },
+        Err(error) => InspectionCheck {
+            name: "prose_suite_input".to_owned(),
+            passed: false,
+            detail: format!("{error:#}"),
+        },
+    });
+    let mut observed_coverage = BTreeSet::new();
+    for run in &receipt.runs {
+        let check = verify_artifact(root, &run.preparation_receipt, "prepared prose receipt");
+        let parsed = resolve_output_path(root, &run.preparation_receipt.locator)
+            .ok()
+            .and_then(|path| fs::read(path).ok())
+            .and_then(|bytes| serde_json::from_slice::<ProseReceipt>(&bytes).ok());
+        let identity_matches = parsed.as_ref().is_some_and(|child| {
+            observed_coverage.extend(child.assignment.coverage.iter().cloned());
+            child.assignment.id == run.assignment_id && child.status == run.status
+        });
+        checks.push(InspectionCheck {
+            name: format!("prose_suite_child:{}", run.assignment_id),
+            passed: check.passed && identity_matches,
+            detail: format!("{}; identity_matches={identity_matches}", check.detail),
+        });
+        let live_receipt_path = PathBuf::from(&run.run_locator).join("receipt.json");
+        let live = fs::read(&live_receipt_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<ProseReceipt>(&bytes).ok());
+        let live_inspection = live
+            .as_ref()
+            .and_then(|child| inspect_prose(&live_receipt_path, repository, child.clone()).ok());
+        checks.push(InspectionCheck {
+            name: format!("prose_suite_live_run:{}", run.assignment_id),
+            passed: live.as_ref().is_some_and(|child| {
+                child.assignment.id == run.assignment_id
+                    && live_inspection
+                        .as_ref()
+                        .is_some_and(|inspection| inspection.verified)
+            }),
+            detail: format!(
+                "live receipt {}, artifacts_verified={}",
+                live_receipt_path.display(),
+                live_inspection
+                    .as_ref()
+                    .is_some_and(|inspection| inspection.verified)
+            ),
+        });
+    }
+    let recorded = receipt
+        .observed_coverage
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let required = receipt
+        .required_coverage
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    checks.push(InspectionCheck {
+        name: "prose_suite_coverage".to_owned(),
+        passed: recorded == observed_coverage && required.is_subset(&observed_coverage),
+        detail: format!(
+            "required {:?}, recorded {:?}, observed {:?}",
+            required, recorded, observed_coverage
+        ),
+    });
+    let verified = checks.iter().all(|check| check.passed);
+    Ok(ReceiptInspection {
+        schema: INSPECTION_SCHEMA.to_owned(),
+        source_schema: PROSE_SUITE_RECEIPT_SCHEMA.to_owned(),
+        source_status: "prepared".to_owned(),
+        verified,
+        checks,
+    })
+}
+
+fn tool_identity_check(repository: &Path, tool: &crate::model::ToolIdentity) -> InspectionCheck {
+    let candidate = PathBuf::from(&tool.locator);
+    let path = if candidate.is_absolute() {
+        candidate
+    } else {
+        repository.join(candidate)
+    };
+    match sha256_file(&path) {
+        Ok((digest, _)) => InspectionCheck {
+            name: "tool_identity".to_owned(),
+            passed: digest == tool.sha256,
+            detail: format!(
+                "expected {}, observed {digest} at {}",
+                tool.sha256,
+                path.display()
+            ),
+        },
+        Err(error) => InspectionCheck {
+            name: "tool_identity".to_owned(),
+            passed: false,
+            detail: format!("{error:#}"),
+        },
+    }
+}
+
+fn enum_name<T: Serialize>(value: T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 fn verify_artifact(root: &Path, artifact: &ArtifactIdentity, kind: &str) -> InspectionCheck {
