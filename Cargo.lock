@@ -2324,6 +2324,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "wikitest"
+version = "0.6.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "walkdir",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "wikitool"
 version = "0.6.1"
 dependencies = [

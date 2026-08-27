@@ -2,6 +2,7 @@
 members = [
   "crates/wikitool",
   "crates/wikitool_core",
+  "crates/wikitest",
 ]
 resolver = "2"
 

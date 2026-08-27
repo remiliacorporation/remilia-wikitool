@@ -1,6 +1,7 @@
 # Database
 data/
 .wikitool/
+.wikitest/
 *.db
 *.db-shm
 *.db-wal
