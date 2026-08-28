@@ -180,6 +180,9 @@ exercises typed `missingtitle`, and independently asserts the complete delete-re
 visible delete marker is recovered through paginated `logevents`; a hidden marker remains
 ambiguous, is closed with explicit operator provenance, blocks another write until a target-bound
 full pull, and remains replayable through `mutation show` and `mutation list --all`.
+An optional `siteinfo_query` object supplies the exact `query` body for read-only
+`meta=siteinfo` requests, allowing capability discovery and capability-bound consumers to be
+tested without external network access.
 
 ## Prose controls
 

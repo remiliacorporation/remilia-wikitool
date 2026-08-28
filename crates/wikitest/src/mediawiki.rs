@@ -29,6 +29,8 @@ pub struct MediaWikiFixture {
     pub username: String,
     pub password: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub siteinfo_query: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ambiguous_edit_failure: Option<AmbiguousEditFailure>,
     #[serde(default)]
     pub ambiguous_delete_failures: Vec<AmbiguousDeleteFailure>,
@@ -91,6 +93,7 @@ struct FixtureState {
     password: String,
     pages: BTreeMap<String, MediaWikiPage>,
     requests: Vec<MediaWikiRequest>,
+    siteinfo_query: Option<Value>,
     ambiguous_edit_failure: Option<AmbiguousEditFailure>,
     ambiguous_edit_failure_used: bool,
     ambiguous_delete_failures: BTreeMap<String, bool>,
@@ -137,6 +140,13 @@ impl MediaWikiFixture {
         }
         if self.pages.is_empty() {
             bail!("MediaWiki fixture must contain at least one page");
+        }
+        if self
+            .siteinfo_query
+            .as_ref()
+            .is_some_and(|query| !query.is_object())
+        {
+            bail!("MediaWiki fixture siteinfo_query must be a JSON object");
         }
         if self
             .ambiguous_edit_failure
@@ -224,6 +234,7 @@ impl MediaWikiService {
                 .map(|page| (page.title.clone(), page))
                 .collect(),
             requests: Vec::new(),
+            siteinfo_query: fixture.siteinfo_query,
             ambiguous_edit_failure: fixture.ambiguous_edit_failure,
             ambiguous_edit_failure_used: false,
             ambiguous_delete_failures: fixture
@@ -536,6 +547,15 @@ fn handle_query(
     params: &BTreeMap<String, String>,
     cookie: Option<&str>,
 ) -> Result<FixtureResponse> {
+    if params.get("meta").is_some_and(|value| value == "siteinfo") {
+        let query = state
+            .siteinfo_query
+            .as_ref()
+            .context("MediaWiki fixture has no siteinfo_query response")?;
+        return Ok(FixtureResponse::Json(
+            json!({"batchcomplete": true, "query": query}),
+        ));
+    }
     if params.get("meta").is_some_and(|value| value == "tokens") {
         return if params.get("type").is_some_and(|value| value == "login") {
             state.login_token_issued = true;
@@ -985,6 +1005,7 @@ mod tests {
             password: "secret".to_owned(),
             pages: BTreeMap::new(),
             requests: Vec::new(),
+            siteinfo_query: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
             ambiguous_delete_failures: BTreeMap::new(),
@@ -1066,6 +1087,7 @@ mod tests {
                 ),
             ]),
             requests: Vec::new(),
+            siteinfo_query: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
             ambiguous_delete_failures: BTreeMap::from([("Template:Ambiguous".to_owned(), false)]),
@@ -1167,6 +1189,7 @@ mod tests {
                 },
             )]),
             requests: Vec::new(),
+            siteinfo_query: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
             ambiguous_delete_failures: BTreeMap::new(),

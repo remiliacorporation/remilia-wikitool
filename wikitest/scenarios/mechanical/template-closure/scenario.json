@@ -1,0 +1,117 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-template-closure",
+  "title": "Capability-bound template dependency closure",
+  "description": "Proves that closure export refuses absent runtime evidence, regenerates MediaWiki capabilities through the public read-only API boundary, and emits v2 runtime, missing, and unresolved dependency evidence.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "template-closure-v2", "steps": ["export-v2-closure"]},
+    {"capability": "capability-bound-runtime-dependencies", "steps": ["reject-absent-capabilities", "sync-v2-capabilities", "assert-capability-wire-contract", "export-v2-closure"]},
+    {"capability": "template-closure-failure-evidence", "steps": ["reject-absent-capabilities", "export-v2-closure"]}
+  ],
+  "mediawiki_fixture": {
+    "source": "fixtures/mediawiki.json",
+    "sha256": "2ca254c40ba83197c7bf5c67797b2e444b6e731d5c74ba32f98ec0abd79d3ac0"
+  },
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": ["init", "--templates", "--no-network", "--wiki-url", "http://127.0.0.1", "--api-url", "{MEDIAWIKI_API_URL}"],
+      "expect": {"exit_code": 0}
+    },
+    {
+      "action": "copy",
+      "id": "install-root-template",
+      "source": "fixtures/Template_Root.wiki",
+      "target": "templates/core/Template_Root.wiki",
+      "sha256": "36972bdb7a6c2f3fdaef10869458bec3ea0ced36b7b58764ce8d1c74970f870b"
+    },
+    {
+      "action": "copy",
+      "id": "install-root-module",
+      "source": "fixtures/Module_Root.lua",
+      "target": "templates/core/Module_Root.lua",
+      "sha256": "90eecdb573110dd2500a01b76fb2dd8d7a55d9c48a415300eaad0f91c42f5942"
+    },
+    {
+      "action": "command",
+      "id": "build-template-catalog",
+      "argv": ["templates", "catalog", "build", "--format", "json"],
+      "expect": {"exit_code": 0}
+    },
+    {
+      "action": "command",
+      "id": "reject-absent-capabilities",
+      "argv": ["templates", "closure", "Root", "--output", ".wikitool/closures/absent.json", "--format", "json"],
+      "expect": {
+        "exit_code": 1,
+        "stderr": [
+          {"kind": "contains", "value": "wiki capability manifest is missing"},
+          {"kind": "contains", "value": "wikitool wiki capabilities sync"}
+        ],
+        "files": [
+          {"kind": "missing", "path": ".wikitool/closures/absent.json"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "sync-v2-capabilities",
+      "argv": ["wiki", "capabilities", "sync", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "wiki_capabilities_v2"},
+          {"kind": "json_pointer_equals", "pointer": "/mediawiki_version", "value": "1.44.6"},
+          {"kind": "json_pointer_equals", "pointer": "/has_scribunto", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/magic_word_count", "value": 1}
+        ]
+      }
+    },
+    {
+      "action": "mediawiki_assert",
+      "id": "assert-capability-wire-contract",
+      "expect": {
+        "requests": [
+          {
+            "method": "GET",
+            "params": {"action": "query", "meta": "siteinfo", "siprop": "magicwords"},
+            "count": 1
+          },
+          {
+            "method": "GET",
+            "params": {"action": "query", "meta": "siteinfo", "siprop": "functionhooks"},
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "export-v2-closure",
+      "argv": ["templates", "closure", "Root", "--output", ".wikitool/closures/root.json", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema", "value": "template_dependency_closure_write_v2"},
+          {"kind": "json_pointer_equals", "pointer": "/runtime_dependency_count", "value": 5},
+          {"kind": "json_pointer_equals", "pointer": "/missing_count", "value": 1},
+          {"kind": "json_pointer_equals", "pointer": "/unresolved_count", "value": 2}
+        ],
+        "files": [
+          {"kind": "contains", "path": ".wikitool/closures/root.json", "value": "\"schema_version\": \"template_dependency_closure_v2\""},
+          {"kind": "contains", "path": ".wikitool/closures/root.json", "value": "\"capability_schema_version\": \"wiki_capabilities_v2\""},
+          {"kind": "contains", "path": ".wikitool/closures/root.json", "value": "\"capability_manifest_sha256\""},
+          {"kind": "contains", "path": ".wikitool/closures/root.json", "value": "\"kind\": \"mediawiki_magic_word\""},
+          {"kind": "contains", "path": ".wikitool/closures/root.json", "value": "\"kind\": \"scribunto_runtime_library\""},
+          {"kind": "contains", "path": ".wikitool/closures/root.json", "value": "\"title\": \"Module:Missing\""},
+          {"kind": "contains", "path": ".wikitool/closures/root.json", "value": "loads_data_argument_is_not_a_string_literal"},
+          {"kind": "contains", "path": ".wikitool/closures/root.json", "value": "parser_function_not_in_capability_manifest:#notRegistered"}
+        ]
+      }
+    }
+  ]
+}

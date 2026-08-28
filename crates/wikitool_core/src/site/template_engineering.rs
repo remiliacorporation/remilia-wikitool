@@ -294,6 +294,16 @@ pub fn build_template_dependency_closure_with_capabilities(
     capabilities: Option<&WikiCapabilityManifest>,
     max_nodes: usize,
 ) -> Result<TemplateDependencyClosure> {
+    let capabilities = capabilities.ok_or_else(|| {
+        anyhow::anyhow!(
+            "wiki capability manifest is missing; sync capabilities before building a template dependency closure"
+        )
+    })?;
+    if capabilities.magic_words.is_empty() {
+        bail!(
+            "wiki capability manifest lacks MediaWiki magic-word data; refresh capabilities before building a template dependency closure"
+        );
+    }
     if requested_roots.is_empty() {
         bail!("template dependency closure requires at least one named template");
     }
@@ -302,8 +312,8 @@ pub fn build_template_dependency_closure_with_capabilities(
     }
 
     let inventory = load_engineering_inventory(paths)?;
-    let runtime_context = build_runtime_dependency_context(capabilities)?;
-    let runtime_classifier = RuntimeDependencyClassifier::new(capabilities);
+    let runtime_context = build_runtime_dependency_context(Some(capabilities))?;
+    let runtime_classifier = RuntimeDependencyClassifier::new(Some(capabilities));
     let mut roots = Vec::new();
     let mut template_queue = VecDeque::new();
     let mut missing = BTreeSet::new();
@@ -1004,6 +1014,7 @@ mod tests {
     use crate::site::{
         MagicWordInfo, TemplateCatalog, TemplateCatalogEntry, WikiCapabilityManifest,
     };
+    use crate::support::compute_sha256;
 
     fn paths(project_root: &Path) -> ResolvedPaths {
         let state_dir = project_root.join(".wikitool");
@@ -1204,17 +1215,27 @@ local function_reference = require
             )],
         };
 
+        let capability_manifest = capabilities();
         let closure = build_template_dependency_closure_with_capabilities(
             &paths,
             &catalog,
             &["Root".to_string()],
-            Some(&capabilities()),
+            Some(&capability_manifest),
             16,
         )
         .expect("dependency closure");
 
         assert_eq!(closure.schema_version, "template_dependency_closure_v2");
         assert!(closure.runtime_context.mediawiki_capabilities_available);
+        let encoded_capabilities =
+            serde_json::to_string(&capability_manifest).expect("serialize capabilities");
+        assert_eq!(
+            closure
+                .runtime_context
+                .capability_manifest_sha256
+                .as_deref(),
+            Some(compute_sha256(&encoded_capabilities).as_str())
+        );
         assert_eq!(closure.runtime_dependencies.len(), 6);
         assert!(closure.runtime_dependencies.iter().any(|dependency| {
             dependency.kind == "mediawiki_magic_word" && dependency.title == "namespace"
@@ -1249,6 +1270,23 @@ local function_reference = require
                 && dependency.relation == "runtime_dependency_lookup"
                 && dependency.reason == "parser_function_not_in_capability_manifest:#notRegistered"
         }));
+
+        let mut legacy_capabilities = capability_manifest;
+        legacy_capabilities.schema_version = "wiki_capabilities_v1".to_string();
+        legacy_capabilities.magic_words.clear();
+        let legacy_error = build_template_dependency_closure_with_capabilities(
+            &paths,
+            &catalog,
+            &["Root".to_string()],
+            Some(&legacy_capabilities),
+            16,
+        )
+        .expect_err("legacy capability evidence must be refreshed before classification");
+        assert!(
+            legacy_error
+                .to_string()
+                .contains("lacks MediaWiki magic-word data")
+        );
     }
 
     #[test]

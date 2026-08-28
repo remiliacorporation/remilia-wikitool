@@ -37,13 +37,17 @@
     "source-fidelity",
     "optional-companion-absent",
     "optional-companion-present",
-    "companion-lifecycle-authority"
+    "companion-lifecycle-authority",
+    "template-closure-v2",
+    "capability-bound-runtime-dependencies",
+    "template-closure-failure-evidence"
   ],
   "scenarios": [
     "mechanical-article-lifecycle",
     "catalog-indexed-retrieval",
     "mechanical-mediawiki-sync",
     "mechanical-html-to-wikitext",
-    "mechanical-optional-companions"
+    "mechanical-optional-companions",
+    "mechanical-template-closure"
   ]
 }

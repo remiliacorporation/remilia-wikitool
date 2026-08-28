@@ -1,0 +1,1 @@
+<includeonly>{{NAMESPACE}}{{#if:x|yes|no}}{{#notRegistered:x}}{{#invoke:Root|main}}</includeonly>
