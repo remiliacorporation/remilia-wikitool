@@ -34,12 +34,16 @@
     "html-to-wikitext",
     "source-target-profiles",
     "template-projection",
-    "source-fidelity"
+    "source-fidelity",
+    "optional-companion-absent",
+    "optional-companion-present",
+    "companion-lifecycle-authority"
   ],
   "scenarios": [
     "mechanical-article-lifecycle",
     "catalog-indexed-retrieval",
     "mechanical-mediawiki-sync",
-    "mechanical-html-to-wikitext"
+    "mechanical-html-to-wikitext",
+    "mechanical-optional-companions"
   ]
 }

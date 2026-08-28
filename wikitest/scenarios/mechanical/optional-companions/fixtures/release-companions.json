@@ -1,0 +1,18 @@
+{
+  "schema": "wikitool.release-companions.v1",
+  "companions": [
+    {
+      "id": "papertiger",
+      "version": "0.9.0",
+      "source_commit": "3f2a1ef6f40ad01ca9b07d44b28b10d7a3276af0",
+      "directory": "papertiger",
+      "planner_binary": "papertiger/papertiger.exe",
+      "mise_binary": "papertiger/papertiger-mise.exe",
+      "manifest": "papertiger/manifest.json",
+      "agent_contract": "papertiger/agent_integration.md",
+      "required_for_wikitool": false,
+      "project_lifecycle_owner": "papertiger",
+      "setup_initializes_task_authority": false
+    }
+  ]
+}

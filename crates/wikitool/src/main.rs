@@ -11,6 +11,7 @@ mod briefs;
 mod catalog_cli;
 mod catalog_inspect_cli;
 mod cli_support;
+mod companions_cli;
 mod config_cli;
 mod db_cli;
 #[cfg(feature = "maintainer")]
@@ -123,6 +124,8 @@ enum Commands {
     Article(article_cli::ArticleArgs),
     #[command(about = "Generate parser config and editor integration settings")]
     Lsp(lsp_cli::LspArgs),
+    #[command(about = "Inspect optional release companions without changing their lifecycle state")]
+    Companions(companions_cli::CompanionsArgs),
     #[cfg(feature = "maintainer")]
     #[command(about = "Build AI companion packs and release bundles", hide = true)]
     Release(release::ReleaseArgs),
@@ -171,6 +174,7 @@ fn main() -> Result<()> {
         Some(Commands::Templates(args)) => templates_cli::run_templates(&runtime, args),
         Some(Commands::Article(args)) => article_cli::run_article(&runtime, args),
         Some(Commands::Lsp(args)) => lsp_cli::run_lsp(&runtime, args),
+        Some(Commands::Companions(args)) => companions_cli::run_companions(args),
         #[cfg(feature = "maintainer")]
         Some(Commands::Release(args)) => release::run_release(args),
         #[cfg(feature = "maintainer")]

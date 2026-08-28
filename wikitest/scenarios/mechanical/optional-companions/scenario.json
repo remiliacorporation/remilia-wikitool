@@ -1,0 +1,95 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-optional-companions",
+  "title": "Optional release companion diagnostics",
+  "description": "Proves that Wikitool remains usable without a companion manifest and diagnoses a present, separately owned Papertiger release pack without initializing or changing its task authority.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 30000,
+  "coverage": [
+    {"capability": "optional-companion-absent", "steps": ["inspect-absent"]},
+    {"capability": "optional-companion-present", "steps": ["inspect-present"]},
+    {"capability": "companion-lifecycle-authority", "steps": ["inspect-present"]}
+  ],
+  "steps": [
+    {
+      "action": "command",
+      "id": "inspect-absent",
+      "argv": [
+        "companions",
+        "--manifest",
+        "missing/release-companions.json",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema", "value": "wikitool.companion-diagnostics.v1"},
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "optional_manifest_absent"},
+          {"kind": "json_pointer_equals", "pointer": "/wikitool_available", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/companions", "value": []}
+        ]
+      }
+    },
+    {
+      "action": "copy",
+      "id": "install-companion-manifest",
+      "source": "fixtures/release-companions.json",
+      "target": "bundle/release-companions.json",
+      "sha256": "c130d50dcdbadddbb5fd8672670c2256de99c18862184e3863d3811ca78fa824"
+    },
+    {
+      "action": "copy",
+      "id": "install-planner",
+      "source": "fixtures/papertiger.exe",
+      "target": "bundle/papertiger/papertiger.exe",
+      "sha256": "bb527fc1c51b3efe31ef31e9886f89ab22bd282d9f086ab291f3bcf1ecb8a45b"
+    },
+    {
+      "action": "copy",
+      "id": "install-mise",
+      "source": "fixtures/papertiger-mise.exe",
+      "target": "bundle/papertiger/papertiger-mise.exe",
+      "sha256": "9a7f924301f1f7512efff17ef3d3e5e246b0034c88625fb9a600625cf6d83065"
+    },
+    {
+      "action": "copy",
+      "id": "install-upstream-manifest",
+      "source": "fixtures/manifest.json",
+      "target": "bundle/papertiger/manifest.json",
+      "sha256": "b7714d3cf12f503dd0e680b998b0b4b39e738bdf67e5f169523a23f9dcac8bcb"
+    },
+    {
+      "action": "copy",
+      "id": "install-agent-contract",
+      "source": "fixtures/agent_integration.md",
+      "target": "bundle/papertiger/agent_integration.md",
+      "sha256": "1bd56dbf6a462dfcf3142b33b7719bfdc1ef9693fd06533508d7c4de2b845e83"
+    },
+    {
+      "action": "command",
+      "id": "inspect-present",
+      "argv": [
+        "companions",
+        "--manifest",
+        "bundle/release-companions.json",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "ok"},
+          {"kind": "json_pointer_equals", "pointer": "/wikitool_available", "value": true},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/companions", "item_pointer": "/id", "value": "papertiger"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/companions", "item_pointer": "/version", "value": "0.9.0"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/companions", "item_pointer": "/source_commit", "value": "3f2a1ef6f40ad01ca9b07d44b28b10d7a3276af0"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/companions", "item_pointer": "/required_for_wikitool", "value": false},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/companions", "item_pointer": "/project_lifecycle_owner", "value": "papertiger"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/companions", "item_pointer": "/status", "value": "available"}
+        ]
+      }
+    }
+  ]
+}
