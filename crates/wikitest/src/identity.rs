@@ -34,7 +34,16 @@ pub fn verify_recorded_identity(
     identity: &ToolIdentity,
     label: &str,
 ) -> Result<()> {
-    let path = if identity.locator == DRIVER_BINARY_TOKEN {
+    let path = resolve_recorded_identity_path(repository, identity, label)?;
+    verify_path_identity(&path, identity, label)
+}
+
+pub fn resolve_recorded_identity_path(
+    repository: &Path,
+    identity: &ToolIdentity,
+    label: &str,
+) -> Result<PathBuf> {
+    Ok(if identity.locator == DRIVER_BINARY_TOKEN {
         env::current_exe().context("failed to locate the running wikitest binary")?
     } else {
         let candidate = PathBuf::from(&identity.locator);
@@ -42,8 +51,7 @@ pub fn verify_recorded_identity(
             bail!("{label} binary locator must be repository-relative or a stable typed token");
         }
         repository.join(candidate)
-    };
-    verify_path_identity(&path, identity, label)
+    })
 }
 
 pub fn repository_binary_locator(path: &Path, repository: &Path, label: &str) -> Result<String> {

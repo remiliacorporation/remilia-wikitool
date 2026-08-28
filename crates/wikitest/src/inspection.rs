@@ -6,6 +6,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::artifact::{resolve_output_path, sha256_bytes, sha256_file};
+use crate::identity::resolve_recorded_identity_path;
 use crate::mediawiki::{MediaWikiObservation, evaluate_expectation};
 use crate::model::{
     ArtifactIdentity, AssertionReceipt, RECEIPT_SCHEMA, REQUIREMENT_OBSERVATION_SCHEMA,
@@ -1426,14 +1427,12 @@ fn binary_identity_check(
     identity: &crate::model::ToolIdentity,
     name: &str,
 ) -> InspectionCheck {
-    let candidate = PathBuf::from(&identity.locator);
-    let path = if candidate.is_absolute() {
-        candidate
-    } else {
-        repository.join(candidate)
-    };
-    match sha256_file(&path) {
-        Ok((digest, _)) => InspectionCheck {
+    let result = resolve_recorded_identity_path(repository, identity, name).and_then(|path| {
+        let (digest, _) = sha256_file(&path)?;
+        Ok((path, digest))
+    });
+    match result {
+        Ok((path, digest)) => InspectionCheck {
             name: name.to_owned(),
             passed: digest == identity.sha256,
             detail: format!(
@@ -1521,6 +1520,7 @@ fn verify_output(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity::{DRIVER_BINARY_TOKEN, current_driver_identity};
     use crate::model::{
         CommandExpectation, CoverageBinding, JsonScalarCapture, OutputArtifact,
         ScenarioEnvironment, ScenarioIdentity, ScenarioKind, SuiteIdentity, SuiteRunEntry,
@@ -1534,6 +1534,16 @@ mod tests {
             sha256: "0".repeat(64),
             version: "test".to_owned(),
         }
+    }
+
+    #[test]
+    fn binary_identity_check_resolves_the_external_driver_token() {
+        let repository = tempfile::tempdir().expect("external repository");
+        let identity = current_driver_identity(repository.path()).expect("driver identity");
+        assert_eq!(identity.locator, DRIVER_BINARY_TOKEN);
+
+        let check = binary_identity_check(repository.path(), &identity, "driver_identity");
+        assert!(check.passed, "{}", check.detail);
     }
 
     fn command_step(id: &str) -> ScenarioStep {
