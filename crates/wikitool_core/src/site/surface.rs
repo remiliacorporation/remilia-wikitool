@@ -769,7 +769,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(unknown, vec!["made up"]);
+        assert_eq!(unknown, vec!["birth date", "made_up"]);
     }
 
     #[test]
@@ -789,7 +789,7 @@ mod tests {
             &["image_caption".to_string(), "made_up".to_string()],
         );
 
-        assert_eq!(unknown, vec!["made up"]);
+        assert_eq!(unknown, vec!["made_up"]);
     }
 
     fn sample_manifest(

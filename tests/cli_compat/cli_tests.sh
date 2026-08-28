@@ -396,6 +396,76 @@ else
     fail "templates closure exports a transitive runtime-only dependency artifact (got: ${OUTPUT:0:300})"
 fi
 
+# --- template contract and scaffold ---
+section "template contract and scaffold"
+cat > "$TEMPLATE_PROJ/template-card.contract.json" << 'JSONEOF'
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Card",
+  "description": "Displays a compact card.",
+  "format": "block",
+  "implementation": {
+    "body_wikitext": "{{Helper|text={{{text|}}}}}",
+    "template_dependencies": ["Template:Helper"],
+    "module_dependencies": []
+  },
+  "parameters": [
+    {
+      "name": "text",
+      "description": "Card body.",
+      "type": "content"
+    }
+  ],
+  "examples": [
+    {
+      "id": "basic",
+      "invocation": "{{Card|text=Example}}"
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Card templates]]",
+  "render_fixtures": [
+    {
+      "id": "basic",
+      "invocation": "{{Card|text=Example}}",
+      "scope_class": "card",
+      "expected_scope_count": 1
+    }
+  ]
+}
+JSONEOF
+CHECK_OUTPUT=$(wt "$TEMPLATE_PROJ" templates contract check template-card.contract.json --format json 2>&1 || true)
+PLAN_OUTPUT=$(wt "$TEMPLATE_PROJ" templates scaffold template-card.contract.json --output templates/core/Template_Card.wiki --format json 2>&1 || true)
+SCAFFOLD_PLAN_ID=$(echo "$PLAN_OUTPUT" | grep -o '"plan_id": "[^"]*"' | cut -d'"' -f4)
+SCAFFOLD_WROTE_ON_PLAN=0
+if [ -e "$TEMPLATE_PROJ/templates/core/Template_Card.wiki" ]; then
+    SCAFFOLD_WROTE_ON_PLAN=1
+fi
+APPLY_OUTPUT=$(wt "$TEMPLATE_PROJ" templates scaffold template-card.contract.json --output templates/core/Template_Card.wiki --apply "$SCAFFOLD_PLAN_ID" --format json 2>&1 || true)
+REPLAY_OUTPUT=$(wt "$TEMPLATE_PROJ" templates scaffold template-card.contract.json --output templates/core/Template_Card.wiki --apply "$SCAFFOLD_PLAN_ID" --overwrite --format json 2>&1 || true)
+if echo "$CHECK_OUTPUT" | grep -q '"status": "clean"' \
+    && echo "$CHECK_OUTPUT" | grep -q '"compatibility": "new_template"' \
+    && echo "$PLAN_OUTPUT" | grep -q '"mode": "plan"' \
+    && [ "$SCAFFOLD_WROTE_ON_PLAN" -eq 0 ] \
+    && echo "$APPLY_OUTPUT" | grep -q '"mode": "applied"' \
+    && grep -q '<templatedata>' "$TEMPLATE_PROJ/templates/core/Template_Card.wiki" \
+    && grep -q '\[\[Category:Card templates\]\]' "$TEMPLATE_PROJ/templates/core/Template_Card.wiki" \
+    && echo "$REPLAY_OUTPUT" | grep -q 'plan_id mismatch'; then
+    pass "template contract checks and scaffold plan/apply are exact-state bound"
+else
+    fail "template contract/scaffold lifecycle failed (check: ${CHECK_OUTPUT:0:180}; plan: ${PLAN_OUTPUT:0:180}; apply: ${APPLY_OUTPUT:0:180}; replay: ${REPLAY_OUTPUT:0:180})"
+fi
+
+CAPTURE_OUTPUT=$(wt "$TEMPLATE_PROJ" templates contract capture "Template:Root" --output root.capture.json --format json 2>&1 || true)
+CAPTURE_REPLAY=$(wt "$TEMPLATE_PROJ" templates contract capture "Template:Root" --output root.capture.json --format json 2>&1 || true)
+if echo "$CAPTURE_OUTPUT" | grep -q '"schema": "template_contract_capture_v1"' \
+    && echo "$CAPTURE_OUTPUT" | grep -q '"authority": "observed_starter_not_target_design"' \
+    && grep -q '"schema_version": "template_engineering_contract_v1"' "$TEMPLATE_PROJ/root.capture.json" \
+    && echo "$CAPTURE_REPLAY" | grep -q 'contract capture refuses existing output'; then
+    pass "template contract capture is observed-only and refuses overwrite"
+else
+    fail "template contract capture lifecycle failed (capture: ${CAPTURE_OUTPUT:0:220}; replay: ${CAPTURE_REPLAY:0:180})"
+fi
+
 # --- article lint/fix ---
 section "article lint/fix"
 ARTICLE_PROJ=$(setup_project article-lint)

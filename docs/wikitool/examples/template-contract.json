@@ -1,0 +1,53 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Example card",
+  "description": "Displays a compact labeled card.",
+  "format": "block",
+  "implementation": {
+    "body_wikitext": "{{#invoke:Example card|main}}",
+    "template_dependencies": [],
+    "module_dependencies": [
+      "Module:Example card"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "title",
+      "label": "Title",
+      "description": "Short card heading.",
+      "type": "line",
+      "required": true,
+      "example": "Example"
+    },
+    {
+      "name": "content",
+      "aliases": [
+        "text"
+      ],
+      "migrate_from": [],
+      "label": "Content",
+      "description": "Wikitext displayed as the card body.",
+      "type": "content",
+      "suggested": true,
+      "example": "Card body."
+    }
+  ],
+  "documentation_wikitext": "Use this template for a compact labeled card.",
+  "examples": [
+    {
+      "id": "basic",
+      "invocation": "{{Example card|title=Example|content=Card body.}}",
+      "description": "A card with a heading and body."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Card templates]]",
+  "render_fixtures": [
+    {
+      "id": "basic",
+      "invocation": "{{Example card|title=Example|content=Card body.}}",
+      "scope_class": "example-card",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

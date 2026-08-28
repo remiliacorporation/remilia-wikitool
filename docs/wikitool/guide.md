@@ -126,6 +126,44 @@ than guessing. `--max-nodes` fails instead of truncating a larger graph. This ex
 evidence for design and migration work; it does not decide aesthetics, create source-wiki clones,
 rewrite transclusions, or establish that a template vocabulary is editorially appropriate.
 
+Represent a reviewed target design with a strict `template_engineering_contract_v1` document. The
+contract records the exact implementation body, TemplateData parameter contract, aliases, explicit
+`migrate_from` names, declared dependencies, human-readable examples, and portable render
+expectations. Optional documentation header and footer wikitext keep noinclude-only prose and
+categories in conventional source order. A complete target-neutral example is provided at
+`docs/wikitool/examples/template-contract.json`.
+
+```bash
+wikitool templates contract check docs/wikitool/examples/template-contract.json --format json
+wikitool templates contract capture "Template:Existing" \
+  --output .wikitool/template-contracts/existing.observed.json \
+  --format json
+wikitool templates contract render-check \
+  docs/wikitool/examples/template-contract.json \
+  --format json
+wikitool templates scaffold docs/wikitool/examples/template-contract.json \
+  --output templates/example/Template_Example_card.wiki \
+  --format json
+# Inspect the content/path/current-state-bound plan, then apply that exact plan:
+wikitool templates scaffold docs/wikitool/examples/template-contract.json \
+  --output templates/example/Template_Example_card.wiki \
+  --apply PLAN_ID \
+  --format json
+```
+
+Contract checks reject unknown implementation parameters, undeclared dependencies, malformed
+examples, invalid render scopes, wrapper-control injection, and ambiguous parameter names. When a
+catalog template is present, compatibility analysis classifies additions, requiredness and type
+changes, explicit renames, removed aliases, and unmapped removals. The generated scaffold owns only
+the mechanical `includeonly`/`noinclude`, documentation, usage, and TemplateData envelope. Capture
+refuses overwrite and labels its output as an observed starter, not target design. Preview never writes;
+apply is bound to the exact contract, output path, proposed content, and observed target hash.
+Replacing different existing bytes also requires `--overwrite`. Render fixtures are exported as a
+typed bundle; `templates contract render-check` executes each invocation through the configured
+MediaWiki parser's read-only parse-text path and applies the existing scoped HTML gate. A fixture's
+presence is not a claim that rendering has passed. Wikitool emits migration evidence but never
+rewrites transclusions automatically.
+
 ## Encyclopedic coauthoring
 
 An external agent may research and write a new article, substantial section, or source-backed

@@ -6,6 +6,8 @@ use serde_json::Value;
 
 use super::client::MediaWikiClient;
 
+const MAX_RENDER_WIKITEXT_BYTES: usize = 1024 * 1024;
+
 #[derive(Debug, Clone)]
 pub struct RenderedPageHtml {
     pub title: String,
@@ -144,6 +146,28 @@ pub(crate) fn render_page_html(
     decode_rendered_page_payload(response, title)
 }
 
+pub fn render_wikitext_html(
+    client: &mut MediaWikiClient,
+    title: &str,
+    wikitext: &str,
+) -> Result<Option<RenderedPageHtml>> {
+    let params = render_wikitext_request(title, wikitext);
+    let response = client.request_json_post(&params, false)?;
+    decode_rendered_page_payload(response, title)
+}
+
+fn render_wikitext_request(title: &str, wikitext: &str) -> Vec<(&'static str, String)> {
+    vec![
+        ("action", "parse".to_string()),
+        ("text", wikitext.to_string()),
+        ("title", title.to_string()),
+        ("contentmodel", "wikitext".to_string()),
+        ("prop", "text|displaytitle".to_string()),
+        ("disableeditsection", "1".to_string()),
+        ("disablelimitreport", "1".to_string()),
+    ]
+}
+
 pub fn render_check_page(
     client: &mut MediaWikiClient,
     options: &RenderCheckOptions,
@@ -160,6 +184,36 @@ pub fn render_check_page(
     let mut report = analyze_rendered_page(&rendered, options, page_image.as_ref());
     report.request_count = client.request_count.saturating_sub(request_count_before);
     Ok(report)
+}
+
+pub fn render_check_wikitext(
+    client: &mut MediaWikiClient,
+    wikitext: &str,
+    options: &RenderCheckOptions,
+) -> Result<RenderCheckReport> {
+    validate_render_check_options(options)?;
+    if options.required_page_image.is_some() {
+        anyhow::bail!("unsaved wikitext render-check cannot require a stored page image");
+    }
+    validate_render_wikitext_input(wikitext)?;
+    let request_count_before = client.request_count;
+    let rendered = render_wikitext_html(client, &options.title, wikitext)?
+        .with_context(|| "unsaved wikitext did not return rendered HTML")?;
+    let mut report = analyze_rendered_page(&rendered, options, None);
+    report.request_count = client.request_count.saturating_sub(request_count_before);
+    Ok(report)
+}
+
+fn validate_render_wikitext_input(wikitext: &str) -> Result<()> {
+    if wikitext.trim().is_empty() {
+        anyhow::bail!("unsaved wikitext render-check requires non-empty wikitext");
+    }
+    if wikitext.len() > MAX_RENDER_WIKITEXT_BYTES {
+        anyhow::bail!(
+            "unsaved wikitext render-check exceeds the {MAX_RENDER_WIKITEXT_BYTES}-byte input limit"
+        );
+    }
+    Ok(())
 }
 
 fn fetch_page_image(client: &mut MediaWikiClient, title: &str) -> Result<PageImageSelection> {
@@ -781,8 +835,26 @@ mod tests {
 
     use super::{
         PageImageSelection, RenderCheckOptions, RenderedPageHtml, analyze_rendered_page,
-        decode_page_image_payload, decode_rendered_page_payload,
+        decode_page_image_payload, decode_rendered_page_payload, render_wikitext_request,
+        validate_render_wikitext_input,
     };
+
+    #[test]
+    fn unsaved_wikitext_request_is_read_only_parse_text_with_page_context() {
+        let params = render_wikitext_request("Fixture context", "{{Card|text=Example}}");
+        assert!(params.contains(&("action", "parse".to_string())));
+        assert!(params.contains(&("text", "{{Card|text=Example}}".to_string())));
+        assert!(params.contains(&("title", "Fixture context".to_string())));
+        assert!(params.contains(&("contentmodel", "wikitext".to_string())));
+        assert!(!params.iter().any(|(key, _)| *key == "token"));
+    }
+
+    #[test]
+    fn unsaved_wikitext_input_is_nonempty_and_bounded() {
+        assert!(validate_render_wikitext_input("  ").is_err());
+        assert!(validate_render_wikitext_input(&"x".repeat(1024 * 1024 + 1)).is_err());
+        assert!(validate_render_wikitext_input("{{Card}}").is_ok());
+    }
 
     #[test]
     fn decodes_rendered_page_metadata() {

@@ -115,6 +115,24 @@ pub fn validate_scoped_path(paths: &ResolvedPaths, candidate: &Path) -> Result<(
     )
 }
 
+pub fn validate_project_path(paths: &ResolvedPaths, candidate: &Path) -> Result<()> {
+    let absolute = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        paths.project_root.join(candidate)
+    };
+    let normalized = resolve_existing_ancestor(&absolute)?;
+    let project_root = resolve_existing_ancestor(&paths.project_root)?;
+    if normalized.starts_with(&project_root) {
+        return Ok(());
+    }
+    bail!(
+        "path escapes project root: {}; project root is {}",
+        normalize_path(&normalized),
+        normalize_path(&project_root)
+    )
+}
+
 fn resolve_existing_ancestor(path: &Path) -> Result<PathBuf> {
     let normalized = normalize_pathbuf(path);
     if normalized.exists() {

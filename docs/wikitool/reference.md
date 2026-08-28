@@ -1989,6 +1989,8 @@ Commands:
   show      Show one template catalog entry
   examples  Show example invocations for one template
   closure   Export an exact named template/module dependency closure
+  contract  Validate and compare declarative template contracts
+  scaffold  Preview or apply a contract-bound template scaffold
   help      Print this message or the help of the given subcommand(s)
 
 Options:
@@ -2092,6 +2094,109 @@ Options:
       --config <PATH>
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates contract
+
+```text
+Validate and compare declarative template contracts
+
+Usage: wikitool templates contract [OPTIONS] <COMMAND>
+
+Commands:
+  capture       Capture an observed local template as an unapproved contract starter
+  check         Validate a template contract and assess compatibility
+  render-check  Execute contract render fixtures through the configured MediaWiki parser
+  help          Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates contract capture
+
+```text
+Capture an observed local template as an unapproved contract starter
+
+Usage: wikitool templates contract capture [OPTIONS] --output <PATH> <TEMPLATE>
+
+Arguments:
+  <TEMPLATE>
+
+Options:
+      --output <PATH>        Write a new project-scoped contract starter; existing files are refused
+      --project-root <PATH>
+      --data-dir <PATH>
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates contract check
+
+```text
+Validate a template contract and assess compatibility
+
+Usage: wikitool templates contract check [OPTIONS] <CONTRACT>
+
+Arguments:
+  <CONTRACT>
+
+Options:
+      --against <TEMPLATE>   Compare with a specific catalog template instead of the contract title
+      --project-root <PATH>
+      --data-dir <PATH>
+      --output <PATH>        Write the full assessment atomically inside the project root
+      --config <PATH>
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates contract render-check
+
+```text
+Execute contract render fixtures through the configured MediaWiki parser
+
+Usage: wikitool templates contract render-check [OPTIONS] <CONTRACT>
+
+Arguments:
+  <CONTRACT>
+
+Options:
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates scaffold
+
+```text
+Preview or apply a contract-bound template scaffold
+
+Usage: wikitool templates scaffold [OPTIONS] --output <PATH> <CONTRACT>
+
+Arguments:
+  <CONTRACT>
+
+Options:
+      --output <PATH>        Exact project-scoped template output path
+      --project-root <PATH>
+      --apply <PLAN_ID>      Apply the exact content/path/current-state-bound scaffold plan
+      --data-dir <PATH>
+      --config <PATH>
+      --overwrite            Authorize replacing an existing different file during apply
+      --diagnostics          Print resolved runtime diagnostics
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
   -h, --help                 Print help
 ```
 

@@ -3,6 +3,7 @@ pub mod capabilities;
 mod namespaces;
 pub mod surface;
 pub mod template_catalog;
+pub mod template_contract;
 pub mod template_data;
 pub mod template_engineering;
 
@@ -38,6 +39,14 @@ pub use template_catalog::{
     TemplateCatalog, TemplateCatalogEntry, TemplateCatalogEntryLookup, TemplateCatalogExample,
     TemplateCatalogParameter, build_template_catalog_with_adapter, find_template_catalog_entry,
     load_latest_template_catalog, load_template_catalog, sync_template_catalog_with_adapter,
+};
+pub use template_contract::{
+    TEMPLATE_ENGINEERING_CONTRACT_SCHEMA, TemplateContractAssessment, TemplateContractExample,
+    TemplateContractFinding, TemplateContractImplementation, TemplateContractParameter,
+    TemplateDependencyContractAssessment, TemplateEngineeringContract, TemplateParameterChange,
+    TemplateRenderFixture, TemplateRenderFixtureBundle, assess_template_engineering_contract,
+    capture_template_engineering_contract, parse_template_engineering_contract,
+    render_template_scaffold,
 };
 pub use template_data::{TemplateDataParameter, TemplateDataRecord};
 pub use template_engineering::{

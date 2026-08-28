@@ -273,7 +273,7 @@ fn collect_invoke_modules(content: &str) -> Vec<String> {
         let mut end = name_start;
         while end < content.len() {
             let ch = content.as_bytes()[end];
-            if matches!(ch, b'|' | b'}' | b'\n' | b'\r' | b' ') {
+            if matches!(ch, b'|' | b'}' | b'\n' | b'\r') {
                 break;
             }
             end += 1;
@@ -294,13 +294,23 @@ fn collect_inline_module_titles(content: &str) -> Vec<String> {
     let mut start = 0usize;
     while let Some(found) = lower[start..].find(needle) {
         let title_start = start + found;
+        let opening_delimiter = title_start
+            .checked_sub(1)
+            .and_then(|index| content.as_bytes().get(index))
+            .copied();
         let mut end = title_start + needle.len();
         while end < content.len() {
             let ch = content.as_bytes()[end];
-            if matches!(
-                ch,
-                b'"' | b'\'' | b'|' | b'}' | b'>' | b']' | b'\n' | b'\r' | b' '
-            ) {
+            let closes_delimited_title =
+                matches!(opening_delimiter, Some(b'"' | b'\'')) && Some(ch) == opening_delimiter;
+            let closes_link_title = opening_delimiter == Some(b'[') && ch == b']';
+            let closes_unquoted_title =
+                !matches!(opening_delimiter, Some(b'"' | b'\'' | b'[')) && ch == b' ';
+            if closes_delimited_title
+                || closes_link_title
+                || closes_unquoted_title
+                || matches!(ch, b'|' | b'}' | b'>' | b'\n' | b'\r')
+            {
                 break;
             }
             end += 1;
@@ -531,6 +541,8 @@ General-purpose infobox.
         let content = r#"
 <templatestyles src="Module:Infobox/styles.css" />
 {{#invoke:Infobox|render|name={{{name|}}}|occupation={{{occupation|}}}}}
+<templatestyles src="Module:Example card/styles.css" />
+{{#invoke:Example card|main}}
 <noinclude>
 General-purpose infobox for biographies.
 </noinclude>
@@ -544,7 +556,9 @@ General-purpose infobox for biographies.
             extract_module_references(content),
             vec![
                 "Module:Infobox".to_string(),
-                "Module:Infobox/styles.css".to_string()
+                "Module:Example card".to_string(),
+                "Module:Infobox/styles.css".to_string(),
+                "Module:Example card/styles.css".to_string(),
             ]
         );
         assert_eq!(

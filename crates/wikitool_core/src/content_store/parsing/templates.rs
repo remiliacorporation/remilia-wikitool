@@ -30,6 +30,10 @@ pub(crate) fn extract_template_invocations(content: &str) -> Vec<ParsedTemplateI
     let mut stack = Vec::new();
 
     while cursor + 1 < bytes.len() {
+        if let Some(end) = skip_template_literal_region(content, cursor) {
+            cursor = end;
+            continue;
+        }
         if bytes[cursor] == b'{' && bytes[cursor + 1] == b'{' {
             stack.push(cursor + 2);
             cursor += 2;
@@ -51,6 +55,78 @@ pub(crate) fn extract_template_invocations(content: &str) -> Vec<ParsedTemplateI
     }
 
     out
+}
+
+fn skip_template_literal_region(content: &str, cursor: usize) -> Option<usize> {
+    let remaining = content.get(cursor..)?;
+    if remaining.starts_with("<!--") {
+        return remaining
+            .get(4..)?
+            .find("-->")
+            .map(|offset| cursor + 4 + offset + 3)
+            .or(Some(content.len()));
+    }
+    if !remaining.starts_with('<') {
+        return None;
+    }
+
+    for tag in ["nowiki", "pre", "syntaxhighlight", "source", "templatedata"] {
+        if !starts_with_open_tag_ascii_case_insensitive(content, cursor, tag) {
+            continue;
+        }
+        let open_end = find_template_tag_end(content, cursor + 1).unwrap_or(content.len());
+        if content[cursor..open_end]
+            .trim_end_matches('>')
+            .trim_end()
+            .ends_with('/')
+        {
+            return Some(open_end);
+        }
+        let lower = content.to_ascii_lowercase();
+        let close = format!("</{tag}>");
+        return lower[open_end..]
+            .find(&close)
+            .map(|offset| open_end + offset + close.len())
+            .or(Some(content.len()));
+    }
+    None
+}
+
+fn starts_with_open_tag_ascii_case_insensitive(content: &str, cursor: usize, tag: &str) -> bool {
+    let Some(candidate) = content.get(cursor..) else {
+        return false;
+    };
+    let prefix = format!("<{tag}");
+    let Some(actual) = candidate.get(..prefix.len()) else {
+        return false;
+    };
+    if !actual.eq_ignore_ascii_case(&prefix) {
+        return false;
+    }
+    candidate
+        .as_bytes()
+        .get(prefix.len())
+        .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(byte, b'>' | b'/'))
+}
+
+fn find_template_tag_end(content: &str, start: usize) -> Option<usize> {
+    let bytes = content.as_bytes();
+    let mut cursor = start;
+    let mut quote = None;
+    while cursor < bytes.len() {
+        let byte = bytes[cursor];
+        if let Some(active) = quote {
+            if byte == active {
+                quote = None;
+            }
+        } else if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+        } else if byte == b'>' {
+            return Some(cursor + 1);
+        }
+        cursor += 1;
+    }
+    None
 }
 
 pub(crate) fn extract_module_invocations(content: &str) -> Vec<ParsedModuleInvocation> {
@@ -168,52 +244,55 @@ pub(crate) fn parse_module_invocation(inner: &str) -> Option<ParsedModuleInvocat
 }
 
 pub(crate) fn split_template_segments(inner: &str) -> Vec<String> {
-    let chars: Vec<char> = inner.chars().collect();
     let mut out = Vec::new();
     let mut current = String::new();
     let mut cursor = 0usize;
     let mut template_depth = 0usize;
     let mut link_depth = 0usize;
 
-    while cursor < chars.len() {
-        let current_char = chars[cursor];
-        let next_char = chars.get(cursor + 1).copied();
-        if current_char == '{' && next_char == Some('{') {
+    while cursor < inner.len() {
+        if let Some(end) = skip_template_literal_region(inner, cursor) {
+            current.push_str(&inner[cursor..end]);
+            cursor = end;
+            continue;
+        }
+        let remaining = &inner.as_bytes()[cursor..];
+        if remaining.starts_with(b"{{") {
             template_depth += 1;
-            current.push('{');
-            current.push('{');
+            current.push_str("{{");
             cursor += 2;
             continue;
         }
-        if current_char == '}' && next_char == Some('}') {
+        if remaining.starts_with(b"}}") {
             template_depth = template_depth.saturating_sub(1);
-            current.push('}');
-            current.push('}');
+            current.push_str("}}");
             cursor += 2;
             continue;
         }
-        if current_char == '[' && next_char == Some('[') {
+        if remaining.starts_with(b"[[") {
             link_depth += 1;
-            current.push('[');
-            current.push('[');
+            current.push_str("[[");
             cursor += 2;
             continue;
         }
-        if current_char == ']' && next_char == Some(']') {
+        if remaining.starts_with(b"]]") {
             link_depth = link_depth.saturating_sub(1);
-            current.push(']');
-            current.push(']');
+            current.push_str("]]");
             cursor += 2;
             continue;
         }
-        if current_char == '|' && template_depth == 0 && link_depth == 0 {
+        if remaining[0] == b'|' && template_depth == 0 && link_depth == 0 {
             out.push(current.trim().to_string());
             current.clear();
             cursor += 1;
             continue;
         }
+        let current_char = inner[cursor..]
+            .chars()
+            .next()
+            .expect("cursor is inside template invocation");
         current.push(current_char);
-        cursor += 1;
+        cursor += current_char.len_utf8();
     }
 
     out.push(current.trim().to_string());
@@ -221,39 +300,43 @@ pub(crate) fn split_template_segments(inner: &str) -> Vec<String> {
 }
 
 pub(crate) fn split_once_top_level_equals(value: &str) -> Option<(String, String)> {
-    let chars: Vec<char> = value.chars().collect();
     let mut cursor = 0usize;
     let mut template_depth = 0usize;
     let mut link_depth = 0usize;
-    while cursor < chars.len() {
-        let current_char = chars[cursor];
-        let next_char = chars.get(cursor + 1).copied();
-        if current_char == '{' && next_char == Some('{') {
+    while cursor < value.len() {
+        if let Some(end) = skip_template_literal_region(value, cursor) {
+            cursor = end;
+            continue;
+        }
+        let remaining = &value.as_bytes()[cursor..];
+        if remaining.starts_with(b"{{") {
             template_depth += 1;
             cursor += 2;
             continue;
         }
-        if current_char == '}' && next_char == Some('}') {
+        if remaining.starts_with(b"}}") {
             template_depth = template_depth.saturating_sub(1);
             cursor += 2;
             continue;
         }
-        if current_char == '[' && next_char == Some('[') {
+        if remaining.starts_with(b"[[") {
             link_depth += 1;
             cursor += 2;
             continue;
         }
-        if current_char == ']' && next_char == Some(']') {
+        if remaining.starts_with(b"]]") {
             link_depth = link_depth.saturating_sub(1);
             cursor += 2;
             continue;
         }
-        if current_char == '=' && template_depth == 0 && link_depth == 0 {
-            let key = chars[..cursor].iter().collect::<String>();
-            let value = chars[cursor + 1..].iter().collect::<String>();
-            return Some((key, value));
+        if remaining[0] == b'=' && template_depth == 0 && link_depth == 0 {
+            return Some((value[..cursor].to_string(), value[cursor + 1..].to_string()));
         }
-        cursor += 1;
+        let current_char = value[cursor..]
+            .chars()
+            .next()
+            .expect("cursor is inside template parameter");
+        cursor += current_char.len_utf8();
     }
     None
 }
@@ -290,5 +373,36 @@ pub(crate) fn canonical_template_title(raw: &str) -> Option<String> {
 }
 
 pub(crate) fn normalize_template_parameter_key(value: &str) -> String {
-    normalize_spaces(&value.replace('_', " ")).to_ascii_lowercase()
+    value.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_template_invocations;
+
+    #[test]
+    fn invocation_extraction_skips_comments_and_literal_regions() {
+        let content = r#"
+{{Runtime|name=value|literal=<nowiki>{{Nested literal|...}}</nowiki>}}
+<!-- {{Commented}} -->
+<pre>{{Preformatted}}</pre>
+<syntaxhighlight lang="wikitext">{{Highlighted}}</syntaxhighlight>
+<templatedata>{"description":"{{Metadata literal}}"}</templatedata>
+"#;
+        let invocations = extract_template_invocations(content);
+        assert_eq!(invocations.len(), 1);
+        assert_eq!(invocations[0].template_title, "Template:Runtime");
+        assert_eq!(invocations[0].parameter_keys, vec!["literal", "name"]);
+    }
+
+    #[test]
+    fn named_parameter_identity_preserves_case_underscores_and_internal_space() {
+        let invocations = extract_template_invocations(
+            "{{Example| source1_sha256 =one|Reason=two|reason=three|two words=four}}",
+        );
+        assert_eq!(
+            invocations[0].parameter_keys,
+            vec!["Reason", "reason", "source1_sha256", "two words"]
+        );
+    }
 }

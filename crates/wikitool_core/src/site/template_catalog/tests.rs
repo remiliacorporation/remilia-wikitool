@@ -181,13 +181,18 @@ fn template_catalog_fuses_local_docs_templatedata_and_usage() {
         .iter()
         .find(|param| param.name == "birth_date")
         .expect("birth_date parameter");
-    assert!(birth_date.aliases.contains(&"birth date".to_string()));
+    assert!(birth_date.aliases.is_empty());
     assert!(
         birth_date
             .observed_names
-            .contains(&"birth date".to_string())
+            .contains(&"birth_date".to_string())
     );
-    assert!(birth_date.usage_count >= 1);
+    let spaced_birth_date = entry
+        .parameters
+        .iter()
+        .find(|param| param.name == "birth date")
+        .expect("case- and underscore-sensitive observed parameter");
+    assert_eq!(spaced_birth_date.usage_count, 1);
     assert!(
         entry
             .examples

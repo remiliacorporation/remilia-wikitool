@@ -482,5 +482,20 @@ mod tests {
         ])
         .expect("wiki render-check should parse");
         assert!(matches!(render_check.command, Some(Commands::Wiki(_))));
+
+        let contract_render_check = Cli::try_parse_from([
+            "wikitool",
+            "templates",
+            "contract",
+            "render-check",
+            "template-contract.json",
+            "--format",
+            "json",
+        ])
+        .expect("template contract render-check should parse");
+        assert!(matches!(
+            contract_render_check.command,
+            Some(Commands::Templates(_))
+        ));
     }
 }

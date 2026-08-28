@@ -13,6 +13,11 @@ use crate::briefs::{BriefCommand, BriefView, brief_command_owned, capped_strings
 use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
+mod contract;
+use contract::{
+    TemplatesContractArgs, TemplatesScaffoldArgs, run_templates_contract, run_templates_scaffold,
+};
+
 #[derive(Debug, Args)]
 pub(crate) struct TemplatesArgs {
     #[command(subcommand)]
@@ -29,6 +34,10 @@ enum TemplatesSubcommand {
     Examples(TemplatesExamplesArgs),
     #[command(about = "Export an exact named template/module dependency closure")]
     Closure(TemplatesClosureArgs),
+    #[command(about = "Validate and compare declarative template contracts")]
+    Contract(TemplatesContractArgs),
+    #[command(about = "Preview or apply a contract-bound template scaffold")]
+    Scaffold(TemplatesScaffoldArgs),
 }
 
 #[derive(Debug, Args)]
@@ -124,6 +133,8 @@ pub(crate) fn run_templates(runtime: &RuntimeOptions, args: TemplatesArgs) -> Re
         TemplatesSubcommand::Show(args) => run_templates_show(runtime, args),
         TemplatesSubcommand::Examples(args) => run_templates_examples(runtime, args),
         TemplatesSubcommand::Closure(args) => run_templates_closure(runtime, args),
+        TemplatesSubcommand::Contract(args) => run_templates_contract(runtime, args),
+        TemplatesSubcommand::Scaffold(args) => run_templates_scaffold(runtime, args),
     }
 }
 

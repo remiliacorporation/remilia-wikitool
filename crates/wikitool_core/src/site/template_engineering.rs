@@ -457,7 +457,7 @@ fn relative_path_to_path(project_root: &Path, relative_path: &str) -> PathBuf {
     path
 }
 
-fn transcluded_template_source(content: &str) -> String {
+pub(super) fn transcluded_template_source(content: &str) -> String {
     let onlyinclude = collect_tag_bodies(content, "onlyinclude");
     if !onlyinclude.is_empty() {
         return onlyinclude.join("\n");

@@ -365,7 +365,7 @@ fn query_search_and_context_bundle() {
         .expect("infobox invocation");
     assert_eq!(
         infobox_invocation.parameter_keys,
-        vec!["birth date".to_string(), "name".to_string()]
+        vec!["birth_date".to_string(), "name".to_string()]
     );
     let birth_date_invocation = context
         .template_invocations
@@ -436,7 +436,7 @@ fn extract_template_invocations_captures_nested_templates() {
         .expect("infobox invocation");
     assert_eq!(
         infobox.parameter_keys,
-        vec!["birth date".to_string(), "name".to_string()]
+        vec!["birth_date".to_string(), "name".to_string()]
     );
 
     let birth_date = invocations
@@ -1437,7 +1437,7 @@ fn build_authoring_context_uses_explicit_contract_query_for_graph_traversal() {
         species
             .parameter_keys
             .iter()
-            .any(|key| key == "conservation status")
+            .any(|key| key == "conservation_status")
     );
     assert!(
         species
