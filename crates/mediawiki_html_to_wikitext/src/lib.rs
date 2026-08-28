@@ -8,6 +8,70 @@ use scraper::{ElementRef, Html, Node, Selector};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+pub const SOURCE_PROFILE_SCHEMA: &str = "mediawiki.html-source-profile.v1";
+pub const TARGET_PROFILE_SCHEMA: &str = "mediawiki.wikitext-target-profile.v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SourceProfile {
+    pub schema: String,
+    pub profile_id: String,
+    pub source_key: String,
+    pub allowed_origins: BTreeSet<String>,
+    pub article_path_prefix: String,
+    pub media_url_prefixes: BTreeSet<String>,
+    #[serde(default)]
+    pub generic_table_classes: BTreeSet<String>,
+    #[serde(default)]
+    pub infobox: Option<SourceInfoboxPolicy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SourceInfoboxPolicy {
+    pub table_class: String,
+    pub default_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TargetProfile {
+    pub schema: String,
+    pub profile_id: String,
+    pub max_wikitext_bytes: usize,
+    pub link_policy: LinkPolicy,
+    pub media_policy: MediaPolicy,
+    #[serde(default)]
+    pub infobox: Option<TargetInfoboxPolicy>,
+    pub authoring_policy: AuthoringPolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TargetInfoboxPolicy {
+    pub template: String,
+    pub unlabeled_field_label: String,
+    pub max_custom_fields: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AuthoringPolicy {
+    pub allowed_templates: Vec<AllowedTemplate>,
+    pub allow_direct_parser_functions: bool,
+    pub allow_direct_modules: bool,
+    pub allow_native_file_links: bool,
+    pub allow_native_main_links: bool,
+    pub allow_categories: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AllowedTemplate {
+    pub title: String,
+    pub parameters: BTreeSet<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct LinkPolicy {
@@ -109,6 +173,436 @@ pub struct HtmlToWikitextOutput {
     pub coverage: Coverage,
     pub used_media: BTreeSet<String>,
     pub media_occurrences_consumed: usize,
+}
+
+pub struct ProfiledCompileInput<'a> {
+    pub html: &'a str,
+    pub canonical_title: &'a str,
+    pub canonical_url: &'a str,
+    pub source_key: &'a str,
+    pub media_scope: &'a str,
+    pub source_profile: &'a SourceProfile,
+    pub target_profile: &'a TargetProfile,
+    pub images: &'a BTreeMap<String, MediaReference>,
+    pub media_occurrences: Option<&'a [MediaReference]>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UnmappedStructure {
+    pub element: String,
+    pub classes: Vec<String>,
+    pub occurrences: usize,
+}
+
+pub struct ProfiledCompileOutput {
+    pub transformed: HtmlToWikitextOutput,
+    pub unmapped_structures: Vec<UnmappedStructure>,
+}
+
+pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompileOutput> {
+    validate_profiles(input.source_profile, input.target_profile)?;
+    ensure!(
+        input.source_key == input.source_profile.source_key,
+        "source evidence key {:?} does not match source profile {:?}",
+        input.source_key,
+        input.source_profile.source_key
+    );
+    validate_source_canonical_url(input.canonical_url, input.source_profile)?;
+
+    let infobox_policy = match (&input.source_profile.infobox, &input.target_profile.infobox) {
+        (Some(source), Some(target)) => Some(InfoboxPolicy {
+            source_table_class: source.table_class.clone(),
+            template: target.template.clone(),
+            default_type: source.default_type.clone(),
+            unlabeled_field_label: target.unlabeled_field_label.clone(),
+            max_custom_fields: target.max_custom_fields,
+        }),
+        (None, _) => None,
+        (Some(_), None) => bail!("source infobox mapping has no target implementation"),
+    };
+    let unmapped_structures = collect_unmapped_structures(input.html, input.source_profile)?;
+    let transformed = convert(HtmlToWikitextInput {
+        html: input.html,
+        canonical_title: input.canonical_title,
+        canonical_url: input.canonical_url,
+        media_scope: input.media_scope,
+        link_policy: &input.target_profile.link_policy,
+        media_policy: &input.target_profile.media_policy,
+        infobox_policy: infobox_policy.as_ref(),
+        images: input.images,
+        media_occurrences: input.media_occurrences,
+    })?;
+    ensure!(
+        transformed.wikitext.len() <= input.target_profile.max_wikitext_bytes,
+        "generated wikitext is {} bytes, exceeding target profile maximum {}",
+        transformed.wikitext.len(),
+        input.target_profile.max_wikitext_bytes
+    );
+    Ok(ProfiledCompileOutput {
+        transformed,
+        unmapped_structures,
+    })
+}
+
+pub fn validate_profiles(source: &SourceProfile, target: &TargetProfile) -> Result<()> {
+    validate_source_profile(source)?;
+    validate_target_profile(target)?;
+    if let (Some(_), None) = (&source.infobox, &target.infobox) {
+        bail!("source infobox mapping has no target implementation");
+    }
+    Ok(())
+}
+
+pub fn validate_source_profile(source: &SourceProfile) -> Result<()> {
+    ensure!(
+        source.schema == SOURCE_PROFILE_SCHEMA,
+        "source profile schema must be {SOURCE_PROFILE_SCHEMA}"
+    );
+    validate_identifier(&source.profile_id, "source profile_id")?;
+    validate_identifier(&source.source_key, "source source_key")?;
+    ensure!(
+        !source.allowed_origins.is_empty(),
+        "source profile allowed_origins is empty"
+    );
+    for origin in &source.allowed_origins {
+        validate_origin(origin)?;
+    }
+    validate_path_prefix(&source.article_path_prefix, "source article_path_prefix")?;
+    ensure!(
+        !source.media_url_prefixes.is_empty(),
+        "source profile media_url_prefixes is empty"
+    );
+    for prefix in &source.media_url_prefixes {
+        validate_url_prefix(prefix)?;
+        let parsed = Url::parse(prefix).context("parse source media URL prefix")?;
+        ensure!(
+            source
+                .allowed_origins
+                .contains(&parsed.origin().ascii_serialization()),
+            "source media URL prefix origin is absent from allowed_origins: {prefix}"
+        );
+    }
+    for class in &source.generic_table_classes {
+        validate_class_token(class, "generic table class")?;
+    }
+    if let Some(infobox) = &source.infobox {
+        validate_class_token(&infobox.table_class, "source infobox table class")?;
+        ensure!(
+            !source.generic_table_classes.contains(&infobox.table_class),
+            "source infobox class is also admitted as a generic table class"
+        );
+        ensure!(
+            !infobox.default_type.trim().is_empty() && infobox.default_type.len() <= 128,
+            "source infobox default_type is empty or too long"
+        );
+    }
+    Ok(())
+}
+
+pub fn validate_target_profile(target: &TargetProfile) -> Result<()> {
+    ensure!(
+        target.schema == TARGET_PROFILE_SCHEMA,
+        "target profile schema must be {TARGET_PROFILE_SCHEMA}"
+    );
+    validate_identifier(&target.profile_id, "target profile_id")?;
+    ensure!(
+        (1..=16 * 1024 * 1024).contains(&target.max_wikitext_bytes),
+        "target max_wikitext_bytes must be between 1 and 16777216"
+    );
+    validate_route_prefix(&target.link_policy.internal_route_prefix)?;
+    ensure!(
+        target.link_policy.preserve_fragments,
+        "target profile requires fragment preservation"
+    );
+    validate_template_name(&target.media_policy.image_template)?;
+    ensure!(
+        (1..=4).contains(&target.media_policy.max_audio_sources),
+        "target max_audio_sources must be between 1 and 4"
+    );
+    ensure!(
+        !target.authoring_policy.allow_direct_parser_functions
+            && !target.authoring_policy.allow_direct_modules
+            && !target.authoring_policy.allow_native_file_links
+            && !target.authoring_policy.allow_native_main_links
+            && !target.authoring_policy.allow_categories,
+        "target preservation profile requires every unsafe authoring capability to be false"
+    );
+    validate_target_template_contract(target)?;
+    if let Some(infobox) = &target.infobox {
+        validate_template_name(&infobox.template)?;
+        ensure!(
+            !infobox.unlabeled_field_label.trim().is_empty()
+                && infobox.unlabeled_field_label.len() <= 128,
+            "target infobox unlabeled_field_label is empty or too long"
+        );
+        ensure!(
+            (1..=10).contains(&infobox.max_custom_fields),
+            "target infobox max_custom_fields must be between 1 and 10"
+        );
+    }
+    Ok(())
+}
+
+fn validate_target_template_contract(target: &TargetProfile) -> Result<()> {
+    let mut titles = BTreeSet::new();
+    for template in &target.authoring_policy.allowed_templates {
+        validate_template_name(&template.title)?;
+        ensure!(
+            titles.insert(normalize_template_title(&template.title)),
+            "allowed_templates repeats {}",
+            template.title
+        );
+    }
+    let image = allowed_template(target, &target.media_policy.image_template)
+        .context("media image template is absent from allowed_templates")?;
+    for parameter in ["site", "sha256", "alt", "decorative", "width", "height"] {
+        ensure!(
+            image.parameters.contains(parameter),
+            "allowed media template is missing parameter {parameter}"
+        );
+    }
+    if target.media_policy.non_image_media_policy == NonImageMediaPolicy::TemplateAudio {
+        let audio_template = target
+            .media_policy
+            .audio_template
+            .as_deref()
+            .context("template_audio requires audio_template")?;
+        validate_template_name(audio_template)?;
+        let audio = allowed_template(target, audio_template)
+            .context("media audio template is absent from allowed_templates")?;
+        for parameter in [
+            "site",
+            "label",
+            "transcript",
+            "source1_sha256",
+            "source1_type",
+            "source2_sha256",
+            "source2_type",
+            "source3_sha256",
+            "source3_type",
+            "source4_sha256",
+            "source4_type",
+        ] {
+            ensure!(
+                audio.parameters.contains(parameter),
+                "allowed audio template is missing parameter {parameter}"
+            );
+        }
+    }
+    if let Some(infobox) = &target.infobox {
+        let allowed = allowed_template(target, &infobox.template)
+            .context("infobox template is absent from allowed_templates")?;
+        for parameter in ["name", "type", "image_content"] {
+            ensure!(
+                allowed.parameters.contains(parameter),
+                "allowed infobox template is missing parameter {parameter}"
+            );
+        }
+        for index in 1..=infobox.max_custom_fields {
+            for prefix in ["label", "data"] {
+                let parameter = format!("{prefix}{index}");
+                ensure!(
+                    allowed.parameters.contains(&parameter),
+                    "allowed infobox template is missing parameter {parameter}"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn allowed_template<'a>(target: &'a TargetProfile, title: &str) -> Option<&'a AllowedTemplate> {
+    let normalized = normalize_template_title(title);
+    target
+        .authoring_policy
+        .allowed_templates
+        .iter()
+        .find(|entry| normalize_template_title(&entry.title) == normalized)
+}
+
+pub fn validate_source_canonical_url(canonical_url: &str, source: &SourceProfile) -> Result<()> {
+    let url = Url::parse(canonical_url).context("parse canonical source URL")?;
+    let origin = url.origin().ascii_serialization();
+    ensure!(
+        source.allowed_origins.contains(&origin)
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none()
+            && url.path().starts_with(&source.article_path_prefix),
+        "canonical source URL is outside profile {:?} article routes",
+        source.profile_id
+    );
+    Ok(())
+}
+
+pub fn validate_source_media_url(value: &str, source: &SourceProfile) -> Result<()> {
+    let url = Url::parse(value).context("parse source media URL")?;
+    ensure!(
+        matches!(url.scheme(), "http" | "https")
+            && url.host().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none(),
+        "source media URL is not an admitted absolute HTTP(S) URL"
+    );
+    let admitted = source.media_url_prefixes.iter().any(|prefix| {
+        let Ok(prefix) = Url::parse(prefix) else {
+            return false;
+        };
+        url.origin() == prefix.origin() && url.path().starts_with(prefix.path())
+    });
+    ensure!(
+        admitted,
+        "source media URL is outside profile {:?} media routes",
+        source.profile_id
+    );
+    Ok(())
+}
+
+fn validate_origin(value: &str) -> Result<()> {
+    let url = Url::parse(value).context("parse source profile origin")?;
+    ensure!(
+        matches!(url.scheme(), "http" | "https")
+            && url.host().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.path() == "/"
+            && url.query().is_none()
+            && url.fragment().is_none()
+            && url.origin().ascii_serialization() == value,
+        "source profile origin must be a canonical HTTP(S) origin: {value:?}"
+    );
+    Ok(())
+}
+
+fn validate_url_prefix(value: &str) -> Result<()> {
+    let url = Url::parse(value).context("parse source media URL prefix")?;
+    ensure!(
+        matches!(url.scheme(), "http" | "https")
+            && url.host().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none()
+            && url.path().starts_with('/')
+            && url.path().ends_with('/'),
+        "source media URL prefix must be an absolute HTTP(S) directory URL"
+    );
+    Ok(())
+}
+
+fn validate_path_prefix(value: &str, label: &str) -> Result<()> {
+    ensure!(
+        value.starts_with('/')
+            && value.ends_with('/')
+            && !value.contains('\0')
+            && (!value.contains("//") || value == "/"),
+        "{label} must begin and end with / and contain no empty segment"
+    );
+    Ok(())
+}
+
+fn collect_unmapped_structures(
+    html: &str,
+    source: &SourceProfile,
+) -> Result<Vec<UnmappedStructure>> {
+    let document = Html::parse_fragment(html);
+    let selector =
+        Selector::parse("table").map_err(|_| anyhow::anyhow!("invalid table selector"))?;
+    let mapped_infobox_class = source
+        .infobox
+        .as_ref()
+        .map(|policy| policy.table_class.as_str());
+    let mut observations = BTreeMap::<Vec<String>, usize>::new();
+    for table in document.select(&selector) {
+        let mut classes = table
+            .value()
+            .attr("class")
+            .unwrap_or_default()
+            .split_ascii_whitespace()
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        classes.sort();
+        classes.dedup();
+        if classes.is_empty()
+            || classes
+                .iter()
+                .any(|class| source.generic_table_classes.contains(class))
+            || mapped_infobox_class
+                .map(|mapped| classes.iter().any(|class| class == mapped))
+                .unwrap_or(false)
+        {
+            continue;
+        }
+        *observations.entry(classes).or_default() += 1;
+    }
+    Ok(observations
+        .into_iter()
+        .map(|(classes, occurrences)| UnmappedStructure {
+            element: "table".to_string(),
+            classes,
+            occurrences,
+        })
+        .collect())
+}
+
+fn validate_identifier(value: &str, label: &str) -> Result<()> {
+    ensure!(
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')),
+        "{label} is invalid"
+    );
+    Ok(())
+}
+
+fn validate_class_token(value: &str, label: &str) -> Result<()> {
+    ensure!(
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')),
+        "{label} is invalid"
+    );
+    Ok(())
+}
+
+fn validate_route_prefix(value: &str) -> Result<()> {
+    ensure!(
+        !value.is_empty()
+            && value.len() <= 128
+            && !value.starts_with(':')
+            && !value.ends_with('/')
+            && !value.contains("..")
+            && !value.contains(['[', ']', '{', '}', '|', '#', '\n', '\r']),
+        "target internal route prefix is invalid"
+    );
+    Ok(())
+}
+
+fn validate_template_name(value: &str) -> Result<()> {
+    ensure!(
+        value.starts_with("Template:")
+            && value.len() <= 255
+            && !value.contains(['[', ']', '{', '}', '|', '#', '\n', '\r']),
+        "template name is invalid: {value:?}"
+    );
+    Ok(())
+}
+
+fn normalize_template_title(value: &str) -> String {
+    value
+        .strip_prefix("Template:")
+        .unwrap_or(value)
+        .replace('_', " ")
+        .trim()
+        .to_ascii_lowercase()
 }
 
 pub fn convert(input: HtmlToWikitextInput<'_>) -> Result<HtmlToWikitextOutput> {
@@ -1483,5 +1977,172 @@ mod tests {
                 .contains("|alt=Captured example|width=320|height=200}}")
         );
         assert_eq!(output.used_media, BTreeSet::from([source_url]));
+    }
+
+    fn profiled_policies() -> (SourceProfile, TargetProfile) {
+        let source = SourceProfile {
+            schema: SOURCE_PROFILE_SCHEMA.to_string(),
+            profile_id: "fixture-rendered-html-v1".to_string(),
+            source_key: "fixture".to_string(),
+            allowed_origins: BTreeSet::from(["https://source.example".to_string()]),
+            article_path_prefix: "/".to_string(),
+            media_url_prefixes: BTreeSet::from(["https://source.example/media/".to_string()]),
+            generic_table_classes: BTreeSet::from(["wikitable".to_string()]),
+            infobox: Some(SourceInfoboxPolicy {
+                table_class: "breakout".to_string(),
+                default_type: "Video game".to_string(),
+            }),
+        };
+        let mut infobox_parameters = BTreeSet::from([
+            "name".to_string(),
+            "type".to_string(),
+            "image_content".to_string(),
+        ]);
+        for index in 1..=2 {
+            infobox_parameters.insert(format!("label{index}"));
+            infobox_parameters.insert(format!("data{index}"));
+        }
+        let target = TargetProfile {
+            schema: TARGET_PROFILE_SCHEMA.to_string(),
+            profile_id: "fixture-target-v1".to_string(),
+            max_wikitext_bytes: 1024 * 1024,
+            link_policy: LinkPolicy {
+                internal_route_prefix: "Special:Archive".to_string(),
+                preserve_fragments: true,
+            },
+            media_policy: MediaPolicy {
+                image_template: "Template:Preservation image".to_string(),
+                audio_template: None,
+                max_audio_sources: 4,
+                empty_alt_policy: EmptyAltPolicy::Decorative,
+                emit_dimensions: true,
+                non_image_media_policy: NonImageMediaPolicy::Reject,
+            },
+            infobox: Some(TargetInfoboxPolicy {
+                template: "Template:Infobox subject".to_string(),
+                unlabeled_field_label: "Coverage".to_string(),
+                max_custom_fields: 2,
+            }),
+            authoring_policy: AuthoringPolicy {
+                allowed_templates: vec![
+                    AllowedTemplate {
+                        title: "Template:Preservation image".to_string(),
+                        parameters: BTreeSet::from([
+                            "site".to_string(),
+                            "sha256".to_string(),
+                            "alt".to_string(),
+                            "decorative".to_string(),
+                            "width".to_string(),
+                            "height".to_string(),
+                        ]),
+                    },
+                    AllowedTemplate {
+                        title: "Template:Infobox subject".to_string(),
+                        parameters: infobox_parameters,
+                    },
+                ],
+                allow_direct_parser_functions: false,
+                allow_direct_modules: false,
+                allow_native_file_links: false,
+                allow_native_main_links: false,
+                allow_categories: false,
+            },
+        };
+        (source, target)
+    }
+
+    #[test]
+    fn profiled_compilation_separates_source_semantics_from_target_templates() {
+        let (source_profile, target_profile) = profiled_policies();
+        let images = BTreeMap::new();
+        let output = compile_profiled(ProfiledCompileInput {
+            html: "<table class=\"breakout\"><tr class=\"breakouttitle\"><th>Example</th></tr><tr><td>Coverage</td></tr></table><table class=\"wikitable\"><tr><td>ordinary</td></tr></table><table class=\"mystery-box\"><tr><td>unmapped</td></tr></table>",
+            canonical_title: "Example",
+            canonical_url: "https://source.example/Example",
+            source_key: "fixture",
+            media_scope: "fixture",
+            source_profile: &source_profile,
+            target_profile: &target_profile,
+            images: &images,
+            media_occurrences: None,
+        })
+        .expect("compile with separate profiles");
+
+        assert!(
+            output
+                .transformed
+                .wikitext
+                .contains("{{Infobox subject\n| name = Example\n| type = Video game")
+        );
+        assert_eq!(
+            output.unmapped_structures,
+            vec![UnmappedStructure {
+                element: "table".to_string(),
+                classes: vec!["mystery-box".to_string()],
+                occurrences: 1,
+            }]
+        );
+    }
+
+    #[test]
+    fn profiled_compilation_rejects_source_origin_drift() {
+        let (source_profile, target_profile) = profiled_policies();
+        let images = BTreeMap::new();
+        let error = compile_profiled(ProfiledCompileInput {
+            html: "<p>Example</p>",
+            canonical_title: "Example",
+            canonical_url: "https://other.example/Example",
+            source_key: "fixture",
+            media_scope: "fixture",
+            source_profile: &source_profile,
+            target_profile: &target_profile,
+            images: &images,
+            media_occurrences: None,
+        })
+        .err()
+        .expect("source origin drift must fail");
+        assert!(error.to_string().contains("outside profile"));
+    }
+
+    #[test]
+    fn target_infobox_capability_can_remain_unused_by_a_source() {
+        let (mut source_profile, target_profile) = profiled_policies();
+        source_profile.infobox = None;
+        validate_profiles(&source_profile, &target_profile)
+            .expect("target capability does not require a source mapping");
+
+        let mut target_without_infobox = target_profile;
+        target_without_infobox.infobox = None;
+        let (source_with_infobox, _) = profiled_policies();
+        let error = validate_profiles(&source_with_infobox, &target_without_infobox)
+            .expect_err("source mapping requires a target implementation");
+        assert!(error.to_string().contains("no target implementation"));
+    }
+
+    #[test]
+    fn source_profile_routes_reject_canonical_and_media_drift() {
+        let (source_profile, _) = profiled_policies();
+        assert!(
+            validate_source_canonical_url("https://source.example/Article", &source_profile)
+                .is_ok()
+        );
+        assert!(
+            validate_source_canonical_url(
+                "https://source.example/Article?oldid=1",
+                &source_profile
+            )
+            .is_err()
+        );
+        assert!(
+            validate_source_media_url("https://source.example/media/example.png", &source_profile)
+                .is_ok()
+        );
+        assert!(
+            validate_source_media_url(
+                "https://source.example/unprofiled/example.png",
+                &source_profile
+            )
+            .is_err()
+        );
     }
 }
