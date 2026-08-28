@@ -45,10 +45,11 @@ target/debug/wikitest suite core-dogfood --require-all
 
 Every command that creates or advances a run re-opens the resulting receipt and replays all
 retained data evidence, then verifies the SHA-256 identities of the Wikitest driver and evaluated
-Wikitool binary at their recorded repository-relative or absolute locators. The run tree does not
-copy either binary. Later inspection therefore requires an external immutable binary archive (or
-restored build outputs) that places both exact binaries at those locators; a rebuilt binary makes
-the historical receipt intentionally non-replayable in that checkout. Use `inspect
+Wikitool binary at repository-relative locators (or the typed current-driver locator). Absolute
+host paths are never retained. The run tree does not copy either binary. Later inspection therefore
+requires an external immutable binary archive (or restored build outputs) that places both exact
+binaries at those locators; a rebuilt binary makes the historical receipt intentionally
+non-replayable in that checkout. Use `inspect
 .wikitest/runs/suite-.../receipt.json` to detect data corruption only while that binary-locator
 contract is satisfied.
 
@@ -84,8 +85,11 @@ target/debug/wikitest prose submit-author RUN --submission author-submission.jso
 
 Each participant export is created under the operating system's temporary directory, outside both
 the source repository and the retained run/holdout tree. Give the participant only that printed
-export root. Protected packet files are an exact allowlist; participant-created candidate, claim
-map, or submission files belong under its `output/` directory. The reviewer export contains the
+export root. The retained request and receipt identify it with a stable typed stage token instead
+of the host's absolute temporary path; while the submission is pending, Wikitest reconstructs the
+physical root from the opaque run ID and stage. Protected packet files are an exact allowlist;
+participant-created candidate, claim map, or submission files belong under its `output/`
+directory. The reviewer export contains the
 exact candidate, source/context packet, review skills, generated submission template, and
 mechanical observations. It excludes the assignment artifact, internal case label and description,
 author instructions, submission, claim map, identity, and controlled-case oracle. Reviewer-facing
@@ -100,7 +104,12 @@ target/debug/wikitest inspect RUN/receipt.json
 The external handoff root is an operational boundary, not the durable evidence store. Wikitest
 requires it while the corresponding submission is pending. After submission, it may be removed;
 the run retains the exact redacted request, packet, allowlisted inputs, outputs, and hashes needed
-for archival replay. An authoring run moves through `awaiting_author`, `awaiting_review`, and one of
+for archival replay and never resolves the typed token back to a host path. Mechanical execution
+similarly keeps raw process output in its external temporary workspace. Before packet construction,
+Wikitest rewrites only exact byte encodings of runner-owned workspace, data, config, execution-root,
+and tool paths to stable typed tokens; retained argv and output hashes cover those canonical bytes.
+It never searches for or rewrites unrelated source or participant prose that merely contains an
+absolute path. An authoring run moves through `awaiting_author`, `awaiting_review`, and one of
 `reviewed_accept`, `reviewed_revise`, or `reviewed_block`. The final state records the reviewer's
 disposition; Wikitest does not compute readability from heuristics.
 
@@ -123,6 +132,9 @@ Prose suites retain child runs beneath their own `runs/` tree, use root-relative
 both the immutable preparation snapshot and the current evaluated child receipt. The suite data
 tree may be relocated as a unit and inspection resolves no external child-run paths, but replay
 still requires the exact external binaries at the receipt's recorded locators as described above.
+The retained suite-manifest identity uses a typed catalog token derived from its strict manifest ID;
+an absolute site-catalog source path is never serialized and inspection re-derives the token from
+the retained manifest.
 
 `demonstrated_coverage` is bounded controlled-case protocol evidence: it proves the declared public
 tags, axes, disposition, stage closure, and held-out expectations replay. Wikitest validates finding

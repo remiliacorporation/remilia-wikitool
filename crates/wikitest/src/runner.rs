@@ -12,8 +12,9 @@ use crate::artifact::{
     atomic_write, atomic_write_json, portable, relative_locator, resolve_existing_plain_file,
     resolve_output_path, sha256_bytes, sha256_file, unix_ms,
 };
+use crate::canonical::canonicalize_exact_paths;
 use crate::catalog::{Manifest, load_manifest, resolve_manifest};
-use crate::identity::current_driver_identity;
+use crate::identity::{current_driver_identity, repository_binary_locator};
 use crate::mediawiki::{MediaWikiFixture, MediaWikiService, evaluate_expectation};
 use crate::model::{
     ArtifactIdentity, AssertionReceipt, FileAssertion, FileObservation, FileObservationState,
@@ -27,6 +28,11 @@ use crate::process::{CapturedStream, probe_version, run_bounded};
 
 const DEFAULT_OUTPUT_BUDGET: usize = 2 * 1024 * 1024;
 const FILE_ASSERTION_BUDGET: u64 = 16 * 1024 * 1024;
+const WORKSPACE_ROOT_TOKEN: &str = "<WIKITEST_WORKSPACE_ROOT>";
+const WORKSPACE_DATA_TOKEN: &str = "<WIKITEST_WORKSPACE_DATA>";
+const WORKSPACE_CONFIG_TOKEN: &str = "<WIKITEST_WORKSPACE_CONFIG>";
+const EXECUTION_WORKSPACES_TOKEN: &str = "<WIKITEST_EXECUTION_WORKSPACES>";
+const TOOL_BINARY_TOKEN: &str = "<WIKITEST_TOOL_BINARY>";
 const HOST_SNAPSHOT_PATHS: &[&str] =
     &[".wikitool", "wiki_content", "templates", "wikitool_adapter"];
 
@@ -173,10 +179,8 @@ fn run_loaded_scenario(
         &run_directory.join("tool-version.stdout.txt"),
         &run_directory.join("tool-version.stderr.txt"),
     )?;
-    let tool_locator = executable
-        .strip_prefix(&options.repository)
-        .map(portable)
-        .unwrap_or_else(|_| portable(&executable));
+    let tool_locator =
+        repository_binary_locator(&executable, &options.repository, "configured Wikitool")?;
 
     let mediawiki = mediawiki_snapshot
         .as_deref()
@@ -930,16 +934,23 @@ fn run_command_step(
         .collect::<Result<BTreeMap<_, _>>>()?;
     let stdout_path = steps_directory.join(format!("{index:03}-{id}.stdout.txt"));
     let stderr_path = steps_directory.join(format!("{index:03}-{id}.stderr.txt"));
-    let outcome = run_bounded(
+    let raw_directory = workspace.join(".wikitest-private/process-output");
+    let raw_stdout_path = raw_directory.join(format!("{index:03}-{id}.stdout.txt"));
+    let raw_stderr_path = raw_directory.join(format!("{index:03}-{id}.stderr.txt"));
+    let mut outcome = run_bounded(
         executable,
         &process_argv,
         &cwd,
         &environment,
         timeout,
         maximum_output_bytes,
-        &stdout_path,
-        &stderr_path,
+        &raw_stdout_path,
+        &raw_stderr_path,
     )?;
+    outcome.stdout =
+        canonicalized_process_stream(&outcome.stdout, &stdout_path, workspace, executable)?;
+    outcome.stderr =
+        canonicalized_process_stream(&outcome.stderr, &stderr_path, workspace, executable)?;
     let stdout_artifact = output_artifact(run_directory, &stdout_path, &outcome.stdout)?;
     let stderr_artifact = output_artifact(run_directory, &stderr_path, &outcome.stderr)?;
     let mut assertions = vec![AssertionReceipt {
@@ -1493,6 +1504,66 @@ fn file_assertion_name(assertion: &FileAssertion) -> &'static str {
     }
 }
 
+fn canonicalized_process_stream(
+    stream: &CapturedStream,
+    retained_path: &Path,
+    workspace: &Path,
+    executable: &Path,
+) -> Result<CapturedStream> {
+    let bytes = if stream.truncated {
+        Vec::new()
+    } else {
+        canonicalize_scenario_output(&stream.bytes, workspace, executable)?
+    };
+    atomic_write(retained_path, &bytes)?;
+    let stored_sha256 = sha256_bytes(&bytes);
+    if stream.truncated {
+        return Ok(CapturedStream {
+            sha256: stream.sha256.clone(),
+            stored_sha256,
+            observed_bytes: stream.observed_bytes,
+            stored_bytes: 0,
+            truncated: true,
+            bytes,
+        });
+    }
+    let bytes_len = bytes.len() as u64;
+    Ok(CapturedStream {
+        sha256: stored_sha256.clone(),
+        stored_sha256,
+        observed_bytes: bytes_len,
+        stored_bytes: bytes_len,
+        truncated: false,
+        bytes,
+    })
+}
+
+fn canonicalize_scenario_output(
+    bytes: &[u8],
+    workspace: &Path,
+    executable: &Path,
+) -> Result<Vec<u8>> {
+    let execution_workspaces = workspace
+        .parent()
+        .context("execution workspace has no runner-owned parent")?;
+    canonicalize_exact_paths(
+        bytes,
+        &[
+            (
+                workspace.join(".wikitool/config.toml"),
+                WORKSPACE_CONFIG_TOKEN,
+            ),
+            (workspace.join(".wikitool/data"), WORKSPACE_DATA_TOKEN),
+            (workspace.to_path_buf(), WORKSPACE_ROOT_TOKEN),
+            (
+                execution_workspaces.to_path_buf(),
+                EXECUTION_WORKSPACES_TOKEN,
+            ),
+            (executable.to_path_buf(), TOOL_BINARY_TOKEN),
+        ],
+    )
+}
+
 fn output_artifact(
     run_directory: &Path,
     path: &Path,
@@ -1780,6 +1851,25 @@ mod tests {
                 .expect("expand host path"),
             "F:/AI/wiki/.wikitool/data/wikitool.db"
         );
+    }
+
+    #[test]
+    fn retained_scenario_output_hides_windows_runner_paths() {
+        let workspace = PathBuf::from(
+            r"\\?\C:\Users\Onno\AppData\Local\Temp\wikitest-execution-workspaces\run-1",
+        );
+        let executable = PathBuf::from(r"\\?\F:\AI\wiki\dist\wikitool.exe");
+        let input = br#"root=C:/Users/Onno/AppData/Local/Temp/wikitest-execution-workspaces/run-1 config=\\\\?\\C:\\Users\\Onno\\AppData\\Local\\Temp\\wikitest-execution-workspaces\\run-1\\.wikitool\\config.toml backup=//?/C:/Users/Onno/AppData/Local/Temp/wikitest-execution-workspaces/run-1/.wikitool/sync/backups tool=F:/AI/wiki/dist/wikitool.exe"#;
+        let canonical =
+            canonicalize_scenario_output(input, &workspace, &executable).expect("canonical output");
+        let text = String::from_utf8(canonical).expect("utf8 output");
+        assert!(text.contains(WORKSPACE_ROOT_TOKEN));
+        assert!(text.contains(WORKSPACE_CONFIG_TOKEN));
+        assert!(text.contains(TOOL_BINARY_TOKEN));
+        assert!(!text.contains("Onno"));
+        assert!(!text.contains("AppData"));
+        assert!(!text.contains("//?/C:"));
+        assert!(!text.contains(r"\\?\C:"));
     }
 
     #[test]

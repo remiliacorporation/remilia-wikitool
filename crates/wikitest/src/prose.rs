@@ -11,8 +11,12 @@ use crate::artifact::{
     atomic_write, atomic_write_json, portable, relative_locator, resolve_existing_plain_file,
     resolve_output_path, sha256_bytes, sha256_file, unix_ms,
 };
+use crate::canonical::canonicalize_exact_paths;
 use crate::catalog::{Manifest, load_manifest, resolve_manifest};
-use crate::identity::{current_driver_identity, verify_path_identity, verify_recorded_identity};
+use crate::identity::{
+    current_driver_identity, repository_binary_locator, verify_path_identity,
+    verify_recorded_identity,
+};
 use crate::model::{ArtifactIdentity, OutputArtifact, ToolIdentity};
 use crate::process::{CapturedStream, probe_version, run_bounded};
 use crate::prose_model::{
@@ -29,6 +33,13 @@ use crate::prose_model::{
 use crate::runner::create_execution_workspace;
 
 const PROSE_PROCESS_TIMEOUT: Duration = Duration::from_secs(120);
+const PARTICIPANT_EXPORT_ROOT_PREFIX: &str = "wikitest:participant-export:";
+const PROSE_SUITE_CATALOG_PREFIX: &str = "wikitest:catalog:prose-suite:";
+const MECHANICAL_ROOT_TOKEN: &str = "<WIKITEST_MECHANICAL_ROOT>";
+const MECHANICAL_DATA_TOKEN: &str = "<WIKITEST_MECHANICAL_DATA>";
+const MECHANICAL_CONFIG_TOKEN: &str = "<WIKITEST_MECHANICAL_CONFIG>";
+const EXECUTION_WORKSPACES_TOKEN: &str = "<WIKITEST_EXECUTION_WORKSPACES>";
+const TOOL_BINARY_TOKEN: &str = "<WIKITEST_TOOL_BINARY>";
 static PROSE_RUN_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
@@ -339,10 +350,7 @@ pub fn prepare_suite(path: &Path, options: &ProseOptions) -> Result<PreparedPros
     let suite_identity = ProseSuiteIdentity {
         id: suite.id.clone(),
         title: suite.title.clone(),
-        locator: path
-            .strip_prefix(&options.repository)
-            .map(portable)
-            .unwrap_or_else(|_| portable(&path)),
+        locator: prose_suite_catalog_locator(&suite.id),
         sha256: suite_sha256,
     };
 
@@ -479,6 +487,10 @@ pub(crate) fn resolve_prose_suite_child_receipt(
         );
     }
     Ok(expected)
+}
+
+pub(crate) fn prose_suite_catalog_locator(suite_id: &str) -> String {
+    format!("{PROSE_SUITE_CATALOG_PREFIX}{suite_id}")
 }
 
 pub fn submit_author(
@@ -863,6 +875,7 @@ fn write_participant_export(
     {
         bail!("participant export parent is not isolated from repository and holdout roots");
     }
+    validate_participant_stage(stage)?;
     let export_root = export_parent.join(format!("{run_id}-{stage}"));
     fs::create_dir(&export_root).with_context(|| {
         format!(
@@ -887,10 +900,41 @@ fn write_participant_export(
     }
     let request = artifact_identity(&export_root, &request_path)?;
     Ok(ParticipantExport {
-        root: portable(&fs::canonicalize(&export_root)?),
+        root: participant_export_token(stage)?,
         request,
         output_directory: "output".to_owned(),
     })
+}
+
+fn validate_participant_stage(stage: &str) -> Result<()> {
+    if matches!(stage, "author" | "reviewer") {
+        Ok(())
+    } else {
+        bail!("unsupported participant export stage {stage:?}")
+    }
+}
+
+fn participant_export_token(stage: &str) -> Result<String> {
+    validate_participant_stage(stage)?;
+    Ok(format!("{PARTICIPANT_EXPORT_ROOT_PREFIX}{stage}"))
+}
+
+pub fn operational_participant_export_root(
+    run_id: &str,
+    export: &ParticipantExport,
+) -> Result<PathBuf> {
+    let stage = export
+        .root
+        .strip_prefix(PARTICIPANT_EXPORT_ROOT_PREFIX)
+        .context("participant export root is not a stable typed token")?;
+    validate_participant_stage(stage)?;
+    let leaf = format!("{run_id}-{stage}");
+    if Path::new(&leaf).components().count() != 1 {
+        bail!("participant export run identity is not a single safe path component");
+    }
+    Ok(std::env::temp_dir()
+        .join("wikitest-participant-exports")
+        .join(leaf))
 }
 
 fn write_author_templates(
@@ -1225,11 +1269,21 @@ fn run_mechanical_observations(
         .and_then(|name| name.to_str())
         .context("prose run directory name is not UTF-8")?;
     let project = create_execution_workspace(&format!("{run_name}-mechanical-{}", unix_ms()?))?;
+    validate_stored_execution_root(&project, &options.repository, run_directory)?;
     let candidate_path = resolve_output_path(run_directory, &candidate.locator)?;
     let candidate_bytes = fs::read(candidate_path)?;
-    let mut init_argv = mechanical_runtime_argv(&project);
-    init_argv.extend(["init".to_owned(), "--no-network".to_owned()]);
-    let init = run_observation("init", &init_argv, &project, run_directory, options)?;
+    let mut init_execution_argv = mechanical_runtime_argv(&project);
+    init_execution_argv.extend(["init".to_owned(), "--no-network".to_owned()]);
+    let mut init_evidence_argv = canonical_mechanical_runtime_argv();
+    init_evidence_argv.extend(["init".to_owned(), "--no-network".to_owned()]);
+    let init = run_observation(
+        "init",
+        &init_execution_argv,
+        &init_evidence_argv,
+        &project,
+        run_directory,
+        options,
+    )?;
     if init.exit_code != Some(0) || init.timed_out || init.stdout.truncated || init.stderr.truncated
     {
         bail!("isolated mechanical project initialization did not complete successfully");
@@ -1237,8 +1291,8 @@ fn run_mechanical_observations(
     let mut observations = vec![init];
     let draft_path = project.join(".wikitool/drafts/candidate.wiki");
     atomic_write(&draft_path, &candidate_bytes)?;
-    let mut lint_argv = mechanical_runtime_argv(&project);
-    lint_argv.extend([
+    let mut lint_execution_argv = mechanical_runtime_argv(&project);
+    lint_execution_argv.extend([
         "article".to_owned(),
         "lint".to_owned(),
         ".wikitool/drafts/candidate.wiki".to_owned(),
@@ -1247,7 +1301,24 @@ fn run_mechanical_observations(
         "--format".to_owned(),
         "json".to_owned(),
     ]);
-    let mut lint = run_observation("lint", &lint_argv, &project, run_directory, options)?;
+    let mut lint_evidence_argv = canonical_mechanical_runtime_argv();
+    lint_evidence_argv.extend([
+        "article".to_owned(),
+        "lint".to_owned(),
+        ".wikitool/drafts/candidate.wiki".to_owned(),
+        "--title".to_owned(),
+        title.to_owned(),
+        "--format".to_owned(),
+        "json".to_owned(),
+    ]);
+    let mut lint = run_observation(
+        "lint",
+        &lint_execution_argv,
+        &lint_evidence_argv,
+        &project,
+        run_directory,
+        options,
+    )?;
     let (observed_candidate_sha256, observed_candidate_bytes) = sha256_file(&draft_path)?;
     if observed_candidate_sha256 != candidate.sha256 || observed_candidate_bytes != candidate.bytes
     {
@@ -1275,33 +1346,61 @@ fn mechanical_runtime_argv(project: &Path) -> Vec<String> {
     ]
 }
 
+fn canonical_mechanical_runtime_argv() -> Vec<String> {
+    vec![
+        "--project-root".to_owned(),
+        MECHANICAL_ROOT_TOKEN.to_owned(),
+        "--data-dir".to_owned(),
+        MECHANICAL_DATA_TOKEN.to_owned(),
+        "--config".to_owned(),
+        MECHANICAL_CONFIG_TOKEN.to_owned(),
+    ]
+}
+
 fn run_observation(
     id: &str,
-    argv: &[String],
+    execution_argv: &[String],
+    evidence_argv: &[String],
     cwd: &Path,
     run_directory: &Path,
     options: &ProseOptions,
 ) -> Result<MechanicalObservation> {
     let stdout_path = run_directory.join(format!("mechanical/{id}.stdout.txt"));
     let stderr_path = run_directory.join(format!("mechanical/{id}.stderr.txt"));
+    let raw_directory = cwd.join(".wikitest-raw/mechanical");
+    fs::create_dir_all(&raw_directory)?;
+    let raw_stdout_path = raw_directory.join(format!("{id}.stdout.txt"));
+    let raw_stderr_path = raw_directory.join(format!("{id}.stderr.txt"));
     let outcome = run_bounded(
         &options.wikitool,
-        argv,
+        execution_argv,
         cwd,
         &BTreeMap::new(),
         PROSE_PROCESS_TIMEOUT,
         options.maximum_output_bytes,
-        &stdout_path,
-        &stderr_path,
+        &raw_stdout_path,
+        &raw_stderr_path,
     )?;
     Ok(MechanicalObservation {
-        argv: argv.to_vec(),
+        argv: evidence_argv.to_vec(),
         input: None,
         exit_code: outcome.status.code(),
         timed_out: outcome.timed_out,
         duration_ms: outcome.duration_ms,
-        stdout: output_artifact(run_directory, &stdout_path, &outcome.stdout)?,
-        stderr: output_artifact(run_directory, &stderr_path, &outcome.stderr)?,
+        stdout: canonicalized_output_artifact(
+            run_directory,
+            &stdout_path,
+            &outcome.stdout,
+            cwd,
+            &options.wikitool,
+        )?,
+        stderr: canonicalized_output_artifact(
+            run_directory,
+            &stderr_path,
+            &outcome.stderr,
+            cwd,
+            &options.wikitool,
+        )?,
     })
 }
 
@@ -1314,29 +1413,69 @@ fn tool_identity(options: &ProseOptions, run_directory: &Path) -> Result<ToolIde
         &run_directory.join("tool/version.stderr.txt"),
     )?;
     Ok(ToolIdentity {
-        locator: options
-            .wikitool
-            .strip_prefix(&options.repository)
-            .map(portable)
-            .unwrap_or_else(|_| portable(&options.wikitool)),
+        locator: repository_binary_locator(
+            &options.wikitool,
+            &options.repository,
+            "configured Wikitool",
+        )?,
         sha256,
         version,
     })
 }
 
-fn output_artifact(
+fn canonicalized_output_artifact(
     run_directory: &Path,
     path: &Path,
     stream: &CapturedStream,
+    mechanical_root: &Path,
+    tool_binary: &Path,
 ) -> Result<OutputArtifact> {
+    if stream.truncated
+        || stream.sha256 != stream.stored_sha256
+        || stream.observed_bytes != stream.stored_bytes
+        || stream.bytes.len() as u64 != stream.stored_bytes
+    {
+        bail!("mechanical output must be complete before public path canonicalization");
+    }
+    let bytes = canonicalize_runner_owned_paths(&stream.bytes, mechanical_root, tool_binary)?;
+    atomic_write(path, &bytes)?;
+    let sha256 = sha256_bytes(&bytes);
+    let bytes = bytes.len() as u64;
     Ok(OutputArtifact {
         locator: relative_locator(run_directory, path)?,
-        sha256: stream.sha256.clone(),
-        stored_sha256: stream.stored_sha256.clone(),
-        observed_bytes: stream.observed_bytes,
-        stored_bytes: stream.stored_bytes,
-        truncated: stream.truncated,
+        sha256: sha256.clone(),
+        stored_sha256: sha256,
+        observed_bytes: bytes,
+        stored_bytes: bytes,
+        truncated: false,
     })
+}
+
+fn canonicalize_runner_owned_paths(
+    bytes: &[u8],
+    mechanical_root: &Path,
+    tool_binary: &Path,
+) -> Result<Vec<u8>> {
+    let execution_workspaces = mechanical_root
+        .parent()
+        .context("mechanical workspace has no runner-owned parent")?;
+    let paths = [
+        (
+            mechanical_root.join(".wikitool/config.toml"),
+            MECHANICAL_CONFIG_TOKEN,
+        ),
+        (
+            mechanical_root.join(".wikitool/data"),
+            MECHANICAL_DATA_TOKEN,
+        ),
+        (mechanical_root.to_path_buf(), MECHANICAL_ROOT_TOKEN),
+        (
+            execution_workspaces.to_path_buf(),
+            EXECUTION_WORKSPACES_TOKEN,
+        ),
+        (tool_binary.to_path_buf(), TOOL_BINARY_TOKEN),
+    ];
+    canonicalize_exact_paths(bytes, &paths)
 }
 
 pub(crate) fn evaluate_oracle(
@@ -1699,7 +1838,7 @@ pub(crate) fn verify_current_receipt(
         verify_observations(run_directory, &author.mechanical_observations)?;
     }
     let assignment = load_authority_assignment(receipt, run_directory)?;
-    verify_request_semantics(receipt, &assignment, run_directory, repository)?;
+    verify_request_semantics(receipt, &assignment, run_directory)?;
     match (&receipt.author_request, &receipt.author_export) {
         (Some(request), Some(export)) => {
             let visible_inputs = receipt
@@ -1711,11 +1850,15 @@ pub(crate) fn verify_current_receipt(
             verify_participant_export(
                 repository,
                 run_directory,
-                request,
-                export,
-                &visible_inputs,
-                &[],
-                receipt.author.is_none(),
+                &receipt.run_id,
+                ParticipantExportEvidence {
+                    expected_stage: "author",
+                    retained_request: request,
+                    export,
+                    inputs: &visible_inputs,
+                    observations: &[],
+                    external_required: receipt.author.is_none(),
+                },
             )?;
         }
         (None, None) => {}
@@ -1733,11 +1876,15 @@ pub(crate) fn verify_current_receipt(
             verify_participant_export(
                 repository,
                 run_directory,
-                request,
-                export,
-                &binding.inputs,
-                &binding.mechanical_observations,
-                receipt.review.is_none(),
+                &receipt.run_id,
+                ParticipantExportEvidence {
+                    expected_stage: "reviewer",
+                    retained_request: request,
+                    export,
+                    inputs: &binding.inputs,
+                    observations: &binding.mechanical_observations,
+                    external_required: receipt.review.is_none(),
+                },
             )?;
         }
         (None, None, None) => {}
@@ -1759,7 +1906,6 @@ fn verify_request_semantics(
     receipt: &ProseReceipt,
     assignment: &ProseAssignment,
     run_directory: &Path,
-    repository: &Path,
 ) -> Result<()> {
     let packet_path = resolve_output_path(run_directory, &receipt.packet.locator)?;
     let packet: PacketBinding =
@@ -1840,7 +1986,6 @@ fn verify_request_semantics(
                     &binding.mechanical_observations,
                     &assignment.article.title,
                     candidate,
-                    repository,
                     run_directory,
                 )?,
                 None if assignment.mode == ProseMode::Authoring => {
@@ -1944,25 +2089,12 @@ fn verify_mechanical_observation_protocol(
     observations: &[MechanicalObservation],
     title: &str,
     candidate: &ArtifactIdentity,
-    repository: &Path,
     run_directory: &Path,
 ) -> Result<()> {
     let [init, lint] = observations else {
         bail!("mechanical evidence must contain exactly one init and one article-lint observation");
     };
-    let project = init
-        .argv
-        .get(1)
-        .map(PathBuf::from)
-        .context("mechanical init observation omitted its project root")?;
-    validate_stored_execution_root(&project, repository, run_directory)?;
-    if project.exists() {
-        let dotenv = project.join(".env");
-        if !dotenv.is_file() || !fs::read(&dotenv)?.is_empty() {
-            bail!("mechanical execution workspace does not contain an empty dotenv boundary");
-        }
-    }
-    let mut expected_init = mechanical_runtime_argv(&project);
+    let mut expected_init = canonical_mechanical_runtime_argv();
     expected_init.extend(["init".to_owned(), "--no-network".to_owned()]);
     if init.argv != expected_init
         || init.input.is_some()
@@ -1974,7 +2106,7 @@ fn verify_mechanical_observation_protocol(
         bail!("mechanical init evidence does not match the isolated protocol");
     }
 
-    let mut expected_lint = mechanical_runtime_argv(&project);
+    let mut expected_lint = canonical_mechanical_runtime_argv();
     expected_lint.extend([
         "article".to_owned(),
         "lint".to_owned(),
@@ -2068,26 +2200,36 @@ fn verify_output(run_directory: &Path, artifact: &OutputArtifact) -> Result<()> 
     Ok(())
 }
 
+struct ParticipantExportEvidence<'a> {
+    expected_stage: &'a str,
+    retained_request: &'a ArtifactIdentity,
+    export: &'a ParticipantExport,
+    inputs: &'a [ArtifactIdentity],
+    observations: &'a [MechanicalObservation],
+    external_required: bool,
+}
+
 fn verify_participant_export(
     repository: &Path,
     run_directory: &Path,
-    retained_request: &ArtifactIdentity,
-    export: &ParticipantExport,
-    inputs: &[ArtifactIdentity],
-    observations: &[MechanicalObservation],
-    external_required: bool,
+    run_id: &str,
+    evidence: ParticipantExportEvidence<'_>,
 ) -> Result<()> {
+    let ParticipantExportEvidence {
+        expected_stage,
+        retained_request,
+        export,
+        inputs,
+        observations,
+        external_required,
+    } = evidence;
+    let expected_token = participant_export_token(expected_stage)?;
+    if export.root != expected_token {
+        bail!("participant export root token does not match its stage");
+    }
     let repository = fs::canonicalize(repository)?;
     let run_directory = fs::canonicalize(run_directory)?;
-    let stored_root = PathBuf::from(&export.root);
-    validate_stored_export_root(&stored_root, &repository, &run_directory)?;
-    if !stored_root.exists() {
-        if external_required {
-            bail!(
-                "participant export is required until its submission is retained: {}",
-                export.root
-            );
-        }
+    if !external_required {
         let retained_request_path = resolve_output_path(&run_directory, &retained_request.locator)?;
         let (sha256, bytes) = sha256_file(&retained_request_path)?;
         if export.request.sha256 != sha256 || export.request.bytes != bytes {
@@ -2101,6 +2243,14 @@ fn verify_participant_export(
         }
         verify_observations(&run_directory, observations)?;
         return Ok(());
+    }
+    let stored_root = operational_participant_export_root(run_id, export)?;
+    validate_stored_export_root(&stored_root, &repository, &run_directory)?;
+    if !stored_root.exists() {
+        bail!(
+            "participant export is required until its submission is retained: {}",
+            stored_root.display()
+        );
     }
     let export_root = fs::canonicalize(&stored_root)
         .with_context(|| format!("failed to resolve participant export root {}", export.root))?;
@@ -2215,6 +2365,55 @@ mod tests {
     use crate::prose_model::{
         Participant, ParticipantKind, ReviewAxis, ReviewObservation, ReviewScope, SourceVerdict,
     };
+
+    #[test]
+    fn public_mechanical_bytes_hide_windows_verbatim_runner_paths() {
+        let root =
+            Path::new(r"\\?\C:\Users\Onno\AppData\Local\Temp\wikitest-execution-workspaces\run-1");
+        let tool = Path::new(r"\\?\F:\AI\wiki\tools\wikitool\dist\release\wikitool.exe");
+        let config = root.join(".wikitool/config.toml");
+        let json_root = serde_json::to_string(&root.to_string_lossy()).expect("JSON path");
+        let bytes = format!(
+            "root={}\njson={json_root}\nconfig={}\ntool={}\n",
+            root.display(),
+            config.display(),
+            tool.display()
+        );
+
+        let canonical = canonicalize_runner_owned_paths(bytes.as_bytes(), root, tool)
+            .expect("canonical public output");
+        let canonical = String::from_utf8(canonical).expect("UTF-8 output");
+
+        assert!(canonical.contains(MECHANICAL_ROOT_TOKEN));
+        assert!(canonical.contains(MECHANICAL_CONFIG_TOKEN));
+        assert!(canonical.contains(TOOL_BINARY_TOKEN));
+        assert!(!canonical.contains("Onno"));
+        assert!(!canonical.contains(r"\\?\C:\"));
+    }
+
+    #[test]
+    fn public_path_canonicalization_does_not_rewrite_unrelated_content() {
+        let root = Path::new(r"\\?\C:\Users\Onno\AppData\Local\Temp\wikitest\run-1");
+        let tool = Path::new(r"\\?\F:\AI\wiki\wikitool.exe");
+        let unrelated = b"Source text mentions C:\\Users\\Onno\\Documents\\notes.txt verbatim.";
+
+        let canonical = canonicalize_runner_owned_paths(unrelated, root, tool)
+            .expect("canonical public output");
+
+        assert_eq!(canonical, unrelated);
+    }
+
+    #[test]
+    fn canonical_mechanical_argv_contains_only_stable_typed_paths() {
+        let argv = canonical_mechanical_runtime_argv();
+        let serialized = serde_json::to_string(&argv).expect("serialize argv");
+
+        assert!(serialized.contains(MECHANICAL_ROOT_TOKEN));
+        assert!(serialized.contains(MECHANICAL_DATA_TOKEN));
+        assert!(serialized.contains(MECHANICAL_CONFIG_TOKEN));
+        assert!(!serialized.contains("Users"));
+        assert!(!serialized.contains("AppData"));
+    }
 
     #[test]
     fn oracle_requires_declared_tags_and_disposition() {
@@ -2656,6 +2855,19 @@ mod tests {
     }
 
     #[test]
+    fn prose_suite_catalog_locator_never_embeds_an_absolute_host_root() {
+        let source = Path::new(r"F:\AI\wiki\wikitest\prose\prose-suite.json");
+        let locator = prose_suite_catalog_locator("remilia-prose-dogfood");
+        assert_eq!(
+            locator,
+            "wikitest:catalog:prose-suite:remilia-prose-dogfood"
+        );
+        assert!(!locator.contains(&portable(source)));
+        assert!(!locator.contains("F:/"));
+        assert!(!Path::new(&locator).is_absolute());
+    }
+
+    #[test]
     fn participant_export_is_outside_repository_and_cannot_reach_holdout_by_parent_path() {
         let repository = tempfile::tempdir().expect("repository");
         let run_directory = repository.path().join("run");
@@ -2689,7 +2901,9 @@ mod tests {
             &[],
         )
         .expect("participant export");
-        let export_root = PathBuf::from(&export.root);
+        assert_eq!(export.root, "wikitest:participant-export:reviewer");
+        let export_root = operational_participant_export_root(&run_id, &export)
+            .expect("operational participant export root");
         assert!(!export_root.starts_with(repository.path()));
         assert!(!export_root.join("../../holdout/assignment.json").exists());
         atomic_write(&export_root.join("output/review-submission.json"), b"{}\n")
@@ -2697,22 +2911,30 @@ mod tests {
         verify_participant_export(
             repository.path(),
             &run_directory,
-            &retained_request,
-            &export,
-            std::slice::from_ref(&input),
-            &[],
-            true,
+            &run_id,
+            ParticipantExportEvidence {
+                expected_stage: "reviewer",
+                retained_request: &retained_request,
+                export: &export,
+                inputs: std::slice::from_ref(&input),
+                observations: &[],
+                external_required: true,
+            },
         )
         .expect("isolated export replay");
         fs::remove_dir_all(export_root).expect("remove participant export");
         verify_participant_export(
             repository.path(),
             &run_directory,
-            &retained_request,
-            &export,
-            std::slice::from_ref(&input),
-            &[],
-            false,
+            &run_id,
+            ParticipantExportEvidence {
+                expected_stage: "reviewer",
+                retained_request: &retained_request,
+                export: &export,
+                inputs: std::slice::from_ref(&input),
+                observations: &[],
+                external_required: false,
+            },
         )
         .expect("archived export replay uses retained request evidence");
     }

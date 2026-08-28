@@ -7,6 +7,8 @@ use anyhow::{Context, Result, bail};
 use crate::artifact::{portable, sha256_file};
 use crate::model::ToolIdentity;
 
+pub const DRIVER_BINARY_TOKEN: &str = "wikitest:driver-binary";
+
 pub fn current_driver_identity(repository: &Path) -> Result<ToolIdentity> {
     let executable = env::current_exe().context("failed to locate the running wikitest binary")?;
     let executable = fs::canonicalize(&executable).with_context(|| {
@@ -19,7 +21,7 @@ pub fn current_driver_identity(repository: &Path) -> Result<ToolIdentity> {
     let locator = executable
         .strip_prefix(repository)
         .map(portable)
-        .unwrap_or_else(|_| portable(&executable));
+        .unwrap_or_else(|_| DRIVER_BINARY_TOKEN.to_owned());
     Ok(ToolIdentity {
         locator,
         sha256,
@@ -32,13 +34,25 @@ pub fn verify_recorded_identity(
     identity: &ToolIdentity,
     label: &str,
 ) -> Result<()> {
-    let candidate = PathBuf::from(&identity.locator);
-    let path = if candidate.is_absolute() {
-        candidate
+    let path = if identity.locator == DRIVER_BINARY_TOKEN {
+        env::current_exe().context("failed to locate the running wikitest binary")?
     } else {
+        let candidate = PathBuf::from(&identity.locator);
+        if candidate.is_absolute() {
+            bail!("{label} binary locator must be repository-relative or a stable typed token");
+        }
         repository.join(candidate)
     };
     verify_path_identity(&path, identity, label)
+}
+
+pub fn repository_binary_locator(path: &Path, repository: &Path, label: &str) -> Result<String> {
+    path.strip_prefix(repository).map(portable).with_context(|| {
+        format!(
+            "{label} binary must be inside the repository so its evidence locator is portable: {}",
+            path.display()
+        )
+    })
 }
 
 pub fn verify_path_identity(path: &Path, identity: &ToolIdentity, label: &str) -> Result<()> {
@@ -71,7 +85,7 @@ mod tests {
         fs::write(&binary, b"first driver").expect("write driver");
         let (sha256, _) = sha256_file(&binary).expect("hash driver");
         let identity = ToolIdentity {
-            locator: portable(&binary),
+            locator: "driver.bin".to_owned(),
             sha256,
             version: "wikitest test".to_owned(),
         };

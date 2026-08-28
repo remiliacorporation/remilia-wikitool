@@ -1,4 +1,5 @@
 pub mod artifact;
+mod canonical;
 pub mod catalog;
 pub mod identity;
 pub mod inspection;

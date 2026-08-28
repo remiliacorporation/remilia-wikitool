@@ -14,14 +14,15 @@ use crate::model::{
 };
 use crate::process::CapturedStream;
 use crate::prose::{
-    prose_coverage_status, resolve_prose_suite_child_receipt, review_assignment_projection,
-    verify_current_receipt,
+    operational_participant_export_root, prose_coverage_status, prose_suite_catalog_locator,
+    resolve_prose_suite_child_receipt, review_assignment_projection, verify_current_receipt,
 };
 use crate::prose_model::{
     AUTHOR_REQUEST_SCHEMA, AuthorRequest, PROSE_RECEIPT_SCHEMA, PROSE_SUITE_RECEIPT_SCHEMA,
-    ProseAssignment, ProseCoverageStatus, ProseMode, ProseReceipt, ProseRunStatus, ProseSuite,
-    ProseSuiteReceipt, ProseSuiteStatus, REVIEW_REQUEST_SCHEMA, REVIEW_SUBMISSION_SCHEMA,
-    ReviewDisposition, ReviewPacketBinding, ReviewRequest, ReviewSubmission,
+    ParticipantExport, ProseAssignment, ProseCoverageStatus, ProseMode, ProseReceipt,
+    ProseRunStatus, ProseSuite, ProseSuiteReceipt, ProseSuiteStatus, REVIEW_REQUEST_SCHEMA,
+    REVIEW_SUBMISSION_SCHEMA, ReviewDisposition, ReviewPacketBinding, ReviewRequest,
+    ReviewSubmission,
 };
 use crate::runner::{
     evaluate_file_assertion, evaluate_json_captures, evaluate_output_assertions,
@@ -936,10 +937,8 @@ fn inspect_prose(
             .and_then(|bytes| serde_json::from_slice::<ReviewRequest>(&bytes).ok())
     });
     let review_export_root = operational_export_root(
-        receipt
-            .review_export
-            .as_ref()
-            .map(|export| export.root.as_str()),
+        &receipt.run_id,
+        receipt.review_export.as_ref(),
         receipt.review.is_some(),
     );
     if let Some(request) = &review_request {
@@ -1139,11 +1138,15 @@ fn inspect_prose(
     })
 }
 
-fn operational_export_root(root: Option<&str>, submission_retained: bool) -> Option<PathBuf> {
+fn operational_export_root(
+    run_id: &str,
+    export: Option<&ParticipantExport>,
+    submission_retained: bool,
+) -> Option<PathBuf> {
     if submission_retained {
         None
     } else {
-        root.map(PathBuf::from)
+        export.and_then(|export| operational_participant_export_root(run_id, export).ok())
     }
 }
 
@@ -1175,6 +1178,22 @@ fn inspect_prose_suite(
             passed: false,
             detail: format!("{error:#}"),
         },
+    });
+    checks.push(InspectionCheck {
+        name: "prose_suite_catalog_locator".to_owned(),
+        passed: suite
+            .as_ref()
+            .is_some_and(|suite| receipt.suite.locator == prose_suite_catalog_locator(&suite.id)),
+        detail: suite.as_ref().map_or_else(
+            || "retained prose suite could not re-derive its catalog locator".to_owned(),
+            |suite| {
+                format!(
+                    "expected {}, recorded {}",
+                    prose_suite_catalog_locator(&suite.id),
+                    receipt.suite.locator
+                )
+            },
+        ),
     });
     let terminal = receipt.status != ProseSuiteStatus::Prepared;
     let mut prepared_coverage = BTreeSet::new();
@@ -1655,12 +1674,24 @@ mod tests {
 
     #[test]
     fn retained_submission_removes_external_export_from_replay_dependencies() {
-        let root = "C:/temporary/participant-export";
+        let export = ParticipantExport {
+            root: "wikitest:participant-export:reviewer".to_owned(),
+            request: ArtifactIdentity {
+                locator: "request.json".to_owned(),
+                sha256: "0".repeat(64),
+                bytes: 0,
+            },
+            output_directory: "output".to_owned(),
+        };
         assert_eq!(
-            operational_export_root(Some(root), false),
-            Some(PathBuf::from(root))
+            operational_export_root("run-1", Some(&export), false),
+            Some(
+                std::env::temp_dir()
+                    .join("wikitest-participant-exports")
+                    .join("run-1-reviewer")
+            )
         );
-        assert_eq!(operational_export_root(Some(root), true), None);
+        assert_eq!(operational_export_root("run-1", Some(&export), true), None);
     }
 
     #[test]

@@ -9,14 +9,14 @@ use crate::model::{ArtifactIdentity, OutputArtifact, ToolIdentity};
 
 pub const PROSE_ASSIGNMENT_SCHEMA: &str = "wikitest.prose-assignment.v2";
 pub const PROSE_SUITE_SCHEMA: &str = "wikitest.prose-suite.v1";
-pub const PROSE_PACKET_SCHEMA: &str = "wikitest.prose-packet.v3";
+pub const PROSE_PACKET_SCHEMA: &str = "wikitest.prose-packet.v4";
 pub const AUTHOR_REQUEST_SCHEMA: &str = "wikitest.author-request.v1";
 pub const AUTHOR_SUBMISSION_SCHEMA: &str = "wikitest.author-submission.v1";
 pub const CLAIM_MAP_SCHEMA: &str = "wikitest.claim-map.v1";
 pub const REVIEW_REQUEST_SCHEMA: &str = "wikitest.review-request.v2";
 pub const REVIEW_SUBMISSION_SCHEMA: &str = "wikitest.review-submission.v1";
-pub const PROSE_RECEIPT_SCHEMA: &str = "wikitest.prose-receipt.v5";
-pub const PROSE_SUITE_RECEIPT_SCHEMA: &str = "wikitest.prose-suite-receipt.v5";
+pub const PROSE_RECEIPT_SCHEMA: &str = "wikitest.prose-receipt.v6";
+pub const PROSE_SUITE_RECEIPT_SCHEMA: &str = "wikitest.prose-suite-receipt.v6";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

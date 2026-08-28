@@ -19,8 +19,8 @@ use wikitest::model::{
 use wikitest::runner::{RunOptions, run_scenario, run_suite};
 use wikitest::{
     prose::{
-        ProseOptions, evaluate_suite as evaluate_prose_suite, prepare_assignment,
-        prepare_suite as prepare_prose_suite, submit_author, submit_review,
+        ProseOptions, evaluate_suite as evaluate_prose_suite, operational_participant_export_root,
+        prepare_assignment, prepare_suite as prepare_prose_suite, submit_author, submit_review,
     },
     prose_model::{
         AUTHOR_REQUEST_SCHEMA, AUTHOR_SUBMISSION_SCHEMA, CLAIM_MAP_SCHEMA, PROSE_ASSIGNMENT_SCHEMA,
@@ -497,9 +497,8 @@ fn prose_request_path(
         .as_ref()
         .or(receipt.author_export.as_ref())
     {
-        return Some(portable(
-            &PathBuf::from(&export.root).join(&export.request.locator),
-        ));
+        let root = operational_participant_export_root(&receipt.run_id, export).ok()?;
+        return Some(portable(&root.join(&export.request.locator)));
     }
     let root = receipt_path.parent()?;
     let artifact = receipt
@@ -514,9 +513,8 @@ fn prose_output_path(receipt: &wikitest::prose_model::ProseReceipt) -> Option<St
         .review_export
         .as_ref()
         .or(receipt.author_export.as_ref())?;
-    Some(portable(
-        &PathBuf::from(&export.root).join(&export.output_directory),
-    ))
+    let root = operational_participant_export_root(&receipt.run_id, export).ok()?;
+    Some(portable(&root.join(&export.output_directory)))
 }
 
 fn run_options(cli: &Cli, repository: &Path, catalogs: &[PathBuf]) -> Result<RunOptions> {
