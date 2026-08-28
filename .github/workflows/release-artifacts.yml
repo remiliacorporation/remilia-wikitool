@@ -80,6 +80,85 @@ jobs:
           --output-dir dist/release-matrix
           --contextmink-dist dist/contextmink-dist
 
+      - name: Configure Apple Developer ID signing
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          for required in \
+            APPLE_CERTIFICATE_P12_BASE64 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_NOTARY_KEY_P8 \
+            APPLE_NOTARY_KEY_ID \
+            APPLE_NOTARY_ISSUER_ID
+          do
+            if [[ -z "${!required:-}" ]]; then
+              echo "Missing required macOS release secret: ${required}" >&2
+              exit 1
+            fi
+          done
+
+          certificate_path="$RUNNER_TEMP/wikitool-developer-id.p12"
+          keychain_path="$RUNNER_TEMP/wikitool-signing.keychain-db"
+          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          keychain_password="$(openssl rand -hex 32)"
+
+          printf '%s' "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate_path"
+          printf '%s' "$APPLE_NOTARY_KEY_P8" > "$api_key_path"
+          chmod 600 "$certificate_path" "$api_key_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          signing_identity="$(
+            security find-identity -v -p codesigning "$keychain_path" |
+              awk '/Developer ID Application/ { print $2; exit }'
+          )"
+          if [[ -z "$signing_identity" ]]; then
+            echo "Imported certificate has no Developer ID Application identity" >&2
+            exit 1
+          fi
+
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+          echo "APPLE_NOTARY_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+
+      - name: Sign and notarize macOS release
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          bundle="dist/release-matrix/${{ steps.names.outputs.bundle }}"
+          bash scripts/sign_notarize_macos.sh \
+            --bundle-dir "$bundle" \
+            --zip-path "${bundle}.zip" \
+            --identity "$APPLE_SIGNING_IDENTITY" \
+            --identifier-prefix "org.remilia.wikitool" \
+            --notary-key "$APPLE_NOTARY_KEY_PATH" \
+            --notary-key-id "$APPLE_NOTARY_KEY_ID" \
+            --notary-issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --evidence-dir "dist/notarization/${{ steps.names.outputs.bundle }}"
+          (
+            cd dist/release-matrix
+            shasum -a 256 *.zip | sort -k2 > SHA256SUMS.txt
+          )
+
       - name: Verify packaged release (Unix)
         if: runner.os != 'Windows'
         env:
@@ -176,6 +255,26 @@ jobs:
           name: wikitool-release-${{ steps.names.outputs.version }}-${{ matrix.platform }}
           path: dist/release-matrix/${{ steps.names.outputs.bundle }}.zip
           if-no-files-found: error
+
+      - name: Upload notarization evidence
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: wikitool-notarization-${{ steps.names.outputs.version }}-${{ matrix.platform }}
+          path: dist/notarization/${{ steps.names.outputs.bundle }}/
+          if-no-files-found: warn
+
+      - name: Remove temporary Apple signing material
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          keychain_path="$RUNNER_TEMP/wikitool-signing.keychain-db"
+          if [[ -f "$keychain_path" ]]; then
+            security delete-keychain "$keychain_path"
+          fi
+          rm -f \
+            "$RUNNER_TEMP/wikitool-developer-id.p12" \
+            "$RUNNER_TEMP"/AuthKey_*.p8
 
   publish-release:
     if: inputs.create_release
