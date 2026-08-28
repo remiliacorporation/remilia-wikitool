@@ -23,14 +23,14 @@ Use Wikitool as the mechanical and evidence substrate for a configured MediaWiki
 
 ## macOS release trust
 
-For an official macOS archive, verify `SHA256SUMS.txt`, then run `codesign --verify --strict
---verbose=4` and `spctl --assess --type execute --verbose=4` against both `wikitool` and the nested
-Contextmink executable. A failed official signature or assessment is a release defect; report the
-hash and diagnostics instead of weakening Gatekeeper. Wikitool cannot repair quarantine before its
-first execution. For an intentionally unsigned development build only, an agent may use `xattr -d
-com.apple.quarantine` on an exact, user-authorized executable after checking its provenance. Never
-use recursive quarantine removal on a download directory or disable Gatekeeper globally. See
-`docs/wikitool/macos-gatekeeper.md` in the release bundle.
+First verify the archive against the release's external `SHA256SUMS.txt`, then inspect
+`macos-release-trust.json`. For a notarized archive, run `codesign --verify --strict --verbose=4` and
+`spctl --assess --type execute --verbose=4` against both `wikitool` and the nested Contextmink
+executable; a failed assessment is a release defect. For a bundle explicitly marked
+`unsigned_github_release`, explain that Wikitool cannot repair quarantine before its first
+execution, obtain the user's approval for those exact verified bytes, then use `xattr -d
+com.apple.quarantine` on the two exact executable paths. Never use recursive quarantine removal on
+a download directory or disable Gatekeeper globally. See `docs/wikitool/macos-gatekeeper.md`.
 
 ## Acceptance boundary
 

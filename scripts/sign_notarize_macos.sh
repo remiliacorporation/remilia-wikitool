@@ -161,6 +161,14 @@ for executable in "${mach_o_files[@]}"; do
   codesign --display --verbose=4 "$executable" 2>> "$codesign_evidence"
 done
 
+printf '%s\n' \
+  '{' \
+  '  "schema": "wikitool.macos-release-trust.v1",' \
+  '  "status": "developer_id_notarized",' \
+  '  "gatekeeper": "codesign_and_spctl_assessment_required",' \
+  '  "instructions": "docs/wikitool/macos-gatekeeper.md"' \
+  '}' > "$bundle_dir/macos-release-trust.json"
+
 mkdir -p "$(dirname "$zip_path")"
 rm -f "$zip_path"
 ditto -c -k --sequesterRsrc --keepParent "$bundle_dir" "$zip_path"

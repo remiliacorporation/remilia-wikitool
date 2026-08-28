@@ -29,9 +29,10 @@ manifest.json LICENSE*
 
 Put `wikitool` on `PATH`, or run it from the unpacked directory.
 
-Official macOS archives are Developer ID-signed and notarized, including the nested Contextmink
-executable. Verify the checksum, code signature, and Gatekeeper assessment rather than disabling
-system policy; see [macOS Gatekeeper and release trust](docs/wikitool/macos-gatekeeper.md).
+macOS GitHub archives declare whether they are Developer ID-notarized or unsigned. An unsigned
+archive cannot make Gatekeeper trust itself; the packaged agent procedure verifies the published
+checksum before removing quarantine from only the two approved executables. See [macOS Gatekeeper
+and release trust](docs/wikitool/macos-gatekeeper.md).
 
 ## Configure a wiki
 
