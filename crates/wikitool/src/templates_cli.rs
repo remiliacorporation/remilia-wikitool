@@ -1,9 +1,12 @@
+use std::path::PathBuf;
+
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 use wikitool_core::site::{
-    TemplateCatalog, TemplateCatalogEntry, TemplateCatalogEntryLookup, find_template_catalog_entry,
-    load_site_adapter, load_template_catalog, sync_template_catalog_with_adapter,
+    TemplateCatalog, TemplateCatalogEntry, TemplateCatalogEntryLookup,
+    build_template_dependency_closure, find_template_catalog_entry, load_site_adapter,
+    load_template_catalog, sync_template_catalog_with_adapter,
 };
 
 use crate::briefs::{BriefCommand, BriefView, brief_command_owned, capped_strings, text_preview};
@@ -24,6 +27,8 @@ enum TemplatesSubcommand {
     Show(TemplatesShowArgs),
     #[command(about = "Show example invocations for one template")]
     Examples(TemplatesExamplesArgs),
+    #[command(about = "Export an exact named template/module dependency closure")]
+    Closure(TemplatesClosureArgs),
 }
 
 #[derive(Debug, Args)]
@@ -86,12 +91,137 @@ pub(crate) struct TemplatesExamplesArgs {
     format: OutputFormat,
 }
 
+#[derive(Debug, Args)]
+pub(crate) struct TemplatesClosureArgs {
+    #[arg(required = true, num_args = 1.., value_name = "TEMPLATE")]
+    templates: Vec<String>,
+    #[arg(
+        long,
+        default_value_t = 128,
+        value_name = "N",
+        help = "Fail if the transitive template/module closure exceeds this node count"
+    )]
+    max_nodes: usize,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Write the full JSON closure atomically inside the project root"
+    )]
+    output: Option<PathBuf>,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Text,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+}
+
 pub(crate) fn run_templates(runtime: &RuntimeOptions, args: TemplatesArgs) -> Result<()> {
     match args.command {
         TemplatesSubcommand::Catalog(args) => run_templates_catalog(runtime, args),
         TemplatesSubcommand::Show(args) => run_templates_show(runtime, args),
         TemplatesSubcommand::Examples(args) => run_templates_examples(runtime, args),
+        TemplatesSubcommand::Closure(args) => run_templates_closure(runtime, args),
     }
+}
+
+#[derive(Debug, Serialize)]
+struct TemplateClosureReceipt<'a> {
+    schema: &'static str,
+    output_path: &'a str,
+    content_sha256: &'a str,
+    roots: &'a [String],
+    template_count: usize,
+    module_count: usize,
+    file_count: usize,
+    edge_count: usize,
+    missing_count: usize,
+    unresolved_count: usize,
+}
+
+fn run_templates_closure(runtime: &RuntimeOptions, args: TemplatesClosureArgs) -> Result<()> {
+    let paths = resolve_runtime_paths(runtime)?;
+    let catalog = load_or_sync_catalog(&paths)?;
+    let closure =
+        build_template_dependency_closure(&paths, &catalog, &args.templates, args.max_nodes)?;
+    let mut encoded = serde_json::to_string_pretty(&closure)?;
+    encoded.push('\n');
+
+    if let Some(output) = args.output {
+        let output = if output.is_absolute() {
+            output
+        } else {
+            paths.project_root.join(output)
+        };
+        wikitool_core::filesystem::validate_scoped_path(&paths, &output)?;
+        let content_sha256 = wikitool_core::support::compute_sha256(&encoded);
+        wikitool_core::support::atomic_write(&output, encoded)?;
+        let output_display = normalize_path(output.canonicalize().unwrap_or(output));
+        let receipt = TemplateClosureReceipt {
+            schema: "template_dependency_closure_write_v1",
+            output_path: &output_display,
+            content_sha256: &content_sha256,
+            roots: &closure.roots,
+            template_count: closure.templates.len(),
+            module_count: closure.modules.len(),
+            file_count: closure.files.len(),
+            edge_count: closure.edges.len(),
+            missing_count: closure.missing.len(),
+            unresolved_count: closure.unresolved.len(),
+        };
+        if args.format.is_json() {
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
+        } else {
+            print_template_closure_receipt(&receipt);
+        }
+        return Ok(());
+    }
+
+    if args.format.is_json() {
+        print!("{encoded}");
+    } else {
+        println!("templates closure");
+        println!("project_root: {}", normalize_path(&paths.project_root));
+        println!("roots: {}", closure.roots.join(", "));
+        println!("templates.count: {}", closure.templates.len());
+        println!("modules.count: {}", closure.modules.len());
+        println!("files.count: {}", closure.files.len());
+        println!("edges.count: {}", closure.edges.len());
+        println!("missing.count: {}", closure.missing.len());
+        println!("unresolved.count: {}", closure.unresolved.len());
+        for item in &closure.missing {
+            println!(
+                "missing: kind={} title={} referenced_by={} reason={}",
+                item.kind, item.title, item.referenced_by, item.reason
+            );
+        }
+        for item in &closure.unresolved {
+            println!(
+                "unresolved: kind={} referenced_by={} relation={} reason={}",
+                item.kind, item.referenced_by, item.relation, item.reason
+            );
+        }
+        println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+    }
+    if runtime.diagnostics {
+        println!("\n[diagnostics]\n{}", paths.diagnostics());
+    }
+    Ok(())
+}
+
+fn print_template_closure_receipt(receipt: &TemplateClosureReceipt<'_>) {
+    println!("templates closure");
+    println!("output_path: {}", receipt.output_path);
+    println!("content_sha256: {}", receipt.content_sha256);
+    println!("roots: {}", receipt.roots.join(", "));
+    println!("templates.count: {}", receipt.template_count);
+    println!("modules.count: {}", receipt.module_count);
+    println!("files.count: {}", receipt.file_count);
+    println!("edges.count: {}", receipt.edge_count);
+    println!("missing.count: {}", receipt.missing_count);
+    println!("unresolved.count: {}", receipt.unresolved_count);
 }
 
 fn run_templates_catalog(runtime: &RuntimeOptions, args: TemplatesCatalogArgs) -> Result<()> {

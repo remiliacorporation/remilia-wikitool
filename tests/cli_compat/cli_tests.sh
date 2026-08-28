@@ -158,6 +158,25 @@ resolve_local_binary_candidate() {
     done
 }
 
+release_pack_for_host() {
+    local pack_root="$1"
+    local target=""
+
+    if [ "${WIKITOOL_PATH_MODE:-posix}" = "windows" ]; then
+        target="windows-x86_64"
+    else
+        case "$(uname -s):$(uname -m)" in
+            Linux:x86_64) target="linux-x86_64" ;;
+            Darwin:arm64) target="macos-arm64" ;;
+            Darwin:x86_64) target="macos-x86_64" ;;
+        esac
+    fi
+
+    if [ -n "$target" ] && [ -f "$pack_root/$target/manifest.json" ]; then
+        printf "%s" "$pack_root/$target"
+    fi
+}
+
 write_live_env() {
     local root="$1"
     cat > "$root/.env" << 'ENVEOF'
@@ -345,6 +364,36 @@ if echo "$OUTPUT" | grep -q "catalog.docs_profile_requested: $CATALOG_DOCS_PROFI
     pass "catalog status reports content readiness and docs degradation after build"
 else
     fail "catalog status reports content readiness and docs degradation after build (got: $OUTPUT)"
+fi
+
+# --- template dependency closure ---
+section "template dependency closure"
+TEMPLATE_PROJ=$(setup_project template-closure)
+wt "$TEMPLATE_PROJ" init > /dev/null 2>&1
+mkdir -p "$TEMPLATE_PROJ/templates/core"
+cat > "$TEMPLATE_PROJ/templates/core/Template_Root.wiki" << 'WIKIEOF'
+<includeonly>{{Helper}}{{#invoke:Root|main}}</includeonly><noinclude>{{Documentation only}}</noinclude>
+WIKIEOF
+cat > "$TEMPLATE_PROJ/templates/core/Template_Helper.wiki" << 'WIKIEOF'
+<includeonly>Helper</includeonly>
+WIKIEOF
+cat > "$TEMPLATE_PROJ/templates/core/Module_Root.lua" << 'LUAEOF'
+local args = require('Module:Arguments')
+return {}
+LUAEOF
+cat > "$TEMPLATE_PROJ/templates/core/Module_Arguments.lua" << 'LUAEOF'
+return {}
+LUAEOF
+wt "$TEMPLATE_PROJ" templates catalog build > /dev/null 2>&1
+OUTPUT=$(wt "$TEMPLATE_PROJ" templates closure "Template:Root" --output .wikitool/template-closure.json --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"schema": "template_dependency_closure_write_v1"' \
+    && echo "$OUTPUT" | grep -q '"template_count": 2' \
+    && echo "$OUTPUT" | grep -q '"module_count": 2' \
+    && grep -q '"schema_version": "template_dependency_closure_v1"' "$TEMPLATE_PROJ/.wikitool/template-closure.json" \
+    && ! grep -q 'Template:Documentation only' "$TEMPLATE_PROJ/.wikitool/template-closure.json"; then
+    pass "templates closure exports a transitive runtime-only dependency artifact"
+else
+    fail "templates closure exports a transitive runtime-only dependency artifact (got: ${OUTPUT:0:300})"
 fi
 
 # --- article lint/fix ---
@@ -722,13 +771,7 @@ fi
 
 # --- independent contextmink setup ---
 section "contextmink setup-project"
-REAL_PACK=""
-for candidate in "$REPO_ROOT/dist/contextmink-dist"/*/; do
-    if [ -f "$candidate/manifest.json" ]; then
-        REAL_PACK="$candidate"
-        break
-    fi
-done
+REAL_PACK=$(release_pack_for_host "$REPO_ROOT/dist/contextmink-dist")
 if [ -z "$REAL_PACK" ]; then
     skip "contextmink setup-project verified run (no staged pack under dist/contextmink-dist)"
 else
@@ -760,13 +803,7 @@ fi
 
 # --- independent papertiger lifecycle ---
 section "papertiger optional lifecycle"
-REAL_PAPERTIGER_PACK=""
-for candidate in "$REPO_ROOT/dist/papertiger-dist"/*/; do
-    if [ -f "$candidate/manifest.json" ]; then
-        REAL_PAPERTIGER_PACK="$candidate"
-        break
-    fi
-done
+REAL_PAPERTIGER_PACK=$(release_pack_for_host "$REPO_ROOT/dist/papertiger-dist")
 if [ -z "$REAL_PAPERTIGER_PACK" ]; then
     skip "papertiger setup/upgrade/uninstall verified run (no staged pack under dist/papertiger-dist)"
 else

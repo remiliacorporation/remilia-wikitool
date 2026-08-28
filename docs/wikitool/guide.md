@@ -81,6 +81,7 @@ wikitool source fetch "URL" --format rendered-html --output json
 wikitool source mediawiki-templates "https://en.wikipedia.org/wiki/Article" --template "Template:Infobox" --format json
 wikitool templates show "Template:Infobox person" --format json --view brief
 wikitool templates examples "Template:Infobox person" --limit 2
+wikitool templates closure "Template:Infobox person" --output .wikitool/template-closures/infobox-person.json --format json
 wikitool adapter inspect --format json
 wikitool wiki capabilities remote "https://www.mediawiki.org/wiki/Manual:Contents" --format json
 # an agent, human, or both draft evidence-bound encyclopedic prose
@@ -100,6 +101,30 @@ wikitool catalog inspect references duplicates --title "Title" --format json
 wikitool validate --summary
 wikitool review --format json --view brief --summary "Summary"
 ```
+
+## Template engineering
+
+The template catalog reconciles local implementation source, TemplateData, parameter aliases,
+observed usage, examples, documentation pages, and directly invoked Scribunto modules. Use an
+exact named dependency closure before changing or migrating a template family:
+
+```bash
+wikitool templates catalog build
+wikitool templates closure \
+  "Template:Infobox subject" \
+  "Template:Preservation image" \
+  --max-nodes 64 \
+  --output .wikitool/template-closures/preservation.json \
+  --format json
+```
+
+The closure follows runtime template transclusions, literal `#invoke`/TemplateStyles module pages,
+and literal Scribunto `require('Module:...')` and `mw.loadData('Module:...')` calls. It honors
+`onlyinclude`, excludes `noinclude` documentation examples, records exact SHA-256 identities for
+every local implementation/documentation file, and reports missing or dynamic dependencies rather
+than guessing. `--max-nodes` fails instead of truncating a larger graph. This export is mechanical
+evidence for design and migration work; it does not decide aesthetics, create source-wiki clones,
+rewrite transclusions, or establish that a template vocabulary is editorially appropriate.
 
 ## Encyclopedic coauthoring
 

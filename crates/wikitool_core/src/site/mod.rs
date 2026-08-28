@@ -4,6 +4,7 @@ mod namespaces;
 pub mod surface;
 pub mod template_catalog;
 pub mod template_data;
+pub mod template_engineering;
 
 pub use adapter::model::{
     AdapterSourceDocument, AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule,
@@ -39,3 +40,8 @@ pub use template_catalog::{
     load_latest_template_catalog, load_template_catalog, sync_template_catalog_with_adapter,
 };
 pub use template_data::{TemplateDataParameter, TemplateDataRecord};
+pub use template_engineering::{
+    MissingTemplateDependency, ModuleDependencyNode, TemplateDependencyClosure,
+    TemplateDependencyEdge, TemplateDependencyFile, TemplateDependencyNode,
+    UnresolvedTemplateDependency, build_template_dependency_closure,
+};

@@ -1988,6 +1988,7 @@ Commands:
   catalog   Build and store the local template catalog artifact
   show      Show one template catalog entry
   examples  Show example invocations for one template
+  closure   Export an exact named template/module dependency closure
   help      Print this message or the help of the given subcommand(s)
 
 Options:
@@ -2069,6 +2070,27 @@ Options:
       --data-dir <PATH>
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## templates closure
+
+```text
+Export an exact named template/module dependency closure
+
+Usage: wikitool templates closure [OPTIONS] <TEMPLATE>...
+
+Arguments:
+  <TEMPLATE>...
+
+Options:
+      --max-nodes <N>        Fail if the transitive template/module closure exceeds this node count [default: 128]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --output <PATH>        Write the full JSON closure atomically inside the project root
+      --config <PATH>
+      --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
