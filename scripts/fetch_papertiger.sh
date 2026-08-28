@@ -75,6 +75,7 @@ stage_platform() {
   local version="$1"
   local selected_platform="$2"
   local hashes_file="$3"
+  local expected_source_commit="$4"
   local archive
   archive="$(archive_name "$version" "$selected_platform")"
   local expected
@@ -140,6 +141,7 @@ stage_platform() {
   if ! grep -Eq '"schema"[[:space:]]*:[[:space:]]*"papertiger.release-manifest.v1"' "$manifest" \
     || ! grep -Eq '"name"[[:space:]]*:[[:space:]]*"papertiger"' "$manifest" \
     || ! grep -Eq '"version"[[:space:]]*:[[:space:]]*"'"$version"'"' "$manifest" \
+    || ! grep -Eq '"source_commit"[[:space:]]*:[[:space:]]*"'"$expected_source_commit"'"' "$manifest" \
     || ! grep -Eq '"platform"[[:space:]]*:[[:space:]]*"'"$selected_platform"'"' "$manifest" \
     || ! grep -Eq '"archive"[[:space:]]*:[[:space:]]*"'"$archive"'"' "$manifest"; then
     echo "fetch_papertiger: release manifest does not match ${version}/${selected_platform}/${archive}" >&2
@@ -209,7 +211,9 @@ if [[ "$fetch_all" -eq 1 && -n "$platform" ]]; then
   echo "fetch_papertiger: --all and --platform are mutually exclusive" >&2
   exit 64
 fi
-if [[ ! -f config/papertiger.version || ! -f config/papertiger-sha256s.txt ]]; then
+if [[ ! -f config/papertiger.version \
+  || ! -f config/papertiger.source-commit \
+  || ! -f config/papertiger-sha256s.txt ]]; then
   echo "fetch_papertiger: run from the wikitool repository root (Papertiger pin files not found)" >&2
   exit 65
 fi
@@ -218,15 +222,20 @@ if [[ ! "$pin" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
   echo "fetch_papertiger: invalid version pin: $pin" >&2
   exit 65
 fi
+source_commit="$(tr -d ' \t\r\n' < config/papertiger.source-commit)"
+if [[ ! "$source_commit" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "fetch_papertiger: invalid source commit pin: $source_commit" >&2
+  exit 65
+fi
 
 if [[ "$fetch_all" -eq 1 ]]; then
   for selected in "${supported_platforms[@]}"; do
-    stage_platform "$pin" "$selected" "config/papertiger-sha256s.txt"
+    stage_platform "$pin" "$selected" "config/papertiger-sha256s.txt" "$source_commit"
   done
 else
   if [[ -z "$platform" ]]; then
     platform="$(host_platform)"
   fi
   validate_platform "$platform"
-  stage_platform "$pin" "$platform" "config/papertiger-sha256s.txt"
+  stage_platform "$pin" "$platform" "config/papertiger-sha256s.txt" "$source_commit"
 fi
