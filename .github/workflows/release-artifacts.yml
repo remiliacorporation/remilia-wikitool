@@ -170,13 +170,7 @@ jobs:
         run: |
           set -euo pipefail
           bundle="dist/release-matrix/${{ steps.names.outputs.bundle }}"
-          printf '%s\n' \
-            '{' \
-            '  "schema": "wikitool.macos-release-trust.v1",' \
-            '  "status": "unsigned_github_release",' \
-            '  "gatekeeper": "explicit_checksum_bound_quarantine_exception_required",' \
-            '  "instructions": "docs/wikitool/macos-gatekeeper.md"' \
-            '}' > "$bundle/macos-release-trust.json"
+          bash scripts/declare_unsigned_macos.sh --bundle-dir "$bundle"
           rm -f "${bundle}.zip"
           ditto -c -k --sequesterRsrc --keepParent "$bundle" "${bundle}.zip"
           (
@@ -234,6 +228,11 @@ jobs:
           test -f "$smoke/.agents/skills/contextmink/SKILL.md"
           test -f "$smoke/.claude/skills/contextmink/SKILL.md"
           test -f "${BUNDLE}.zip"
+
+      - name: Test unsigned macOS trust declaration
+        if: runner.os == 'macOS' && !inputs.notarize_macos
+        shell: bash
+        run: bash scripts/test_unsigned_macos_release.sh
 
       - name: Verify packaged release (Windows)
         if: runner.os == 'Windows'

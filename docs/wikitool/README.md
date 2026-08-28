@@ -5,6 +5,6 @@
 - `reference.md` - canonical command/flag reference (auto-generated from CLI help)
 - `source-access.md` - human-in-loop source access sessions for browser challenge cases
 - `html-to-wikitext.md` - generic deterministic DOM-to-MediaWiki conversion boundary
-- `macos-gatekeeper.md` - signed/notarized macOS releases and bounded development exceptions
+- `macos-gatekeeper.md` - unsigned GitHub macOS releases, optional notarization, and bounded Gatekeeper exceptions
 
 For flags: `wikitool <command> --help` or `reference.md`.
