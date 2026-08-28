@@ -26,6 +26,21 @@ pub struct SourceProfile {
     pub message_box_classes: BTreeSet<String>,
     #[serde(default)]
     pub infobox: Option<SourceInfoboxPolicy>,
+    #[serde(default)]
+    pub content: SourceContentPolicy,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SourceContentPolicy {
+    #[serde(default)]
+    pub root_selector: Option<String>,
+    #[serde(default)]
+    pub drop_selectors: Vec<String>,
+    #[serde(default)]
+    pub drop_hidden: bool,
+    #[serde(default)]
+    pub drop_embedded_app_elements: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -185,6 +200,11 @@ pub struct Coverage {
     pub archived_audio_elements: usize,
     pub archived_audio_locators: usize,
     pub native_infoboxes: usize,
+    pub discarded_script_elements: usize,
+    pub discarded_style_elements: usize,
+    pub discarded_interaction_elements: usize,
+    pub discarded_hidden_elements: usize,
+    pub discarded_profiled_elements: usize,
 }
 
 pub struct HtmlToWikitextInput<'a> {
@@ -278,18 +298,21 @@ pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompi
         })
     };
     let unmapped_structures = collect_unmapped_structures(input.html, input.source_profile)?;
-    let transformed = convert(HtmlToWikitextInput {
-        html: input.html,
-        canonical_title: input.canonical_title,
-        canonical_url: input.canonical_url,
-        media_scope: input.media_scope,
-        link_policy: &input.target_profile.link_policy,
-        media_policy: &input.target_profile.media_policy,
-        infobox_policy: infobox_policy.as_ref(),
-        message_box_policy: message_box_policy.as_ref(),
-        images: input.images,
-        media_occurrences: input.media_occurrences,
-    })?;
+    let transformed = convert_with_content_policy(
+        HtmlToWikitextInput {
+            html: input.html,
+            canonical_title: input.canonical_title,
+            canonical_url: input.canonical_url,
+            media_scope: input.media_scope,
+            link_policy: &input.target_profile.link_policy,
+            media_policy: &input.target_profile.media_policy,
+            infobox_policy: infobox_policy.as_ref(),
+            message_box_policy: message_box_policy.as_ref(),
+            images: input.images,
+            media_occurrences: input.media_occurrences,
+        },
+        Some(&input.source_profile.content),
+    )?;
     ensure!(
         transformed.wikitext.len() <= input.target_profile.max_wikitext_bytes,
         "generated wikitext is {} bytes, exceeding target profile maximum {}",
@@ -319,6 +342,16 @@ pub fn validate_source_profile(source: &SourceProfile) -> Result<()> {
         source.schema == SOURCE_PROFILE_SCHEMA,
         "source profile schema must be {SOURCE_PROFILE_SCHEMA}"
     );
+    if let Some(selector) = &source.content.root_selector {
+        validate_source_selector(selector, "content root selector")?;
+    }
+    ensure!(
+        source.content.drop_selectors.len() <= 128,
+        "source content policy has too many drop selectors"
+    );
+    for selector in &source.content.drop_selectors {
+        validate_source_selector(selector, "content drop selector")?;
+    }
     validate_identifier(&source.profile_id, "source profile_id")?;
     validate_identifier(&source.source_key, "source source_key")?;
     ensure!(
@@ -365,6 +398,15 @@ pub fn validate_source_profile(source: &SourceProfile) -> Result<()> {
             "source infobox class is also admitted as a message-box class"
         );
     }
+    Ok(())
+}
+
+fn validate_source_selector(value: &str, label: &str) -> Result<()> {
+    ensure!(
+        !value.trim().is_empty() && value.len() <= 512,
+        "source {label} is empty or too long"
+    );
+    Selector::parse(value).map_err(|_| anyhow::anyhow!("source {label} is invalid: {value:?}"))?;
     Ok(())
 }
 
@@ -607,14 +649,51 @@ fn collect_unmapped_structures(
     source: &SourceProfile,
 ) -> Result<Vec<UnmappedStructure>> {
     let document = Html::parse_fragment(html);
-    let selector =
+    let table_selector =
         Selector::parse("table").map_err(|_| anyhow::anyhow!("invalid table selector"))?;
+    let drop_selectors = source
+        .content
+        .drop_selectors
+        .iter()
+        .map(|selector| {
+            Selector::parse(selector)
+                .map_err(|_| anyhow::anyhow!("invalid content drop selector {selector:?}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let tables = if let Some(root_selector) = &source.content.root_selector {
+        let selector = Selector::parse(root_selector)
+            .map_err(|_| anyhow::anyhow!("invalid content root selector {root_selector:?}"))?;
+        let mut roots = document.select(&selector);
+        let root = roots.next().with_context(|| {
+            format!("content root selector {root_selector:?} matched no element")
+        })?;
+        ensure!(
+            roots.next().is_none(),
+            "content root selector {root_selector:?} matched more than one element"
+        );
+        root.select(&table_selector).collect::<Vec<_>>()
+    } else {
+        document.select(&table_selector).collect::<Vec<_>>()
+    };
     let mapped_infobox_class = source
         .infobox
         .as_ref()
         .map(|policy| policy.table_class.as_str());
     let mut observations = BTreeMap::<Vec<String>, usize>::new();
-    for table in document.select(&selector) {
+    for table in tables {
+        if table
+            .ancestors()
+            .filter_map(ElementRef::wrap)
+            .any(|element| {
+                should_drop(element)
+                    || (source.content.drop_hidden && is_hidden(element))
+                    || drop_selectors
+                        .iter()
+                        .any(|selector| selector.matches(&element))
+            })
+        {
+            continue;
+        }
         let mut classes = table
             .value()
             .attr("class")
@@ -706,8 +785,28 @@ fn normalize_template_title(value: &str) -> String {
 }
 
 pub fn convert(input: HtmlToWikitextInput<'_>) -> Result<HtmlToWikitextOutput> {
+    convert_with_content_policy(input, None)
+}
+
+fn convert_with_content_policy(
+    input: HtmlToWikitextInput<'_>,
+    content_policy: Option<&SourceContentPolicy>,
+) -> Result<HtmlToWikitextOutput> {
     let base_url = Url::parse(input.canonical_url).context("parse canonical article URL")?;
     let document = Html::parse_fragment(input.html);
+    let drop_selectors = content_policy
+        .map(|policy| {
+            policy
+                .drop_selectors
+                .iter()
+                .map(|selector| {
+                    Selector::parse(selector)
+                        .map_err(|_| anyhow::anyhow!("invalid content drop selector {selector:?}"))
+                })
+                .collect::<Result<Vec<_>>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
     let mut renderer = Renderer {
         input,
         base_url,
@@ -717,8 +816,31 @@ pub fn convert(input: HtmlToWikitextInput<'_>) -> Result<HtmlToWikitextOutput> {
         image_owner_ordinal: 0,
         picture_owner_ordinal: 0,
         audio_owner_ordinal: 0,
+        drop_selectors,
+        drop_hidden: content_policy
+            .map(|policy| policy.drop_hidden)
+            .unwrap_or(false),
+        drop_embedded_app_elements: content_policy
+            .map(|policy| policy.drop_embedded_app_elements)
+            .unwrap_or(false),
     };
-    let raw = renderer.render_children(document.root_element())?;
+    let raw = if let Some(root_selector) =
+        content_policy.and_then(|policy| policy.root_selector.as_deref())
+    {
+        let selector = Selector::parse(root_selector)
+            .map_err(|_| anyhow::anyhow!("invalid content root selector {root_selector:?}"))?;
+        let mut roots = document.select(&selector);
+        let root = roots.next().with_context(|| {
+            format!("content root selector {root_selector:?} matched no element")
+        })?;
+        ensure!(
+            roots.next().is_none(),
+            "content root selector {root_selector:?} matched more than one element"
+        );
+        renderer.render_element(root)?
+    } else {
+        renderer.render_children(document.root_element())?
+    };
     let wikitext = normalize_document(&raw);
     ensure!(
         !wikitext.trim().is_empty(),
@@ -741,6 +863,9 @@ struct Renderer<'a> {
     image_owner_ordinal: usize,
     picture_owner_ordinal: usize,
     audio_owner_ordinal: usize,
+    drop_selectors: Vec<Selector>,
+    drop_hidden: bool,
+    drop_embedded_app_elements: bool,
 }
 
 impl Renderer<'_> {
@@ -761,7 +886,12 @@ impl Renderer<'_> {
     }
 
     fn render_element(&mut self, element: ElementRef<'_>) -> Result<String> {
-        if should_drop(element) {
+        if self.should_drop_profiled(element) {
+            self.coverage.discarded_profiled_elements += 1;
+            return Ok(String::new());
+        }
+        if self.drop_hidden && is_hidden(element) {
+            self.coverage.discarded_hidden_elements += 1;
             return Ok(String::new());
         }
         let name = element.value().name();
@@ -769,8 +899,20 @@ impl Renderer<'_> {
             "html" | "body" | "main" | "article" | "section" | "div" | "span" | "figure"
             | "figcaption" | "details" | "summary" | "time" | "small" | "sub" | "sup" | "abbr"
             | "dfn" | "bdi" | "bdo" | "ruby" | "rt" | "rp" => self.render_children(element),
-            "head" | "script" | "style" | "noscript" | "template" | "form" | "input" | "button"
-            | "select" | "option" | "textarea" | "iframe" | "object" | "embed" => Ok(String::new()),
+            "head" | "noscript" | "template" => Ok(String::new()),
+            "script" => {
+                self.coverage.discarded_script_elements += 1;
+                Ok(String::new())
+            }
+            "style" => {
+                self.coverage.discarded_style_elements += 1;
+                Ok(String::new())
+            }
+            "form" | "input" | "button" | "select" | "option" | "textarea" | "iframe"
+            | "object" | "embed" => {
+                self.coverage.discarded_interaction_elements += 1;
+                Ok(String::new())
+            }
             "p" => {
                 self.coverage.paragraphs += 1;
                 Ok(block(&self.render_children(element)?))
@@ -840,10 +982,23 @@ impl Renderer<'_> {
             }
             "source" | "track" => Ok(String::new()),
             "canvas" | "svg" | "math" => {
-                bail!("unsupported retained structured element <{name}> in article HTML")
+                if self.drop_embedded_app_elements {
+                    self.coverage.discarded_interaction_elements += 1;
+                    Ok(String::new())
+                } else {
+                    bail!("unsupported retained structured element <{name}> in article HTML")
+                }
             }
             _ => self.render_children(element),
         }
+    }
+
+    fn should_drop_profiled(&self, element: ElementRef<'_>) -> bool {
+        should_drop(element)
+            || self
+                .drop_selectors
+                .iter()
+                .any(|selector| selector.matches(&element))
     }
 
     fn render_link(&mut self, element: ElementRef<'_>) -> Result<String> {
@@ -1792,6 +1947,36 @@ fn should_drop(element: ElementRef<'_>) -> bool {
     })
 }
 
+fn is_hidden(element: ElementRef<'_>) -> bool {
+    if element.value().attr("hidden").is_some()
+        || element
+            .value()
+            .attr("aria-hidden")
+            .map(|value| value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    {
+        return true;
+    }
+    element
+        .value()
+        .attr("style")
+        .map(|style| {
+            style.split(';').any(|declaration| {
+                let Some((name, value)) = declaration.split_once(':') else {
+                    return false;
+                };
+                let name = name.trim();
+                let value = value.trim();
+                (name.eq_ignore_ascii_case("display") && value.eq_ignore_ascii_case("none"))
+                    || (name.eq_ignore_ascii_case("visibility")
+                        && value.eq_ignore_ascii_case("hidden"))
+                    || (name.eq_ignore_ascii_case("content-visibility")
+                        && value.eq_ignore_ascii_case("hidden"))
+            })
+        })
+        .unwrap_or(false)
+}
+
 fn same_origin(left: &Url, right: &Url) -> bool {
     left.scheme() == right.scheme()
         && left.host_str() == right.host_str()
@@ -2219,6 +2404,7 @@ mod tests {
                 title_row_class: "breakouttitle".to_string(),
                 field_layout: SourceInfoboxFieldLayout::SingleCellBoldLabel,
             }),
+            content: SourceContentPolicy::default(),
         };
         let mut infobox_parameters = BTreeSet::from([
             "name".to_string(),
@@ -2327,6 +2513,41 @@ mod tests {
                 occurrences: 1,
             }]
         );
+    }
+
+    #[test]
+    fn profiled_compilation_reduces_app_shells_to_durable_article_meaning() {
+        let (mut source_profile, target_profile) = profiled_policies();
+        source_profile.content = SourceContentPolicy {
+            root_selector: Some("article".to_string()),
+            drop_selectors: vec![".animation".to_string()],
+            drop_hidden: true,
+            drop_embedded_app_elements: true,
+        };
+        let images = BTreeMap::new();
+        let output = compile_profiled(ProfiledCompileInput {
+            html: "<nav>Application navigation</nav><article><style>.animation{opacity:0}</style><script>hydrate()</script><p>Durable source text.</p><p hidden>Duplicate hidden text.</p><div class=\"animation\">Decorative motion.<table class=\"mystery\"><tr><td>Not target evidence</td></tr></table></div><canvas>animated scene</canvas></article>",
+            canonical_title: "Example",
+            canonical_url: "https://source.example/Example",
+            source_key: "fixture",
+            media_scope: "fixture",
+            source_profile: &source_profile,
+            target_profile: &target_profile,
+            images: &images,
+            media_occurrences: None,
+        })
+        .expect("reduce app shell");
+
+        assert_eq!(output.transformed.wikitext, "Durable source text.\n");
+        assert_eq!(output.transformed.coverage.discarded_style_elements, 1);
+        assert_eq!(output.transformed.coverage.discarded_script_elements, 1);
+        assert_eq!(output.transformed.coverage.discarded_hidden_elements, 1);
+        assert_eq!(output.transformed.coverage.discarded_profiled_elements, 1);
+        assert_eq!(
+            output.transformed.coverage.discarded_interaction_elements,
+            1
+        );
+        assert!(output.unmapped_structures.is_empty());
     }
 
     #[test]

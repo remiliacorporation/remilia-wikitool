@@ -17,6 +17,16 @@ parameter vocabulary. Unlabeled infobox content uses an explicit target content 
 than a fabricated label, and unlabeled audio derives its accessible label from captured source
 filenames rather than generating article prose.
 
+Generic webpage adaptation is semantic, not visual replication. A source profile may select one
+meaningful content root, discard source-specific chrome or animation regions with explicit CSS
+selectors, remove hidden duplicates, and drop embedded app elements. The result reports separate
+counts for discarded style, script, interaction, hidden, and profile-selected structures. CSS is
+therefore interpretation evidence for profile construction; it is not copied into the target wiki.
+Wikitool never executes source JavaScript. When script execution is necessary to expose authored
+content, an acquisition or browser layer must provide a bounded rendered DOM and its own provenance
+before conversion. Durable text, media, captions, links, and informational states are then projected
+through the target profile's MediaWiki primitives and admitted template vocabulary.
+
 The crate does not acquire pages, decode a producer bundle, choose site templates, emit a
 publication receipt, or write to a wiki. Those authorities belong to callers. Producer-specific
 bundle decoding and Remilia's profile files stay outside the crate while the profile schemas and

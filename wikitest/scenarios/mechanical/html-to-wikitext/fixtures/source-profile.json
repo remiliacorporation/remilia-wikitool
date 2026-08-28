@@ -19,5 +19,13 @@
     "table_class": "breakout",
     "title_row_class": "breakouttitle",
     "field_layout": "single_cell_bold_label"
+  },
+  "content": {
+    "root_selector": "article",
+    "drop_selectors": [
+      ".decorative-animation"
+    ],
+    "drop_hidden": true,
+    "drop_embedded_app_elements": true
   }
 }
