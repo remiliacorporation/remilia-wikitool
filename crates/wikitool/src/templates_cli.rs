@@ -5,12 +5,15 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 use wikitool_core::site::{
     TemplateCatalog, TemplateCatalogEntry, TemplateCatalogEntryLookup,
-    build_template_dependency_closure, find_template_catalog_entry, load_site_adapter,
-    load_template_catalog, sync_template_catalog_with_adapter,
+    build_template_dependency_closure_with_capabilities, find_template_catalog_entry,
+    load_site_adapter, load_template_catalog, load_wiki_capabilities_with_config,
+    sync_template_catalog_with_adapter,
 };
 
 use crate::briefs::{BriefCommand, BriefView, brief_command_owned, capped_strings, text_preview};
-use crate::cli_support::{OutputFormat, normalize_path, resolve_runtime_paths};
+use crate::cli_support::{
+    OutputFormat, normalize_path, resolve_runtime_paths, resolve_runtime_with_config,
+};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 mod contract;
@@ -148,15 +151,31 @@ struct TemplateClosureReceipt<'a> {
     module_count: usize,
     file_count: usize,
     edge_count: usize,
+    runtime_dependency_count: usize,
     missing_count: usize,
     unresolved_count: usize,
 }
 
 fn run_templates_closure(runtime: &RuntimeOptions, args: TemplatesClosureArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
     let catalog = load_or_sync_catalog(&paths)?;
-    let closure =
-        build_template_dependency_closure(&paths, &catalog, &args.templates, args.max_nodes)?;
+    let capabilities = load_wiki_capabilities_with_config(&paths, &config)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "wiki capability manifest is missing; run `wikitool wiki capabilities sync` before exporting a template closure"
+        )
+    })?;
+    if capabilities.magic_words.is_empty() {
+        bail!(
+            "wiki capability manifest lacks MediaWiki magic-word data; refresh it with `wikitool wiki capabilities sync` before exporting a template closure"
+        );
+    }
+    let closure = build_template_dependency_closure_with_capabilities(
+        &paths,
+        &catalog,
+        &args.templates,
+        Some(&capabilities),
+        args.max_nodes,
+    )?;
     let mut encoded = serde_json::to_string_pretty(&closure)?;
     encoded.push('\n');
 
@@ -171,7 +190,7 @@ fn run_templates_closure(runtime: &RuntimeOptions, args: TemplatesClosureArgs) -
         wikitool_core::support::atomic_write(&output, encoded)?;
         let output_display = normalize_path(output.canonicalize().unwrap_or(output));
         let receipt = TemplateClosureReceipt {
-            schema: "template_dependency_closure_write_v1",
+            schema: "template_dependency_closure_write_v2",
             output_path: &output_display,
             content_sha256: &content_sha256,
             roots: &closure.roots,
@@ -179,6 +198,7 @@ fn run_templates_closure(runtime: &RuntimeOptions, args: TemplatesClosureArgs) -
             module_count: closure.modules.len(),
             file_count: closure.files.len(),
             edge_count: closure.edges.len(),
+            runtime_dependency_count: closure.runtime_dependencies.len(),
             missing_count: closure.missing.len(),
             unresolved_count: closure.unresolved.len(),
         };
@@ -200,12 +220,22 @@ fn run_templates_closure(runtime: &RuntimeOptions, args: TemplatesClosureArgs) -
         println!("modules.count: {}", closure.modules.len());
         println!("files.count: {}", closure.files.len());
         println!("edges.count: {}", closure.edges.len());
+        println!(
+            "runtime_dependencies.count: {}",
+            closure.runtime_dependencies.len()
+        );
         println!("missing.count: {}", closure.missing.len());
         println!("unresolved.count: {}", closure.unresolved.len());
         for item in &closure.missing {
             println!(
                 "missing: kind={} title={} referenced_by={} reason={}",
                 item.kind, item.title, item.referenced_by, item.reason
+            );
+        }
+        for item in &closure.runtime_dependencies {
+            println!(
+                "runtime: kind={} title={} referenced_by={} relation={} provider={}",
+                item.kind, item.title, item.referenced_by, item.relation, item.provider
             );
         }
         for item in &closure.unresolved {
@@ -231,6 +261,10 @@ fn print_template_closure_receipt(receipt: &TemplateClosureReceipt<'_>) {
     println!("modules.count: {}", receipt.module_count);
     println!("files.count: {}", receipt.file_count);
     println!("edges.count: {}", receipt.edge_count);
+    println!(
+        "runtime_dependencies.count: {}",
+        receipt.runtime_dependency_count
+    );
     println!("missing.count: {}", receipt.missing_count);
     println!("unresolved.count: {}", receipt.unresolved_count);
 }

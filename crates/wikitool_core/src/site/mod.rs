@@ -19,9 +19,9 @@ pub use adapter::{
     site_adapter_resource_paths,
 };
 pub use capabilities::{
-    ExtensionInfo, NamespaceInfo, WikiCapabilityManifest, fetch_remote_wiki_capabilities,
-    load_latest_wiki_capabilities, load_wiki_capabilities_with_config,
-    sync_wiki_capabilities_with_config,
+    ExtensionInfo, MagicWordInfo, NamespaceInfo, WikiCapabilityManifest,
+    fetch_remote_wiki_capabilities, load_latest_wiki_capabilities,
+    load_wiki_capabilities_with_config, sync_wiki_capabilities_with_config,
 };
 pub use namespaces::discover_custom_namespaces;
 pub use surface::{
@@ -50,7 +50,8 @@ pub use template_contract::{
 };
 pub use template_data::{TemplateDataParameter, TemplateDataRecord};
 pub use template_engineering::{
-    MissingTemplateDependency, ModuleDependencyNode, TemplateDependencyClosure,
-    TemplateDependencyEdge, TemplateDependencyFile, TemplateDependencyNode,
-    UnresolvedTemplateDependency, build_template_dependency_closure,
+    MissingTemplateDependency, ModuleDependencyNode, RuntimeProvidedDependency,
+    TemplateDependencyClosure, TemplateDependencyEdge, TemplateDependencyFile,
+    TemplateDependencyNode, TemplateRuntimeDependencyContext, UnresolvedTemplateDependency,
+    build_template_dependency_closure, build_template_dependency_closure_with_capabilities,
 };

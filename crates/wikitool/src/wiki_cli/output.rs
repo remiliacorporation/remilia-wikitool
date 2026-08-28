@@ -23,6 +23,7 @@ pub(super) fn print_manifest(manifest: &WikiCapabilityManifest) {
         "parser_function_hook_count: {}",
         manifest.parser_function_hooks.len()
     );
+    println!("magic_word_count: {}", manifest.magic_words.len());
     println!("special_page_count: {}", manifest.special_pages.len());
     println!(
         "search_backend_hint: {}",

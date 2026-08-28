@@ -812,6 +812,7 @@ mod tests {
             extensions: Vec::new(),
             parser_extension_tags,
             parser_function_hooks,
+            magic_words: Vec::new(),
             special_pages: Vec::new(),
             search_backend_hint: None,
             has_visual_editor: false,

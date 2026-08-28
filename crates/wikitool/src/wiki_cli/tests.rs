@@ -23,6 +23,7 @@ fn sample_manifest() -> WikiCapabilityManifest {
         }],
         parser_extension_tags: vec!["gallery".to_string()],
         parser_function_hooks: vec!["if".to_string()],
+        magic_words: Vec::new(),
         special_pages: vec!["Version".to_string()],
         search_backend_hint: Some("cirrus".to_string()),
         has_visual_editor: false,

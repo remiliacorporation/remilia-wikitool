@@ -109,6 +109,7 @@ observed usage, examples, documentation pages, and directly invoked Scribunto mo
 exact named dependency closure before changing or migrating a template family:
 
 ```bash
+wikitool wiki capabilities sync
 wikitool templates catalog build
 wikitool templates closure \
   "Template:Infobox subject" \
@@ -120,11 +121,23 @@ wikitool templates closure \
 
 The closure follows runtime template transclusions, literal `#invoke`/TemplateStyles module pages,
 and literal Scribunto `require('Module:...')` and `mw.loadData('Module:...')` calls. It honors
-`onlyinclude`, excludes `noinclude` documentation examples, records exact SHA-256 identities for
-every local implementation/documentation file, and reports missing or dynamic dependencies rather
-than guessing. `--max-nodes` fails instead of truncating a larger graph. This export is mechanical
-evidence for design and migration work; it does not decide aesthetics, create source-wiki clones,
-rewrite transclusions, or establish that a template vocabulary is editorially appropriate.
+`onlyinclude`, excludes `noinclude` documentation examples, and records exact SHA-256 identities for
+every local implementation/documentation file. MediaWiki magic words and parser functions come
+from the stored siteinfo capability manifest; known Scribunto `strict` and `libraryUtil` loads are
+reported as runtime-provided libraries. Genuine missing local templates/modules and dynamically
+indeterminate Lua loads remain separate evidence rather than being suppressed or guessed. A
+`#function` absent from the capability manifest is likewise unresolved, not assumed to exist.
+`--max-nodes` fails instead of truncating a larger graph.
+
+`template_dependency_closure_v2` adds `runtime_context` and `runtime_dependencies`; its edge list
+also identifies runtime dependency kinds. File-write receipts are
+`template_dependency_closure_write_v2` and add `runtime_dependency_count`. Because the capability
+manifest is part of closure provenance and content hashing, consumers of v1 closures or receipts
+must opt into v2 and regenerate their artifacts. Stored v1 capability manifests remain decodable,
+but closure export requires refreshed magic-word data and tells the operator to run
+`wiki capabilities sync` when it is absent. This export is mechanical evidence for design and
+migration work; it does not decide aesthetics, create source-wiki clones, rewrite transclusions, or
+establish that a template vocabulary is editorially appropriate.
 
 Represent a reviewed target design with a strict `template_engineering_contract_v1` document. The
 contract records the exact implementation body, TemplateData parameter contract, aliases, explicit

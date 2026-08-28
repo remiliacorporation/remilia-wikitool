@@ -15,7 +15,7 @@ use crate::schema::open_initialized_database_connection;
 use crate::support::{compute_hash, unix_timestamp};
 
 const WIKI_CAPABILITY_ARTIFACT_KIND: &str = "wiki_capabilities";
-const WIKI_CAPABILITY_SCHEMA_VERSION: &str = "wiki_capabilities_v1";
+const WIKI_CAPABILITY_SCHEMA_VERSION: &str = "wiki_capabilities_v2";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExtensionInfo {
@@ -34,6 +34,13 @@ pub struct NamespaceInfo {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MagicWordInfo {
+    pub name: String,
+    pub aliases: Vec<String>,
+    pub case_sensitive: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WikiCapabilityManifest {
     pub schema_version: String,
@@ -49,6 +56,8 @@ pub struct WikiCapabilityManifest {
     pub extensions: Vec<ExtensionInfo>,
     pub parser_extension_tags: Vec<String>,
     pub parser_function_hooks: Vec<String>,
+    #[serde(default)]
+    pub magic_words: Vec<MagicWordInfo>,
     pub special_pages: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_backend_hint: Option<String>,
@@ -95,6 +104,8 @@ struct SiteInfoQuery {
     extensiontags: Vec<String>,
     #[serde(default)]
     functionhooks: Vec<String>,
+    #[serde(default)]
+    magicwords: Vec<SiteInfoMagicWord>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -121,6 +132,23 @@ struct SiteInfoSpecialPage {
     realname: String,
     #[serde(default)]
     aliases: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct SiteInfoMagicWord {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    aliases: Vec<String>,
+    #[serde(default, rename = "case-sensitive")]
+    case_sensitive: bool,
+}
+
+#[derive(Debug, Default)]
+struct SiteInfoRuntimeCapabilities {
+    parser_extension_tags: Vec<String>,
+    parser_function_hooks: Vec<String>,
+    magic_words: Vec<MagicWordInfo>,
 }
 
 mod html;
@@ -210,16 +238,18 @@ fn fetch_wiki_capability_manifest(
     default_article_path: &str,
 ) -> Result<WikiCapabilityManifest> {
     let siteinfo = fetch_siteinfo_base(client)?;
-    let parser_extension_tags = fetch_optional_siteinfo_list(client, "extensiontags")?;
-    let parser_function_hooks = fetch_optional_siteinfo_list(client, "functionhooks")?;
+    let runtime_capabilities = SiteInfoRuntimeCapabilities {
+        parser_extension_tags: fetch_optional_siteinfo_list(client, "extensiontags")?,
+        parser_function_hooks: fetch_optional_siteinfo_list(client, "functionhooks")?,
+        magic_words: fetch_optional_siteinfo_magic_words(client)?,
+    };
     let refreshed_at = unix_timestamp()?.to_string();
     let mut manifest = build_manifest_from_siteinfo(
         api_url,
         wiki_url,
         default_article_path,
         &siteinfo,
-        parser_extension_tags,
-        parser_function_hooks,
+        runtime_capabilities,
         &refreshed_at,
     );
     if let Some(special_version) =
@@ -286,6 +316,7 @@ fn store_wiki_capabilities(paths: &ResolvedPaths, manifest: &WikiCapabilityManif
         .namespaces
         .len()
         .saturating_add(manifest.extensions.len())
+        .saturating_add(manifest.magic_words.len())
         .saturating_add(manifest.special_pages.len());
 
     connection
@@ -360,6 +391,21 @@ fn fetch_optional_siteinfo_list(client: &mut MediaWikiClient, siprop: &str) -> R
     Ok(normalize_string_list(values))
 }
 
+fn fetch_optional_siteinfo_magic_words(client: &mut MediaWikiClient) -> Result<Vec<MagicWordInfo>> {
+    let payload = match client.query_json(&[
+        ("action", "query".to_string()),
+        ("meta", "siteinfo".to_string()),
+        ("siprop", "magicwords".to_string()),
+    ]) {
+        Ok(payload) => payload,
+        Err(error) if is_optional_siprop_error(&error, "magicwords") => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let parsed: SiteInfoResponse =
+        serde_json::from_value(payload).context("failed to decode magicwords siteinfo response")?;
+    Ok(normalize_magic_words(parsed.query.magicwords))
+}
+
 fn is_optional_siprop_error(error: &anyhow::Error, siprop: &str) -> bool {
     let message = error.to_string().to_ascii_lowercase();
     message.contains("siprop") && message.contains(&siprop.to_ascii_lowercase())
@@ -370,8 +416,7 @@ fn build_manifest_from_siteinfo(
     wiki_url: &str,
     default_article_path: &str,
     siteinfo: &SiteInfoQuery,
-    parser_extension_tags: Vec<String>,
-    parser_function_hooks: Vec<String>,
+    runtime_capabilities: SiteInfoRuntimeCapabilities,
     refreshed_at: &str,
 ) -> WikiCapabilityManifest {
     let rest_url = Some(format!("{}/rest.php", wiki_url.trim_end_matches('/')));
@@ -393,8 +438,9 @@ fn build_manifest_from_siteinfo(
         mediawiki_version,
         namespaces,
         extensions,
-        parser_extension_tags,
-        parser_function_hooks,
+        parser_extension_tags: runtime_capabilities.parser_extension_tags,
+        parser_function_hooks: runtime_capabilities.parser_function_hooks,
+        magic_words: runtime_capabilities.magic_words,
         special_pages,
         search_backend_hint,
         has_visual_editor: false,
@@ -413,6 +459,27 @@ fn build_manifest_from_siteinfo(
 
     refresh_manifest_flags(&mut manifest);
     manifest
+}
+
+fn normalize_magic_words(values: Vec<SiteInfoMagicWord>) -> Vec<MagicWordInfo> {
+    let mut out = values
+        .into_iter()
+        .filter_map(|value| {
+            let name = clean_label(&value.name)?;
+            let aliases = normalize_string_list(value.aliases);
+            if aliases.is_empty() {
+                return None;
+            }
+            Some(MagicWordInfo {
+                name,
+                aliases,
+                case_sensitive: value.case_sensitive,
+            })
+        })
+        .collect::<Vec<_>>();
+    out.sort();
+    out.dedup();
+    out
 }
 
 fn refresh_manifest_flags(manifest: &mut WikiCapabilityManifest) {
@@ -583,9 +650,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        SiteInfoResponse, apply_special_version_info, build_article_url,
-        build_manifest_from_siteinfo, derive_wiki_id, html_text, load_latest_wiki_capabilities,
-        load_wiki_capabilities, parse_special_version_html, remote_mediawiki_api_candidates,
+        SiteInfoMagicWord, SiteInfoResponse, SiteInfoRuntimeCapabilities,
+        apply_special_version_info, build_article_url, build_manifest_from_siteinfo,
+        derive_wiki_id, html_text, load_latest_wiki_capabilities, load_wiki_capabilities,
+        normalize_magic_words, parse_special_version_html, remote_mediawiki_api_candidates,
         store_wiki_capabilities,
     };
     use crate::runtime::{ResolvedPaths, ValueSource};
@@ -644,6 +712,34 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_magic_words_without_losing_case_or_symbol_aliases() {
+        let words = normalize_magic_words(vec![
+            SiteInfoMagicWord {
+                name: "namespace".to_string(),
+                aliases: vec![" NAMESPACE ".to_string(), "NAMESPACE".to_string()],
+                case_sensitive: true,
+            },
+            SiteInfoMagicWord {
+                name: "bang".to_string(),
+                aliases: vec!["!".to_string()],
+                case_sensitive: true,
+            },
+            SiteInfoMagicWord {
+                name: "empty".to_string(),
+                aliases: Vec::new(),
+                case_sensitive: false,
+            },
+        ]);
+
+        assert_eq!(words.len(), 2);
+        assert_eq!(words[0].name, "bang");
+        assert_eq!(words[0].aliases, vec!["!"]);
+        assert_eq!(words[1].name, "namespace");
+        assert_eq!(words[1].aliases, vec!["NAMESPACE"]);
+        assert!(words[1].case_sensitive);
+    }
+
+    #[test]
     fn builds_manifest_from_siteinfo_payload() {
         let payload = serde_json::from_str::<SiteInfoResponse>(
             r#"{
@@ -678,12 +774,19 @@ mod tests {
             "https://wiki.remilia.org",
             "/$1",
             &payload.query,
-            vec!["gallery".to_string(), "poem".to_string()],
-            vec!["cargoquery".to_string(), "invoke".to_string()],
+            SiteInfoRuntimeCapabilities {
+                parser_extension_tags: vec!["gallery".to_string(), "poem".to_string()],
+                parser_function_hooks: vec!["cargoquery".to_string(), "invoke".to_string()],
+                magic_words: vec![super::MagicWordInfo {
+                    name: "namespace".to_string(),
+                    aliases: vec!["NAMESPACE".to_string()],
+                    case_sensitive: true,
+                }],
+            },
             "1234567890",
         );
 
-        assert_eq!(manifest.schema_version, "wiki_capabilities_v1");
+        assert_eq!(manifest.schema_version, "wiki_capabilities_v2");
         assert_eq!(manifest.wiki_id, "wiki.remilia.org");
         assert_eq!(manifest.article_path, "/wiki/$1");
         assert_eq!(manifest.mediawiki_version.as_deref(), Some("1.44.1"));
@@ -703,6 +806,7 @@ mod tests {
         assert_eq!(manifest.special_pages.len(), 2);
         assert_eq!(manifest.parser_extension_tags, vec!["gallery", "poem"]);
         assert_eq!(manifest.parser_function_hooks, vec!["cargoquery", "invoke"]);
+        assert_eq!(manifest.magic_words[0].name, "namespace");
     }
 
     #[test]
@@ -731,6 +835,11 @@ mod tests {
             }],
             parser_extension_tags: vec!["gallery".to_string()],
             parser_function_hooks: vec!["invoke".to_string()],
+            magic_words: vec![super::MagicWordInfo {
+                name: "namespace".to_string(),
+                aliases: vec!["NAMESPACE".to_string()],
+                case_sensitive: true,
+            }],
             special_pages: vec!["Version".to_string()],
             search_backend_hint: Some("cirrussearch".to_string()),
             has_visual_editor: true,
@@ -746,6 +855,15 @@ mod tests {
             rest_html_path_template: None,
             refreshed_at: "1234567890".to_string(),
         };
+
+        let mut legacy_json = serde_json::to_value(&manifest).expect("serialize legacy fixture");
+        legacy_json
+            .as_object_mut()
+            .expect("manifest object")
+            .remove("magic_words");
+        let legacy: super::WikiCapabilityManifest =
+            serde_json::from_value(legacy_json).expect("v1 manifest remains decodable");
+        assert!(legacy.magic_words.is_empty());
 
         store_wiki_capabilities(&paths, &manifest).expect("manifest should store");
 
@@ -861,8 +979,7 @@ mod tests {
             "https://wiki.remilia.org",
             "/$1",
             &payload.query,
-            Vec::new(),
-            Vec::new(),
+            SiteInfoRuntimeCapabilities::default(),
             "1234567890",
         );
 

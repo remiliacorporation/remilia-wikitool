@@ -24,6 +24,29 @@ pub(crate) fn summarize_template_invocations(
 }
 
 pub(crate) fn extract_template_invocations(content: &str) -> Vec<ParsedTemplateInvocation> {
+    extract_template_bodies(content)
+        .into_iter()
+        .filter_map(parse_template_invocation)
+        .collect()
+}
+
+pub(crate) fn extract_transclusion_heads(content: &str) -> Vec<String> {
+    let mut heads = extract_template_bodies(content)
+        .into_iter()
+        .filter_map(|inner| {
+            split_template_segments(inner)
+                .into_iter()
+                .next()
+                .map(|head| normalize_spaces(head.trim()))
+                .filter(|head| !head.is_empty())
+        })
+        .collect::<Vec<_>>();
+    heads.sort();
+    heads.dedup();
+    heads
+}
+
+fn extract_template_bodies(content: &str) -> Vec<&str> {
     let bytes = content.as_bytes();
     let mut out = Vec::new();
     let mut cursor = 0usize;
@@ -44,9 +67,7 @@ pub(crate) fn extract_template_invocations(content: &str) -> Vec<ParsedTemplateI
                 && cursor >= start
             {
                 let inner = &content[start..cursor];
-                if let Some(invocation) = parse_template_invocation(inner) {
-                    out.push(invocation);
-                }
+                out.push(inner);
             }
             cursor += 2;
             continue;
@@ -378,7 +399,7 @@ pub(crate) fn normalize_template_parameter_key(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_template_invocations;
+    use super::{extract_template_invocations, extract_transclusion_heads};
 
     #[test]
     fn invocation_extraction_skips_comments_and_literal_regions() {
@@ -403,6 +424,23 @@ mod tests {
         assert_eq!(
             invocations[0].parameter_keys,
             vec!["Reason", "reason", "source1_sha256", "two words"]
+        );
+    }
+
+    #[test]
+    fn transclusion_heads_preserve_runtime_primitive_syntax() {
+        let heads = extract_transclusion_heads(
+            "{{#if:{{NAMESPACE}}|{{lc: VALUE}}|{{Real template}}}}<nowiki>{{#ignored:x}}</nowiki>",
+        );
+
+        assert_eq!(
+            heads,
+            vec![
+                "#if:{{NAMESPACE}}".to_string(),
+                "NAMESPACE".to_string(),
+                "Real template".to_string(),
+                "lc: VALUE".to_string(),
+            ]
         );
     }
 }
