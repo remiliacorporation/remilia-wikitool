@@ -741,7 +741,8 @@ Usage: wikitool import [OPTIONS] <COMMAND>
 
 Commands:
   cargo
-  help   Print this message or the help of the given subcommand(s)
+  html-to-wikitext  Compile captured HTML through explicit source and target profiles
+  help              Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -776,6 +777,33 @@ Options:
       --article-header         Add SHORTDESC + Article quality header in main namespace
       --no-meta                Omit metadata from JSON output
   -h, --help                   Print help
+```
+
+## import html-to-wikitext
+
+```text
+Compile captured HTML through explicit source and target profiles
+
+Usage: wikitool import html-to-wikitext [OPTIONS] --source-profile <PATH> --target-profile <PATH> --canonical-title <TITLE> --canonical-url <URL> --source-key <KEY> --media-scope <SCOPE> --output <PATH> <PATH>
+
+Arguments:
+  <PATH>  Captured HTML input path
+
+Options:
+      --project-root <PATH>
+      --source-profile <PATH>    Source interpretation profile
+      --data-dir <PATH>
+      --target-profile <PATH>    Target authoring profile
+      --canonical-title <TITLE>  Canonical source page title
+      --config <PATH>
+      --canonical-url <URL>      Canonical source page URL
+      --diagnostics              Print resolved runtime diagnostics
+      --source-key <KEY>         Captured source evidence key
+      --media-scope <SCOPE>      Target archive-media scope
+      --media-inventory <PATH>   Optional captured media-reference inventory
+      --output <PATH>            Project-scoped output path for exact compiled wikitext
+      --format <FORMAT>          Output format: text|json [default: text] [possible values: text, json]
+  -h, --help                     Print help
 ```
 
 ## catalog

@@ -1,0 +1,82 @@
+{
+  "schema": "mediawiki.wikitext-target-profile.v1",
+  "profile_id": "fixture-target-v1",
+  "max_wikitext_bytes": 1048576,
+  "link_policy": {
+    "internal_route_prefix": "Special:Archive",
+    "preserve_fragments": true
+  },
+  "media_policy": {
+    "image_template": "Template:Archive image",
+    "audio_template": "Template:Archive audio",
+    "max_audio_sources": 4,
+    "empty_alt_policy": "decorative",
+    "emit_dimensions": true,
+    "non_image_media_policy": "template_audio"
+  },
+  "infobox": {
+    "template": "Template:Subject box",
+    "unlabeled_content_parameter": "below",
+    "max_custom_fields": 2
+  },
+  "message_box": {
+    "template": "Template:Notice box",
+    "text_parameter": "text",
+    "image_parameter": "image_content"
+  },
+  "authoring_policy": {
+    "allowed_templates": [
+      {
+        "title": "Template:Archive image",
+        "parameters": [
+          "alt",
+          "decorative",
+          "height",
+          "sha256",
+          "site",
+          "width"
+        ]
+      },
+      {
+        "title": "Template:Archive audio",
+        "parameters": [
+          "label",
+          "site",
+          "source1_sha256",
+          "source1_type",
+          "source2_sha256",
+          "source2_type",
+          "source3_sha256",
+          "source3_type",
+          "source4_sha256",
+          "source4_type",
+          "transcript"
+        ]
+      },
+      {
+        "title": "Template:Subject box",
+        "parameters": [
+          "below",
+          "data1",
+          "data2",
+          "image_content",
+          "label1",
+          "label2",
+          "name"
+        ]
+      },
+      {
+        "title": "Template:Notice box",
+        "parameters": [
+          "image_content",
+          "text"
+        ]
+      }
+    ],
+    "allow_direct_parser_functions": false,
+    "allow_direct_modules": false,
+    "allow_native_file_links": false,
+    "allow_native_main_links": false,
+    "allow_categories": false
+  }
+}

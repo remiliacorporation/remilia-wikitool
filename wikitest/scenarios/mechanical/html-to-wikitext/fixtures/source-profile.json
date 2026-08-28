@@ -1,0 +1,23 @@
+{
+  "schema": "mediawiki.html-source-profile.v1",
+  "profile_id": "fixture-rendered-html-v1",
+  "source_key": "fixture",
+  "allowed_origins": [
+    "https://fixture.example"
+  ],
+  "article_path_prefix": "/wiki/",
+  "media_url_prefixes": [
+    "https://fixture.example/media/"
+  ],
+  "generic_table_classes": [
+    "wikitable"
+  ],
+  "message_box_classes": [
+    "msgbox"
+  ],
+  "infobox": {
+    "table_class": "breakout",
+    "title_row_class": "breakouttitle",
+    "field_layout": "single_cell_bold_label"
+  }
+}

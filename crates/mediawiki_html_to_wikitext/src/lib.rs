@@ -23,6 +23,8 @@ pub struct SourceProfile {
     #[serde(default)]
     pub generic_table_classes: BTreeSet<String>,
     #[serde(default)]
+    pub message_box_classes: BTreeSet<String>,
+    #[serde(default)]
     pub infobox: Option<SourceInfoboxPolicy>,
 }
 
@@ -30,7 +32,14 @@ pub struct SourceProfile {
 #[serde(deny_unknown_fields)]
 pub struct SourceInfoboxPolicy {
     pub table_class: String,
-    pub default_type: String,
+    pub title_row_class: String,
+    pub field_layout: SourceInfoboxFieldLayout,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceInfoboxFieldLayout {
+    SingleCellBoldLabel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -43,6 +52,8 @@ pub struct TargetProfile {
     pub media_policy: MediaPolicy,
     #[serde(default)]
     pub infobox: Option<TargetInfoboxPolicy>,
+    #[serde(default)]
+    pub message_box: Option<TargetMessageBoxPolicy>,
     pub authoring_policy: AuthoringPolicy,
 }
 
@@ -50,8 +61,18 @@ pub struct TargetProfile {
 #[serde(deny_unknown_fields)]
 pub struct TargetInfoboxPolicy {
     pub template: String,
-    pub unlabeled_field_label: String,
+    #[serde(default)]
+    pub unlabeled_content_parameter: Option<String>,
     pub max_custom_fields: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TargetMessageBoxPolicy {
+    pub template: String,
+    pub text_parameter: String,
+    #[serde(default)]
+    pub image_parameter: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -110,10 +131,20 @@ pub enum NonImageMediaPolicy {
 #[serde(deny_unknown_fields)]
 pub struct InfoboxPolicy {
     pub source_table_class: String,
+    pub source_title_row_class: String,
+    pub source_field_layout: SourceInfoboxFieldLayout,
     pub template: String,
-    pub default_type: String,
-    pub unlabeled_field_label: String,
+    pub unlabeled_content_parameter: Option<String>,
     pub max_custom_fields: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct MessageBoxPolicy {
+    pub source_table_classes: BTreeSet<String>,
+    pub template: String,
+    pub text_parameter: String,
+    pub image_parameter: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -164,6 +195,7 @@ pub struct HtmlToWikitextInput<'a> {
     pub link_policy: &'a LinkPolicy,
     pub media_policy: &'a MediaPolicy,
     pub infobox_policy: Option<&'a InfoboxPolicy>,
+    pub message_box_policy: Option<&'a MessageBoxPolicy>,
     pub images: &'a BTreeMap<String, MediaReference>,
     pub media_occurrences: Option<&'a [MediaReference]>,
 }
@@ -209,17 +241,41 @@ pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompi
         input.source_profile.source_key
     );
     validate_source_canonical_url(input.canonical_url, input.source_profile)?;
+    for source_url in input.images.keys() {
+        validate_source_media_url(source_url, input.source_profile)?;
+    }
+    if let Some(occurrences) = input.media_occurrences {
+        for occurrence in occurrences {
+            validate_source_media_url(&occurrence.source_url, input.source_profile)?;
+        }
+    }
 
     let infobox_policy = match (&input.source_profile.infobox, &input.target_profile.infobox) {
         (Some(source), Some(target)) => Some(InfoboxPolicy {
             source_table_class: source.table_class.clone(),
+            source_title_row_class: source.title_row_class.clone(),
+            source_field_layout: source.field_layout,
             template: target.template.clone(),
-            default_type: source.default_type.clone(),
-            unlabeled_field_label: target.unlabeled_field_label.clone(),
+            unlabeled_content_parameter: target.unlabeled_content_parameter.clone(),
             max_custom_fields: target.max_custom_fields,
         }),
         (None, _) => None,
         (Some(_), None) => bail!("source infobox mapping has no target implementation"),
+    };
+    let message_box_policy = if input.source_profile.message_box_classes.is_empty() {
+        None
+    } else {
+        let target = input
+            .target_profile
+            .message_box
+            .as_ref()
+            .context("source message-box mapping has no target implementation")?;
+        Some(MessageBoxPolicy {
+            source_table_classes: input.source_profile.message_box_classes.clone(),
+            template: target.template.clone(),
+            text_parameter: target.text_parameter.clone(),
+            image_parameter: target.image_parameter.clone(),
+        })
     };
     let unmapped_structures = collect_unmapped_structures(input.html, input.source_profile)?;
     let transformed = convert(HtmlToWikitextInput {
@@ -230,6 +286,7 @@ pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompi
         link_policy: &input.target_profile.link_policy,
         media_policy: &input.target_profile.media_policy,
         infobox_policy: infobox_policy.as_ref(),
+        message_box_policy: message_box_policy.as_ref(),
         images: input.images,
         media_occurrences: input.media_occurrences,
     })?;
@@ -250,6 +307,9 @@ pub fn validate_profiles(source: &SourceProfile, target: &TargetProfile) -> Resu
     validate_target_profile(target)?;
     if let (Some(_), None) = (&source.infobox, &target.infobox) {
         bail!("source infobox mapping has no target implementation");
+    }
+    if !source.message_box_classes.is_empty() && target.message_box.is_none() {
+        bail!("source message-box mapping has no target implementation");
     }
     Ok(())
 }
@@ -286,15 +346,23 @@ pub fn validate_source_profile(source: &SourceProfile) -> Result<()> {
     for class in &source.generic_table_classes {
         validate_class_token(class, "generic table class")?;
     }
+    for class in &source.message_box_classes {
+        validate_class_token(class, "source message-box table class")?;
+        ensure!(
+            !source.generic_table_classes.contains(class),
+            "source message-box class is also admitted as a generic table class"
+        );
+    }
     if let Some(infobox) = &source.infobox {
         validate_class_token(&infobox.table_class, "source infobox table class")?;
+        validate_class_token(&infobox.title_row_class, "source infobox title-row class")?;
         ensure!(
             !source.generic_table_classes.contains(&infobox.table_class),
             "source infobox class is also admitted as a generic table class"
         );
         ensure!(
-            !infobox.default_type.trim().is_empty() && infobox.default_type.len() <= 128,
-            "source infobox default_type is empty or too long"
+            !source.message_box_classes.contains(&infobox.table_class),
+            "source infobox class is also admitted as a message-box class"
         );
     }
     Ok(())
@@ -331,15 +399,23 @@ pub fn validate_target_profile(target: &TargetProfile) -> Result<()> {
     validate_target_template_contract(target)?;
     if let Some(infobox) = &target.infobox {
         validate_template_name(&infobox.template)?;
-        ensure!(
-            !infobox.unlabeled_field_label.trim().is_empty()
-                && infobox.unlabeled_field_label.len() <= 128,
-            "target infobox unlabeled_field_label is empty or too long"
-        );
+        if let Some(parameter) = &infobox.unlabeled_content_parameter {
+            validate_identifier(parameter, "target infobox unlabeled_content_parameter")?;
+        }
         ensure!(
             (1..=10).contains(&infobox.max_custom_fields),
             "target infobox max_custom_fields must be between 1 and 10"
         );
+    }
+    if let Some(message_box) = &target.message_box {
+        validate_template_name(&message_box.template)?;
+        validate_identifier(
+            &message_box.text_parameter,
+            "target message-box text_parameter",
+        )?;
+        if let Some(parameter) = &message_box.image_parameter {
+            validate_identifier(parameter, "target message-box image_parameter")?;
+        }
     }
     Ok(())
 }
@@ -393,7 +469,13 @@ fn validate_target_template_contract(target: &TargetProfile) -> Result<()> {
     if let Some(infobox) = &target.infobox {
         let allowed = allowed_template(target, &infobox.template)
             .context("infobox template is absent from allowed_templates")?;
-        for parameter in ["name", "type", "image_content"] {
+        for parameter in ["name", "image_content"] {
+            ensure!(
+                allowed.parameters.contains(parameter),
+                "allowed infobox template is missing parameter {parameter}"
+            );
+        }
+        if let Some(parameter) = &infobox.unlabeled_content_parameter {
             ensure!(
                 allowed.parameters.contains(parameter),
                 "allowed infobox template is missing parameter {parameter}"
@@ -407,6 +489,21 @@ fn validate_target_template_contract(target: &TargetProfile) -> Result<()> {
                     "allowed infobox template is missing parameter {parameter}"
                 );
             }
+        }
+    }
+    if let Some(message_box) = &target.message_box {
+        let allowed = allowed_template(target, &message_box.template)
+            .context("message-box template is absent from allowed_templates")?;
+        ensure!(
+            allowed.parameters.contains(&message_box.text_parameter),
+            "allowed message-box template is missing parameter {}",
+            message_box.text_parameter
+        );
+        if let Some(parameter) = &message_box.image_parameter {
+            ensure!(
+                allowed.parameters.contains(parameter),
+                "allowed message-box template is missing parameter {parameter}"
+            );
         }
     }
     Ok(())
@@ -531,6 +628,9 @@ fn collect_unmapped_structures(
             || classes
                 .iter()
                 .any(|class| source.generic_table_classes.contains(class))
+            || classes
+                .iter()
+                .any(|class| source.message_box_classes.contains(class))
             || mapped_infobox_class
                 .map(|mapped| classes.iter().any(|class| class == mapped))
                 .unwrap_or(false)
@@ -1168,13 +1268,8 @@ impl Renderer<'_> {
             .or_else(|| element.value().attr("title"))
             .filter(|value| !value.trim().is_empty())
             .map(ToOwned::to_owned)
-            .unwrap_or_else(|| {
-                format!(
-                    "Audio sample {} from {}",
-                    owner_ordinal + 1,
-                    self.input.canonical_title
-                )
-            });
+            .map(Ok)
+            .unwrap_or_else(|| source_audio_label(&sources))?;
         let mut invocation = format!(
             "{{{{{template}|site={}|label={}",
             escape_template_value(self.input.media_scope),
@@ -1347,6 +1442,19 @@ impl Renderer<'_> {
 
     fn render_table(&mut self, element: ElementRef<'_>) -> Result<String> {
         self.coverage.tables += 1;
+        if let Some(policy) = self.input.message_box_policy
+            && element
+                .value()
+                .attr("class")
+                .map(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| policy.source_table_classes.contains(class))
+                })
+                .unwrap_or(false)
+        {
+            return self.render_message_box(element, policy);
+        }
         if let Some(policy) = self.input.infobox_policy
             && element
                 .value()
@@ -1357,9 +1465,9 @@ impl Renderer<'_> {
                         .any(|class| class == policy.source_table_class)
                 })
                 .unwrap_or(false)
-            && self.breakout_is_admissible(element, policy)
+            && self.profiled_infobox_is_admissible(element, policy)
         {
-            return self.render_breakout_infobox(element, policy);
+            return self.render_profiled_infobox(element, policy);
         }
         let row_selector = Selector::parse("tr").expect("static tr selector");
         let cell_selector = Selector::parse("th, td").expect("static table-cell selector");
@@ -1422,7 +1530,77 @@ impl Renderer<'_> {
         Ok(output)
     }
 
-    fn breakout_is_admissible(&self, element: ElementRef<'_>, policy: &InfoboxPolicy) -> bool {
+    fn render_message_box(
+        &mut self,
+        element: ElementRef<'_>,
+        policy: &MessageBoxPolicy,
+    ) -> Result<String> {
+        let row_selector = Selector::parse("tr").expect("static tr selector");
+        let cell_selector = Selector::parse("th, td").expect("static table-cell selector");
+        let rows = element
+            .select(&row_selector)
+            .filter(|row| {
+                row.ancestors()
+                    .filter_map(ElementRef::wrap)
+                    .find(|ancestor| ancestor.value().name() == "table")
+                    == Some(element)
+            })
+            .collect::<Vec<_>>();
+        ensure!(
+            rows.len() == 1,
+            "admitted message-box table must contain exactly one direct row"
+        );
+        let cells = rows[0]
+            .select(&cell_selector)
+            .filter(|cell| {
+                cell.ancestors()
+                    .filter_map(ElementRef::wrap)
+                    .find(|ancestor| ancestor.value().name() == "tr")
+                    == Some(rows[0])
+            })
+            .collect::<Vec<_>>();
+        ensure!(
+            cells.len() == 2,
+            "admitted message-box table must contain exactly two direct cells"
+        );
+        self.coverage.table_rows += 1;
+        self.coverage.table_cells += 2;
+
+        let image = one_line(&self.render_children(cells[0])?);
+        let text = one_line(&self.render_children(cells[1])?);
+        ensure!(
+            !text.is_empty(),
+            "admitted message-box table omitted message text"
+        );
+        ensure!(
+            image.is_empty() || policy.image_parameter.is_some(),
+            "admitted message-box table has an image but the target has no image parameter"
+        );
+        let template = policy
+            .template
+            .strip_prefix("Template:")
+            .unwrap_or(&policy.template);
+        let mut output = format!("\n{{{{{template}\n");
+        if !image.is_empty() {
+            output.push_str("| ");
+            output.push_str(policy.image_parameter.as_deref().expect("checked above"));
+            output.push_str(" = ");
+            output.push_str(&image);
+            output.push('\n');
+        }
+        output.push_str("| ");
+        output.push_str(&policy.text_parameter);
+        output.push_str(" = ");
+        output.push_str(&text);
+        output.push_str("\n}}\n\n");
+        Ok(output)
+    }
+
+    fn profiled_infobox_is_admissible(
+        &self,
+        element: ElementRef<'_>,
+        policy: &InfoboxPolicy,
+    ) -> bool {
         let row_selector = Selector::parse("tr").expect("static tr selector");
         let cell_selector = Selector::parse("th, td").expect("static table-cell selector");
         let nested_table_selector = Selector::parse("table table").expect("static table selector");
@@ -1447,7 +1625,9 @@ impl Renderer<'_> {
                         == Some(row)
                 })
                 .collect::<Vec<_>>();
-            if cells.len() != 1 {
+            if policy.source_field_layout == SourceInfoboxFieldLayout::SingleCellBoldLabel
+                && cells.len() != 1
+            {
                 return false;
             }
             let is_title = row
@@ -1456,7 +1636,7 @@ impl Renderer<'_> {
                 .map(|classes| {
                     classes
                         .split_ascii_whitespace()
-                        .any(|class| class == "breakouttitle")
+                        .any(|class| class == policy.source_title_row_class)
                 })
                 .unwrap_or(false);
             if is_title {
@@ -1482,7 +1662,7 @@ impl Renderer<'_> {
         title_rows == 1 && estimated_fields <= policy.max_custom_fields + trailing_break_allowance
     }
 
-    fn render_breakout_infobox(
+    fn render_profiled_infobox(
         &mut self,
         element: ElementRef<'_>,
         policy: &InfoboxPolicy,
@@ -1508,7 +1688,7 @@ impl Renderer<'_> {
                         .find(|ancestor| ancestor.value().name() == "tr")
                         == Some(row)
                 })
-                .context("admitted breakout row omitted its cell")?;
+                .context("admitted profiled infobox row omitted its cell")?;
             self.coverage.table_rows += 1;
             self.coverage.table_cells += 1;
             let is_title = row
@@ -1517,7 +1697,7 @@ impl Renderer<'_> {
                 .map(|classes| {
                     classes
                         .split_ascii_whitespace()
-                        .any(|class| class == "breakouttitle")
+                        .any(|class| class == policy.source_title_row_class)
                 })
                 .unwrap_or(false);
             if is_title {
@@ -1530,47 +1710,44 @@ impl Renderer<'_> {
                 let rendered = one_line(&self.render_children(cell)?);
                 ensure!(
                     rendered.starts_with("{{") && rendered.ends_with("}}"),
-                    "admitted breakout image row produced non-template content"
+                    "admitted profiled infobox image row produced non-template content"
                 );
                 image_content = Some(rendered);
                 continue;
             }
 
             let rendered = self.render_children(cell)?;
-            for line in rendered
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty() && *line != "----")
-            {
-                if let Some(rest) = line.strip_prefix("'''")
-                    && let Some((label, data)) = rest.split_once("''':")
-                    && !label.trim().is_empty()
-                    && !data.trim().is_empty()
-                {
-                    fields.push((label.trim().to_string(), data.trim().to_string()));
-                } else {
-                    unlabeled_fields.push(line.to_string());
+            match policy.source_field_layout {
+                SourceInfoboxFieldLayout::SingleCellBoldLabel => {
+                    for line in rendered
+                        .lines()
+                        .map(str::trim)
+                        .filter(|line| !line.is_empty() && *line != "----")
+                    {
+                        if let Some(rest) = line.strip_prefix("'''")
+                            && let Some((label, data)) = rest.split_once("''':")
+                            && !label.trim().is_empty()
+                            && !data.trim().is_empty()
+                        {
+                            fields.push((label.trim().to_string(), data.trim().to_string()));
+                        } else {
+                            unlabeled_fields.push(line.to_string());
+                        }
+                    }
                 }
             }
         }
-        if !unlabeled_fields.is_empty() {
-            fields.push((
-                policy.unlabeled_field_label.clone(),
-                unlabeled_fields.join("<br>"),
-            ));
-        }
         ensure!(
             fields.len() <= policy.max_custom_fields,
-            "admitted breakout table produced too many custom fields"
+            "admitted profiled infobox produced too many custom fields"
         );
         let template = policy
             .template
             .strip_prefix("Template:")
             .unwrap_or(&policy.template);
         let mut output = format!(
-            "\n{{{{{template}\n| name = {}\n| type = {}\n",
-            name.context("admitted breakout table omitted its title")?,
-            escape_template_value(&policy.default_type)
+            "\n{{{{{template}\n| name = {}\n",
+            name.context("admitted profiled infobox omitted its title")?
         );
         if let Some(image_content) = image_content {
             output.push_str("| image_content = ");
@@ -1585,6 +1762,17 @@ impl Renderer<'_> {
                 index + 1,
                 data
             ));
+        }
+        if !unlabeled_fields.is_empty() {
+            let parameter = policy
+                .unlabeled_content_parameter
+                .as_deref()
+                .context("admitted profiled infobox has unlabeled content but the target has no unlabeled-content parameter")?;
+            output.push_str("| ");
+            output.push_str(parameter);
+            output.push_str(" = ");
+            output.push_str(&unlabeled_fields.join("<br>"));
+            output.push('\n');
         }
         output.push_str("}}\n\n");
         self.coverage.native_infoboxes += 1;
@@ -1870,6 +2058,41 @@ fn audio_source_type(declared: Option<&str>, captured: &str) -> Result<&'static 
     Ok(captured_type)
 }
 
+fn source_audio_label(sources: &[(MediaReference, Option<&str>)]) -> Result<String> {
+    let filename = sources
+        .iter()
+        .filter_map(|(media, _)| {
+            Url::parse(&media.source_url)
+                .ok()?
+                .path_segments()?
+                .next_back()
+                .filter(|segment| !segment.is_empty())
+                .map(|segment| percent_decode_str(segment).decode_utf8_lossy().into_owned())
+        })
+        .min_by_key(String::len)
+        .context("retained audio omitted both an accessible label and a source filename")?;
+    let stem = filename
+        .rsplit_once('.')
+        .filter(|(_, extension)| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "ogg" | "oga" | "mp3" | "wav" | "flac" | "m4a" | "opus"
+            )
+        })
+        .map(|(stem, _)| stem)
+        .unwrap_or(&filename);
+    let label = stem
+        .replace('_', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    ensure!(
+        !label.is_empty() && label.len() <= 256,
+        "derived source audio label is empty or exceeds 256 bytes"
+    );
+    Ok(label)
+}
+
 fn media_type_descriptor(value: Option<&str>) -> Option<String> {
     value.map(|value| value.trim().to_ascii_lowercase().replace('"', ""))
 }
@@ -1907,6 +2130,7 @@ mod tests {
             link_policy: &link_policy,
             media_policy: &media_policy,
             infobox_policy: None,
+            message_box_policy: None,
             images: &images,
             media_occurrences: None,
         })
@@ -1961,6 +2185,7 @@ mod tests {
             link_policy: &link_policy,
             media_policy: &media_policy,
             infobox_policy: None,
+            message_box_policy: None,
             images: &images,
             media_occurrences: None,
         })
@@ -1988,15 +2213,17 @@ mod tests {
             article_path_prefix: "/".to_string(),
             media_url_prefixes: BTreeSet::from(["https://source.example/media/".to_string()]),
             generic_table_classes: BTreeSet::from(["wikitable".to_string()]),
+            message_box_classes: BTreeSet::from(["msgbox".to_string()]),
             infobox: Some(SourceInfoboxPolicy {
                 table_class: "breakout".to_string(),
-                default_type: "Video game".to_string(),
+                title_row_class: "breakouttitle".to_string(),
+                field_layout: SourceInfoboxFieldLayout::SingleCellBoldLabel,
             }),
         };
         let mut infobox_parameters = BTreeSet::from([
             "name".to_string(),
-            "type".to_string(),
             "image_content".to_string(),
+            "below".to_string(),
         ]);
         for index in 1..=2 {
             infobox_parameters.insert(format!("label{index}"));
@@ -2020,8 +2247,13 @@ mod tests {
             },
             infobox: Some(TargetInfoboxPolicy {
                 template: "Template:Infobox subject".to_string(),
-                unlabeled_field_label: "Coverage".to_string(),
+                unlabeled_content_parameter: Some("below".to_string()),
                 max_custom_fields: 2,
+            }),
+            message_box: Some(TargetMessageBoxPolicy {
+                template: "Template:Ambox".to_string(),
+                text_parameter: "text".to_string(),
+                image_parameter: Some("image_content".to_string()),
             }),
             authoring_policy: AuthoringPolicy {
                 allowed_templates: vec![
@@ -2040,6 +2272,13 @@ mod tests {
                         title: "Template:Infobox subject".to_string(),
                         parameters: infobox_parameters,
                     },
+                    AllowedTemplate {
+                        title: "Template:Ambox".to_string(),
+                        parameters: BTreeSet::from([
+                            "image_content".to_string(),
+                            "text".to_string(),
+                        ]),
+                    },
                 ],
                 allow_direct_parser_functions: false,
                 allow_direct_modules: false,
@@ -2056,7 +2295,7 @@ mod tests {
         let (source_profile, target_profile) = profiled_policies();
         let images = BTreeMap::new();
         let output = compile_profiled(ProfiledCompileInput {
-            html: "<table class=\"breakout\"><tr class=\"breakouttitle\"><th>Example</th></tr><tr><td>Coverage</td></tr></table><table class=\"wikitable\"><tr><td>ordinary</td></tr></table><table class=\"mystery-box\"><tr><td>unmapped</td></tr></table>",
+            html: "<table class=\"breakout\"><tr class=\"breakouttitle\"><th>Example</th></tr><tr><td>Source-authored note</td></tr></table><table class=\"msgbox\"><tr><td></td><td>Needs attention.</td></tr></table><table class=\"wikitable\"><tr><td>ordinary</td></tr></table><table class=\"mystery-box\"><tr><td>unmapped</td></tr></table>",
             canonical_title: "Example",
             canonical_url: "https://source.example/Example",
             source_key: "fixture",
@@ -2072,7 +2311,13 @@ mod tests {
             output
                 .transformed
                 .wikitext
-                .contains("{{Infobox subject\n| name = Example\n| type = Video game")
+                .contains("{{Infobox subject\n| name = Example\n| below = Source-authored note")
+        );
+        assert!(
+            output
+                .transformed
+                .wikitext
+                .contains("{{Ambox\n| text = Needs attention.\n}}")
         );
         assert_eq!(
             output.unmapped_structures,
@@ -2102,6 +2347,56 @@ mod tests {
         .err()
         .expect("source origin drift must fail");
         assert!(error.to_string().contains("outside profile"));
+    }
+
+    #[test]
+    fn profiled_message_box_uses_target_pre_rendered_image_parameter() {
+        let (source_profile, target_profile) = profiled_policies();
+        let source_url = "https://source.example/media/notice.png".to_string();
+        let images = BTreeMap::from([(
+            source_url.clone(),
+            MediaReference {
+                ordinal: None,
+                media_kind: None,
+                owner_element: None,
+                owner_ordinal: None,
+                element: None,
+                attribute: None,
+                candidate_index: None,
+                descriptor: None,
+                source_url,
+                alt: Some("Notice icon".to_string()),
+                width: Some(40),
+                height: Some(40),
+                content_type: "image/png".to_string(),
+                sha256: "a".repeat(64),
+            },
+        )]);
+        let output = compile_profiled(ProfiledCompileInput {
+            html: "<table class=\"msgbox\"><tr><td><img src=\"https://source.example/media/notice.png\" alt=\"Notice icon\" width=\"40\" height=\"40\"></td><td>Captured notice.</td></tr></table>",
+            canonical_title: "Example",
+            canonical_url: "https://source.example/Example",
+            source_key: "fixture",
+            media_scope: "fixture",
+            source_profile: &source_profile,
+            target_profile: &target_profile,
+            images: &images,
+            media_occurrences: None,
+        })
+        .expect("compile profiled message box");
+
+        assert!(
+            output
+                .transformed
+                .wikitext
+                .contains("{{Ambox\n| image_content = {{Preservation image|site=fixture|sha256=")
+        );
+        assert!(
+            output
+                .transformed
+                .wikitext
+                .contains("| text = Captured notice.\n}}")
+        );
     }
 
     #[test]
@@ -2144,5 +2439,45 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn profiled_compilation_rejects_media_outside_source_routes() {
+        let (source_profile, target_profile) = profiled_policies();
+        let source_url = "https://other.example/media/example.png".to_string();
+        let images = BTreeMap::from([(
+            source_url.clone(),
+            MediaReference {
+                ordinal: None,
+                media_kind: None,
+                owner_element: None,
+                owner_ordinal: None,
+                element: None,
+                attribute: None,
+                candidate_index: None,
+                descriptor: None,
+                source_url: source_url.clone(),
+                alt: Some("Foreign media".to_string()),
+                width: None,
+                height: None,
+                content_type: "image/png".to_string(),
+                sha256: "b".repeat(64),
+            },
+        )]);
+        let error = compile_profiled(ProfiledCompileInput {
+            html: &format!("<img src=\"{source_url}\" alt=\"Foreign media\">"),
+            canonical_title: "Example",
+            canonical_url: "https://source.example/Example",
+            source_key: "fixture",
+            media_scope: "fixture",
+            source_profile: &source_profile,
+            target_profile: &target_profile,
+            images: &images,
+            media_occurrences: None,
+        })
+        .err()
+        .expect("profiled compilation must reject foreign media");
+        assert!(error.to_string().contains("outside profile"));
+        assert!(error.to_string().contains("media routes"));
     }
 }

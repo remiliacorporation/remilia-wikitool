@@ -8,6 +8,7 @@ The release workflow extracts the section for the requested version and fails if
 
 ### Added
 
+- `import html-to-wikitext` exposes deterministic DOM compilation through explicit, independently hashed source and target profiles plus an optional ordered media inventory; source infobox title-row and field-layout semantics are profile data, compiled output stays project-scoped, and JSON reports exact output identity, coverage, media consumption, and unmapped structures without naming a producer or destination wiki.
 - macOS GitHub archives are explicitly unsigned and carry checksum-first agent guidance that limits quarantine removal to the exact approved Wikitool, Contextmink, and optional Papertiger executables instead of pretending the program can bypass Gatekeeper or disabling system policy.
 - Release bundles include the separately versioned, hash-pinned Papertiger upstream pack as an optional authoring companion and expose both external packs through `release-companions.json`. Papertiger retains its own setup, upgrade, task authority, skill contract, experimental Mise runner, and uninstall lifecycle; Wikitool works without a project-local installation and never initializes its database.
 - `templates closure` exports a bounded, exact named template/module dependency closure with reconciled parameter contracts, runtime-only transclusion edges, literal Scribunto dependencies, exact local file SHA-256 provenance, and explicit missing or dynamic dependency records.

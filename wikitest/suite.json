@@ -30,11 +30,16 @@
     "delete-missingtitle",
     "delete-log-lineage",
     "mutation-reconciliation",
-    "mutation-operator-closure"
+    "mutation-operator-closure",
+    "html-to-wikitext",
+    "source-target-profiles",
+    "template-projection",
+    "source-fidelity"
   ],
   "scenarios": [
     "mechanical-article-lifecycle",
     "catalog-indexed-retrieval",
-    "mechanical-mediawiki-sync"
+    "mechanical-mediawiki-sync",
+    "mechanical-html-to-wikitext"
   ]
 }

@@ -16,6 +16,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 zip.workspace = true
+mediawiki_html_to_wikitext = { path = "../mediawiki_html_to_wikitext" }
 wikitool_core = { path = "../wikitool_core" }
 
 [dev-dependencies]

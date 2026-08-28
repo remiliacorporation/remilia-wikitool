@@ -62,10 +62,13 @@ matches a configured review rule; it may not declare that source universally rel
 prose verdict from the match.
 
 `crates/mediawiki_html_to_wikitext` is a separate library boundary for deterministic HTML5 DOM
-traversal into conservative MediaWiki primitives. It accepts caller-supplied link, media, and
-table-template policy plus a separately verified media inventory. It does not decode an acquisition
-bundle, choose a site template, emit a preservation receipt, or write to MediaWiki. Producer and
-site-specific projection companions remain outside the core and default CLI.
+traversal into conservative MediaWiki primitives. It accepts caller-supplied source interpretation,
+target template policy, and a separately verified media inventory. The source profile declares
+observed structural semantics such as infobox table, title-row, and field-layout forms; the target
+profile declares the destination template vocabulary. The default CLI exposes only this normalized
+profiled compiler. It does not decode an acquisition bundle, choose a site policy, emit a
+preservation receipt, or write to MediaWiki. Producer adapters and site-specific projection
+companions remain outside the core.
 
 Mechanical checks include wikitext structure, citation placement, required templates, configured
 placeholder fragments, extension availability, link/index integrity, and revision-bound sync.
@@ -300,9 +303,9 @@ Contextmink source fork and no duplicate installer.
   prefix set. Case-sensitive namespaces are not a supported write target until siteinfo namespace
   case policy participates in planning, ledger, mutation, and target identities.
 - Target-specific preservation-projection artifacts developed alongside the host archive campaign
-  are intentionally excluded from the core crate, default binary, generated reference, and release
-  package. The generic DOM renderer is reusable, but Minibeast input and Remilia receipt schemas
-  belong to the separately versioned archive-compiler companion.
+  are intentionally excluded from the core crate, generated reference, and release package. The
+  default binary exposes generic profiled DOM compilation, but Minibeast input and Remilia receipt
+  schemas belong to the separately versioned archive-compiler companion.
 - Wikitext parsing is deterministic and bounded, not a complete replacement for MediaWiki's
   production parser; rendered behavior must be checked through `wiki render-check` where relevant.
 - Wikitest provides replayable structural and closed-world evidence, but model performance must be

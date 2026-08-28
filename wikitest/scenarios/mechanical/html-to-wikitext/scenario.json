@@ -1,0 +1,99 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-html-to-wikitext",
+  "title": "Profiled HTML-to-wikitext compilation",
+  "description": "Compiles captured HTML and ordered media evidence through independent source and target profiles, preserves source-authored content, and reports unadmitted structures through Wikitool's public interface.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "html-to-wikitext", "steps": ["compile-profiled-html"]},
+    {"capability": "source-target-profiles", "steps": ["compile-profiled-html"]},
+    {"capability": "template-projection", "steps": ["compile-profiled-html"]},
+    {"capability": "source-fidelity", "steps": ["compile-profiled-html"]}
+  ],
+  "steps": [
+    {
+      "action": "copy",
+      "id": "install-source-profile",
+      "source": "fixtures/source-profile.json",
+      "target": "profiles/source.json",
+      "sha256": "22c5f36ce4ce7a9c8038cc43fe1355cf989ffbdfe156a663c18dde62b1cff61b"
+    },
+    {
+      "action": "copy",
+      "id": "install-target-profile",
+      "source": "fixtures/target-profile.json",
+      "target": "profiles/target.json",
+      "sha256": "0592e788345022055956c0adf222e3e344882a434103ac34f56b6e103de2621f"
+    },
+    {
+      "action": "copy",
+      "id": "install-html",
+      "source": "fixtures/page.html",
+      "target": "evidence/page.html",
+      "sha256": "fdf0ae7a47c0d3045b1c07b1ea5e1fddf054b4dd35f3905db0197f30fcd211ae"
+    },
+    {
+      "action": "copy",
+      "id": "install-media-inventory",
+      "source": "fixtures/media-inventory.json",
+      "target": "evidence/media-inventory.json",
+      "sha256": "19c29c9c4770a9e5f163a70a5c022e1a3c3492c599ccd01bc4078bf35217ad68"
+    },
+    {
+      "action": "command",
+      "id": "compile-profiled-html",
+      "argv": [
+        "import",
+        "html-to-wikitext",
+        "evidence/page.html",
+        "--source-profile",
+        "profiles/source.json",
+        "--target-profile",
+        "profiles/target.json",
+        "--canonical-title",
+        "Fixture subject",
+        "--canonical-url",
+        "https://fixture.example/wiki/Fixture_subject",
+        "--source-key",
+        "fixture",
+        "--media-scope",
+        "fixture",
+        "--media-inventory",
+        "evidence/media-inventory.json",
+        "--output",
+        ".wikitool/imports/Fixture_subject.wiki",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema", "value": "wikitool.import-html-to-wikitext.v1"},
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "compiled"},
+          {"kind": "json_pointer_equals", "pointer": "/source_profile_id", "value": "fixture-rendered-html-v1"},
+          {"kind": "json_pointer_equals", "pointer": "/target_profile_id", "value": "fixture-target-v1"},
+          {"kind": "json_pointer_equals", "pointer": "/source_html_sha256", "value": "fdf0ae7a47c0d3045b1c07b1ea5e1fddf054b4dd35f3905db0197f30fcd211ae"},
+          {"kind": "json_pointer_equals", "pointer": "/media_inventory_sha256", "value": "19c29c9c4770a9e5f163a70a5c022e1a3c3492c599ccd01bc4078bf35217ad68"},
+          {"kind": "json_pointer_equals", "pointer": "/wikitext_sha256", "value": "cd958ae8f1f2a2738d04bdb239942962494f11daf3831fdc3349c67a4af0faf8"},
+          {"kind": "json_pointer_equals", "pointer": "/coverage/native_infoboxes", "value": 1},
+          {"kind": "json_pointer_equals", "pointer": "/coverage/archived_audio_elements", "value": 1},
+          {"kind": "json_pointer_equals", "pointer": "/media_occurrences_consumed", "value": 3},
+          {"kind": "json_array_contains", "pointer": "/used_media", "value": "https://fixture.example/media/Source_Capture.ogg"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/unmapped_structures", "item_pointer": "/classes/0", "value": "mystery-box"}
+        ],
+        "files": [
+          {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "{{Subject box"},
+          {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "| below = Source-authored context"},
+          {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "{{Notice box"},
+          {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "| image_content = {{Archive image"},
+          {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "|label=Source Capture"},
+          {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "Audio sample"},
+          {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "Coverage"},
+          {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "| type = Video game"}
+        ]
+      }
+    }
+  ]
+}

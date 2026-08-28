@@ -10,6 +10,12 @@ source-side semantics. A target profile owns link routing, output bounds, and th
 vocabulary. Only the profiled compiler may join a source semantic such as an infobox-shaped table
 to a target template. Other classified tables are returned as typed `unmapped_structures`, so
 corpus expansion informs deliberate target-template design instead of cloning source templates.
+Infobox interpretation is source-declared: the table class, title-row class, and observed field
+layout are profile data rather than site-specific constants in the converter.
+Admitted source message-box classes map only through a target-declared message template and
+parameter vocabulary. Unlabeled infobox content uses an explicit target content parameter rather
+than a fabricated label, and unlabeled audio derives its accessible label from captured source
+filenames rather than generating article prose.
 
 The crate does not acquire pages, decode a producer bundle, choose site templates, emit a
 publication receipt, or write to a wiki. Those authorities belong to callers. Producer-specific

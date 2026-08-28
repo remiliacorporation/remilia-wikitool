@@ -1,0 +1,54 @@
+{
+  "schema": "mediawiki.media-reference-inventory.v1",
+  "images": [],
+  "media_occurrences": [
+    {
+      "ordinal": 0,
+      "media_kind": "image",
+      "owner_element": "img",
+      "owner_ordinal": 0,
+      "element": "img",
+      "attribute": "src",
+      "candidate_index": null,
+      "descriptor": null,
+      "source_url": "https://fixture.example/media/Subject.png",
+      "alt": "Fixture subject",
+      "width": 320,
+      "height": 180,
+      "content_type": "image/png",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "ordinal": 1,
+      "media_kind": "image",
+      "owner_element": "img",
+      "owner_ordinal": 1,
+      "element": "img",
+      "attribute": "src",
+      "candidate_index": null,
+      "descriptor": null,
+      "source_url": "https://fixture.example/media/Notice.png",
+      "alt": "",
+      "width": 48,
+      "height": 48,
+      "content_type": "image/png",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "ordinal": 2,
+      "media_kind": "audio",
+      "owner_element": "audio",
+      "owner_ordinal": 0,
+      "element": "source",
+      "attribute": "src",
+      "candidate_index": 0,
+      "descriptor": "audio/ogg",
+      "source_url": "https://fixture.example/media/Source_Capture.ogg",
+      "alt": null,
+      "width": null,
+      "height": null,
+      "content_type": "audio/ogg",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  ]
+}
