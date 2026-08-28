@@ -24,15 +24,17 @@ integration/          layer and adapter contracts
 site_adapter/         generic adapter and optional project supplement
 docs/wikitool/        operator guide and generated command reference
 contextmink/          separately versioned transcript guard
+papertiger/           optional separately versioned planning companion
+release-companions.json  machine-readable optional-companion capabilities
 manifest.json LICENSE*
 ```
 
 Put `wikitool` on `PATH`, or run it from the unpacked directory.
 
-macOS GitHub archives declare whether they are Developer ID-notarized or unsigned. An unsigned
-archive cannot make Gatekeeper trust itself; the packaged agent procedure verifies the published
-checksum before removing quarantine from only the two approved executables. See [macOS Gatekeeper
-and release trust](docs/wikitool/macos-gatekeeper.md).
+macOS GitHub archives are explicitly unsigned. They cannot make Gatekeeper trust themselves; the
+packaged agent procedure verifies the published checksum before removing quarantine from only the
+exact executables the user approves. See [macOS Gatekeeper and release
+trust](docs/wikitool/macos-gatekeeper.md).
 
 ## Configure a wiki
 
@@ -187,6 +189,23 @@ wikitool templates catalog build
 
 Release bundles include a version-pinned upstream Contextmink pack. Contextmink owns its binary,
 templates, project setup, and install receipt; Wikitool does not carry a fork or second installer.
+
+## Papertiger boundary
+
+Release bundles include a version-pinned upstream Papertiger pack as an optional authoring
+companion. Wikitool works without a project-local Papertiger installation and never creates or
+mutates Papertiger's task authority. To opt a project in, preview and then apply Papertiger's own
+receipt-backed setup; that setup installs Papertiger's canonical agent skill and contract:
+
+```bash
+./papertiger/papertiger setup-project /path/to/project --skill-target both --dry-run --json
+./papertiger/papertiger setup-project /path/to/project --skill-target both --json
+```
+
+Use `papertiger.exe` on Windows. Re-running setup performs an upgrade while preserving the selected
+authority path and skill target. `uninstall-project` removes only receipt-owned integration files
+and preserves any task authority. `papertiger-mise` remains a separate experimental campaign runner
+and is never installed by planner setup.
 
 ## Wikitest evaluation
 

@@ -24,13 +24,13 @@ Use Wikitool as the mechanical and evidence substrate for a configured MediaWiki
 ## macOS release trust
 
 First verify the archive against the release's external `SHA256SUMS.txt`, then inspect
-`macos-release-trust.json`. For a notarized archive, run `codesign --verify --strict --verbose=4` and
-`spctl --assess --type execute --verbose=4` against both `wikitool` and the nested Contextmink
-executable; a failed assessment is a release defect. For a bundle explicitly marked
-`unsigned_github_release`, explain that Wikitool cannot repair quarantine before its first
-execution, obtain the user's approval for those exact verified bytes, then use `xattr -d
-com.apple.quarantine` on the two exact executable paths. Never use recursive quarantine removal on
-a download directory or disable Gatekeeper globally. See `docs/wikitool/macos-gatekeeper.md`.
+`macos-release-trust.json`, which must identify an `unsigned_github_release`. Explain that Wikitool
+cannot repair quarantine before its first execution and that the checksum does not provide an
+Apple identity. After the user approves those exact verified bytes, use `xattr -d
+com.apple.quarantine` only on each exact executable path they intend to run: `wikitool`,
+`contextmink/contextmink`, `papertiger/papertiger`, and, only if requested,
+`papertiger/papertiger-mise`. Never use recursive quarantine removal on a download directory or
+disable Gatekeeper globally. See `docs/wikitool/macos-gatekeeper.md`.
 
 ## Acceptance boundary
 

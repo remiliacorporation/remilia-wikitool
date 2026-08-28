@@ -1,0 +1,4 @@
+b65ce5251185500e1e3ae7d3141816387f3f86f60c7c24fe39e6fa731bc7e5b1  papertiger-0.9.0-linux-x86_64.tar.gz
+01ab587ed0192b5e19d0717dd00e1f7aa00db78c1aaa4f5f121d725d9ea35a5e  papertiger-0.9.0-macos-arm64.tar.gz
+e2f861d3b6f727e3d8cfd3df8caec2de9381c5c27b18ec5cbd7413539aead204  papertiger-0.9.0-macos-x86_64.tar.gz
+4228241e62707643af3c8ffc51b5ccfcc5dce3c97a80730f9be801f9e6d9edb7  papertiger-0.9.0-windows-x86_64.zip

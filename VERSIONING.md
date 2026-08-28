@@ -77,7 +77,7 @@ Experimental / top-level steered:
 
 Packaged / distributable:
 
-1. Stage the pinned upstream Contextmink packs with `bash scripts/fetch_contextmink.sh --all`, then use `cargo run --package wikitool --features maintainer -- release build-matrix --contextmink-dist dist/contextmink-dist` from a source checkout to emit per-target zip bundles.
+1. Stage the pinned upstream Contextmink and Papertiger packs with `bash scripts/fetch_contextmink.sh --all` and `bash scripts/fetch_papertiger.sh --all`, then use `cargo run --package wikitool --features maintainer -- release build-matrix --contextmink-dist dist/contextmink-dist --papertiger-dist dist/papertiger-dist` from a source checkout to emit per-target zip bundles.
 2. Bundles are generic by default, include ai-pack baseline `.claude` + instruction files, and compile the packaged binary without the maintainer surface.
 3. A project adapter supplement is opt-in via `--host-project-root <PATH>`. It is packaged under
    `site_adapter/project/` and never replaces the target-neutral public guidance or skills.
@@ -118,12 +118,11 @@ Packaged / distributable:
    - re-run `wikitest inspect <run>/receipt.json` and retain the verified receipt
 7. Build release bundles:
    - `bash scripts/fetch_contextmink.sh --platform <platform> --dest dist/contextmink-dist`
-   - `cargo run --package wikitool --features maintainer -- release build-matrix --targets <triple> --contextmink-dist dist/contextmink-dist`
+   - `bash scripts/fetch_papertiger.sh --platform <platform> --dest dist/papertiger-dist`
+   - `cargo run --package wikitool --features maintainer -- release build-matrix --targets <triple> --contextmink-dist dist/contextmink-dist --papertiger-dist dist/papertiger-dist`
    - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=X.Y.Z` for per-platform artifacts
-   - the default GitHub macOS artifact is explicitly marked unsigned and carries the bounded
-     Gatekeeper procedure; set workflow input `notarize_macos=true` only when Developer ID and
-     notary secrets are configured, in which case every Mach-O must be signed and assessed and the
-     exact final ZIP must receive an accepted notary result
+   - every GitHub macOS artifact is explicitly marked unsigned and carries the bounded,
+     checksum-first Gatekeeper procedure
 8. Verify each zip contains:
    - `wikitool` or `wikitool.exe`
    - `AGENTS.md`, `CLAUDE.md`, `README.md`
@@ -136,6 +135,10 @@ Packaged / distributable:
    - `contextmink/` with `contextmink` or `contextmink.exe`
    - `contextmink/contextmink-bridge.exe` in the Windows bundle only
    - `contextmink/archive.sha256`, matching the repository-pinned upstream archive receipt
+   - `papertiger/` with both `papertiger` and `papertiger-mise` (`.exe` on Windows), its canonical
+     agent contract, release manifest, licenses, and repository-pinned `archive.sha256` receipt
+   - `release-companions.json`, identifying both external packs as optional and preserving their
+     independent lifecycle ownership
    - `manifest.json`
 9. Verify `SHA256SUMS.txt` matches the uploaded zip assets.
 10. Create tag `X.Y.Z`.

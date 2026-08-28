@@ -46,6 +46,13 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
         host_platform_slug(),
         args.contextmink_dist.as_deref(),
     )?;
+    stage_papertiger_pack(
+        &repo_root,
+        &output_dir,
+        host_platform_slug(),
+        args.papertiger_dist.as_deref(),
+    )?;
+    write_release_companion_manifest(&repo_root, &output_dir, host_platform_slug())?;
     if staging_dir.exists() {
         fs::remove_dir_all(&staging_dir)
             .with_context(|| format!("failed to remove {}", normalize_path(&staging_dir)))?;
@@ -117,6 +124,13 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
             release_platform_slug(target),
             args.contextmink_dist.as_deref(),
         )?;
+        stage_papertiger_pack(
+            &repo_root,
+            &bundle_dir,
+            release_platform_slug(target),
+            args.papertiger_dist.as_deref(),
+        )?;
+        write_release_companion_manifest(&repo_root, &bundle_dir, release_platform_slug(target))?;
 
         let zip_path = output_dir.join(format!("{bundle_name}.zip"));
         zip_release_bundle(&bundle_dir, &zip_path, &bundle_name)?;
@@ -314,23 +328,22 @@ fn release_binary_path_for_target(repo_root: &Path, target: &str) -> PathBuf {
         .join(release_binary_name_for_target(target))
 }
 
-/// Release bundles ship Contextmink in a `contextmink/` subdirectory so users
-/// get bounded-read tooling without coupling the two binaries. Contextmink is
-/// project-generic and owns its own setup lifecycle. Wikitool only consumes a
-/// release pack staged from a repository-pinned upstream archive.
-fn read_contextmink_pin(repo_root: &Path) -> Result<String> {
-    let path = repo_root.join("config/contextmink.version");
+/// External release packs retain their own version authority. Wikitool reads
+/// repository-owned pins solely to validate and compose a release bundle.
+fn read_release_pin(repo_root: &Path, product: &str, relative_path: &str) -> Result<String> {
+    let path = repo_root.join(relative_path);
     let raw = fs::read_to_string(&path)
         .with_context(|| format!("failed to read {}", normalize_path(&path)))?;
-    parse_contextmink_pin(&raw).with_context(|| {
+    parse_release_semver_pin(&raw).with_context(|| {
         format!(
-            "invalid contextmink version pin in {}",
+            "invalid {} version pin in {}",
+            product.to_ascii_lowercase(),
             normalize_path(&path)
         )
     })
 }
 
-fn parse_contextmink_pin(raw: &str) -> Result<String> {
+fn parse_release_semver_pin(raw: &str) -> Result<String> {
     let version = raw.trim();
     let is_semver = !version.is_empty()
         && version.split('.').count() == 3
@@ -355,6 +368,7 @@ fn host_platform_slug() -> &'static str {
     }
 }
 
+/// Contextmink ships under `contextmink/` and owns its project setup lifecycle.
 fn stage_contextmink_pack(
     repo_root: &Path,
     bundle_dir: &Path,
@@ -379,7 +393,7 @@ fn stage_prebuilt_contextmink_pack(
     platform_slug: &str,
     dist: &Path,
 ) -> Result<()> {
-    let pin = read_contextmink_pin(repo_root)?;
+    let pin = read_release_pin(repo_root, "Contextmink", "config/contextmink.version")?;
     let source = dist.join(platform_slug);
     let manifest_path = source.join("manifest.json");
     let manifest_text = fs::read_to_string(&manifest_path).with_context(|| {
@@ -391,7 +405,14 @@ fn stage_prebuilt_contextmink_pack(
     let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
         .with_context(|| format!("invalid JSON in {}", normalize_path(&manifest_path)))?;
     validate_contextmink_manifest(&manifest, &pin, platform_slug)?;
-    validate_contextmink_archive_receipt(repo_root, &source, &manifest)?;
+    validate_release_archive_receipt(
+        repo_root,
+        &source,
+        &manifest,
+        "Contextmink",
+        "config/contextmink-sha256s.txt",
+        "scripts/fetch_contextmink.sh",
+    )?;
     for key in ["binary", "bridge_binary"] {
         if let Some(binary) = manifest.get(key).and_then(serde_json::Value::as_str) {
             let path = source.join(binary);
@@ -409,21 +430,24 @@ fn stage_prebuilt_contextmink_pack(
     Ok(())
 }
 
-fn validate_contextmink_archive_receipt(
+fn validate_release_archive_receipt(
     repo_root: &Path,
     source: &Path,
     manifest: &serde_json::Value,
+    product: &str,
+    pins_relative_path: &str,
+    fetch_script: &str,
 ) -> Result<()> {
     let archive = manifest
         .get("archive")
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| anyhow::anyhow!("contextmink manifest is missing the archive field"))?;
-    let pins_path = repo_root.join("config/contextmink-sha256s.txt");
+        .ok_or_else(|| anyhow::anyhow!("{product} manifest is missing the archive field"))?;
+    let pins_path = repo_root.join(pins_relative_path);
     let pins = fs::read_to_string(&pins_path)
         .with_context(|| format!("failed to read {}", normalize_path(&pins_path)))?;
-    let expected = contextmink_archive_hash_from_pins(&pins, archive).with_context(|| {
+    let expected = release_archive_hash_from_pins(&pins, archive).with_context(|| {
         format!(
-            "no repository-pinned Contextmink archive hash for {archive:?} in {}",
+            "no repository-pinned {product} archive hash for {archive:?} in {}",
             normalize_path(&pins_path)
         )
     })?;
@@ -431,7 +455,7 @@ fn validate_contextmink_archive_receipt(
     let receipt_path = source.join("archive.sha256");
     let receipt = fs::read_to_string(&receipt_path).with_context(|| {
         format!(
-            "missing Contextmink archive verification receipt: {}. Restage with scripts/fetch_contextmink.sh",
+            "missing {product} archive verification receipt: {}. Restage with {fetch_script}",
             normalize_path(&receipt_path)
         )
     })?;
@@ -443,29 +467,29 @@ fn validate_contextmink_archive_receipt(
         || actual_archive != Some(archive)
     {
         bail!(
-            "Contextmink archive receipt in {} does not match the repository pin for {archive}",
+            "{product} archive receipt in {} does not match the repository pin for {archive}",
             normalize_path(&receipt_path)
         );
     }
     Ok(())
 }
 
-fn contextmink_archive_hash_from_pins(raw: &str, archive: &str) -> Result<String> {
+fn release_archive_hash_from_pins(raw: &str, archive: &str) -> Result<String> {
     let mut found = None;
     for line in raw.lines().map(str::trim).filter(|line| !line.is_empty()) {
         let mut fields = line.split_whitespace();
         let hash = fields.next();
         let name = fields.next();
         if fields.next().is_some() || hash.is_none() || name.is_none() {
-            bail!("invalid Contextmink SHA-256 pin line: {line:?}");
+            bail!("invalid release SHA-256 pin line: {line:?}");
         }
         let hash = hash.expect("checked above");
         if hash.len() != 64 || !hash.chars().all(|ch| ch.is_ascii_hexdigit()) {
-            bail!("invalid Contextmink SHA-256 value in pin line: {line:?}");
+            bail!("invalid release SHA-256 value in pin line: {line:?}");
         }
         if name == Some(archive) {
             if found.is_some() {
-                bail!("duplicate Contextmink SHA-256 pin for {archive:?}");
+                bail!("duplicate release SHA-256 pin for {archive:?}");
             }
             found = Some(hash.to_ascii_lowercase());
         }
@@ -527,6 +551,214 @@ fn expected_contextmink_pack_layout(
         "linux-x86_64" | "macos-x86_64" | "macos-arm64" => Ok(("contextmink", None)),
         other => bail!("unsupported contextmink platform slug {other:?}"),
     }
+}
+
+/// Release bundles carry Papertiger as an optional companion under
+/// `papertiger/`. Wikitool verifies and transports the upstream release pack,
+/// but Papertiger alone owns project setup, task authority, upgrades, Mise,
+/// and uninstall behavior.
+fn stage_papertiger_pack(
+    repo_root: &Path,
+    bundle_dir: &Path,
+    platform_slug: &str,
+    papertiger_dist: Option<&Path>,
+) -> Result<()> {
+    let dist = papertiger_dist
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| repo_root.join("dist/papertiger-dist"));
+    if !dist.is_dir() {
+        bail!(
+            "Papertiger distribution root is missing: {}. Stage the pinned upstream pack with scripts/fetch_papertiger.sh --platform {platform_slug}",
+            normalize_path(&dist)
+        );
+    }
+    stage_prebuilt_papertiger_pack(repo_root, bundle_dir, platform_slug, &dist)
+}
+
+fn stage_prebuilt_papertiger_pack(
+    repo_root: &Path,
+    bundle_dir: &Path,
+    platform_slug: &str,
+    dist: &Path,
+) -> Result<()> {
+    let pin = read_release_pin(repo_root, "Papertiger", "config/papertiger.version")?;
+    let source = dist.join(platform_slug);
+    let manifest_path = source.join("manifest.json");
+    let manifest_text = fs::read_to_string(&manifest_path).with_context(|| {
+        format!(
+            "missing prebuilt papertiger bundle for {platform_slug}: {}",
+            normalize_path(&manifest_path)
+        )
+    })?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
+        .with_context(|| format!("invalid JSON in {}", normalize_path(&manifest_path)))?;
+    validate_papertiger_manifest(&manifest, &pin, platform_slug)?;
+    validate_release_archive_receipt(
+        repo_root,
+        &source,
+        &manifest,
+        "Papertiger",
+        "config/papertiger-sha256s.txt",
+        "scripts/fetch_papertiger.sh",
+    )?;
+
+    let binaries = manifest
+        .get("binaries")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("papertiger manifest is missing the binaries array"))?;
+    for binary in binaries {
+        let binary = binary
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("papertiger manifest contains a non-string binary"))?;
+        let path = source.join(binary);
+        if !path.is_file() {
+            bail!(
+                "papertiger manifest names binary {binary:?} but it is missing: {}",
+                normalize_path(&path)
+            );
+        }
+    }
+    for required in [
+        "agent_integration.md",
+        "README.md",
+        "CHANGELOG.md",
+        "MISE.md",
+        "LICENSE",
+        "LICENSE-SSL",
+        "LICENSE-VPL",
+    ] {
+        let path = source.join(required);
+        if !path.is_file() {
+            bail!(
+                "papertiger release pack is missing required file {required:?}: {}",
+                normalize_path(&path)
+            );
+        }
+    }
+
+    let pack_dir = bundle_dir.join("papertiger");
+    reset_directory(&pack_dir)?;
+    copy_dir_contents(&source, &pack_dir)?;
+    Ok(())
+}
+
+fn validate_papertiger_manifest(
+    manifest: &serde_json::Value,
+    pin: &str,
+    platform_slug: &str,
+) -> Result<()> {
+    let schema = manifest.get("schema").and_then(serde_json::Value::as_str);
+    if schema != Some("papertiger.release-manifest.v1") {
+        bail!(
+            "papertiger manifest schema is {schema:?}, expected \"papertiger.release-manifest.v1\""
+        );
+    }
+    let name = manifest.get("name").and_then(serde_json::Value::as_str);
+    if name != Some("papertiger") {
+        bail!("papertiger manifest name is {name:?}, expected \"papertiger\"");
+    }
+    let version = manifest.get("version").and_then(serde_json::Value::as_str);
+    if version != Some(pin) {
+        bail!(
+            "papertiger bundle version {version:?} does not match the pin {pin} in config/papertiger.version"
+        );
+    }
+    let platform = manifest.get("platform").and_then(serde_json::Value::as_str);
+    if platform != Some(platform_slug) {
+        bail!("papertiger bundle platform {platform:?} does not match requested {platform_slug}");
+    }
+    let expected_archive = papertiger_archive_name(pin, platform_slug)?;
+    let archive = manifest.get("archive").and_then(serde_json::Value::as_str);
+    if archive != Some(expected_archive.as_str()) {
+        bail!(
+            "papertiger manifest archive {archive:?} does not match expected {expected_archive:?}"
+        );
+    }
+    let expected_binaries = expected_papertiger_pack_layout(platform_slug)?;
+    let binaries = manifest
+        .get("binaries")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("papertiger manifest is missing the binaries array"))?;
+    let actual_binaries = binaries
+        .iter()
+        .map(|value| value.as_str())
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| anyhow::anyhow!("papertiger manifest contains a non-string binary"))?;
+    if actual_binaries != expected_binaries {
+        bail!(
+            "papertiger manifest binaries {actual_binaries:?} do not match expected {expected_binaries:?} for {platform_slug}"
+        );
+    }
+    let setup_installs_mise = manifest
+        .get("planner_setup_installs_mise")
+        .and_then(serde_json::Value::as_bool);
+    if setup_installs_mise != Some(false) {
+        bail!("papertiger manifest must declare planner_setup_installs_mise=false");
+    }
+    Ok(())
+}
+
+fn papertiger_archive_name(pin: &str, platform_slug: &str) -> Result<String> {
+    expected_papertiger_pack_layout(platform_slug)?;
+    let extension = if platform_slug == "windows-x86_64" {
+        "zip"
+    } else {
+        "tar.gz"
+    };
+    Ok(format!("papertiger-{pin}-{platform_slug}.{extension}"))
+}
+
+fn expected_papertiger_pack_layout(platform_slug: &str) -> Result<Vec<&'static str>> {
+    match platform_slug {
+        "windows-x86_64" => Ok(vec!["papertiger.exe", "papertiger-mise.exe"]),
+        "linux-x86_64" | "macos-x86_64" | "macos-arm64" => {
+            Ok(vec!["papertiger", "papertiger-mise"])
+        }
+        other => bail!("unsupported papertiger platform slug {other:?}"),
+    }
+}
+
+fn write_release_companion_manifest(
+    repo_root: &Path,
+    bundle_dir: &Path,
+    platform_slug: &str,
+) -> Result<()> {
+    let contextmink_version =
+        read_release_pin(repo_root, "Contextmink", "config/contextmink.version")?;
+    let papertiger_version =
+        read_release_pin(repo_root, "Papertiger", "config/papertiger.version")?;
+    let (contextmink_binary, _) = expected_contextmink_pack_layout(platform_slug)?;
+    let papertiger_binaries = expected_papertiger_pack_layout(platform_slug)?;
+    let manifest = serde_json::json!({
+        "schema": "wikitool.release-companions.v1",
+        "companions": [
+            {
+                "id": "contextmink",
+                "version": contextmink_version,
+                "directory": "contextmink",
+                "binary": format!("contextmink/{contextmink_binary}"),
+                "manifest": "contextmink/manifest.json",
+                "required_for_wikitool": false,
+                "project_lifecycle_owner": "contextmink"
+            },
+            {
+                "id": "papertiger",
+                "version": papertiger_version,
+                "directory": "papertiger",
+                "planner_binary": format!("papertiger/{}", papertiger_binaries[0]),
+                "mise_binary": format!("papertiger/{}", papertiger_binaries[1]),
+                "manifest": "papertiger/manifest.json",
+                "agent_contract": "papertiger/agent_integration.md",
+                "required_for_wikitool": false,
+                "project_lifecycle_owner": "papertiger",
+                "setup_initializes_task_authority": false
+            }
+        ]
+    });
+    let path = bundle_dir.join("release-companions.json");
+    fs::write(&path, serde_json::to_string_pretty(&manifest)? + "\n")
+        .with_context(|| format!("failed to write {}", normalize_path(&path)))?;
+    Ok(())
 }
 
 fn zip_release_bundle(source_dir: &Path, zip_path: &Path, bundle_name: &str) -> Result<()> {
@@ -672,17 +904,27 @@ fn is_release_binary_entry(relative_path: &Path) -> bool {
     relative_path
         .file_name()
         .and_then(|value| value.to_str())
-        .map(|value| matches!(value, "wikitool" | "contextmink" | "contextmink-bridge"))
+        .map(|value| {
+            matches!(
+                value,
+                "wikitool"
+                    | "contextmink"
+                    | "contextmink-bridge"
+                    | "papertiger"
+                    | "papertiger-mise"
+            )
+        })
         .unwrap_or(false)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        contextmink_archive_hash_from_pins, host_platform_slug, is_release_binary_entry,
-        parse_contextmink_pin, release_binary_name_for_target, release_bundle_name,
-        release_platform_slug, resolve_release_artifact_version, resolve_release_targets,
-        sha256_file, validate_contextmink_manifest,
+        host_platform_slug, is_release_binary_entry, papertiger_archive_name,
+        parse_release_semver_pin, release_archive_hash_from_pins, release_binary_name_for_target,
+        release_bundle_name, release_platform_slug, resolve_release_artifact_version,
+        resolve_release_targets, sha256_file, validate_contextmink_manifest,
+        validate_papertiger_manifest, write_release_companion_manifest,
     };
 
     #[test]
@@ -753,10 +995,10 @@ mod tests {
 
     #[test]
     fn contextmink_pin_and_manifest_validation_fail_fast() {
-        assert_eq!(parse_contextmink_pin(" 0.3.0\n").unwrap(), "0.3.0");
-        assert!(parse_contextmink_pin("").is_err());
-        assert!(parse_contextmink_pin("v0.3.0").is_err());
-        assert!(parse_contextmink_pin("0.3").is_err());
+        assert_eq!(parse_release_semver_pin(" 0.3.0\n").unwrap(), "0.3.0");
+        assert!(parse_release_semver_pin("").is_err());
+        assert!(parse_release_semver_pin("v0.3.0").is_err());
+        assert!(parse_release_semver_pin("0.3").is_err());
         let archive = "contextmink-0.9.0-windows-x86_64.zip";
         let pins = format!(
             "{}  {}\n{}  other.zip\n",
@@ -765,11 +1007,11 @@ mod tests {
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         );
         assert_eq!(
-            contextmink_archive_hash_from_pins(&pins, archive).unwrap(),
+            release_archive_hash_from_pins(&pins, archive).unwrap(),
             "56e1bde757ede27439cdb2971ef60a06298ef1d4d02c986364f4c0e20dc8465c"
         );
-        assert!(contextmink_archive_hash_from_pins(&pins, "missing.zip").is_err());
-        assert!(contextmink_archive_hash_from_pins("bad hash line\n", archive).is_err());
+        assert!(release_archive_hash_from_pins(&pins, "missing.zip").is_err());
+        assert!(release_archive_hash_from_pins("bad hash line\n", archive).is_err());
         let manifest: serde_json::Value = serde_json::json!({
             "name": "contextmink",
             "version": "0.3.0",
@@ -816,12 +1058,78 @@ mod tests {
         assert!(validate_contextmink_manifest(&wrong_binary, "0.3.0", "linux-x86_64").is_err());
 
         assert!(!host_platform_slug().is_empty());
-        for binary in ["wikitool", "contextmink", "contextmink-bridge"] {
+        for binary in [
+            "wikitool",
+            "contextmink",
+            "contextmink-bridge",
+            "papertiger",
+            "papertiger-mise",
+        ] {
             assert!(is_release_binary_entry(std::path::Path::new(binary)));
         }
         assert!(!is_release_binary_entry(std::path::Path::new(
             "contextmink/README.md"
         )));
+    }
+
+    #[test]
+    fn papertiger_pin_and_manifest_validation_fail_fast() {
+        let manifest: serde_json::Value = serde_json::json!({
+            "schema": "papertiger.release-manifest.v1",
+            "name": "papertiger",
+            "version": "0.9.0",
+            "source_commit": "3f2a1ef6f40ad01ca9b07d44b28b10d7a3276af0",
+            "target": "x86_64-pc-windows-msvc",
+            "platform": "windows-x86_64",
+            "archive": "papertiger-0.9.0-windows-x86_64.zip",
+            "binaries": ["papertiger.exe", "papertiger-mise.exe"],
+            "planner_setup_installs_mise": false,
+        });
+        assert!(validate_papertiger_manifest(&manifest, "0.9.0", "windows-x86_64").is_ok());
+        assert!(validate_papertiger_manifest(&manifest, "0.8.0", "windows-x86_64").is_err());
+        assert!(validate_papertiger_manifest(&manifest, "0.9.0", "linux-x86_64").is_err());
+
+        let mut wrong_schema = manifest.clone();
+        wrong_schema["schema"] = serde_json::json!("papertiger.release-manifest.v2");
+        assert!(validate_papertiger_manifest(&wrong_schema, "0.9.0", "windows-x86_64").is_err());
+        let mut setup_installs_mise = manifest.clone();
+        setup_installs_mise["planner_setup_installs_mise"] = serde_json::json!(true);
+        assert!(
+            validate_papertiger_manifest(&setup_installs_mise, "0.9.0", "windows-x86_64").is_err()
+        );
+        assert_eq!(
+            papertiger_archive_name("0.9.0", "macos-arm64").unwrap(),
+            "papertiger-0.9.0-macos-arm64.tar.gz"
+        );
+        assert!(papertiger_archive_name("0.9.0", "freebsd-x86_64").is_err());
+    }
+
+    #[test]
+    fn release_companion_manifest_exposes_optional_authority_boundaries() {
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let output = tempfile::tempdir().expect("companion manifest tempdir");
+        write_release_companion_manifest(&repo_root, output.path(), "windows-x86_64")
+            .expect("write companion manifest");
+        let body = std::fs::read_to_string(output.path().join("release-companions.json"))
+            .expect("read companion manifest");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&body).expect("parse companion JSON");
+        assert_eq!(
+            manifest["schema"],
+            serde_json::json!("wikitool.release-companions.v1")
+        );
+        assert_eq!(
+            manifest["companions"][0]["required_for_wikitool"],
+            serde_json::json!(false)
+        );
+        assert_eq!(
+            manifest["companions"][1]["planner_binary"],
+            serde_json::json!("papertiger/papertiger.exe")
+        );
+        assert_eq!(
+            manifest["companions"][1]["setup_initializes_task_authority"],
+            serde_json::json!(false)
+        );
     }
 
     #[test]

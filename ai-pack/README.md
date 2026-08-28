@@ -15,4 +15,6 @@ Public agent companion for general MediaWiki work with Wikitool.
 
 When a host project is packaged, its explicit adapter directory is copied as a supplement; it never replaces the public skills.
 
+The full Wikitool release, rather than the standalone AI-pack build, also carries Papertiger's independently versioned upstream release pack. Papertiger remains optional and installs its own canonical project skill and contract only through its explicit `setup-project` lifecycle.
+
 See `integration/agent_integration.md` and `integration/site_adapters.md`.

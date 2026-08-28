@@ -8,10 +8,13 @@ trap 'rm -rf "$fixture"' EXIT
 bundle="$fixture/wikitool-test-macos-arm64"
 mkdir -p \
   "$bundle/contextmink" \
+  "$bundle/papertiger" \
   "$bundle/docs/wikitool" \
   "$bundle/codex_skills/wikitool-operator"
 printf 'fixture\n' > "$bundle/wikitool"
 printf 'fixture\n' > "$bundle/contextmink/contextmink"
+printf 'fixture\n' > "$bundle/papertiger/papertiger"
+printf 'fixture\n' > "$bundle/papertiger/papertiger-mise"
 cp "$repo_root/docs/wikitool/macos-gatekeeper.md" "$bundle/docs/wikitool/macos-gatekeeper.md"
 cp "$repo_root/ai-pack/codex_skills/wikitool-operator/SKILL.md" \
   "$bundle/codex_skills/wikitool-operator/SKILL.md"
@@ -22,6 +25,7 @@ trust="$bundle/macos-release-trust.json"
 grep -q '"schema": "wikitool.macos-release-trust.v1"' "$trust"
 grep -q '"status": "unsigned_github_release"' "$trust"
 grep -q '"gatekeeper": "explicit_checksum_bound_quarantine_exception_required"' "$trust"
+grep -q '"executables": \["wikitool", "contextmink/contextmink", "papertiger/papertiger", "papertiger/papertiger-mise"\]' "$trust"
 grep -q '"instructions": "docs/wikitool/macos-gatekeeper.md"' "$trust"
 
 if bash "$repo_root/scripts/declare_unsigned_macos.sh" --bundle-dir "$bundle" >/dev/null 2>&1; then
@@ -29,10 +33,10 @@ if bash "$repo_root/scripts/declare_unsigned_macos.sh" --bundle-dir "$bundle" >/
   exit 1
 fi
 
-rm "$bundle/contextmink/contextmink"
+rm "$bundle/papertiger/papertiger"
 rm "$trust"
 if bash "$repo_root/scripts/declare_unsigned_macos.sh" --bundle-dir "$bundle" >/dev/null 2>&1; then
-  echo "unsigned trust declaration accepted a bundle without Contextmink" >&2
+  echo "unsigned trust declaration accepted a bundle without Papertiger" >&2
   exit 1
 fi
 

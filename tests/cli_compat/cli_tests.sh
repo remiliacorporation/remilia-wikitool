@@ -758,6 +758,66 @@ else
     fi
 fi
 
+# --- independent papertiger lifecycle ---
+section "papertiger optional lifecycle"
+REAL_PAPERTIGER_PACK=""
+for candidate in "$REPO_ROOT/dist/papertiger-dist"/*/; do
+    if [ -f "$candidate/manifest.json" ]; then
+        REAL_PAPERTIGER_PACK="$candidate"
+        break
+    fi
+done
+if [ -z "$REAL_PAPERTIGER_PACK" ]; then
+    skip "papertiger setup/upgrade/uninstall verified run (no staged pack under dist/papertiger-dist)"
+else
+    if [ -f "$REAL_PAPERTIGER_PACK/papertiger.exe" ]; then
+        PAPERTIGER_BINARY="$REAL_PAPERTIGER_PACK/papertiger.exe"
+        PAPERTIGER_PROJECT_PATH_MODE="windows"
+    elif [ -f "$REAL_PAPERTIGER_PACK/papertiger" ]; then
+        PAPERTIGER_BINARY="$REAL_PAPERTIGER_PACK/papertiger"
+        PAPERTIGER_PROJECT_PATH_MODE="posix"
+    else
+        fail "staged Papertiger pack has no platform planner binary"
+        PAPERTIGER_BINARY=""
+    fi
+    PROJ_TIGER=$(setup_project papertiger-install)
+    PAPERTIGER_PROJECT="$PROJ_TIGER"
+    if [ "$PAPERTIGER_PROJECT_PATH_MODE" = "windows" ]; then
+        PAPERTIGER_PROJECT="$(to_wikitool_path "$PROJ_TIGER")"
+    fi
+    DRY_OUTPUT=$("$PAPERTIGER_BINARY" setup-project "$PAPERTIGER_PROJECT" --skill-target both --dry-run --json 2>&1 || true)
+    PAPERTIGER_DRY_WROTE=0
+    if [ -e "$PROJ_TIGER/tools/papertiger/project-install.json" ]; then
+        PAPERTIGER_DRY_WROTE=1
+    fi
+    SETUP_OUTPUT=$("$PAPERTIGER_BINARY" setup-project "$PAPERTIGER_PROJECT" --skill-target both --json 2>&1 || true)
+    UPGRADE_OUTPUT=$("$PAPERTIGER_BINARY" setup-project "$PAPERTIGER_PROJECT" --json 2>&1 || true)
+    if echo "$DRY_OUTPUT" | grep -q '"schema": "papertiger.project_setup.v3"' \
+        && [ "$PAPERTIGER_DRY_WROTE" -eq 0 ] \
+        && echo "$SETUP_OUTPUT" | grep -q '"operation": "install"' \
+        && echo "$UPGRADE_OUTPUT" | grep -q '"operation": "unchanged"' \
+        && [ -f "$PROJ_TIGER/tools/papertiger/project-install.json" ] \
+        && [ -f "$PROJ_TIGER/tools/papertiger/agent_integration.md" ] \
+        && [ -f "$PROJ_TIGER/.agents/skills/papertiger/SKILL.md" ] \
+        && [ -f "$PROJ_TIGER/.claude/skills/papertiger/SKILL.md" ] \
+        && [ ! -e "$PROJ_TIGER/state/papertiger.sqlite" ]; then
+        pass "Papertiger owns setup and upgrade without creating task authority"
+    else
+        fail "Papertiger owns setup and upgrade without creating task authority"
+    fi
+    UNINSTALL_OUTPUT=$("$PAPERTIGER_BINARY" uninstall-project "$PAPERTIGER_PROJECT" --json 2>&1 || true)
+    if echo "$UNINSTALL_OUTPUT" | grep -q '"schema": "papertiger.project_uninstall.v1"' \
+        && echo "$UNINSTALL_OUTPUT" | grep -q '"operation": "remove"' \
+        && [ ! -e "$PROJ_TIGER/tools/papertiger/project-install.json" ] \
+        && [ ! -e "$PROJ_TIGER/.agents/skills/papertiger/SKILL.md" ] \
+        && [ ! -e "$PROJ_TIGER/.claude/skills/papertiger/SKILL.md" ] \
+        && [ ! -e "$PROJ_TIGER/state/papertiger.sqlite" ]; then
+        pass "Papertiger uninstall removes managed integration and preserves absent authority"
+    else
+        fail "Papertiger uninstall removes managed integration and preserves absent authority"
+    fi
+fi
+
 # --- push preview ---
 section "push preview"
 if [ "$TIER" != "live" ]; then
@@ -809,6 +869,11 @@ elif [ -n "$LOCAL_BINARY" ]; then
         && [ -f "$RELEASE_OUT/codex_skills/prose-review/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/codex_skills/wiki-interview/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/codex_skills/wikitool-operator/SKILL.md" ] \
+        && [ -f "$RELEASE_OUT/release-companions.json" ] \
+        && { [ -f "$RELEASE_OUT/papertiger/papertiger" ] || [ -f "$RELEASE_OUT/papertiger/papertiger.exe" ]; } \
+        && { [ -f "$RELEASE_OUT/papertiger/papertiger-mise" ] || [ -f "$RELEASE_OUT/papertiger/papertiger-mise.exe" ]; } \
+        && [ -f "$RELEASE_OUT/papertiger/agent_integration.md" ] \
+        && [ -f "$RELEASE_OUT/papertiger/archive.sha256" ] \
         && [ ! -e "$RELEASE_OUT/writing_context" ] \
         && { [ -f "$RELEASE_OUT/wikitool" ] || [ -f "$RELEASE_OUT/wikitool.exe" ]; }; then
         pass "release package stages a distributable bundle"

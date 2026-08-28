@@ -80,6 +80,12 @@ struct ReleasePackageArgs {
         help = "Hash-verified Contextmink distribution root (default: <repo>/dist/contextmink-dist)"
     )]
     contextmink_dist: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Hash-verified Papertiger distribution root (default: <repo>/dist/papertiger-dist)"
+    )]
+    papertiger_dist: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -138,6 +144,12 @@ struct ReleaseBuildMatrixArgs {
         help = "Hash-verified Contextmink distribution root (default: <repo>/dist/contextmink-dist)"
     )]
     contextmink_dist: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Hash-verified Papertiger distribution root (default: <repo>/dist/papertiger-dist)"
+    )]
+    papertiger_dist: Option<PathBuf>,
 }
 
 pub(crate) fn run_release(args: ReleaseArgs) -> Result<()> {

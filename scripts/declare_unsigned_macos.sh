@@ -38,6 +38,8 @@ fi
 for required in \
   "$bundle_dir/wikitool" \
   "$bundle_dir/contextmink/contextmink" \
+  "$bundle_dir/papertiger/papertiger" \
+  "$bundle_dir/papertiger/papertiger-mise" \
   "$bundle_dir/docs/wikitool/macos-gatekeeper.md" \
   "$bundle_dir/codex_skills/wikitool-operator/SKILL.md"
 do
@@ -58,6 +60,7 @@ printf '%s\n' \
   '  "schema": "wikitool.macos-release-trust.v1",' \
   '  "status": "unsigned_github_release",' \
   '  "gatekeeper": "explicit_checksum_bound_quarantine_exception_required",' \
+  '  "executables": ["wikitool", "contextmink/contextmink", "papertiger/papertiger", "papertiger/papertiger-mise"],' \
   '  "instructions": "docs/wikitool/macos-gatekeeper.md"' \
   '}' > "$trust_path"
 

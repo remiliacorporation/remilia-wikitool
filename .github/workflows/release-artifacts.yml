@@ -12,11 +12,6 @@ on:
         required: false
         type: boolean
         default: true
-      notarize_macos:
-        description: "Developer ID-sign and notarize macOS archives (requires Apple secrets)"
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   build:
@@ -76,6 +71,13 @@ jobs:
           --platform ${{ matrix.platform }}
           --dest dist/contextmink-dist
 
+      - name: Stage pinned Papertiger release pack
+        shell: bash
+        run: >
+          bash scripts/fetch_papertiger.sh
+          --platform ${{ matrix.platform }}
+          --dest dist/papertiger-dist
+
       - name: Build + package versioned release bundle
         run: >
           cargo run --quiet --package wikitool --features maintainer --
@@ -84,88 +86,10 @@ jobs:
           --artifact-version ${{ steps.names.outputs.version }}
           --output-dir dist/release-matrix
           --contextmink-dist dist/contextmink-dist
-
-      - name: Configure Apple Developer ID signing
-        if: runner.os == 'macOS' && inputs.notarize_macos
-        shell: bash
-        env:
-          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-        run: |
-          set -euo pipefail
-          for required in \
-            APPLE_CERTIFICATE_P12_BASE64 \
-            APPLE_CERTIFICATE_PASSWORD \
-            APPLE_NOTARY_KEY_P8 \
-            APPLE_NOTARY_KEY_ID \
-            APPLE_NOTARY_ISSUER_ID
-          do
-            if [[ -z "${!required:-}" ]]; then
-              echo "Missing required macOS release secret: ${required}" >&2
-              exit 1
-            fi
-          done
-
-          certificate_path="$RUNNER_TEMP/wikitool-developer-id.p12"
-          keychain_path="$RUNNER_TEMP/wikitool-signing.keychain-db"
-          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
-          keychain_password="$(openssl rand -hex 32)"
-
-          printf '%s' "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate_path"
-          printf '%s' "$APPLE_NOTARY_KEY_P8" > "$api_key_path"
-          chmod 600 "$certificate_path" "$api_key_path"
-
-          security create-keychain -p "$keychain_password" "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security unlock-keychain -p "$keychain_password" "$keychain_path"
-          security import "$certificate_path" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$keychain_path"
-          security set-key-partition-list \
-            -S apple-tool:,apple: \
-            -s -k "$keychain_password" "$keychain_path"
-          security list-keychains -d user -s "$keychain_path"
-
-          signing_identity="$(
-            security find-identity -v -p codesigning "$keychain_path" |
-              awk '/Developer ID Application/ { print $2; exit }'
-          )"
-          if [[ -z "$signing_identity" ]]; then
-            echo "Imported certificate has no Developer ID Application identity" >&2
-            exit 1
-          fi
-
-          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
-          echo "APPLE_NOTARY_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
-
-      - name: Sign and notarize macOS release
-        if: runner.os == 'macOS' && inputs.notarize_macos
-        shell: bash
-        env:
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-        run: |
-          set -euo pipefail
-          bundle="dist/release-matrix/${{ steps.names.outputs.bundle }}"
-          bash scripts/sign_notarize_macos.sh \
-            --bundle-dir "$bundle" \
-            --zip-path "${bundle}.zip" \
-            --identity "$APPLE_SIGNING_IDENTITY" \
-            --identifier-prefix "org.remilia.wikitool" \
-            --notary-key "$APPLE_NOTARY_KEY_PATH" \
-            --notary-key-id "$APPLE_NOTARY_KEY_ID" \
-            --notary-issuer "$APPLE_NOTARY_ISSUER_ID" \
-            --evidence-dir "dist/notarization/${{ steps.names.outputs.bundle }}"
-          (
-            cd dist/release-matrix
-            shasum -a 256 *.zip | sort -k2 > SHA256SUMS.txt
-          )
+          --papertiger-dist dist/papertiger-dist
 
       - name: Declare unsigned GitHub macOS release
-        if: runner.os == 'macOS' && !inputs.notarize_macos
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
@@ -203,14 +127,12 @@ jobs:
           test ! -e "$BUNDLE/llm_instructions"
           test ! -e "$BUNDLE/SETUP.md"
           test -f "$BUNDLE/manifest.json"
+          test -f "$BUNDLE/release-companions.json"
+          grep -q '"schema": "wikitool.release-companions.v1"' "$BUNDLE/release-companions.json"
+          grep -q '"required_for_wikitool": false' "$BUNDLE/release-companions.json"
           if [[ "${{ runner.os }}" == "macOS" ]]; then
-            if [[ "${{ inputs.notarize_macos }}" == "true" ]]; then
-              test -f "$BUNDLE/macos-release-trust.json"
-              grep -q '"status": "developer_id_notarized"' "$BUNDLE/macos-release-trust.json"
-            else
-              test -f "$BUNDLE/macos-release-trust.json"
-              grep -q '"status": "unsigned_github_release"' "$BUNDLE/macos-release-trust.json"
-            fi
+            test -f "$BUNDLE/macos-release-trust.json"
+            grep -q '"status": "unsigned_github_release"' "$BUNDLE/macos-release-trust.json"
           fi
           test -f "$BUNDLE/contextmink/contextmink"
           test -f "$BUNDLE/contextmink/README.md"
@@ -218,7 +140,16 @@ jobs:
           test -d "$BUNDLE/contextmink/templates"
           test ! -e "$BUNDLE/contextmink/contextmink-bridge"
           "$BUNDLE/contextmink/contextmink" --version
-          smoke="$RUNNER_TEMP/wikitool-contextmink-install"
+          test -f "$BUNDLE/papertiger/papertiger"
+          test -f "$BUNDLE/papertiger/papertiger-mise"
+          test -f "$BUNDLE/papertiger/agent_integration.md"
+          test -f "$BUNDLE/papertiger/manifest.json"
+          test -f "$BUNDLE/papertiger/archive.sha256"
+          "$BUNDLE/papertiger/papertiger" --version
+          "$BUNDLE/papertiger/papertiger-mise" --version
+          runner_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          smoke="$runner_temp/wikitool-contextmink-install"
+          case "$smoke" in "$runner_temp"/*) ;; *) echo "unsafe smoke path: $smoke" >&2; exit 1 ;; esac
           rm -rf "$smoke"
           mkdir -p "$smoke"
           "$BUNDLE/contextmink/contextmink" setup-project "$smoke" --skill-target both --json
@@ -227,10 +158,30 @@ jobs:
           test -f "$smoke/tools/contextmink/project-install.json"
           test -f "$smoke/.agents/skills/contextmink/SKILL.md"
           test -f "$smoke/.claude/skills/contextmink/SKILL.md"
+          papertiger_smoke="$runner_temp/wikitool-papertiger-install"
+          case "$papertiger_smoke" in "$runner_temp"/*) ;; *) echo "unsafe Papertiger smoke path: $papertiger_smoke" >&2; exit 1 ;; esac
+          rm -rf "$papertiger_smoke"
+          mkdir -p "$papertiger_smoke"
+          "$BUNDLE/papertiger/papertiger" setup-project "$papertiger_smoke" --skill-target both --dry-run --json
+          test ! -e "$papertiger_smoke/tools/papertiger/project-install.json"
+          "$BUNDLE/papertiger/papertiger" setup-project "$papertiger_smoke" --skill-target both --json
+          "$BUNDLE/papertiger/papertiger" setup-project "$papertiger_smoke" --json
+          test -f "$papertiger_smoke/tools/papertiger/bin/papertiger"
+          test -f "$papertiger_smoke/tools/papertiger/project-install.json"
+          test -f "$papertiger_smoke/tools/papertiger/agent_integration.md"
+          test -f "$papertiger_smoke/.agents/skills/papertiger/SKILL.md"
+          test -f "$papertiger_smoke/.claude/skills/papertiger/SKILL.md"
+          test ! -e "$papertiger_smoke/state/papertiger.sqlite"
+          "$BUNDLE/papertiger/papertiger" uninstall-project "$papertiger_smoke" --json
+          test ! -e "$papertiger_smoke/tools/papertiger/project-install.json"
+          test ! -e "$papertiger_smoke/tools/papertiger/bin/papertiger"
+          test ! -e "$papertiger_smoke/.agents/skills/papertiger/SKILL.md"
+          test ! -e "$papertiger_smoke/.claude/skills/papertiger/SKILL.md"
+          test ! -e "$papertiger_smoke/state/papertiger.sqlite"
           test -f "${BUNDLE}.zip"
 
       - name: Test unsigned macOS trust declaration
-        if: runner.os == 'macOS' && !inputs.notarize_macos
+        if: runner.os == 'macOS'
         shell: bash
         run: bash scripts/test_unsigned_macos_release.sh
 
@@ -260,13 +211,26 @@ jobs:
           if (Test-Path "$env:BUNDLE/llm_instructions") { throw "legacy llm_instructions directory must not ship" }
           if (Test-Path "$env:BUNDLE/SETUP.md") { throw "SETUP.md must not ship" }
           if (!(Test-Path "$env:BUNDLE/manifest.json")) { throw "manifest.json missing" }
+          if (!(Test-Path "$env:BUNDLE/release-companions.json")) { throw "release companion manifest missing" }
+          $companionManifest = Get-Content "$env:BUNDLE/release-companions.json" -Raw | ConvertFrom-Json
+          if ($companionManifest.schema -ne "wikitool.release-companions.v1") { throw "release companion schema mismatch" }
+          if (@($companionManifest.companions | Where-Object { $_.required_for_wikitool }).Count -ne 0) { throw "optional companion marked required" }
           if (!(Test-Path "$env:BUNDLE/contextmink/contextmink.exe")) { throw "contextmink binary missing" }
           if (!(Test-Path "$env:BUNDLE/contextmink/contextmink-bridge.exe")) { throw "contextmink-bridge binary missing" }
           & "$env:BUNDLE/contextmink/contextmink-bridge.exe" --version
           if (!(Test-Path "$env:BUNDLE/contextmink/README.md")) { throw "contextmink README missing" }
           if (!(Test-Path "$env:BUNDLE/contextmink/templates")) { throw "contextmink templates missing" }
           & "$env:BUNDLE/contextmink/contextmink.exe" --version
-          $smoke = Join-Path $env:RUNNER_TEMP "wikitool-contextmink-install"
+          if (!(Test-Path "$env:BUNDLE/papertiger/papertiger.exe")) { throw "papertiger binary missing" }
+          if (!(Test-Path "$env:BUNDLE/papertiger/papertiger-mise.exe")) { throw "papertiger-mise binary missing" }
+          if (!(Test-Path "$env:BUNDLE/papertiger/agent_integration.md")) { throw "Papertiger agent contract missing" }
+          if (!(Test-Path "$env:BUNDLE/papertiger/manifest.json")) { throw "Papertiger manifest missing" }
+          if (!(Test-Path "$env:BUNDLE/papertiger/archive.sha256")) { throw "Papertiger archive receipt missing" }
+          & "$env:BUNDLE/papertiger/papertiger.exe" --version
+          & "$env:BUNDLE/papertiger/papertiger-mise.exe" --version
+          $runnerTemp = [System.IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+          $smoke = [System.IO.Path]::GetFullPath((Join-Path $runnerTemp "wikitool-contextmink-install"))
+          if ([System.IO.Path]::GetDirectoryName($smoke) -ne $runnerTemp) { throw "unsafe Contextmink smoke path: $smoke" }
           if (Test-Path $smoke) { Remove-Item -LiteralPath $smoke -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $smoke | Out-Null
           & "$env:BUNDLE/contextmink/contextmink.exe" setup-project $smoke --skill-target both --json
@@ -282,6 +246,26 @@ jobs:
           } finally {
             Pop-Location
           }
+          $papertigerSmoke = [System.IO.Path]::GetFullPath((Join-Path $runnerTemp "wikitool-papertiger-install"))
+          if ([System.IO.Path]::GetDirectoryName($papertigerSmoke) -ne $runnerTemp) { throw "unsafe Papertiger smoke path: $papertigerSmoke" }
+          if (Test-Path $papertigerSmoke) { Remove-Item -LiteralPath $papertigerSmoke -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $papertigerSmoke | Out-Null
+          & "$env:BUNDLE/papertiger/papertiger.exe" setup-project $papertigerSmoke --skill-target both --dry-run --json
+          if (Test-Path "$papertigerSmoke/tools/papertiger/project-install.json") { throw "Papertiger dry-run wrote a receipt" }
+          & "$env:BUNDLE/papertiger/papertiger.exe" setup-project $papertigerSmoke --skill-target both --json
+          & "$env:BUNDLE/papertiger/papertiger.exe" setup-project $papertigerSmoke --json
+          if (!(Test-Path "$papertigerSmoke/tools/papertiger/bin/papertiger.exe")) { throw "installed Papertiger missing" }
+          if (!(Test-Path "$papertigerSmoke/tools/papertiger/project-install.json")) { throw "Papertiger setup receipt missing" }
+          if (!(Test-Path "$papertigerSmoke/tools/papertiger/agent_integration.md")) { throw "Papertiger installed contract missing" }
+          if (!(Test-Path "$papertigerSmoke/.agents/skills/papertiger/SKILL.md")) { throw "Papertiger Agent Skill missing" }
+          if (!(Test-Path "$papertigerSmoke/.claude/skills/papertiger/SKILL.md")) { throw "Papertiger Claude skill missing" }
+          if (Test-Path "$papertigerSmoke/state/papertiger.sqlite") { throw "Papertiger setup must not create task authority" }
+          & "$env:BUNDLE/papertiger/papertiger.exe" uninstall-project $papertigerSmoke --json
+          if (Test-Path "$papertigerSmoke/tools/papertiger/project-install.json") { throw "Papertiger uninstall retained receipt" }
+          if (Test-Path "$papertigerSmoke/tools/papertiger/bin/papertiger.exe") { throw "Papertiger uninstall retained binary" }
+          if (Test-Path "$papertigerSmoke/.agents/skills/papertiger/SKILL.md") { throw "Papertiger uninstall retained Agent Skill" }
+          if (Test-Path "$papertigerSmoke/.claude/skills/papertiger/SKILL.md") { throw "Papertiger uninstall retained Claude skill" }
+          if (Test-Path "$papertigerSmoke/state/papertiger.sqlite") { throw "Papertiger uninstall created task authority" }
           if (!(Test-Path "${env:BUNDLE}.zip")) { throw "zip artifact missing" }
 
       - uses: actions/upload-artifact@v7
@@ -289,26 +273,6 @@ jobs:
           name: wikitool-release-${{ steps.names.outputs.version }}-${{ matrix.platform }}
           path: dist/release-matrix/${{ steps.names.outputs.bundle }}.zip
           if-no-files-found: error
-
-      - name: Upload notarization evidence
-        if: always() && runner.os == 'macOS' && inputs.notarize_macos
-        uses: actions/upload-artifact@v7
-        with:
-          name: wikitool-notarization-${{ steps.names.outputs.version }}-${{ matrix.platform }}
-          path: dist/notarization/${{ steps.names.outputs.bundle }}/
-          if-no-files-found: warn
-
-      - name: Remove temporary Apple signing material
-        if: always() && runner.os == 'macOS' && inputs.notarize_macos
-        shell: bash
-        run: |
-          keychain_path="$RUNNER_TEMP/wikitool-signing.keychain-db"
-          if [[ -f "$keychain_path" ]]; then
-            security delete-keychain "$keychain_path"
-          fi
-          rm -f \
-            "$RUNNER_TEMP/wikitool-developer-id.p12" \
-            "$RUNNER_TEMP"/AuthKey_*.p8
 
   publish-release:
     if: inputs.create_release

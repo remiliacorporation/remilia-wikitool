@@ -86,6 +86,7 @@ read may produce more output than the transcript should carry.
   for candidate discovery. Prefer `files --ext json` / `--extension jsonl`
   across Windows-to-Bash boundaries because wildcard globs can expand before
   contextmink receives them.
+
 - Read source files through `outline` then `slice`, not dump windows. A named
   file is still reconnaissance while the answer's location inside it is
   unknown: `outline <file>` maps declaration lines with line numbers
@@ -119,3 +120,12 @@ read may produce more output than the transcript should carry.
   test command, a domain tool that emits compact records, or one exact file
   region already known to fit a slice window (about 120 lines). Above that,
   the read is reconnaissance — go through `outline`/`grep`/`slice`.
+
+Papertiger is a separately versioned optional planning companion. A release
+bundle includes its complete hash-verified upstream pack under `papertiger/`,
+but Wikitool never initializes or mutates Papertiger authority. Project setup,
+upgrade, skill installation, and uninstall belong to
+`papertiger/papertiger(.exe) setup-project|uninstall-project`; preview setup
+with `--dry-run --json` and do not opt a project in without an explicit user
+decision. Once installed, use the canonical project skill and
+`tools/papertiger/agent_integration.md`, not a Wikitool-owned planning wrapper.
