@@ -152,7 +152,9 @@ mod tests {
         let mut paths = Vec::new();
         collect_command_paths(&command, &[], &mut paths);
 
-        assert!(paths.iter().any(|path| path == &["workflow".to_string()]));
+        assert!(paths.iter().any(|path| path == &["catalog".to_string()]));
+        assert!(paths.iter().any(|path| path == &["article".to_string()]));
+        assert!(paths.iter().any(|path| path == &["interview".to_string()]));
         assert!(!paths.iter().any(|path| path == &["release".to_string()]));
         assert!(!paths.iter().any(|path| path == &["dev".to_string()]));
         assert!(
@@ -165,7 +167,7 @@ mod tests {
                 .iter()
                 .any(|path| { path == &["docs".to_string(), "audit".to_string()] })
         );
-        assert!(paths.iter().any(|path| path == &["research".to_string()]));
+        assert!(paths.iter().any(|path| path == &["source".to_string()]));
         assert!(paths.iter().any(|path| path == &["lsp".to_string()]));
         assert!(
             paths

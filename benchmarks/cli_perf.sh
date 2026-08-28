@@ -16,10 +16,10 @@
 # Options:
 #   --project-root <path>   Required. Disposable project copy to benchmark against.
 #   --tier <local|live>     local (default) runs only offline scenarios; live adds
-#                           network scenarios (session-refresh, pull, push dry-run).
+#                           network scenarios (pull and push preview).
 #   --runs <n>              Timed runs per local scenario (default 3; live always 1).
 #   --scenarios <a,b,c>     Comma-separated scenario filter (default: all in tier).
-#   --topic <title>         Article-start topic (default "Milady Maker").
+#   --topic <title>         Article-scout and retrieval topic (default "Main Page").
 #   --output <file>         Also append the markdown table to <file>.
 #
 # Env:
@@ -27,10 +27,9 @@
 #                           next to this script's repo, else
 #                           cargo run --quiet --package wikitool --).
 #
-# Scenarios (local): status-modified, diff, lint-corpus, article-start-brief,
-#   fts-search, knowledge-build, knowledge-warm
-# Scenarios (live adds): session-refresh-warm, session-refresh-cold, pull-full-all,
-#   push-conflict-dryrun
+# Scenarios (local): status-modified, diff, lint-corpus, article-scout-brief,
+#   fts-search, catalog-build, catalog-warm
+# Scenarios (live adds): pull-full-all, push-conflict-preview
 
 set -euo pipefail
 
@@ -41,7 +40,7 @@ PROJECT_ROOT=""
 TIER="local"
 RUNS=3
 SCENARIO_FILTER=""
-TOPIC="Milady Maker"
+TOPIC="Main Page"
 OUTPUT_FILE=""
 
 while [ $# -gt 0 ]; do
@@ -140,13 +139,13 @@ section() { echo "" >&2; echo "== $1 ==" >&2; }
 # --- Corpus titles file for lint-corpus (Main namespace, non-redirect) ---
 TITLES_FILE=""
 build_titles_file() {
-    local db="$PROJECT_ROOT/.wikitool/data/wikitool.db"
+    local db="$PROJECT_ROOT/.wikitool/sync/sync.sqlite3"
     if ! command -v sqlite3 >/dev/null 2>&1; then
         echo "sqlite3 not found; skipping lint-corpus" >&2
         return 1
     fi
     if [ ! -f "$db" ]; then
-        echo "no runtime db at $db; skipping lint-corpus" >&2
+        echo "no durable sync store at $db; skipping lint-corpus" >&2
         return 1
     fi
     TITLES_FILE="$(mktemp)"
@@ -172,7 +171,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- push-conflict-dryrun setup: modify N articles, restore afterwards ---
+# --- push-conflict-preview setup: modify N articles, restore afterwards ---
 PUSH_BACKUP_DIR=""
 modify_articles_for_push() {
     local n="$1"
@@ -187,7 +186,7 @@ modify_articles_for_push() {
         printf '\n<!-- perf-bench conflict-check marker -->\n' >> "$f"
         modified=$((modified + 1))
     done < <(find "$PROJECT_ROOT/wiki_content/Main" -maxdepth 1 -name '*.wiki' | sort)
-    echo "push-conflict-dryrun: modified $modified articles" >&2
+    echo "push-conflict-preview: modified $modified articles" >&2
 }
 
 restore_push_modifications() {
@@ -242,29 +241,29 @@ if wants lint-corpus; then
     fi
 fi
 
-if wants article-start-brief; then
-    section "article-start-brief"
-    time_scenario "article-start-brief" "$RUNS" "local; topic: $TOPIC" -- \
-        wt knowledge article-start "$TOPIC" --intent expand --format json --view brief
+if wants article-scout-brief; then
+    section "article-scout-brief"
+    time_scenario "article-scout-brief" "$RUNS" "local; topic: $TOPIC" -- \
+        wt article scout "$TOPIC" --intent expand --format json --view brief
 fi
 
 if wants fts-search; then
     section "fts-search"
     time_scenario "fts-search" "$RUNS" "local; cross-page chunk retrieval" -- \
-        wt knowledge inspect chunks --across-pages --query "network spirituality remilia" \
+        wt catalog inspect chunks --across-pages --query "$TOPIC" \
             --max-pages 6 --limit 10 --token-budget 1200 --format json --view brief
 fi
 
-if wants knowledge-build; then
-    section "knowledge-build"
-    time_scenario "knowledge-build" "$RUNS" "local; full index rebuild" -- \
-        wt knowledge build
+if wants catalog-build; then
+    section "catalog-build"
+    time_scenario "catalog-build" "$RUNS" "local; full index rebuild" -- \
+        wt catalog build
 fi
 
-if wants knowledge-warm; then
-    section "knowledge-warm"
-    time_scenario "knowledge-warm" "$RUNS" "local-ish; docs-mode missing" -- \
-        wt knowledge warm --docs-mode missing
+if wants catalog-warm; then
+    section "catalog-warm"
+    time_scenario "catalog-warm" "$RUNS" "local-ish; docs-mode missing" -- \
+        wt catalog warm --docs-mode missing
 fi
 
 # --- Live (network) scenarios ---
@@ -276,26 +275,14 @@ if [ "$TIER" = "live" ]; then
             wt pull --full --all
     fi
 
-    if wants push-conflict-dryrun; then
-        section "push-conflict-dryrun"
+    if wants push-conflict-preview; then
+        section "push-conflict-preview"
         modify_articles_for_push 120
-        time_scenario "push-conflict-dryrun" 1 "network; 120 modified, dry run" -- \
-            wt push --dry-run --summary "perf bench dry run"
+        time_scenario "push-conflict-preview" 1 "network; 120 modified, preview" -- \
+            wt push --all --summary "perf bench preview"
         restore_push_modifications
     fi
 
-    if wants session-refresh-warm; then
-        section "session-refresh-warm"
-        time_scenario "session-refresh-warm" 1 "network; existing runtime db" -- \
-            wt workflow session-refresh
-    fi
-
-    if wants session-refresh-cold; then
-        section "session-refresh-cold"
-        wt db reset --yes >/dev/null
-        time_scenario "session-refresh-cold" 1 "network; after db reset" -- \
-            wt workflow session-refresh
-    fi
 fi
 
 echo ""

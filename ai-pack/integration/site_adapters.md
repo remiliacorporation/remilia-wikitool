@@ -3,19 +3,36 @@
 A site adapter is an explicit project-owned TOML file. Validate and select it during initialization:
 
 ```bash
-wikitool init --adapter-path wikitool_adapter/profile.toml
+wikitool init --adapter-path wikitool_adapter/site-adapter.toml
 ```
 
 This records the following in `.wikitool/config.toml`:
 
 ```toml
 [adapter]
-path = "wikitool_adapter/profile.toml"
+path = "wikitool_adapter/site-adapter.toml"
 ```
 
-Without this section Wikitool uses the embedded `mediawiki-generic` profile. It does not search executable ancestors or silently inherit a branded policy.
+The configured path must be project-relative, and its canonical target must remain under the
+project root. Absolute paths, `..` escapes, and symlinks to external policy trees are rejected so
+snapshots and isolated evaluations cannot depend on mutable files outside the project.
+
+Without this section Wikitool uses the embedded `mediawiki-generic` adapter. It does not search executable ancestors or silently inherit a branded policy.
 
 ## Machine policy
+
+The current strict document identity begins with:
+
+```toml
+schema_version = "site_adapter_v2"
+adapter_id = "example-wiki"
+docs_profile = "mw-1.44-authoring"
+guidance_documents = []
+```
+
+`adapter_id` identifies the complete site policy. The contract does not imply adapter inheritance;
+it is deliberately distinct from documentation-corpus profiles, authoring-surface profiles, and
+projection target profiles.
 
 The adapter can declare:
 
@@ -42,8 +59,8 @@ the adapter: the installed project must place it at a project-owned path and sel
 
 ## Supplemental guidance
 
-Keep target names, relationships, local first-party-source rules, visual-subject conventions, and extension semantics in adapter Markdown. Generic skills read those documents after loading their public procedure. A host supplement may strengthen local requirements but should not redefine retrieval artifacts as evidence or claim that the acceptance ledger authenticates an editor.
+Keep target names, relationships, local first-party-source rules, visual-subject conventions, and extension semantics in adapter Markdown. Generic skills read those documents after loading their public procedure. A host supplement may strengthen local requirements but should not redefine retrieval artifacts as evidence or claim that transactional publication acceptance authenticates an editor.
 
 ## Portability test
 
-A standalone Wikitool checkout with no adapter should initialize offline, expose the generic profile, and contain no target-wiki URL, relationship, template, category, or source verdict. A host project should regain all intended local behavior only after its explicit adapter is configured.
+A standalone Wikitool checkout with no adapter should initialize offline, expose the generic adapter, and contain no target-wiki URL, relationship, template, category, or source verdict. A host project should regain all intended local behavior only after its explicit adapter is configured.

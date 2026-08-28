@@ -68,6 +68,7 @@ pub(crate) fn run_docs_audit(args: DocsAuditArgs) -> Result<()> {
     audit_default_features(&repo_root, &mut checks);
     audit_ai_pack_layout(&repo_root, &mut checks);
     audit_canonical_skills(&repo_root, &mut checks);
+    audit_source_root_skill_routes(&repo_root, &mut checks);
     audit_generic_boundary(&repo_root, &mut checks);
     audit_no_retired_public_terms(&repo_root, &mut checks);
     if let Some(host_root) = host_project_root.as_ref() {
@@ -247,6 +248,84 @@ fn audit_canonical_skills(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     }
 }
 
+fn audit_source_root_skill_routes(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
+    let directory = repo_root.join(".claude/skills/wikitool");
+    let path = directory.join("SKILL.md");
+    let directory = path.parent().expect("source-root skill directory");
+    let canonical = "ai-pack/codex_skills/wikitool-operator/SKILL.md";
+    match read_to_string(&path) {
+        Ok(body) => {
+            let line_count = body.lines().count();
+            let only_canonical_entrypoint = std::fs::read_dir(directory).is_ok_and(|entries| {
+                let mut names = entries
+                    .filter_map(|entry| entry.ok())
+                    .map(|entry| entry.file_name())
+                    .collect::<Vec<_>>();
+                names.sort();
+                names == ["SKILL.md"]
+            });
+            let routes_to_canonical =
+                body.contains(canonical) && line_count <= 16 && only_canonical_entrypoint;
+            push_check(
+                checks,
+                "skills.source_root_route",
+                routes_to_canonical,
+                Some(&path),
+                if routes_to_canonical {
+                    "source-root Claude entrypoint is a thin canonical route".to_string()
+                } else {
+                    format!(
+                        "source-root Claude entrypoint must route to {canonical} without a parallel command tree"
+                    )
+                },
+            );
+        }
+        Err(error) => push_check(
+            checks,
+            "skills.source_root_route",
+            false,
+            Some(&path),
+            format!("failed to read source-root Claude entrypoint: {error}"),
+        ),
+    }
+
+    let entries = std::fs::read_dir(directory).and_then(|entries| {
+        entries
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<std::io::Result<Vec<_>>>()
+    });
+    match entries {
+        Ok(entries) => {
+            let single_entrypoint = entries.len() == 1 && entries[0] == "SKILL.md";
+            push_check(
+                checks,
+                "skills.source_root_single_entrypoint",
+                single_entrypoint,
+                Some(directory),
+                if single_entrypoint {
+                    "source-root Claude adapter contains only its canonical entrypoint".to_string()
+                } else {
+                    format!(
+                        "source-root Claude adapter must contain only SKILL.md, found: {}",
+                        entries
+                            .iter()
+                            .map(|entry| entry.to_string_lossy())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                },
+            );
+        }
+        Err(error) => push_check(
+            checks,
+            "skills.source_root_single_entrypoint",
+            false,
+            Some(directory),
+            format!("failed to inspect source-root Claude adapter: {error}"),
+        ),
+    }
+}
+
 fn valid_skill_frontmatter(body: &str, expected_name: &str) -> bool {
     let mut lines = body.lines();
     if lines.next() != Some("---") {
@@ -338,9 +417,9 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
 }
 
 fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    let adapter = host_root.join("wikitool_adapter/profile.toml");
+    let adapter = host_root.join("wikitool_adapter/site-adapter.toml");
     let adapter_ok = read_to_string(&adapter)
-        .is_ok_and(|body| body.contains("schema_version = \"site_adapter_v1\""));
+        .is_ok_and(|body| body.contains("schema_version = \"site_adapter_v2\""));
     push_check(
         checks,
         "host.site_adapter",
@@ -349,7 +428,7 @@ fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
         if adapter_ok {
             "host owns an explicit typed site adapter".to_string()
         } else {
-            "host must own wikitool_adapter/profile.toml with site_adapter_v1".to_string()
+            "host must own wikitool_adapter/site-adapter.toml with site_adapter_v2".to_string()
         },
     );
 
@@ -358,8 +437,6 @@ fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
         ".claude/skills/wiki-writing.md",
         ".claude/skills/prose-review.md",
         ".claude/skills/wiki-interview.md",
-        ".claude/skills/review.md",
-        ".claude/skills/knowledge-interview.md",
     ] {
         let path = host_root.join(relative);
         let ok = read_to_string(&path).is_ok_and(|body| {
@@ -374,6 +451,24 @@ fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
                 format!("{relative} routes to the public AI pack")
             } else {
                 format!("{relative} must route to the public AI pack")
+            },
+        );
+    }
+
+    for relative in [
+        ".claude/skills/review.md",
+        ".claude/skills/knowledge-interview.md",
+    ] {
+        let path = host_root.join(relative);
+        push_check(
+            checks,
+            "host.retired_skill_aliases",
+            !path.exists(),
+            Some(&path),
+            if path.exists() {
+                format!("retired skill alias {relative} must be removed")
+            } else {
+                format!("retired skill alias {relative} is absent")
             },
         );
     }

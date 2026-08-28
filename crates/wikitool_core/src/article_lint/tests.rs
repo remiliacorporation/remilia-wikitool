@@ -3,8 +3,8 @@ use std::path::Path;
 
 use tempfile::tempdir;
 
+use crate::catalog::content_index::rebuild_index;
 use crate::filesystem::ScanOptions;
-use crate::knowledge::content_index::rebuild_index;
 use crate::runtime::{ResolvedPaths, ValueSource};
 
 use super::*;
@@ -39,12 +39,12 @@ fn write_file(path: &Path, content: &str) {
 
 fn write_instruction_sources(paths: &ResolvedPaths) {
     write_file(
-        &paths.project_root.join("site-adapter/profile.toml"),
+        &paths.project_root.join("site-adapter/site-adapter.toml"),
         include_str!("../../testdata/site-adapter.toml"),
     );
     write_file(
         &paths.config_path,
-        "[adapter]\npath = \"site-adapter/profile.toml\"\n",
+        "[adapter]\npath = \"site-adapter/site-adapter.toml\"\n",
     );
 }
 
@@ -89,7 +89,7 @@ fn write_capability_manifest(paths: &ResolvedPaths, manifest: &WikiCapabilityMan
                 "wiki_capabilities:test",
                 "wiki_capabilities",
                 Some("wiki.remilia.org"),
-                KNOWLEDGE_GENERATION,
+                CATALOG_GENERATION,
                 1i64,
                 1i64,
                 serde_json::to_string(manifest).expect("manifest json"),
@@ -623,6 +623,28 @@ fn detects_missing_reflist_and_applies_safe_fix() {
 }
 
 #[test]
+fn generic_adapter_requires_inline_references_to_be_rendered() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "'''Alpha''' is a page.<ref>{{Cite web|title=Source}}</ref>\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    assert!(has_rule(&report, "structure.require_reference_renderer"));
+
+    write_file(
+        &article_path,
+        "'''Alpha''' is a page.<ref>{{Cite web|title=Source}}</ref>\n\n== References ==\n<references />\n",
+    );
+    let rendered = lint_article(&paths, &article_path).expect("lint rendered");
+    assert!(!has_rule(&rendered, "structure.require_reference_renderer"));
+}
+
+#[test]
 fn inserts_reflist_before_reference_section_trailing_categories() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
@@ -701,7 +723,12 @@ fn does_not_infer_remilia_parent_group_from_creator_field() {
     );
 
     let report = lint_article(&paths, &article_path).expect("lint");
-    assert!(!has_rule(&report, "profile.remilia_parent_group"));
+    assert!(
+        !report
+            .issues
+            .iter()
+            .any(|issue| issue.rule_id.starts_with("editorial."))
+    );
 }
 
 #[test]
@@ -718,7 +745,30 @@ fn rejects_citation_needed_templates() {
     );
 
     let report = lint_article(&paths, &article_path).expect("lint");
-    assert!(has_rule(&report, "profile.no_citation_needed"));
+    let issue = report
+        .issues
+        .iter()
+        .find(|issue| issue.rule_id == "adapter.citation_needed_forbidden")
+        .expect("citation-needed issue");
+    assert_eq!(
+        issue.message,
+        "Article contains a {{Citation needed}} marker."
+    );
+}
+
+#[test]
+fn generic_adapter_does_not_impose_citation_needed_policy() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    let paths = paths(&project_root);
+    let article_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
+    write_file(
+        &article_path,
+        "'''Alpha''' is a page. {{Citation needed}}\n",
+    );
+
+    let report = lint_article(&paths, &article_path).expect("lint");
+    assert!(!has_rule(&report, "adapter.citation_needed_forbidden"));
 }
 
 #[test]

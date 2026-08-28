@@ -38,28 +38,34 @@ Patch (`Z`):
 
 Current series is `0.y.z`. Before `1.0.0`, breaking changes may happen in minor bumps.
 
-Example: `0.2.0` is a minor bump that intentionally removed legacy retrieval commands in favor of the `knowledge` command family.
+Example: `0.7.0` is a minor bump that intentionally replaces the old `knowledge`, `research`, and
+`workflow` command buckets with explicit `catalog`, `article scout`, `source`, and `interview`
+surfaces, and changes remote writes to preview/plan/apply contracts.
 
 When CLI and bundle contracts stabilize, cut `1.0.0` and enforce strict SemVer from that point onward.
 
 ## Internal schema versioning
 
-Schema versions are independent from SemVer and must be bumped only when their specific contract changes:
+Schema versions are independent from SemVer and must be bumped only when their specific contract changes. The versioned families include:
 
 1. `manifest.schema_version`
 2. `ai/docs-bundle-vN.json`
 3. `site_adapter_vN`
-4. `article_start_vN`
-5. `article_acceptance_ledger_vN`
-6. `knowledge_interview_vN`
+4. catalog, template-catalog, capability, and authoring-surface artifacts
+5. `article_scout_vN`, article lint/fix/promote reports, and review changesets
+6. `article_acceptance_ledger_vN` and the transactional acceptance-store schema
+7. `wiki_interview_vN` and its command/report envelopes
+8. the durable sync-store `user_version` and mutation-intent schemas
+9. Wikitest scenario, run-receipt, and prose-evidence schemas
 
-Local retrieval state is intentionally disposable. Starting with `0.2.0`, readiness is surfaced through manifest-backed `knowledge_artifacts` rows and the operator-facing `knowledge_generation` contract.
+Catalog, docs, and other derived retrieval state are intentionally disposable. Current releases surface readiness through manifest-backed `runtime_artifacts` rows and the operator-facing `catalog_generation` contract. Sync baselines, mutation intents and receipts, and article-acceptance decisions are durable authority state: they require explicit, tested migrations and must fail closed when a schema is missing, corrupt, or unsupported. Catalog reset/rebuild operations must preserve those durable stores.
 
 Cutover rule:
 
-1. Do not add compatibility migrations for pre-manifest knowledge databases.
-2. Reset and rebuild local state with `wikitool db reset --yes`, then `wikitool knowledge build` or `wikitool knowledge warm --docs-profile <PROFILE> --docs-mode missing`.
-3. Use `wikitool knowledge status --docs-profile <PROFILE>` to verify readiness before relying on local authoring retrieval.
+1. Do not add compatibility migrations for pre-manifest catalog databases.
+2. Never repair a durable authority-store mismatch by deleting or rebuilding it; use a schema-owned migration or stop with a typed diagnostic.
+3. Reset and rebuild derived state with `wikitool db reset --yes`, then `wikitool catalog build` or `wikitool catalog warm --docs-profile <PROFILE> --docs-mode missing`.
+4. Use `wikitool catalog status --docs-profile <PROFILE>` to verify readiness before relying on local authoring retrieval.
 
 ## Release channels
 
@@ -90,16 +96,16 @@ Packaged / distributable:
    - `cargo run --quiet --package wikitest -- suite core-dogfood --require-all`
    - `cargo run --quiet --package wikitest -- prose prepare-suite prose-dogfood`
    - `bash tests/cli_compat/cli_tests.sh`
-   - `TIER=live bash tests/cli_compat/acceptance_workflows.sh`
-5. Validate the knowledge cutover from a fresh runtime:
+5. Validate the catalog and authoring-support cutover from a fresh runtime:
    - `cargo run --package wikitool -- db reset --yes`
-   - `cargo run --package wikitool -- knowledge warm --docs-profile mw-1.44-authoring --docs-mode missing`
-   - `cargo run --package wikitool -- wiki profile sync`
-   - `cargo run --package wikitool -- knowledge status --docs-profile mw-1.44-authoring`
-   - `cargo run --package wikitool -- knowledge article-start "Example Topic" --docs-profile mw-1.44-authoring --format json`
-   - `cargo run --package wikitool -- research wiki-search "Example Topic" --format json`
+   - `cargo run --package wikitool -- catalog warm --docs-profile mw-1.44-authoring --docs-mode missing`
+   - `cargo run --package wikitool -- wiki capabilities sync`
+   - `cargo run --package wikitool -- templates catalog build`
+   - `cargo run --package wikitool -- catalog status --docs-profile mw-1.44-authoring`
+   - `cargo run --package wikitool -- article scout "Example Topic" --docs-profile mw-1.44-authoring --format json`
+   - `cargo run --package wikitool -- source wiki-search "Example Topic" --format json`
    - `cargo run --package wikitool -- article lint wiki_content/Main/Example_Topic.wiki --format json`
-   - `cargo run --package wikitool -- knowledge inspect references duplicates --title "Example Topic" --format json`
+   - `cargo run --package wikitool -- catalog inspect references duplicates --title "Example Topic" --format json`
    - `cargo run --package wikitool -- status --conflicts --title "Example Topic"`
    - `cargo run --package wikitool -- module lint --format text`
    - `cargo run --package wikitool --features maintainer -- docs generate-reference`
@@ -121,7 +127,7 @@ Packaged / distributable:
    - `codex_skills/`, including `wiki-writing`, `prose-review`, `wiki-interview`, and `wikitool-operator`
    - `integration/`
    - `site_adapter/generic.toml`
-   - `site_adapter/project/profile.toml` only when `--host-project-root` was supplied
+   - `site_adapter/project/site-adapter.toml` only when `--host-project-root` was supplied
    - `docs/wikitool/`
    - `contextmink/` with `contextmink` or `contextmink.exe`
    - `contextmink/contextmink-bridge.exe` in the Windows bundle only

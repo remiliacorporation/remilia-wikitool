@@ -7,7 +7,7 @@ use wikitool_core::external::{
     ExternalFetchResult, ParsedWikiUrl, fetch_mediawiki_page, fetch_page_by_url,
     generate_frontmatter, parse_wiki_url, sanitize_filename, source_content_to_markdown,
 };
-use wikitool_core::research::ExternalFetchSession;
+use wikitool_core::source::ExternalFetchSession;
 use wikitool_core::support::compute_hash;
 
 use crate::cli_support::normalize_path;
@@ -41,7 +41,7 @@ pub(super) fn fetch_single_export_page(
         ExternalFetchOptions {
             format: ExternalFetchFormat::Html,
             max_bytes: 1_000_000,
-            profile: ExternalFetchProfile::Research,
+            profile: ExternalFetchProfile::ReadableDocument,
             session,
         }
     };

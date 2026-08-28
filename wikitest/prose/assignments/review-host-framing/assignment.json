@@ -1,5 +1,5 @@
 {
-  "schema": "wikitest.prose-assignment.v1",
+  "schema": "wikitest.prose-assignment.v2",
   "id": "review-host-framing",
   "title": "Gratuitous host framing review",
   "description": "A closed-world review control where one documented shared link is inflated into the article's lead and significance frame.",
@@ -13,7 +13,7 @@
     "sensitive": false
   },
   "review_instructions": [
-    {"id": "prose-review", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/SKILL.md", "sha256": "560097c3b15f5fbf04be53f960da3517ae1c4a08be79e5eab9d74cfdfdf6df37"},
+    {"id": "prose-review", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
     {"id": "source-fidelity", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
     {"id": "reader-value", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"}
   ],
@@ -21,9 +21,11 @@
     {"id": "s1", "title": "About Aster Index", "locator": "sources/about.txt", "sha256": "fa2e081a8fe393796ffc558de7bd9d6d48161fe8e062bfc33fc88435478a8615", "role": "primary", "citation": "Aster Index, About Aster Index, 12 February 2024, https://fixtures.invalid/aster-index/about"},
     {"id": "s2", "title": "Public activity log, 2024 excerpt", "locator": "sources/activity-log.txt", "sha256": "bc07b326542d5230695e49587823d71429b5c37460ebdd21ff1700b0fbeaac7b", "role": "primary", "citation": "Aster Index, Public activity log, 2024 excerpt, 31 December 2024, https://fixtures.invalid/aster-index/activity-log"}
   ],
+  "finding_tag_vocabulary": ["chronology-uncertainty", "citation-integrity", "due-weight", "gratuitous-framing", "sensitive-claim", "source-entailment"],
   "review_axes": ["article-object", "source-fidelity", "citation-integrity", "due-weight", "subject-control", "reader-value", "structure", "prose-specificity", "sensitive-claims", "mechanical-validity", "residual-risk"],
   "candidate": {"id": "article", "root": "assignment", "locator": "candidate.wiki", "sha256": "312a6d052f6dd8f8c5539989a60b16f31c5568057ab9e25f9a50c8433c1a3dd2"},
   "oracle": {
+    "required_finding_tags": ["gratuitous-framing"],
     "axis_expectations": [
       {"axis": "article-object", "allowed_verdicts": ["fail", "concern"]},
       {"axis": "due-weight", "allowed_verdicts": ["fail", "concern"]},

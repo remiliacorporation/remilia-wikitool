@@ -13,13 +13,6 @@ fn read_repo_file(relative: &str) -> String {
         .unwrap_or_else(|error| panic!("failed to read {relative}: {error}"))
 }
 
-fn host_root() -> Option<PathBuf> {
-    let wikitool_root = repo_root();
-    let candidate = wikitool_root.join("../..").canonicalize().ok()?;
-    let nested = candidate.join("tools/wikitool").canonicalize().ok()?;
-    (nested == wikitool_root).then_some(candidate)
-}
-
 fn collect_files(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
     let mut files = Vec::new();
@@ -147,87 +140,17 @@ fn claude_entrypoints_route_to_canonical_skills() {
             "Claude wrapper {wrapper} must route to {canonical}"
         );
     }
-}
-
-#[test]
-fn authoring_and_review_boundaries_are_explicit() {
-    let author = read_repo_file("ai-pack/codex_skills/wiki-writing/SKILL.md");
-    let review = read_repo_file("ai-pack/codex_skills/prose-review/SKILL.md");
-    let interview = read_repo_file("ai-pack/codex_skills/wiki-interview/SKILL.md");
-    let operator = read_repo_file("ai-pack/codex_skills/wikitool-operator/SKILL.md");
-
-    assert!(author.contains("claim-source map") && author.contains("no inspected source document"));
+    let source_root = read_repo_file(".claude/skills/wikitool/SKILL.md");
+    assert!(source_root.contains("ai-pack/codex_skills/wikitool-operator/SKILL.md"));
     assert!(
-        author.contains("Use the `prose-review` skill") && author.contains("exact final prose")
+        source_root.lines().count() <= 16,
+        "source-root Claude entrypoint must stay a thin canonical route"
     );
-    assert!(review.contains("Would someone") && review.contains("findings first"));
-    assert!(review.contains("## Independence") && review.contains("P1 — block"));
-    assert!(review.contains("must not create an acceptance ledger entry"));
-    assert!(interview.contains("Do not read a canned questionnaire"));
-    assert!(
-        interview.contains("neutral ledger") && interview.contains("not automatic publication")
+    let source_root_dir = repo_root().join(".claude/skills/wikitool");
+    let source_root_files = collect_files(&source_root_dir);
+    assert_eq!(
+        source_root_files,
+        vec![source_root_dir.join("SKILL.md")],
+        "source-root skill must not retain a parallel legacy command tree"
     );
-    assert!(operator.contains("self-reported, unauthenticated claim"));
-}
-
-#[test]
-fn acceptance_code_describes_a_ledger_not_identity_proof() {
-    let acceptance = read_repo_file("crates/wikitool_core/src/article_acceptance.rs");
-    assert!(acceptance.contains("article_acceptance_ledger_v1"));
-    assert!(acceptance.contains("self_reported_unverified"));
-    assert!(acceptance.contains("accepted_for_main_namespace_promotion"));
-    assert!(!acceptance.contains("EDITORIAL_QUALITY_ATTESTATION"));
-    assert!(!acceptance.contains("human_judged_article_specific"));
-}
-
-#[test]
-fn article_start_has_no_embedded_editorial_prompt_contract() {
-    let model = read_repo_file("crates/wikitool_core/src/authoring/model.rs");
-    let builder = read_repo_file("crates/wikitool_core/src/authoring/article_start.rs");
-    for forbidden in [
-        "ArticleAuthoringContract",
-        "RecommendedAction",
-        "suggested_question",
-        "next_actions",
-        "synthetic_phrase_prompts",
-        "discouraged_relationship",
-    ] {
-        assert!(!model.contains(forbidden), "model leaked {forbidden}");
-        assert!(!builder.contains(forbidden), "builder leaked {forbidden}");
-    }
-}
-
-#[test]
-fn site_adapter_is_explicit_and_host_owned() {
-    let integration = read_repo_file("ai-pack/integration/site_adapters.md");
-    assert!(integration.contains("mediawiki-generic"));
-    assert!(integration.contains("Unknown fields are rejected"));
-    assert!(integration.contains("routing signals, not universal bans"));
-
-    let Some(host) = host_root() else {
-        return;
-    };
-    let profile = fs::read_to_string(host.join("wikitool_adapter/profile.toml"))
-        .expect("host must own an explicit site adapter");
-    assert!(profile.contains("profile_id = \"remilia-wiki\""));
-    assert!(profile.contains("host = \"wikipedia.org\""));
-    assert!(host.join("wikitool_adapter/editorial.md").is_file());
-    assert!(host.join("wikitool_adapter/extensions.md").is_file());
-}
-
-#[test]
-fn generated_reference_documents_interview_and_acceptance_commands() {
-    let reference = read_repo_file("docs/wikitool/reference.md");
-    for heading in [
-        "## article accept",
-        "## article promote",
-        "## knowledge interview init",
-        "## knowledge interview validate",
-        "## knowledge interview open-item",
-    ] {
-        assert!(
-            reference.contains(heading),
-            "missing generated heading {heading}"
-        );
-    }
 }

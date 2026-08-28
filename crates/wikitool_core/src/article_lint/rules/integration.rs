@@ -5,8 +5,8 @@ use crate::article_lint::model::{ArticleLintIssue, ArticleLintSeverity};
 use crate::content_store::parsing::{extract_wikilinks, load_page_record};
 use crate::filesystem::Namespace;
 use crate::graph::{GraphFilter, GraphKind, build_graph, compute_scc};
-use crate::profile::ExtensionTagPolicy;
 use crate::runtime::ResolvedPaths;
+use crate::site::ExtensionTagPolicy;
 
 use super::IssueMatch;
 use super::common::line_has_short_description;

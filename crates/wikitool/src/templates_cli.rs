@@ -1,9 +1,9 @@
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use serde::Serialize;
-use wikitool_core::profile::{
+use wikitool_core::site::{
     TemplateCatalog, TemplateCatalogEntry, TemplateCatalogEntryLookup, find_template_catalog_entry,
-    load_or_build_site_profile, load_template_catalog, sync_template_catalog_with_profile,
+    load_site_adapter, load_template_catalog, sync_template_catalog_with_adapter,
 };
 
 use crate::briefs::{BriefCommand, BriefView, brief_command_owned, capped_strings, text_preview};
@@ -104,8 +104,8 @@ fn run_templates_catalog(runtime: &RuntimeOptions, args: TemplatesCatalogArgs) -
 
 fn run_templates_catalog_build(runtime: &RuntimeOptions, format: OutputFormat) -> Result<()> {
     let paths = resolve_runtime_paths(runtime)?;
-    let profile = load_or_build_site_profile(&paths)?;
-    let catalog = sync_template_catalog_with_profile(&paths, &profile)?;
+    let adapter = load_site_adapter(&paths)?;
+    let catalog = sync_template_catalog_with_adapter(&paths, &adapter)?;
 
     if format.is_json() {
         println!("{}", serde_json::to_string_pretty(&catalog)?);
@@ -214,16 +214,16 @@ fn run_templates_examples(runtime: &RuntimeOptions, args: TemplatesExamplesArgs)
 }
 
 fn load_or_sync_catalog(paths: &wikitool_core::runtime::ResolvedPaths) -> Result<TemplateCatalog> {
-    let profile = load_or_build_site_profile(paths)?;
-    if let Some(catalog) = load_template_catalog(paths, &profile.profile_id)? {
+    let adapter = load_site_adapter(paths)?;
+    if let Some(catalog) = load_template_catalog(paths, &adapter.adapter_id)? {
         return Ok(catalog);
     }
-    sync_template_catalog_with_profile(paths, &profile)
+    sync_template_catalog_with_adapter(paths, &adapter)
 }
 
 fn print_catalog_summary(catalog: &TemplateCatalog) {
     let summary = catalog.summary();
-    println!("profile_id: {}", summary.profile_id);
+    println!("site_adapter_id: {}", summary.site_adapter_id);
     println!("template_count: {}", summary.template_count);
     println!("templatedata_count: {}", summary.templatedata_count);
     println!("redirect_alias_count: {}", summary.redirect_alias_count);
@@ -236,11 +236,11 @@ fn print_catalog_summary(catalog: &TemplateCatalog) {
         }
     );
     println!(
-        "profile_templates: {}",
-        if summary.profile_template_titles.is_empty() {
+        "adapter_templates: {}",
+        if summary.adapter_template_titles.is_empty() {
             "<none>".to_string()
         } else {
-            summary.profile_template_titles.join(", ")
+            summary.adapter_template_titles.join(", ")
         }
     );
     println!("refreshed_at: {}", summary.refreshed_at);
@@ -542,7 +542,7 @@ fn build_template_brief(entry: &TemplateCatalogEntry) -> TemplateBrief<'_> {
             ]),
             brief_command_owned(vec![
                 "wikitool".to_string(),
-                "knowledge".to_string(),
+                "catalog".to_string(),
                 "inspect".to_string(),
                 "templates".to_string(),
                 entry.template_title.clone(),
@@ -564,7 +564,7 @@ fn build_template_brief(entry: &TemplateCatalogEntry) -> TemplateBrief<'_> {
 }
 
 fn parameter_card(
-    parameter: &wikitool_core::profile::TemplateCatalogParameter,
+    parameter: &wikitool_core::site::TemplateCatalogParameter,
 ) -> TemplateParameterCard<'_> {
     TemplateParameterCard {
         name: &parameter.name,

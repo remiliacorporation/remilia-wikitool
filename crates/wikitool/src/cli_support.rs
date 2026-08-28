@@ -4,12 +4,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result};
 use clap::ValueEnum;
+use wikitool_core::catalog::content_index::StoredIndexStats;
 use wikitool_core::config::{WikiConfig, load_config, wiki_target_warnings_for_config};
 use wikitool_core::filesystem::ScanStats;
-use wikitool_core::knowledge::content_index::StoredIndexStats;
-use wikitool_core::research::{ExportFormat, ExternalFetchFormat};
 use wikitool_core::runtime::{PathOverrides, ResolutionContext, ResolvedPaths, resolve_paths};
 use wikitool_core::schema::{DatabaseSchemaState, schema_state};
+use wikitool_core::site::resolve_docs_profile_with_config;
+use wikitool_core::source::{ExportFormat, ExternalFetchFormat};
 
 use crate::RuntimeOptions;
 
@@ -108,6 +109,7 @@ use std::path::PathBuf;
 #[cfg(feature = "maintainer")]
 use anyhow::bail;
 
+#[cfg(feature = "maintainer")]
 pub(crate) fn resolve_default_true_flag(
     enabled: bool,
     disabled: bool,
@@ -311,8 +313,6 @@ pub(crate) fn collapse_whitespace(value: &str) -> String {
 }
 
 pub(crate) fn resolve_runtime_paths(runtime: &RuntimeOptions) -> Result<ResolvedPaths> {
-    dotenvy::dotenv().ok();
-
     let context = ResolutionContext::from_process()?;
     let overrides = PathOverrides {
         project_root: runtime.project_root.clone(),
@@ -323,10 +323,18 @@ pub(crate) fn resolve_runtime_paths(runtime: &RuntimeOptions) -> Result<Resolved
     let initial = resolve_paths(&context, &overrides)?;
     let project_env = initial.project_root.join(".env");
     if project_env.exists() {
-        let _ = dotenvy::from_path_override(&project_env);
+        // The selected project owns its environment overlay. Searching upward
+        // from the process CWD can import a different repository's wiki target
+        // even when --project-root was explicit. Existing process variables
+        // remain the explicit, temporary override described by `config show`.
+        let _ = dotenvy::from_path(&project_env);
     }
 
-    resolve_paths(&context, &overrides)
+    let mut anchored_overrides = overrides;
+    anchored_overrides.project_root = Some(initial.project_root.clone());
+    let mut resolved = resolve_paths(&context, &anchored_overrides)?;
+    resolved.root_source = initial.root_source;
+    Ok(resolved)
 }
 
 pub(crate) fn resolve_runtime_with_config(
@@ -337,6 +345,15 @@ pub(crate) fn resolve_runtime_with_config(
         .with_context(|| format!("failed to load {}", normalize_path(&paths.config_path)))?;
     warn_wiki_target_overrides(&config);
     Ok((paths, config))
+}
+
+pub(crate) fn resolve_runtime_with_docs_profile(
+    runtime: &RuntimeOptions,
+    requested: Option<&str>,
+) -> Result<(ResolvedPaths, WikiConfig, String)> {
+    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let docs_profile = resolve_docs_profile_with_config(&paths, &config, requested)?;
+    Ok((paths, config, docs_profile))
 }
 
 fn warn_wiki_target_overrides(config: &WikiConfig) {

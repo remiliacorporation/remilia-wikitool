@@ -1,6 +1,5 @@
-schema_version = "site_adapter_v1"
-profile_id = "example-wiki"
-base_profile_id = "mediawiki-generic"
+schema_version = "site_adapter_v2"
+adapter_id = "example-wiki"
 docs_profile = "mw-1.44-authoring"
 guidance_documents = []
 
@@ -45,6 +44,7 @@ preferred_categories = []
 
 [lint]
 forbid_curly_quotes = true
+citation_needed = "error"
 proper_nouns = ["Webring"]
 forbid_placeholder_fragments = [
   "INSERT_SOURCE_URL",

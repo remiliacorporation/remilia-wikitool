@@ -43,7 +43,7 @@ fn test_paths(project_root: &Path) -> ResolvedPaths {
     fs::create_dir_all(&wiki_content_dir).expect("wiki content dir");
     fs::create_dir_all(&templates_dir).expect("templates dir");
     fs::create_dir_all(&data_dir).expect("data dir");
-    ResolvedPaths {
+    let paths = ResolvedPaths {
         project_root: project_root.to_path_buf(),
         wiki_content_dir,
         templates_dir,
@@ -55,7 +55,13 @@ fn test_paths(project_root: &Path) -> ResolvedPaths {
         root_source: ValueSource::Default,
         data_source: ValueSource::Default,
         config_source: ValueSource::Default,
-    }
+    };
+    fs::write(
+        &paths.config_path,
+        "[wiki]\napi_url = \"https://wiki-a.example/api.php\"\n",
+    )
+    .expect("test config");
+    paths
 }
 
 #[test]
@@ -179,7 +185,7 @@ fn article_promote_rejects_draft_without_human_acceptance() {
     assert!(
         error
             .to_string()
-            .contains("acceptance ledger entry is missing")
+            .contains("transactional acceptance authorization is missing")
     );
 }
 

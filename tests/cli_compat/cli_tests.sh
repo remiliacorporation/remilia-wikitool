@@ -8,7 +8,7 @@
 set -euo pipefail
 
 TIER="${TIER:-offline}"
-KNOWLEDGE_DOCS_PROFILE="${KNOWLEDGE_DOCS_PROFILE:-mw-1.44-authoring}"
+CATALOG_DOCS_PROFILE="${CATALOG_DOCS_PROFILE:-mw-1.44-authoring}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
@@ -136,8 +136,8 @@ setup_project() {
 write_site_adapter() {
     local root="$1"
     mkdir -p "$root/site-adapter"
-    cp "$REPO_ROOT/crates/wikitool_core/testdata/site-adapter.toml" "$root/site-adapter/profile.toml"
-    sed -i.bak 's|# path = "site-adapter/profile.toml"|path = "site-adapter/profile.toml"|' "$root/.wikitool/config.toml"
+    cp "$REPO_ROOT/crates/wikitool_core/testdata/site-adapter.toml" "$root/site-adapter/site-adapter.toml"
+    sed -i.bak 's|# path = "site-adapter/site-adapter.toml"|path = "site-adapter/site-adapter.toml"|' "$root/.wikitool/config.toml"
     rm -f "$root/.wikitool/config.toml.bak"
 }
 
@@ -249,10 +249,10 @@ fi
 
 ADAPTER_PROJ=$(setup_project init-adapter)
 mkdir -p "$ADAPTER_PROJ/site-adapter"
-cp "$REPO_ROOT/crates/wikitool_core/testdata/site-adapter.toml" "$ADAPTER_PROJ/site-adapter/profile.toml"
-OUTPUT=$(wt "$ADAPTER_PROJ" init --templates --adapter-path site-adapter/profile.toml 2>&1)
-if echo "$OUTPUT" | grep -q 'persisted_site_adapter: site-adapter/profile.toml' \
-    && grep -q 'path = "site-adapter/profile.toml"' "$ADAPTER_PROJ/.wikitool/config.toml"; then
+cp "$REPO_ROOT/crates/wikitool_core/testdata/site-adapter.toml" "$ADAPTER_PROJ/site-adapter/site-adapter.toml"
+OUTPUT=$(wt "$ADAPTER_PROJ" init --templates --adapter-path site-adapter/site-adapter.toml 2>&1)
+if echo "$OUTPUT" | grep -q 'persisted_site_adapter: site-adapter/site-adapter.toml' \
+    && grep -q 'path = "site-adapter/site-adapter.toml"' "$ADAPTER_PROJ/.wikitool/config.toml"; then
     pass "init validates and persists an explicit site adapter"
 else
     fail "init validates and persists an explicit site adapter (got: $OUTPUT)"
@@ -293,9 +293,9 @@ else
     fail "status shows expected fields (got: $OUTPUT)"
 fi
 
-# --- knowledge status (pre-build) ---
-section "knowledge status (pre-build)"
-PROJ=$(setup_project knowledge-build)
+# --- catalog status (pre-build) ---
+section "catalog status (pre-build)"
+PROJ=$(setup_project catalog-build)
 wt "$PROJ" init > /dev/null 2>&1
 mkdir -p "$PROJ/wiki_content/Main"
 cat > "$PROJ/wiki_content/Main/Alpha.wiki" << 'WIKIEOF'
@@ -322,29 +322,29 @@ cat > "$PROJ/wiki_content/Main/Beta.wiki" << 'WIKIEOF'
 
 [[Category:Test]]
 WIKIEOF
-OUTPUT=$(wt "$PROJ" knowledge status --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-if echo "$OUTPUT" | grep -q "knowledge.readiness: not_ready" && echo "$OUTPUT" | grep -q "knowledge.degradations: content_index_missing, docs_profile_missing"; then
-    pass "knowledge status reports missing content/docs readiness before build"
+OUTPUT=$(wt "$PROJ" catalog status --docs-profile "$CATALOG_DOCS_PROFILE" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "catalog.readiness: not_ready" && echo "$OUTPUT" | grep -q "catalog.degradations: content_index_missing, docs_profile_missing"; then
+    pass "catalog status reports missing content/docs readiness before build"
 else
-    fail "knowledge status reports missing content/docs readiness before build (got: $OUTPUT)"
+    fail "catalog status reports missing content/docs readiness before build (got: $OUTPUT)"
 fi
 
-# --- knowledge build ---
-section "knowledge build"
-OUTPUT=$(wt "$PROJ" knowledge build 2>&1)
-if echo "$OUTPUT" | grep -q "rebuild.inserted_rows: 2" && echo "$OUTPUT" | grep -q "knowledge.readiness: content_ready"; then
-    pass "knowledge build indexes pages and reports content readiness"
+# --- catalog build ---
+section "catalog build"
+OUTPUT=$(wt "$PROJ" catalog build 2>&1)
+if echo "$OUTPUT" | grep -q "rebuild.inserted_rows: 2" && echo "$OUTPUT" | grep -q "catalog.readiness: content_ready"; then
+    pass "catalog build indexes pages and reports content readiness"
 else
-    fail "knowledge build indexes pages and reports content readiness (got: $OUTPUT)"
+    fail "catalog build indexes pages and reports content readiness (got: $OUTPUT)"
 fi
 
-# --- knowledge status ---
-section "knowledge status"
-OUTPUT=$(wt "$PROJ" knowledge status --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-if echo "$OUTPUT" | grep -q "knowledge.docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" && echo "$OUTPUT" | grep -q "knowledge.readiness: content_ready" && echo "$OUTPUT" | grep -q "knowledge.degradations: docs_profile_missing"; then
-    pass "knowledge status reports content readiness and docs degradation after build"
+# --- catalog status ---
+section "catalog status"
+OUTPUT=$(wt "$PROJ" catalog status --docs-profile "$CATALOG_DOCS_PROFILE" 2>&1 || true)
+if echo "$OUTPUT" | grep -q "catalog.docs_profile_requested: $CATALOG_DOCS_PROFILE" && echo "$OUTPUT" | grep -q "catalog.readiness: content_ready" && echo "$OUTPUT" | grep -q "catalog.degradations: docs_profile_missing"; then
+    pass "catalog status reports content readiness and docs degradation after build"
 else
-    fail "knowledge status reports content readiness and docs degradation after build (got: $OUTPUT)"
+    fail "catalog status reports content readiness and docs degradation after build (got: $OUTPUT)"
 fi
 
 # --- article lint/fix ---
@@ -387,65 +387,65 @@ section "draft review"
 mkdir -p "$ARTICLE_PROJ/.wikitool/drafts"
 cp "$ARTICLE_PROJ/wiki_content/Main/Article_Draft.wiki" "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki"
 OUTPUT=$(wt "$ARTICLE_PROJ" review --draft-path "$ARTICLE_PROJ/.wikitool/drafts/Article_Draft.wiki" --title "Article Draft" --format json --view brief --summary "Draft review" 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"mode": "draft"' && echo "$OUTPUT" | grep -q '"skipped_reason": "draft review skips push dry-run' && echo "$OUTPUT" | grep -q '"kind": "promote_draft"'; then
-    pass "draft review emits draft mode, skipped push dry-run, and promotion next step"
+if echo "$OUTPUT" | grep -q '"mode": "draft"' && echo "$OUTPUT" | grep -q '"skipped_reason": "draft review skips the push preview' && echo "$OUTPUT" | grep -q '"kind": "promote_draft"'; then
+    pass "draft review emits draft mode, skipped push preview, and promotion next step"
 else
-    fail "draft review emits draft mode, skipped push dry-run, and promotion next step (got: $OUTPUT)"
+    fail "draft review emits draft mode, skipped push preview, and promotion next step (got: $OUTPUT)"
 fi
 
-# --- knowledge inspect stats ---
-section "knowledge inspect stats"
-OUTPUT=$(wt "$PROJ" knowledge inspect stats 2>&1)
+# --- catalog inspect stats ---
+section "catalog inspect stats"
+OUTPUT=$(wt "$PROJ" catalog inspect stats 2>&1)
 if echo "$OUTPUT" | grep -qi "indexed\|rows\|pages"; then
-    pass "knowledge inspect stats reports data"
+    pass "catalog inspect stats reports data"
 else
-    fail "knowledge inspect stats reports data (got: $OUTPUT)"
+    fail "catalog inspect stats reports data (got: $OUTPUT)"
 fi
 
-# --- knowledge inspect chunks ---
-section "knowledge inspect chunks"
-OUTPUT=$(wt "$PROJ" knowledge inspect chunks "Alpha" --query "Alpha" --limit 2 --token-budget 120 2>&1 || true)
+# --- catalog inspect chunks ---
+section "catalog inspect chunks"
+OUTPUT=$(wt "$PROJ" catalog inspect chunks "Alpha" --query "Alpha" --limit 2 --token-budget 120 2>&1 || true)
 if echo "$OUTPUT" | grep -q "chunks.count:" && echo "$OUTPUT" | grep -q "chunks.retrieval_mode:"; then
-    pass "knowledge inspect chunks returns chunked retrieval output"
+    pass "catalog inspect chunks returns chunked retrieval output"
 else
-    fail "knowledge inspect chunks returns chunked retrieval output (got: $OUTPUT)"
+    fail "catalog inspect chunks returns chunked retrieval output (got: $OUTPUT)"
 fi
 
-# --- knowledge inspect chunks (across-pages json) ---
-section "knowledge inspect chunks across-pages json"
-OUTPUT=$(wt "$PROJ" knowledge inspect chunks --across-pages --query "article" --limit 3 --max-pages 2 --token-budget 140 --format json --view brief 2>&1 || true)
+# --- catalog inspect chunks (across-pages json) ---
+section "catalog inspect chunks across-pages json"
+OUTPUT=$(wt "$PROJ" catalog inspect chunks --across-pages --query "article" --limit 3 --max-pages 2 --token-budget 140 --format json --view brief 2>&1 || true)
 if echo "$OUTPUT" | grep -q '"schema_version": "wikitool_brief_v1"' && echo "$OUTPUT" | grep -q '"retrieval_mode"' && echo "$OUTPUT" | grep -q '"source_page_count"'; then
-    pass "knowledge inspect chunks across-pages emits JSON report"
+    pass "catalog inspect chunks across-pages emits JSON report"
 else
-    fail "knowledge inspect chunks across-pages emits JSON report (got: $OUTPUT)"
+    fail "catalog inspect chunks across-pages emits JSON report (got: $OUTPUT)"
 fi
 
-# --- knowledge inspect backlinks ---
-section "knowledge inspect backlinks"
-OUTPUT=$(wt "$PROJ" knowledge inspect backlinks "Alpha" 2>&1)
+# --- catalog inspect backlinks ---
+section "catalog inspect backlinks"
+OUTPUT=$(wt "$PROJ" catalog inspect backlinks "Alpha" 2>&1)
 if echo "$OUTPUT" | grep -Eq "backlink: Beta|backlinks.source: Beta"; then
-    pass "knowledge inspect backlinks finds linking article"
+    pass "catalog inspect backlinks finds linking article"
 else
-    fail "knowledge inspect backlinks finds linking article (got: $OUTPUT)"
+    fail "catalog inspect backlinks finds linking article (got: $OUTPUT)"
 fi
 
-# --- knowledge inspect orphans ---
-section "knowledge inspect orphans"
+# --- catalog inspect orphans ---
+section "catalog inspect orphans"
 # Alpha is linked by Beta, but nothing links to Beta -> Beta is orphan
-OUTPUT=$(wt "$PROJ" knowledge inspect orphans 2>&1 || true)
+OUTPUT=$(wt "$PROJ" catalog inspect orphans 2>&1 || true)
 if echo "$OUTPUT" | grep -qi "orphan\|Beta\|0 orphans\|no orphans"; then
-    pass "knowledge inspect orphans detects or reports"
+    pass "catalog inspect orphans detects or reports"
 else
-    fail "knowledge inspect orphans detects or reports (got: $OUTPUT)"
+    fail "catalog inspect orphans detects or reports (got: $OUTPUT)"
 fi
 
-# --- knowledge inspect empty-categories ---
-section "knowledge inspect empty-categories"
-OUTPUT=$(wt "$PROJ" knowledge inspect empty-categories 2>&1 || true)
+# --- catalog inspect empty-categories ---
+section "catalog inspect empty-categories"
+OUTPUT=$(wt "$PROJ" catalog inspect empty-categories 2>&1 || true)
 if [ $? -eq 0 ] || echo "$OUTPUT" | grep -qi "category\|empty\|0"; then
-    pass "knowledge inspect empty-categories runs"
+    pass "catalog inspect empty-categories runs"
 else
-    fail "knowledge inspect empty-categories runs (got: $OUTPUT)"
+    fail "catalog inspect empty-categories runs (got: $OUTPUT)"
 fi
 
 # --- validate ---
@@ -472,17 +472,17 @@ fi
 # --- db stats ---
 section "db stats"
 OUTPUT=$(wt "$PROJ" db stats 2>&1)
-if echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" && echo "$OUTPUT" | grep -q "readiness: content_ready" && echo "$OUTPUT" | grep -q "knowledge_generation:"; then
-    pass "db stats includes knowledge readiness metadata"
+if echo "$OUTPUT" | grep -q "docs_profile_requested: $CATALOG_DOCS_PROFILE" && echo "$OUTPUT" | grep -q "readiness: content_ready" && echo "$OUTPUT" | grep -q "catalog_generation:"; then
+    pass "db stats includes catalog readiness metadata"
 else
-    fail "db stats includes knowledge readiness metadata (got: $OUTPUT)"
+    fail "db stats includes catalog readiness metadata (got: $OUTPUT)"
 fi
 
 # --- db reset ---
 section "db reset"
 PROJ_RESET=$(setup_project reset)
 wt "$PROJ_RESET" init > /dev/null 2>&1
-wt "$PROJ_RESET" knowledge build > /dev/null 2>&1
+wt "$PROJ_RESET" catalog build > /dev/null 2>&1
 OUTPUT=$(wt "$PROJ_RESET" db reset --yes 2>&1)
 if echo "$OUTPUT" | grep -q "db reset" && echo "$OUTPUT" | grep -q "deleted: yes"; then
     pass "db reset deletes local db"
@@ -499,7 +499,7 @@ fi
 
 # --- retired top-level primitives ---
 section "retired top-level primitives"
-for retired in context search fetch seo net; do
+for retired in context search fetch seo net workflow purge upload move protect undelete; do
     OUTPUT=$(wt "$PROJ" "$retired" 2>&1 || true)
     if echo "$OUTPUT" | grep -q "unrecognized subcommand"; then
         pass "retired command is unavailable: $retired"
@@ -508,17 +508,17 @@ for retired in context search fetch seo net; do
     fi
 done
 
-# --- retired knowledge pack ---
-section "retired knowledge pack"
-OUTPUT=$(wt "$PROJ" knowledge pack "Alpha" --format json 2>&1 || true)
+# --- retired knowledge namespace ---
+section "retired knowledge namespace"
+OUTPUT=$(wt "$PROJ" knowledge 2>&1 || true)
 if echo "$OUTPUT" | grep -q "unrecognized subcommand"; then
-    pass "retired knowledge pack command is unavailable"
+    pass "retired knowledge namespace is unavailable"
 else
-    fail "retired knowledge pack command is unavailable (got: $OUTPUT)"
+    fail "retired knowledge namespace is unavailable (got: $OUTPUT)"
 fi
 
-# --- knowledge inspect templates ---
-section "knowledge inspect templates"
+# --- catalog inspect templates ---
+section "catalog inspect templates"
 PROJ_TEMPLATES=$(setup_project index-templates)
 wt "$PROJ_TEMPLATES" init --templates > /dev/null 2>&1
 mkdir -p "$PROJ_TEMPLATES/wiki_content/Main"
@@ -548,18 +548,18 @@ WIKIEOF
 cat > "$PROJ_TEMPLATES/templates/infobox/_redirects/Template_Infobox_human.wiki" << 'WIKIEOF'
 #REDIRECT [[Template:Infobox person]]
 WIKIEOF
-wt "$PROJ_TEMPLATES" knowledge build > /dev/null 2>&1
-OUTPUT=$(wt "$PROJ_TEMPLATES" knowledge inspect templates --limit 5 2>&1 || true)
+wt "$PROJ_TEMPLATES" catalog build > /dev/null 2>&1
+OUTPUT=$(wt "$PROJ_TEMPLATES" catalog inspect templates --limit 5 2>&1 || true)
 if echo "$OUTPUT" | grep -q "Template:Infobox person" && echo "$OUTPUT" | grep -q "implementations="; then
-    pass "knowledge inspect templates catalogs active template usage"
+    pass "catalog inspect templates catalogs active template usage"
 else
-    fail "knowledge inspect templates catalogs active template usage (got: $OUTPUT)"
+    fail "catalog inspect templates catalogs active template usage (got: $OUTPUT)"
 fi
-OUTPUT=$(wt "$PROJ_TEMPLATES" knowledge inspect templates "Infobox person" 2>&1 || true)
+OUTPUT=$(wt "$PROJ_TEMPLATES" catalog inspect templates "Infobox person" 2>&1 || true)
 if echo "$OUTPUT" | grep -q "template.implementation_pages.count:" && echo "$OUTPUT" | grep -q "role=module" && echo "$OUTPUT" | grep -q "role=documentation"; then
-    pass "knowledge inspect templates returns implementation reference for a template"
+    pass "catalog inspect templates returns implementation reference for a template"
 else
-    fail "knowledge inspect templates returns implementation reference for a template (got: $OUTPUT)"
+    fail "catalog inspect templates returns implementation reference for a template (got: $OUTPUT)"
 fi
 
 # --- import cargo (CSV) ---
@@ -688,22 +688,22 @@ else
     fail "docs remove processes request (got: $OUTPUT)"
 fi
 
-# --- delete --dry-run ---
-section "delete --dry-run"
-# Create a file, dry-run delete, verify still exists
+# --- delete plan ---
+section "delete plan"
+# Create a file, plan deletion without --apply, and verify it still exists.
 mkdir -p "$PROJ/wiki_content/Main"
 echo "test content" > "$PROJ/wiki_content/Main/Delete_Test.wiki"
-OUTPUT=$(wt "$PROJ" delete "Delete Test" --dry-run 2>&1 || true)
-if [ -f "$PROJ/wiki_content/Main/Delete_Test.wiki" ]; then
-    pass "delete --dry-run does not remove file"
+OUTPUT=$(wt "$PROJ" delete "Delete Test" --reason "test plan" --format json 2>&1 || true)
+if [ -f "$PROJ/wiki_content/Main/Delete_Test.wiki" ] && echo "$OUTPUT" | grep -q '"mode": "plan"'; then
+    pass "delete defaults to a non-mutating plan"
 else
-    fail "delete --dry-run removed the file!"
+    fail "delete defaults to a non-mutating plan (got: $OUTPUT)"
 fi
 
-# --- knowledge interview init/validate ---
-section "knowledge interview"
-OUTPUT=$(wt "$PROJ" knowledge interview init "Interview Smoke" --no-scout --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"schema_version": "knowledge_interview_init_v2"' \
+# --- interview init/validate ---
+section "interview"
+OUTPUT=$(wt "$PROJ" interview init "Interview Smoke" --no-scout --format json 2>&1 || true)
+if echo "$OUTPUT" | grep -q '"schema_version": "wiki_interview_init_v1"' \
     && echo "$OUTPUT" | grep -q '"scout_included": false' \
     && ! echo "$OUTPUT" | grep -q '"question_agenda"'; then
     pass "interview init creates a neutral blank ledger without embedded prompts"
@@ -711,7 +711,7 @@ else
     fail "interview init creates a neutral blank ledger without embedded prompts (got: ${OUTPUT:0:300})"
 fi
 IB_PATH=$(echo "$OUTPUT" | grep -o '"brief_path": "[^"]*"' | cut -d'"' -f4)
-OUTPUT=$(wt "$PROJ" knowledge interview validate "$IB_PATH" --format json 2>&1 || true)
+OUTPUT=$(wt "$PROJ" interview validate "$IB_PATH" --format json 2>&1 || true)
 if echo "$OUTPUT" | grep -q '"status": "warning"' \
     && echo "$OUTPUT" | grep -q '"sections_unfilled": \[' \
     && echo "$OUTPUT" | grep -q '"Article Object"'; then
@@ -758,41 +758,18 @@ else
     fi
 fi
 
-# --- protect --dry-run ---
-section "protect --dry-run"
-OUTPUT=$(wt "$PROJ" protect "Delete Test" --protection edit=sysop --protection move=sysop --dry-run --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"dry_run": true' && echo "$OUTPUT" | grep -q '"edit=sysop"'; then
-    pass "protect --dry-run reports planned protections"
-else
-    fail "protect --dry-run reports planned protections (got: $OUTPUT)"
-fi
-OUTPUT=$(wt "$PROJ" protect "Delete Test" --protection "editsysop" --dry-run 2>&1 || true)
-if echo "$OUTPUT" | grep -q "TYPE=LEVEL"; then
-    pass "protect rejects malformed --protection pair"
-else
-    fail "protect rejects malformed --protection pair (got: $OUTPUT)"
-fi
-
-# --- undelete --dry-run ---
-section "undelete --dry-run"
-OUTPUT=$(wt "$PROJ" undelete "Delete Test" --reason "restore" --dry-run --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"dry_run": true' && echo "$OUTPUT" | grep -q '"Delete Test"'; then
-    pass "undelete --dry-run reports planned restore"
-else
-    fail "undelete --dry-run reports planned restore (got: $OUTPUT)"
-fi
-
-# --- push --dry-run ---
-section "push --dry-run"
+# --- push preview ---
+section "push preview"
 if [ "$TIER" != "live" ]; then
-    skip "push --dry-run remote preflight requires live API target"
+    skip "push preview remote preflight requires live API target"
 else
     write_live_env "$PROJ"
-    OUTPUT=$(wt "$PROJ" push --dry-run --summary "test push" 2>&1 || true)
-    if echo "$OUTPUT" | grep -qi "dry.run\|push\|no changes\|would\|skip\|sync"; then
-        pass "push --dry-run reports changes"
+    OUTPUT=$(wt "$PROJ" push --all --summary "test push" --format json 2>&1 || true)
+    if echo "$OUTPUT" | grep -q '"mode": "preview"' \
+        && echo "$OUTPUT" | grep -q '"plan_id"'; then
+        pass "push preview reports a bound plan"
     else
-        fail "push --dry-run reports changes (got: $OUTPUT)"
+        fail "push preview reports a bound plan (got: $OUTPUT)"
     fi
 fi
 
@@ -871,7 +848,7 @@ fi
 
 if [ "$TIER" = "live" ]; then
     echo ""
-    echo "=== Live tier (read-only API + dry-run writes) ==="
+    echo "=== Live tier (read-only API + mutation previews) ==="
 
     PROJ_LIVE=$(setup_project live)
     wt "$PROJ_LIVE" init > /dev/null 2>&1
@@ -886,31 +863,31 @@ if [ "$TIER" = "live" ]; then
         fail "pull fetches from live wiki (got: ${OUTPUT:0:300})"
     fi
 
-    # --- research wiki-search ---
-    section "research wiki-search (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" research wiki-search "Remilia" 2>&1 || true)
+    # --- source wiki-search ---
+    section "source wiki-search (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" source wiki-search "Remilia" 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "Remilia\|result\|title"; then
-        pass "research wiki-search finds known page"
+        pass "source wiki-search finds known page"
     else
-        fail "research wiki-search finds known page (got: ${OUTPUT:0:300})"
+        fail "source wiki-search finds known page (got: ${OUTPUT:0:300})"
     fi
 
-    # --- research fetch ---
-    section "research fetch mediawiki source (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" research fetch "https://www.mediawiki.org/wiki/MediaWiki" --format wikitext --output json 2>&1 || true)
+    # --- source fetch ---
+    section "source fetch mediawiki source (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" source fetch "https://www.mediawiki.org/wiki/MediaWiki" --format wikitext --output json 2>&1 || true)
     if echo "$OUTPUT" | grep -q '"status": "ok"' && echo "$OUTPUT" | grep -qi "MediaWiki"; then
-        pass "research fetch retrieves page content"
+        pass "source fetch retrieves page content"
     else
-        fail "research fetch retrieves page content (got: ${OUTPUT:0:300})"
+        fail "source fetch retrieves page content (got: ${OUTPUT:0:300})"
     fi
 
-    # --- research fetch non-short URL ---
-    section "research fetch non-short mediawiki url (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" research fetch "https://wiki.remilia.org/index.php?title=Main_Page" --format rendered-html --output json 2>&1 || true)
+    # --- source fetch non-short URL ---
+    section "source fetch non-short mediawiki url (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" source fetch "https://wiki.remilia.org/index.php?title=Main_Page" --format rendered-html --output json 2>&1 || true)
     if echo "$OUTPUT" | grep -q '"status": "ok"' && echo "$OUTPUT" | grep -qi "Main Page"; then
-        pass "research fetch accepts non-short MediaWiki URLs"
+        pass "source fetch accepts non-short MediaWiki URLs"
     else
-        fail "research fetch accepts non-short MediaWiki URLs (got: ${OUTPUT:0:300})"
+        fail "source fetch accepts non-short MediaWiki URLs (got: ${OUTPUT:0:300})"
     fi
 
     # --- wiki cargo count ---
@@ -933,47 +910,17 @@ if [ "$TIER" = "live" ]; then
         fail "export saves page locally (got: ${OUTPUT:0:300})"
     fi
 
-    # --- workflow session-refresh (live) ---
-    section "workflow session-refresh (live)"
-    PROJ_SESSION_REFRESH_LIVE=$(setup_project workflow-session-refresh-live)
-    write_live_env "$PROJ_SESSION_REFRESH_LIVE"
-    OUTPUT=$(wt "$PROJ_SESSION_REFRESH_LIVE" workflow session-refresh --no-pull --docs-profile "$KNOWLEDGE_DOCS_PROFILE" 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "^knowledge warm$" \
-        && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
-        && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
-            || echo "$OUTPUT" | grep -q "docs.failures.count: "; }; then
-        pass "workflow session-refresh invokes knowledge warm"
-    else
-        fail "workflow session-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
-    fi
-
-    # --- workflow full-refresh (live) ---
-    section "workflow full-refresh (live)"
-    PROJ_FULL_REFRESH_LIVE=$(setup_project workflow-full-refresh-live)
-    write_live_env "$PROJ_FULL_REFRESH_LIVE"
-    FULL_REFRESH_LOG="$TMPDIR_ROOT/workflow-full-refresh-live.log"
-    wt "$PROJ_FULL_REFRESH_LIVE" workflow full-refresh --yes --docs-profile "$KNOWLEDGE_DOCS_PROFILE" > "$FULL_REFRESH_LOG" 2>&1 || true
-    OUTPUT=$(tail -n 400 "$FULL_REFRESH_LOG")
-    if grep -q "^knowledge warm$" "$FULL_REFRESH_LOG" \
-        && grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" "$FULL_REFRESH_LOG" \
-        && { grep -q "docs.imported_corpora:" "$FULL_REFRESH_LOG" \
-            || grep -q "docs.failures.count: " "$FULL_REFRESH_LOG"; }; then
-        pass "workflow full-refresh invokes knowledge warm"
-    else
-        fail "workflow full-refresh invokes knowledge warm (got: ${OUTPUT:0:300})"
-    fi
-
-    # --- knowledge warm (live) ---
-    section "knowledge warm (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" knowledge warm --docs-profile "$KNOWLEDGE_DOCS_PROFILE" --docs-mode missing 2>&1 || true)
-    if echo "$OUTPUT" | grep -q "^knowledge warm$" \
-        && echo "$OUTPUT" | grep -q "docs_profile_requested: $KNOWLEDGE_DOCS_PROFILE" \
+    # --- catalog warm (live) ---
+    section "catalog warm (live)"
+    OUTPUT=$(wt "$PROJ_LIVE" catalog warm --docs-profile "$CATALOG_DOCS_PROFILE" --docs-mode missing 2>&1 || true)
+    if echo "$OUTPUT" | grep -q "^catalog warm$" \
+        && echo "$OUTPUT" | grep -q "docs_profile_requested: $CATALOG_DOCS_PROFILE" \
         && { echo "$OUTPUT" | grep -q "docs.imported_corpora:" \
             || echo "$OUTPUT" | grep -q "docs.failures.count: "; } \
-        && echo "$OUTPUT" | grep -q "knowledge.readiness:"; then
-        pass "knowledge warm reports content/docs readiness and degradation state"
+        && echo "$OUTPUT" | grep -q "catalog.readiness:"; then
+        pass "catalog warm reports content/docs readiness and degradation state"
     else
-        fail "knowledge warm reports content/docs readiness and degradation state (got: ${OUTPUT:0:300})"
+        fail "catalog warm reports content/docs readiness and degradation state (got: ${OUTPUT:0:300})"
     fi
 
     # --- docs import-technical (live) ---
@@ -989,7 +936,7 @@ if [ "$TIER" = "live" ]; then
 
     # --- docs context (live) ---
     section "docs context (live)"
-    OUTPUT=$(wt "$PROJ_LIVE" docs context "parser function" --profile "$KNOWLEDGE_DOCS_PROFILE" --format text 2>&1 || true)
+    OUTPUT=$(wt "$PROJ_LIVE" docs context "parser function" --profile "$CATALOG_DOCS_PROFILE" --format text 2>&1 || true)
     if echo "$OUTPUT" | grep -qi "docs context\|pages.count:\|symbols.count:"; then
         pass "docs context returns live retrieval bundle"
     else

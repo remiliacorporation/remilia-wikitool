@@ -2,9 +2,7 @@ use anyhow::{Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
-use wikitool_core::mw::{
-    MediaWikiClient, RenderCheckOptions, RenderCheckReport, render_check_page,
-};
+use wikitool_core::mw::{RenderCheckOptions, RenderCheckReport, render_check_page};
 
 use crate::RuntimeOptions;
 use crate::briefs::{BriefCommand, brief_command_owned};
@@ -47,7 +45,7 @@ pub(super) fn run_wiki_render_check(
     args: WikiRenderCheckArgs,
 ) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let mut client = MediaWikiClient::from_config(&config)?;
+    let mut client = wikitool_core::mw::client_from_wikitool_config(&config)?;
     let report = render_check_page(
         &mut client,
         &RenderCheckOptions {

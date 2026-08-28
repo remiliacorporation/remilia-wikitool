@@ -130,6 +130,7 @@ fn build_config_show(paths: &ResolvedPaths, config: &WikiConfig) -> Result<Confi
         },
         notes: vec![
             "project config is the durable wiki target; WIKITOOL_* env vars are temporary overrides",
+            "only the selected project root's .env is loaded; ancestor .env files are ignored and existing process variables take precedence",
             "bare WIKI_* env vars are not read; target overrides are WIKITOOL_WIKI_URL, WIKITOOL_WIKI_API_URL, WIKITOOL_USER_AGENT, and WIKITOOL_ARTICLE_PATH",
             "push authentication reads WIKITOOL_BOT_USER and WIKITOOL_BOT_PASS from the environment only; they are never written to config",
             "authoring and lint policy is generic unless adapter.path names an explicit project-owned site adapter",

@@ -6,7 +6,7 @@ Public agent companion for general MediaWiki work with Wikitool.
 
 | Layer | Owns |
 |---|---|
-| Wikitool binary | MediaWiki transport, capability discovery, parsing, local knowledge artifacts, deterministic lint/fix, revision CAS, atomic writes, sync receipts, acceptance ledger |
+| Wikitool binary | MediaWiki transport, capability discovery, parsing, local catalog/context artifacts, deterministic lint/fix, revision CAS, atomic writes, sync receipts, transactional publication-acceptance store |
 | Agent skills | research-to-claim reasoning, article prose, source fidelity, due weight, BLP/sensitive review, reader value, adaptive interviews |
 | Project site adapter | target templates, citation forms, source-review signals, categories, extensions, mechanical style, supplemental editorial guidance |
 | Human editor | publication intent, private context, disputed judgments, and acceptance of the exact final prose |

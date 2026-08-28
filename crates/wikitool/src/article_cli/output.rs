@@ -19,7 +19,7 @@ pub(super) fn print_report(report: &ArticleLintReport) {
     println!("relative_path: {}", report.relative_path);
     println!("title: {}", report.title);
     println!("namespace: {}", report.namespace);
-    println!("profile_id: {}", report.profile_id);
+    println!("site_adapter_id: {}", report.site_adapter_id);
     println!(
         "capabilities_loaded: {}",
         flag(report.resources.capabilities_loaded)
@@ -61,7 +61,7 @@ pub(super) fn print_fix_result(result: &ArticleFixResult) {
     println!("relative_path: {}", result.relative_path);
     println!("title: {}", result.title);
     println!("namespace: {}", result.namespace);
-    println!("profile_id: {}", result.profile_id);
+    println!("site_adapter_id: {}", result.site_adapter_id);
     println!("apply_mode: {}", result.apply_mode);
     println!("changed: {}", flag(result.changed));
     println!("applied_fix_count: {}", result.applied_fix_count);

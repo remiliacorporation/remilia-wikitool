@@ -38,6 +38,6 @@ The acceptance handoff must make visible:
 - which passages changed since the human's material;
 - source limitations and unresolved holds;
 - sensitive claims and their sources;
-- the fact that any subsequent prose change invalidates the ledger entry.
+- the fact that any subsequent prose change invalidates the publication authorization.
 
 The acceptance CLI records a self-reported editor claim. It does not authenticate the person and cannot prevent an agent from lying; workflow policy and human practice carry that boundary.

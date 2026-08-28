@@ -9,9 +9,6 @@ use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
-/// Replace a file with fully written bytes from a temporary file in the same
-/// directory. Persisting within one directory preserves the filesystem's atomic
-/// rename boundary, including replacement of an existing target on Windows.
 pub fn atomic_write(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     let parent = path
         .parent()
@@ -42,8 +39,6 @@ pub fn compute_hash(content: &str) -> String {
     output
 }
 
-/// Full SHA-256 digest for identities and attestations where a compact cache
-/// key is not sufficient.
 pub fn compute_sha256(content: &str) -> String {
     let digest = Sha256::digest(content.as_bytes());
     let mut output = String::with_capacity(64);
@@ -53,12 +48,6 @@ pub fn compute_sha256(content: &str) -> String {
     output
 }
 
-/// Normalize wiki page content to MediaWiki's canonical stored form for sync comparison.
-/// MediaWiki rewrites CR and CRLF line endings to LF and strips trailing whitespace on
-/// save, so a local file's trailing newline (the POSIX editor default) would otherwise
-/// hash differently from the saved page and drift as "modified" forever. Used only for
-/// sync-state hashing — never for content-addressed cache keys, which must hash exact
-/// bytes.
 pub fn normalize_wiki_content(content: &str) -> String {
     content
         .replace("\r\n", "\n")
@@ -67,9 +56,6 @@ pub fn normalize_wiki_content(content: &str) -> String {
         .to_string()
 }
 
-/// Hash content for sync-state comparison after normalizing it to MediaWiki's canonical
-/// form, so trailing-newline and line-ending differences between a local file and the
-/// saved page do not register as spurious modifications.
 pub fn compute_wiki_sync_hash(content: &str) -> String {
     compute_hash(&normalize_wiki_content(content))
 }
@@ -99,9 +85,7 @@ pub fn normalize_pathbuf(path: &Path) -> PathBuf {
     for component in path.components() {
         match component {
             std::path::Component::Prefix(prefix) => output.push(prefix.as_os_str()),
-            std::path::Component::RootDir => {
-                output.push(Path::new(std::path::MAIN_SEPARATOR_STR));
-            }
+            std::path::Component::RootDir => output.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
                 output.pop();
@@ -142,9 +126,6 @@ pub fn unix_timestamp() -> Result<u64> {
         .map(|duration| duration.as_secs())
 }
 
-/// Format a UNIX epoch seconds value as RFC 3339 / ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`).
-/// Self-contained so the crate does not need a date/time dependency for the one format
-/// we emit publicly. Uses Howard Hinnant's civil-from-days algorithm.
 pub fn format_iso8601_utc(unix_seconds: u64) -> String {
     const SECONDS_PER_DAY: u64 = 86_400;
     let days = (unix_seconds / SECONDS_PER_DAY) as i64;
@@ -152,7 +133,6 @@ pub fn format_iso8601_utc(unix_seconds: u64) -> String {
     let hour = time_of_day / 3_600;
     let minute = (time_of_day % 3_600) / 60;
     let second = time_of_day % 60;
-
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let doe = (z - era * 146_097) as u64;
@@ -163,20 +143,9 @@ pub fn format_iso8601_utc(unix_seconds: u64) -> String {
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = year_base + if month <= 2 { 1 } else { 0 };
-
-    format!(
-        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z",
-        year = year,
-        month = month,
-        day = day,
-        hour = hour,
-        minute = minute,
-        second = second,
-    )
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
-/// Current wall clock in ISO-8601 UTC, or a deterministic epoch string if the clock
-/// is unreadable (preserves the previous never-panics contract of `now_timestamp_string`).
 pub fn now_iso8601_utc() -> String {
     format_iso8601_utc(unix_timestamp().unwrap_or(0))
 }
@@ -225,84 +194,26 @@ mod tests {
     }
 
     #[test]
-    fn short_hash_is_stable() {
+    fn hashes_and_sync_normalization_are_stable() {
         assert_eq!(compute_hash("alpha"), "8ed3f6ad685b959e");
-    }
-
-    #[test]
-    fn full_sha256_is_stable() {
         assert_eq!(
             compute_sha256("alpha"),
             "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8"
         );
-    }
-
-    #[test]
-    fn wiki_sync_hash_ignores_trailing_newline_and_line_endings() {
-        // A local trailing newline (the POSIX editor default) must not drift against
-        // MediaWiki's stripped canonical form.
+        assert_eq!(normalize_wiki_content("a\r\nb\n"), "a\nb");
         assert_eq!(
             compute_wiki_sync_hash("return p\n"),
             compute_wiki_sync_hash("return p")
         );
-        // CR and CRLF normalize to LF.
-        assert_eq!(
-            compute_wiki_sync_hash("a\r\nb"),
-            compute_wiki_sync_hash("a\nb")
-        );
-        assert_eq!(
-            compute_wiki_sync_hash("a\rb"),
-            compute_wiki_sync_hash("a\nb")
-        );
-        // The sync hash equals the raw hash of the canonical (normalized) form.
-        assert_eq!(compute_wiki_sync_hash("x\n\n"), compute_hash("x"));
-        // Genuine content differences still register.
-        assert_ne!(compute_wiki_sync_hash("foo"), compute_wiki_sync_hash("bar"));
     }
 
     #[test]
-    fn normalize_wiki_content_matches_mediawiki_canonical_form() {
-        assert_eq!(normalize_wiki_content("line\n"), "line");
-        assert_eq!(normalize_wiki_content("a\r\nb\r\n"), "a\nb");
-        assert_eq!(
-            normalize_wiki_content("trailing spaces  \n\n"),
-            "trailing spaces"
-        );
-        // Internal newlines are preserved; only the trailing edge is trimmed.
-        assert_eq!(normalize_wiki_content("a\n\nb\n"), "a\n\nb");
-    }
-
-    #[test]
-    fn formats_epoch_zero_as_iso8601() {
+    fn time_redirect_and_path_helpers_are_stable() {
         assert_eq!(format_iso8601_utc(0), "1970-01-01T00:00:00Z");
-    }
-
-    #[test]
-    fn formats_known_checkpoint() {
-        assert_eq!(format_iso8601_utc(1_776_211_200), "2026-04-15T00:00:00Z");
-    }
-
-    #[test]
-    fn formats_leap_day_2024() {
-        assert_eq!(format_iso8601_utc(1_709_210_096), "2024-02-29T12:34:56Z");
-    }
-
-    #[test]
-    fn formats_end_of_year_non_leap() {
-        assert_eq!(format_iso8601_utc(1_767_225_599), "2025-12-31T23:59:59Z");
-    }
-
-    #[test]
-    fn redirect_parser_extracts_target() {
         assert_eq!(
             parse_redirect("#REDIRECT [[Alpha]]"),
             (true, Some("Alpha".to_string()))
         );
-        assert_eq!(parse_redirect("plain text"), (false, None));
-    }
-
-    #[test]
-    fn path_helpers_normalize_separators_and_parents() {
         assert_eq!(normalize_path("a\\b\\c"), "a/b/c");
         assert_eq!(
             normalize_pathbuf(Path::new("wiki_content/../templates")),

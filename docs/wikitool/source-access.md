@@ -4,7 +4,7 @@ Some source websites serve browser access challenges before readable content. Wi
 as a source-access outcome, not as article evidence. It does not ship stealth clients, TLS
 fingerprint impersonation, paid crawl routes, or third-party reader proxies.
 
-When `wikitool research fetch URL --output json` returns `error.challenge_handoffs`, follow the
+When `wikitool source fetch URL --output json` returns `error.challenge_handoffs`, follow the
 handoff explicitly:
 
 1. Open the URL in a normal browser where you have lawful access.
@@ -13,15 +13,32 @@ handoff explicitly:
 4. Import them with the `suggested_argv` from the handoff, usually:
 
 ```bash
-wikitool research session import "URL" --cookies - --user-agent "UA" --ttl-seconds 1800 --format json
+wikitool source session import "URL" --cookies - --user-agent "UA" --ttl-seconds 1800 --format json
 ```
 
 5. Paste the cookie payload on stdin and close stdin.
 6. Retry the fetch with `--refresh`.
 
-Cookie input may be a Netscape `cookies.txt` file, JSON, a raw `Cookie` header, or stdin. Imported
-sessions live under `.wikitool/research/sessions/`. CLI list/show output reports only domains,
-cookie names, expiry, and paths; it never prints cookie values.
+Cookie input must come from stdin (`--cookies -`) or an existing regular, non-symlink file. The
+payload may use Netscape `cookies.txt`, JSON, or raw `Cookie` header syntax. Never place cookie
+values directly in `--cookies`: literal values are rejected without being echoed in diagnostics.
+Imported sessions live under `.wikitool/source/sessions/`. CLI list/show output reports only
+domains, cookie names, expiry, and paths; it never prints cookie values.
+
+## Local Storage Security
+
+On Windows, Wikitool applies a protected DACL to the session directory and every session file. The
+DACL contains exactly one full-control entry for the current process user's SID, and Wikitool reads
+the descriptor back to verify the owner SID, protection flag, entry count, access mask, inheritance
+flags, and entry SID. It uses the native Windows security API and does not invoke `icacls` or
+another subprocess. On Unix, it applies and verifies mode `0700` on the directory and `0600` on
+each file, and verifies that the owner is the current effective user.
+
+Existing session storage is brought under the same policy before Wikitool reads it. If the DACL
+or Unix permissions cannot be applied or verified, import and loading fail closed. The empty atomic
+staging file is secured and verified before cookie bytes are written, then verified again after
+publication. A newly written session file whose file-level protection cannot be verified is removed
+before the error is returned. Errors identify the storage operation and path, never cookie values.
 
 ## Bookmarklet Helper
 
@@ -38,13 +55,13 @@ browser cookie export tool that produces Netscape `cookies.txt`, or copy the bro
 ## Lifecycle
 
 ```bash
-wikitool research session list --format json
-wikitool research session show example.com --format json
-wikitool research session clear example.com --format json
-wikitool research session prune --format json
+wikitool source session list --format json
+wikitool source session show example.com --format json
+wikitool source session clear example.com --format json
+wikitool source session prune --format json
 ```
 
-Matching sessions are used automatically by `research fetch`, live MediaWiki template inspection,
-and `export`. The research document cache key does not include cookies; cookies affect
+Matching sessions are used automatically by `source fetch`, live MediaWiki template inspection,
+and `export`. The source-document cache key does not include cookies; cookies affect
 access, not source identity. If an earlier unauthenticated fetch failed, retry with `--refresh`
 after importing the session.

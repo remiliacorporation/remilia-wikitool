@@ -2,14 +2,15 @@ use std::path::Path;
 
 use anyhow::Result;
 use wikitool_core::article_lint::{lint_article_with_resources, load_article_lint_resources};
+use wikitool_core::catalog::inspect::{ValidationReport, run_validation_checks};
 use wikitool_core::config::WikiConfig;
-use wikitool_core::knowledge::inspect::{ValidationReport, run_validation_checks};
+use wikitool_core::publication::encyclopedic_preflight;
 use wikitool_core::runtime::ResolvedPaths;
 use wikitool_core::sync::{
     PushOptions, SyncSelection, collect_changed_article_paths, push_to_remote_with_config,
 };
 
-use super::{ReviewArticleLint, ReviewDryRunPush, ReviewValidation, ReviewValidationSummary};
+use super::{ReviewArticleLint, ReviewPushPreview, ReviewValidation, ReviewValidationSummary};
 
 pub(super) fn run_changed_article_lint(
     paths: &ResolvedPaths,
@@ -74,14 +75,26 @@ pub(super) fn run_review_validation(paths: &ResolvedPaths) -> Result<ReviewValid
     })
 }
 
-pub(super) fn run_review_push_dry_run(
+pub(super) fn run_review_push_preview(
     paths: &ResolvedPaths,
     config: &WikiConfig,
     selection: &SyncSelection,
     summary: &str,
     templates: bool,
     categories: bool,
-) -> ReviewDryRunPush {
+) -> ReviewPushPreview {
+    let preflight = match encyclopedic_preflight(paths) {
+        Ok(preflight) => preflight,
+        Err(error) => {
+            return ReviewPushPreview {
+                attempted: true,
+                success: false,
+                report: None,
+                error: Some(error.to_string()),
+                skipped_reason: None,
+            };
+        }
+    };
     match push_to_remote_with_config(
         paths,
         &PushOptions {
@@ -91,18 +104,21 @@ pub(super) fn run_review_push_dry_run(
             delete: false,
             include_templates: templates,
             categories_only: categories,
+            all: selection.titles.is_empty() && selection.paths.is_empty(),
             selection: selection.clone(),
+            apply_plan_id: None,
         },
         config,
+        &preflight,
     ) {
-        Ok(report) => ReviewDryRunPush {
+        Ok(report) => ReviewPushPreview {
             attempted: true,
             success: report.success,
             report: Some(report),
             error: None,
             skipped_reason: None,
         },
-        Err(error) => ReviewDryRunPush {
+        Err(error) => ReviewPushPreview {
             attempted: true,
             success: false,
             report: None,

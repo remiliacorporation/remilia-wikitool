@@ -1,0 +1,96 @@
+{
+  "schema": "wikitest.mediawiki-fixture.v3",
+  "username": "wikitest-bot",
+  "password": "wikitest-secret",
+  "ambiguous_edit_failure": {
+    "title": "Template:Infobox ambiguous"
+  },
+  "ambiguous_delete_failures": [
+    {
+      "title": "Template:Delete reconciled",
+      "hide_log_comment": false
+    },
+    {
+      "title": "Template:Delete irreconcilable",
+      "hide_log_comment": true
+    }
+  ],
+  "missingtitle_delete_failures": [
+    "Template:Delete missingtitle"
+  ],
+  "delete_log_page_size": 1,
+  "delete_logs": [
+    {
+      "log_id": 1001,
+      "title": "Template:Delete reconciled",
+      "timestamp": "2026-08-26T10:00:00Z",
+      "comment": "Prior fixture deletion",
+      "user": "fixture-admin"
+    },
+    {
+      "log_id": 1002,
+      "title": "Template:Delete irreconcilable",
+      "timestamp": "2026-08-26T10:01:00Z",
+      "comment": "Prior fixture deletion",
+      "user": "fixture-admin"
+    }
+  ],
+  "pages": [
+    {
+      "title": "Template:Infobox existing",
+      "namespace": 10,
+      "page_id": 10,
+      "revision_id": 101,
+      "timestamp": "2026-08-27T10:00:00Z",
+      "content": "<includeonly>Existing fixture v1</includeonly>\n"
+    },
+    {
+      "title": "Template:Infobox alias",
+      "namespace": 10,
+      "page_id": 11,
+      "revision_id": 201,
+      "timestamp": "2026-08-27T10:01:00Z",
+      "content": "#REDIRECT [[Template:Infobox existing]]\n"
+    },
+    {
+      "title": "Template:Infobox ambiguous",
+      "namespace": 10,
+      "page_id": 12,
+      "revision_id": 301,
+      "timestamp": "2026-08-27T10:02:00Z",
+      "content": "<includeonly>Ambiguous fixture v1</includeonly>\n"
+    },
+    {
+      "title": "Template:Delete normal",
+      "namespace": 10,
+      "page_id": 20,
+      "revision_id": 401,
+      "timestamp": "2026-08-27T10:03:00Z",
+      "content": "<includeonly>Normal delete fixture</includeonly>\n"
+    },
+    {
+      "title": "Template:Delete missingtitle",
+      "namespace": 10,
+      "page_id": 21,
+      "revision_id": 501,
+      "timestamp": "2026-08-27T10:04:00Z",
+      "content": "<includeonly>Missingtitle delete fixture</includeonly>\n"
+    },
+    {
+      "title": "Template:Delete reconciled",
+      "namespace": 10,
+      "page_id": 22,
+      "revision_id": 601,
+      "timestamp": "2026-08-27T10:05:00Z",
+      "content": "<includeonly>Reconciled delete fixture</includeonly>\n"
+    },
+    {
+      "title": "Template:Delete irreconcilable",
+      "namespace": 10,
+      "page_id": 23,
+      "revision_id": 701,
+      "timestamp": "2026-08-27T10:06:00Z",
+      "content": "<includeonly>Irreconcilable delete fixture</includeonly>\n"
+    }
+  ]
+}

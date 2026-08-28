@@ -5,8 +5,8 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::filesystem::{NamespaceMapper, validate_scoped_path};
-use crate::profile::{SiteProfile, load_or_build_site_profile};
 use crate::runtime::ResolvedPaths;
+use crate::site::{SiteAdapter, load_site_adapter};
 use crate::support::atomic_write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,9 +133,9 @@ pub fn import_to_cargo(
 
     let mut result = ImportResult::default();
     let namespace_mapper = NamespaceMapper::load(paths)?;
-    let site_profile = options
+    let site_adapter = options
         .article_header
-        .then(|| load_or_build_site_profile(paths))
+        .then(|| load_site_adapter(paths))
         .transpose()?;
 
     for (index, row) in rows.iter().enumerate() {
@@ -175,7 +175,7 @@ pub fn import_to_cargo(
             continue;
         }
 
-        let content = generate_cargo_page(row, options, &title, site_profile.as_ref());
+        let content = generate_cargo_page(row, options, &title, site_adapter.as_ref());
         let action = if exists {
             ImportPageAction::Update
         } else {
@@ -264,20 +264,20 @@ pub fn generate_cargo_page(
     row: &CargoRow,
     options: &CargoImportOptions,
     title: &str,
-    site_profile: Option<&SiteProfile>,
+    site_adapter: Option<&SiteAdapter>,
 ) -> String {
     let mut blocks = Vec::new();
     if options.article_header && is_main_namespace(title) {
         let mut header_lines = Vec::new();
-        if site_profile.is_some_and(|profile| profile.authoring.require_short_description)
+        if site_adapter.is_some_and(|adapter| adapter.authoring.require_short_description)
             && let Some(shortdesc) = pick_shortdesc(row, title)
         {
             let mut truncated = shortdesc;
             if truncated.chars().count() > 100 {
                 truncated = truncated.chars().take(100).collect();
             }
-            let profile = site_profile.expect("checked above");
-            if profile
+            let adapter = site_adapter.expect("checked above");
+            if adapter
                 .authoring
                 .short_description_forms
                 .iter()
@@ -288,13 +288,13 @@ pub fn generate_cargo_page(
                 header_lines.push(format!("{{{{Short description|{truncated}}}}}"));
             }
         }
-        if let Some(profile) = site_profile
-            && profile.authoring.require_article_quality_banner
-            && let Some(template) = profile.authoring.article_quality_template.as_deref()
+        if let Some(adapter) = site_adapter
+            && adapter.authoring.require_article_quality_banner
+            && let Some(template) = adapter.authoring.article_quality_template.as_deref()
         {
             header_lines.push(template_invocation(
                 template,
-                profile.authoring.article_quality_default_state.as_deref(),
+                adapter.authoring.article_quality_default_state.as_deref(),
             ));
         }
         if !header_lines.is_empty() {
@@ -490,8 +490,8 @@ mod tests {
         CargoImportOptions, ImportSourceType, ImportUpdateMode, generate_cargo_page,
         import_to_cargo, parse_csv, parse_json,
     };
-    use crate::profile::load_or_build_site_profile;
     use crate::runtime::{ResolvedPaths, ValueSource};
+    use crate::site::load_site_adapter;
 
     fn paths(project_root: PathBuf) -> ResolvedPaths {
         ResolvedPaths {
@@ -560,10 +560,10 @@ mod tests {
     #[test]
     fn generate_cargo_page_emits_header_and_nowiki_escape() {
         let temp = tempdir().expect("tempdir");
-        let mut profile = load_or_build_site_profile(&paths(temp.path().join("project")))
-            .expect("generic site profile");
-        profile.authoring.require_short_description = true;
-        profile.authoring.short_description_forms = vec!["magic_word:SHORTDESC".to_string()];
+        let mut adapter =
+            load_site_adapter(&paths(temp.path().join("project"))).expect("generic site adapter");
+        adapter.authoring.require_short_description = true;
+        adapter.authoring.short_description_forms = vec!["magic_word:SHORTDESC".to_string()];
         let row = vec![
             ("name".to_string(), "Alpha".to_string()),
             ("payload".to_string(), "left|right".to_string()),
@@ -581,7 +581,7 @@ mod tests {
                 write: false,
             },
             "Alpha",
-            Some(&profile),
+            Some(&adapter),
         );
         assert!(content.contains("{{SHORTDESC:Alpha}}"));
         assert!(content.contains("<nowiki>left|right</nowiki>"));

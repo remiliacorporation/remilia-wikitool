@@ -1,6 +1,6 @@
+use crate::catalog::retrieval::{collapse_search_hits, query_search_fts, query_search_like};
+use crate::catalog::{model::*, prelude::*};
 use crate::content_store::parsing;
-use crate::knowledge::retrieval::{collapse_search_hits, query_search_fts, query_search_like};
-use crate::knowledge::{model::*, prelude::*};
 
 const AUTHORING_TOPIC_SIGNAL_LIMIT: usize = 8;
 

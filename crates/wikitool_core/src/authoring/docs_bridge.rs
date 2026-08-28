@@ -2,14 +2,14 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 
-use crate::docs::{DocsContextOptions, build_docs_context};
-use crate::knowledge::model::{
+use crate::catalog::model::{
     AuthoringDocsContext, ModuleUsageSummary, StubTemplateHint, TemplateReference,
 };
-use crate::profile::{
+use crate::docs::{DocsContextOptions, build_docs_context};
+use crate::runtime::ResolvedPaths;
+use crate::site::{
     load_latest_wiki_capabilities, normalize_parser_function_name, normalize_parser_tag_name,
 };
-use crate::runtime::ResolvedPaths;
 
 const AUTHORING_DOCS_QUERY_LIMIT: usize = 4;
 const AUTHORING_DOCS_TOKEN_BUDGET: usize = 560;

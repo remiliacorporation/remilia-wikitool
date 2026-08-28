@@ -91,7 +91,7 @@ pub(super) fn lint_curly_quotes(
     resources: &LoadedResources,
     matches: &mut Vec<IssueMatch>,
 ) {
-    if !resources.profile.lint.forbid_curly_quotes {
+    if !resources.adapter.lint.forbid_curly_quotes {
         return;
     }
     let mut grouped = BTreeMap::<usize, Vec<(usize, char)>>::new();
@@ -167,7 +167,7 @@ pub(super) fn lint_placeholder_fragments(
     matches: &mut Vec<IssueMatch>,
 ) {
     let lowered = document.content.to_ascii_lowercase();
-    for fragment in &resources.profile.lint.forbid_placeholder_fragments {
+    for fragment in &resources.adapter.lint.forbid_placeholder_fragments {
         let lowered_fragment = fragment.to_ascii_lowercase();
         let Some(start) = lowered.find(&lowered_fragment) else {
             continue;

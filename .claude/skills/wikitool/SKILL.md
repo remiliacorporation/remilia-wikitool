@@ -1,69 +1,10 @@
 ---
 name: wikitool
-description: Run the Rust wikitool CLI for sync, indexing, docs, import, inspection, workflow, and release operations. Use when executing command-line workflows with dry-run guardrails and canonical CLI-help validation.
+description: Operate Wikitool for target configuration, retrieval, deterministic checks, guarded sync, and other mechanical MediaWiki work.
 allowed-tools: Bash(wikitool:*), Bash(cargo:*), Bash(cd:*), Read, Write
 argument-hint: [command] [options]
 ---
 
-# /wikitool - Rust CLI Gateway
-
-Treat this skill as a thin overlay.
-Canonical behavior is defined by runbooks and live CLI help.
-Use normal reasoning, ordinary shell/file tools, and direct editing by default.
-Reach for `wikitool` when you need wiki-aware retrieval, MediaWiki-aware fetch/export, template/profile lookup, article lint/fix/validate, or guarded sync/push.
-
-## Usage
-
-```text
-/wikitool
-/wikitool <command>
-/wikitool <command> [args]
-```
-
-## Resolution
-
-1. Prefer direct binary: `wikitool ...`.
-2. If binary is unavailable, use `cargo run --quiet --package wikitool -- ...`.
-3. Do not invent flags from memory; verify against help.
-
-## Canonical lookup order
-
-1. `wikitool --help`
-2. `wikitool <command> --help`
-3. `docs/wikitool/reference.md`
-
-## Guardrails
-
-1. Run `diff` before push/delete workflows.
-2. Run `push --dry-run --summary "..."` before write push.
-3. Do not use `--force` without explicit approval.
-4. Treat the local DB as disposable; use `db reset` or delete `.wikitool/data/wikitool.db` instead of preserving old schema state.
-
-## Binary-native workflow helpers
-
-```bash
-wikitool status --modified --format json
-wikitool diff --format json
-wikitool workflow session-refresh
-wikitool knowledge status --docs-profile remilia-wiki
-wikitool knowledge article-start "Topic" --format json --view brief
-wikitool knowledge contracts search "contract terms" --format json
-wikitool research wiki-search "Topic" --format json
-wikitool research fetch "https://wiki.remilia.org/wiki/Main_Page" --format rendered-html --output json
-wikitool wiki surface show --format json --view brief
-wikitool templates show "Template:Infobox person" --format json --view brief
-wikitool article lint wiki_content/Main/Title.wiki --format json
-wikitool knowledge inspect chunks --across-pages --query "topic terms" --max-pages 6 --limit 10 --token-budget 1200 --format json --view brief --diversify
-```
-
-Maintainer-only lanes (`docs generate-reference`, `docs audit`, `dev`, `release`) require
-`cargo run --package wikitool --features maintainer -- ...` from a source checkout.
-
-## Retrieval model
-
-1. Treat local files as the editor-facing source of truth.
-2. Treat SQLite as an AI retrieval index: semantic page profiles, sections, templates, module invocation patterns, references, source authorities, identifiers, template implementation bundles, pinned docs corpora, links, and media.
-3. Do not describe reference rows as quality scored; use the stored retrieval signals, authority/identifier data, and source metadata directly.
-4. Prefer `knowledge article-start --view brief` as the default authoring retrieval front door, and use `knowledge status` to verify readiness before depending on local context.
-5. For new articles and substantial expansions, route to the packaged knowledge-interview guidance by default to set the article's intent, scope, and angle with the user and surface what they know, not only when they know more than the public record; skip it on an explicit opt-out or for mechanical work.
-6. Keep agent context compact: prefer wikitool briefs (`article-start --view brief`, `knowledge inspect chunks --view brief`, `templates show --view brief`, `wiki surface show --view brief`, `review --view brief`) before requesting full payloads, broad selections, or high token budgets.
+Read and follow `ai-pack/codex_skills/wikitool-operator/SKILL.md` completely. If the request
+includes prose authoring, review, or a human knowledge interview, also load the corresponding
+canonical skill named there.

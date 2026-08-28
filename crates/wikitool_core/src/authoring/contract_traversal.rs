@@ -3,20 +3,20 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params, params_from_iter};
 
-use crate::content_store::parsing::{
-    estimate_tokens, fts_table_exists, normalize_spaces, parse_string_list,
-};
-use crate::knowledge::model::{
+use crate::catalog::model::{
     AuthoringContractEdge, AuthoringContractExpansionHint, AuthoringContractNode,
     AuthoringContractOmission, AuthoringContractProfile, AuthoringContractSelectionReason,
     AuthoringContractTraversalPlan, AuthoringPageCandidate, ModuleUsageSummary, StubTemplateHint,
     TemplateReference, TemplateUsageSummary,
 };
-use crate::profile::{
-    TemplateCatalog, TemplateCatalogEntry, build_template_catalog_with_profile,
-    load_latest_template_catalog, load_or_build_site_profile,
+use crate::content_store::parsing::{
+    estimate_tokens, fts_table_exists, normalize_spaces, parse_string_list,
 };
 use crate::runtime::ResolvedPaths;
+use crate::site::{
+    TemplateCatalog, TemplateCatalogEntry, build_template_catalog_with_adapter,
+    load_latest_template_catalog, load_site_adapter,
+};
 use crate::support::table_exists;
 
 const CONTRACT_PLAN_SCHEMA_VERSION: &str = "authoring_contract_traversal_v1";
@@ -84,38 +84,38 @@ pub fn query_authoring_contract_plan(
     options: AuthoringContractPlanOptions,
 ) -> Result<AuthoringContractTraversalPlan> {
     let connection = crate::content_store::parsing::open_indexed_connection(paths)?;
-    let profile = load_or_build_site_profile(paths)?;
+    let adapter = load_site_adapter(paths)?;
     if let Some(connection) = connection.as_ref() {
         let fallback_catalog = match load_latest_template_catalog(paths)? {
             Some(catalog) => Some(catalog),
-            None => Some(build_template_catalog_with_profile(paths, &profile)?),
+            None => Some(build_template_catalog_with_adapter(paths, &adapter)?),
         };
         build_authoring_contract_plan_for_connection(
             connection,
-            &profile.profile_id,
+            &adapter.adapter_id,
             &options,
             fallback_catalog.as_ref(),
         )
     } else {
         let catalog = match load_latest_template_catalog(paths)? {
             Some(catalog) => catalog,
-            None => build_template_catalog_with_profile(paths, &profile)?,
+            None => build_template_catalog_with_adapter(paths, &adapter)?,
         };
-        build_authoring_contract_plan_from_catalog(&profile.profile_id, &catalog, &options)
+        build_authoring_contract_plan_from_catalog(&adapter.adapter_id, &catalog, &options)
     }
 }
 
 pub(crate) fn build_authoring_contract_plan_for_connection(
     connection: &Connection,
-    profile_id: &str,
+    site_adapter_id: &str,
     options: &AuthoringContractPlanOptions,
     fallback_catalog: Option<&TemplateCatalog>,
 ) -> Result<AuthoringContractTraversalPlan> {
-    let mut records = load_indexed_contract_records(connection, profile_id, options)?;
+    let mut records = load_indexed_contract_records(connection, site_adapter_id, options)?;
     if records.is_empty()
         && let Some(catalog) = fallback_catalog
     {
-        records = contract_records_from_catalog(profile_id, catalog);
+        records = contract_records_from_catalog(site_adapter_id, catalog);
     }
 
     let mut candidates = score_contract_candidates(records, options);
@@ -127,18 +127,18 @@ pub(crate) fn build_authoring_contract_plan_for_connection(
         .iter()
         .map(|candidate| candidate.record.key.clone())
         .collect::<BTreeSet<_>>();
-    let edges = load_contract_edges(connection, profile_id, &selected_keys)
+    let edges = load_contract_edges(connection, site_adapter_id, &selected_keys)
         .unwrap_or_else(|_| fallback_edges_from_template_references(&options.template_references));
 
     Ok(materialize_plan(options, candidates, edges))
 }
 
 fn build_authoring_contract_plan_from_catalog(
-    profile_id: &str,
+    site_adapter_id: &str,
     catalog: &TemplateCatalog,
     options: &AuthoringContractPlanOptions,
 ) -> Result<AuthoringContractTraversalPlan> {
-    let records = contract_records_from_catalog(profile_id, catalog);
+    let records = contract_records_from_catalog(site_adapter_id, catalog);
     let mut candidates = score_contract_candidates(records, options);
     if candidates.is_empty() {
         candidates = fallback_contract_candidates(options);
@@ -152,7 +152,7 @@ fn build_authoring_contract_plan_from_catalog(
 
 fn load_indexed_contract_records(
     connection: &Connection,
-    profile_id: &str,
+    site_adapter_id: &str,
     options: &AuthoringContractPlanOptions,
 ) -> Result<Vec<ContractIndexRecord>> {
     if !table_exists(connection, "authoring_contracts")? {
@@ -163,7 +163,7 @@ fn load_indexed_contract_records(
     if fts_table_exists(connection, "authoring_contracts_fts") {
         let terms = normalized_terms(&options.query_terms, &options.query);
         for token in fts_tokens(&terms) {
-            for record in query_contract_records_by_fts(connection, profile_id, &token)? {
+            for record in query_contract_records_by_fts(connection, site_adapter_id, &token)? {
                 records.entry(record.key.clone()).or_insert(record);
                 if records.len() >= CONTRACT_INDEX_SCAN_LIMIT {
                     break;
@@ -175,7 +175,7 @@ fn load_indexed_contract_records(
     if records.len() < options.limit.saturating_mul(4).max(32) {
         for record in query_contract_records_by_usage(
             connection,
-            profile_id,
+            site_adapter_id,
             CONTRACT_INDEX_SCAN_LIMIT.saturating_sub(records.len()),
         )? {
             records.entry(record.key.clone()).or_insert(record);
@@ -190,7 +190,7 @@ fn load_indexed_contract_records(
 
 fn query_contract_records_by_fts(
     connection: &Connection,
-    profile_id: &str,
+    site_adapter_id: &str,
     token: &str,
 ) -> Result<Vec<ContractIndexRecord>> {
     if token.is_empty() {
@@ -205,20 +205,23 @@ fn query_contract_records_by_fts(
              FROM authoring_contracts_fts fts
              JOIN authoring_contracts c ON c.rowid = fts.rowid
              WHERE authoring_contracts_fts MATCH ?1
-               AND c.profile = ?2
+               AND c.site_adapter_id = ?2
              ORDER BY bm25(authoring_contracts_fts) ASC, c.usage_count DESC, c.title ASC
              LIMIT 256",
         )
         .context("failed to prepare authoring contract FTS query")?;
     let rows = statement
-        .query_map(params![fts_query, profile_id], decode_contract_record_row)
+        .query_map(
+            params![fts_query, site_adapter_id],
+            decode_contract_record_row,
+        )
         .context("failed to run authoring contract FTS query")?;
     collect_contract_rows(rows)
 }
 
 fn query_contract_records_by_usage(
     connection: &Connection,
-    profile_id: &str,
+    site_adapter_id: &str,
     limit: usize,
 ) -> Result<Vec<ContractIndexRecord>> {
     if limit == 0 {
@@ -230,7 +233,7 @@ fn query_contract_records_by_usage(
                     usage_count, distinct_page_count, parameter_keys, function_names,
                     module_titles, example_titles, terms_text
              FROM authoring_contracts
-             WHERE profile = ?1
+             WHERE site_adapter_id = ?1
              ORDER BY
                CASE contract_kind WHEN 'template' THEN 0 WHEN 'module' THEN 1 ELSE 2 END,
                usage_count DESC,
@@ -241,7 +244,7 @@ fn query_contract_records_by_usage(
         .context("failed to prepare authoring contract usage query")?;
     let rows = statement
         .query_map(
-            params![profile_id, i64::try_from(limit).unwrap_or(i64::MAX)],
+            params![site_adapter_id, i64::try_from(limit).unwrap_or(i64::MAX)],
             decode_contract_record_row,
         )
         .context("failed to run authoring contract usage query")?;
@@ -280,7 +283,7 @@ fn decode_contract_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Contr
 
 fn load_contract_edges(
     connection: &Connection,
-    profile_id: &str,
+    site_adapter_id: &str,
     selected_keys: &BTreeSet<String>,
 ) -> Result<Vec<AuthoringContractEdge>> {
     if selected_keys.is_empty() || !table_exists(connection, "authoring_contract_edges")? {
@@ -292,12 +295,12 @@ fn load_contract_edges(
     let sql = format!(
         "SELECT from_title, from_kind, to_title, to_kind, relation
          FROM authoring_contract_edges
-         WHERE profile = ?
+         WHERE site_adapter_id = ?
            AND (from_contract_key IN ({placeholders}) OR to_contract_key IN ({placeholders}))
          ORDER BY from_title ASC, relation ASC, to_title ASC"
     );
     let mut values = Vec::new();
-    values.push(rusqlite::types::Value::from(profile_id.to_string()));
+    values.push(rusqlite::types::Value::from(site_adapter_id.to_string()));
     for key in selected_keys {
         values.push(rusqlite::types::Value::from(key.clone()));
     }
@@ -709,7 +712,7 @@ fn expansion_hints(record: &ContractIndexRecord) -> Vec<AuthoringContractExpansi
             },
             AuthoringContractExpansionHint {
                 command: format!(
-                    "wikitool knowledge inspect templates \"{}\" --format json",
+                    "wikitool catalog inspect templates \"{}\" --format json",
                     record.title
                 ),
                 reason: "expand implementation pages, module edges, and indexed source chunks"
@@ -718,7 +721,7 @@ fn expansion_hints(record: &ContractIndexRecord) -> Vec<AuthoringContractExpansi
         ],
         "module" => vec![AuthoringContractExpansionHint {
             command: format!(
-                "wikitool knowledge contracts search \"{}\" --profile implementation --format json",
+                "wikitool catalog contracts search \"{}\" --profile implementation --format json",
                 record.title
             ),
             reason: "show module functions, examples, and referencing templates".to_string(),
@@ -728,18 +731,18 @@ fn expansion_hints(record: &ContractIndexRecord) -> Vec<AuthoringContractExpansi
 }
 
 fn contract_records_from_catalog(
-    profile_id: &str,
+    site_adapter_id: &str,
     catalog: &TemplateCatalog,
 ) -> Vec<ContractIndexRecord> {
     let mut out = Vec::new();
     for entry in &catalog.entries {
-        out.push(record_from_catalog_entry(profile_id, entry));
+        out.push(record_from_catalog_entry(site_adapter_id, entry));
     }
     out
 }
 
 fn record_from_catalog_entry(
-    profile_id: &str,
+    site_adapter_id: &str,
     entry: &TemplateCatalogEntry,
 ) -> ContractIndexRecord {
     let parameter_keys = entry
@@ -763,7 +766,7 @@ fn record_from_catalog_entry(
         .join(" "),
     );
     ContractIndexRecord {
-        key: authoring_contract_key(profile_id, "template", &entry.template_title),
+        key: authoring_contract_key(site_adapter_id, "template", &entry.template_title),
         kind: "template".to_string(),
         title: entry.template_title.clone(),
         category: entry.category.clone(),
@@ -779,7 +782,7 @@ fn record_from_catalog_entry(
 }
 
 fn record_from_template_summary(
-    profile_id: &str,
+    site_adapter_id: &str,
     template: &TemplateUsageSummary,
 ) -> ContractIndexRecord {
     let parameter_keys = template
@@ -797,7 +800,7 @@ fn record_from_template_summary(
         .join(" "),
     );
     ContractIndexRecord {
-        key: authoring_contract_key(profile_id, "template", &template.template_title),
+        key: authoring_contract_key(site_adapter_id, "template", &template.template_title),
         kind: "template".to_string(),
         title: template.template_title.clone(),
         category: contract_category_from_title(&template.template_title),
@@ -818,7 +821,7 @@ fn record_from_template_summary(
 }
 
 fn record_from_module_summary(
-    profile_id: &str,
+    site_adapter_id: &str,
     module: &ModuleUsageSummary,
 ) -> ContractIndexRecord {
     let function_names = module
@@ -835,7 +838,7 @@ fn record_from_module_summary(
         .join(" "),
     );
     ContractIndexRecord {
-        key: authoring_contract_key(profile_id, "module", &module.module_title),
+        key: authoring_contract_key(site_adapter_id, "module", &module.module_title),
         kind: "module".to_string(),
         title: module.module_title.clone(),
         category: "module".to_string(),
@@ -940,10 +943,10 @@ fn normalize_contract_title(value: &str) -> String {
     normalize_spaces(&value.replace('_', " "))
 }
 
-fn authoring_contract_key(profile_id: &str, kind: &str, title: &str) -> String {
+fn authoring_contract_key(site_adapter_id: &str, kind: &str, title: &str) -> String {
     format!(
         "{}:{}:{}",
-        profile_id.trim().to_ascii_lowercase(),
+        site_adapter_id.trim().to_ascii_lowercase(),
         kind.trim().to_ascii_lowercase(),
         normalize_contract_title(title)
     )

@@ -16,6 +16,8 @@ Categories describe established membership, not loose association. Verify that t
 
 Use the adapter's citation families when available. Named references should have stable descriptive names. A reused reference must support every reuse. Do not populate archive fields unless an archive URL and date were actually inspected.
 
+Every article that uses inline `<ref>` citations must also render them. Use the adapter's declared references template when one is available; otherwise add a `== References ==` section containing `<references />`. A clean claim map does not excuse an unrendered citation list.
+
 Place citations close to the claims they support. Split citations when clauses have different evidence. Keep quotation attribution and citation in the same sentence or immediate context.
 
 ## Wikitext and extensions

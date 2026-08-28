@@ -1,8 +1,0 @@
-{{SHORTDESC:Fictional index in a controlled knowledge fixture}}
-
-'''Beta Index''' is a fictional index of printers represented in the [[Alpha Archive]].<ref>{{Cite web|url=https://fixtures.invalid/beta|title=Beta Index description}}</ref>
-
-== References ==
-{{Reflist}}
-
-[[Category:Wikitest fixtures]]

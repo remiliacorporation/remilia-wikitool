@@ -1,4 +1,4 @@
-pub use crate::research::{
+pub use crate::source::{
     DEFAULT_EXPORTS_DIR, ExportFormat, ExternalFetchFormat, ExternalFetchOptions,
     ExternalFetchProfile, ExternalFetchResult, ExtractionQuality, FetchMode, ParsedWikiUrl,
     RenderedFetchMode, default_export_path, fetch_mediawiki_page, fetch_page_by_url,

@@ -14,7 +14,7 @@ use crate::{
     LOCAL_DB_POLICY_MESSAGE, RuntimeOptions,
     cli_support::{
         OutputFormat, collapse_whitespace, format_flag, normalize_path, normalize_title_query,
-        resolve_runtime_paths, resolve_runtime_with_config,
+        resolve_runtime_paths, resolve_runtime_with_config, resolve_runtime_with_docs_profile,
     },
 };
 

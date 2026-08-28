@@ -1,0 +1,152 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "catalog-indexed-retrieval",
+  "title": "Indexed local catalog retrieval",
+  "description": "Builds a controlled local wiki database and proves page, link, chunk, and article-scout retrieval through Wikitool's public JSON interfaces.",
+  "kind": "catalog",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "content-index", "steps": ["build-index", "inspect-stats"]},
+    {"capability": "wikitext-parsing", "steps": ["build-index", "inspect-backlinks"]},
+    {"capability": "internal-links", "steps": ["inspect-backlinks"]},
+    {"capability": "chunk-retrieval", "steps": ["retrieve-across-pages"]},
+    {"capability": "article-scout", "steps": ["assemble-article-scout"]}
+  ],
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": ["init", "--templates", "--no-network"],
+      "expect": {"exit_code": 0}
+    },
+    {
+      "action": "copy",
+      "id": "install-alpha",
+      "source": "fixtures/Alpha.wiki",
+      "target": "wiki_content/Main/Alpha_Archive.wiki",
+      "sha256": "ef59dec51e0f33beacf4bfc3d9b397bf8fc306aeb2b8631267a264387938c87e"
+    },
+    {
+      "action": "copy",
+      "id": "install-beta",
+      "source": "fixtures/Beta_Index.wiki",
+      "target": "wiki_content/Main/Beta_Index.wiki",
+      "sha256": "5123b38c023611d72d3e6e694e5b05ee1b4754b9a26a3d5ab59581a9a5dc5abc"
+    },
+    {
+      "action": "copy",
+      "id": "install-reflist-template",
+      "source": "fixtures/Template_Reflist.wiki",
+      "target": "templates/misc/Template_Reflist.wiki",
+      "sha256": "2e8820c5d685d401b0c4554cdb5ac1c8093199a7b74f8089b873165ab5c9791d"
+    },
+    {
+      "action": "copy",
+      "id": "install-cite-template",
+      "source": "fixtures/Template_Cite_web.wiki",
+      "target": "templates/cite/Template_Cite_web.wiki",
+      "sha256": "071fa6569931cc731495d81ad19d58aa4868868c0137a2d3232553d672a67cbc"
+    },
+    {
+      "action": "command",
+      "id": "build-index",
+      "argv": ["catalog", "build", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_u64_at_least", "pointer": "/rebuild/inserted_rows", "value": 4},
+          {"kind": "json_pointer_equals", "pointer": "/status/readiness", "value": "content_ready"},
+          {"kind": "json_pointer_equals", "pointer": "/status/content_index_ready", "value": true}
+        ],
+        "files": [
+          {"kind": "exists", "path": ".wikitool/data/wikitool.db"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "inspect-stats",
+      "argv": ["catalog", "inspect", "stats", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/index_ready", "value": true},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/content_index/indexed_rows", "value": 4},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/scan/total_files", "value": 4}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "retrieve-across-pages",
+      "argv": [
+        "catalog",
+        "inspect",
+        "chunks",
+        "--across-pages",
+        "--query",
+        "bulletins archive",
+        "--limit",
+        "4",
+        "--max-pages",
+        "2",
+        "--token-budget",
+        "240",
+        "--format",
+        "json",
+        "--view",
+        "brief"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "wikitool_brief_v1"},
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "found"},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/source_page_count", "value": 1},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/chunks", "item_pointer": "/source_title", "value": "Alpha Archive"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "inspect-backlinks",
+      "argv": ["catalog", "inspect", "backlinks", "Beta Index", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/storage_ready", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Beta Index"},
+          {"kind": "json_array_contains", "pointer": "/backlinks", "value": "Alpha Archive"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "assemble-article-scout",
+      "argv": [
+        "article",
+        "scout",
+        "Gamma Catalogue",
+        "--intent",
+        "new",
+        "--format",
+        "json",
+        "--view",
+        "brief"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "wikitool_brief_v1"},
+          {"kind": "json_pointer_equals", "pointer": "/command", "value": "article scout"},
+          {"kind": "json_pointer_equals", "pointer": "/local_state", "value": "linked_but_missing"},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/context/backlink_count", "value": 1},
+          {"kind": "json_pointer_exists", "pointer": "/context"},
+          {"kind": "not_contains", "value": "\"article_type\""},
+          {"kind": "not_contains", "value": "\"confidence\""}
+        ]
+      }
+    }
+  ]
+}

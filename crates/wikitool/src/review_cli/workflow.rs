@@ -1,13 +1,13 @@
 use anyhow::{Result, bail};
 use wikitool_core::filesystem::validate_scoped_path;
-use wikitool_core::knowledge_interview::{InterviewValidationStatus, validate_interview_brief};
 use wikitool_core::runtime::{ensure_runtime_ready_for_sync, inspect_runtime};
 use wikitool_core::sync::{SyncPlanOptions, SyncSelection, plan_sync_changes_with_config};
+use wikitool_core::wiki_interview::{InterviewValidationStatus, validate_interview_brief};
 
 use crate::cli_support::{normalize_path, resolve_runtime_with_config};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
-use super::checks::{run_changed_article_lint, run_review_push_dry_run, run_review_validation};
+use super::checks::{run_changed_article_lint, run_review_push_preview, run_review_validation};
 use super::draft::{
     review_draft_selection_from_args, run_draft_article_lint, validate_draft_review_path,
 };
@@ -15,7 +15,7 @@ use super::next_steps::build_review_next_steps;
 use super::output::{build_review_brief, print_review_report};
 use super::selection::review_selection_from_args;
 use super::{
-    ReviewArgs, ReviewDryRunPush, ReviewFilters, ReviewInterviewBrief, ReviewReport,
+    ReviewArgs, ReviewFilters, ReviewInterviewBrief, ReviewPushPreview, ReviewReport,
     ReviewStatusPlan,
 };
 
@@ -111,19 +111,19 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
         run_changed_article_lint(&paths, &selection, args.strict)?
     };
     let validation = run_review_validation(&paths)?;
-    let dry_run_push = if draft_selection.is_some() {
-        ReviewDryRunPush {
+    let push_preview = if draft_selection.is_some() {
+        ReviewPushPreview {
             attempted: false,
             success: true,
             report: None,
             error: None,
             skipped_reason: Some(
-                "draft review skips push dry-run; promote the draft under wiki_content/ before push"
+                "draft review skips the push preview; promote the draft under wiki_content/ before push"
                     .to_string(),
             ),
         }
     } else {
-        run_review_push_dry_run(
+        run_review_push_preview(
             &paths,
             &config,
             &selection,
@@ -159,15 +159,14 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
         ));
     }
     if !validation.index_ready {
-        hard_failures
-            .push("validation index is missing; run `wikitool knowledge build`".to_string());
+        hard_failures.push("validation index is missing; run `wikitool catalog build`".to_string());
     }
-    if !dry_run_push.success {
+    if !push_preview.success {
         hard_failures.push(
-            dry_run_push
+            push_preview
                 .error
                 .clone()
-                .unwrap_or_else(|| "push dry-run reported conflicts or errors".to_string()),
+                .unwrap_or_else(|| "push preview reported conflicts or errors".to_string()),
         );
     }
     if let Some(brief) = &interview_brief
@@ -192,7 +191,7 @@ pub(super) fn run_review(runtime: &RuntimeOptions, args: ReviewArgs) -> Result<(
         changed_article_lint,
         validation,
         interview_brief,
-        dry_run_push,
+        push_preview,
         next_steps,
     };
 

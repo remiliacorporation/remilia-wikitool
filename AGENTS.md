@@ -50,7 +50,8 @@ scoped here.
   builds are end-user builds.
 - The runtime project root is the caller's wiki project, not this source checkout, unless the
   command explicitly accepts a repository root.
-- The local SQLite database is disposable state. Do not build correctness around preserving it.
+- The catalog database at `.wikitool/data/wikitool.db` is disposable. The sync store at
+  `.wikitool/sync/sync.sqlite3` is durable revision identity; resets and refreshes must preserve it.
 
 ## Verification
 

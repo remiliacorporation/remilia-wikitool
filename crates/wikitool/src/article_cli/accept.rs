@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 use serde::Serialize;
-use wikitool_core::article_acceptance::{ArticleAcceptanceLintSummary, record_article_acceptance};
+use wikitool_core::article_acceptance::{
+    ArticleAcceptanceLintSummary, ArticlePublicationAuthority, record_article_acceptance,
+};
 use wikitool_core::article_lint::lint_article_with_title;
 use wikitool_core::filesystem::{title_to_relative_path, validate_scoped_path};
 use wikitool_core::support::parse_redirect;
@@ -21,8 +23,9 @@ struct ArticleAcceptReport {
     source_path: String,
     title: String,
     target_path: String,
-    acceptance_ledger_path: String,
+    acceptance_store_path: String,
     content_sha256: String,
+    accepted_at_unix: u64,
     human_editor_claim: String,
     editor_identity_assurance: String,
     prose_origin: String,
@@ -31,6 +34,8 @@ struct ArticleAcceptReport {
     lint_warnings: usize,
     lint_suggestions: usize,
     warnings_explicitly_accepted: bool,
+    warning_decision: String,
+    publication_authority: ArticlePublicationAuthority,
 }
 
 pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptArgs) -> Result<()> {
@@ -54,7 +59,7 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
         bail!("article accept only supports Main-namespace article titles, got: {title}");
     }
     let lint = lint_article_with_title(&paths, &source_absolute, Some(&title))?;
-    let (ledger_entry, ledger_path) = record_article_acceptance(
+    let (ledger_entry, store_path) = record_article_acceptance(
         &paths,
         &source_absolute,
         &title,
@@ -69,14 +74,23 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
             warnings_explicitly_accepted: args.allow_warnings,
         },
     )?;
+    let warning_decision = ledger_entry
+        .resolved_warning_decision()?
+        .as_str()
+        .to_string();
+    let publication_authority = ledger_entry
+        .publication_authority
+        .clone()
+        .expect("current acceptance records publication authority");
     let report = ArticleAcceptReport {
-        schema_version: "article_accept_v2",
+        schema_version: "article_accept_v3",
         project_root: normalize_path(&paths.project_root),
         source_path: normalize_path(&source_absolute),
         title,
         target_path,
-        acceptance_ledger_path: normalize_path(&ledger_path),
+        acceptance_store_path: normalize_path(&store_path),
         content_sha256: ledger_entry.content_sha256,
+        accepted_at_unix: ledger_entry.accepted_at_unix,
         human_editor_claim: ledger_entry.human_editor_claim,
         editor_identity_assurance: ledger_entry.editor_identity_assurance,
         prose_origin: ledger_entry.prose_origin.as_str().to_string(),
@@ -85,6 +99,8 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
         lint_warnings: ledger_entry.lint_warnings,
         lint_suggestions: ledger_entry.lint_suggestions,
         warnings_explicitly_accepted: ledger_entry.warnings_explicitly_accepted,
+        warning_decision,
+        publication_authority,
     };
 
     if args.format.is_json() {
@@ -96,8 +112,9 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
         println!("source_path: {}", report.source_path);
         println!("title: {}", report.title);
         println!("target_path: {}", report.target_path);
-        println!("acceptance_ledger_path: {}", report.acceptance_ledger_path);
+        println!("acceptance_store_path: {}", report.acceptance_store_path);
         println!("content_sha256: {}", report.content_sha256);
+        println!("accepted_at_unix: {}", report.accepted_at_unix);
         println!("human_editor_claim: {}", report.human_editor_claim);
         println!(
             "editor_identity_assurance: {}",
@@ -111,6 +128,19 @@ pub(super) fn run_article_accept(runtime: &RuntimeOptions, args: ArticleAcceptAr
         println!(
             "warnings_explicitly_accepted: {}",
             flag(report.warnings_explicitly_accepted)
+        );
+        println!("warning_decision: {}", report.warning_decision);
+        println!(
+            "target_api_url: {}",
+            report.publication_authority.target_api_url
+        );
+        println!(
+            "site_adapter_id: {}",
+            report.publication_authority.site_adapter_id
+        );
+        println!(
+            "publication_policy_sha256: {}",
+            report.publication_authority.publication_policy_sha256
         );
         println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
         println!(

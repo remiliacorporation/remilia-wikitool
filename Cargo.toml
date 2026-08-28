@@ -1,7 +1,10 @@
 [workspace]
 members = [
+  "crates/mediawiki_protocol",
   "crates/wikitool",
   "crates/wikitool_core",
+  "crates/wikitool_publication",
+  "crates/wikitool_sync",
   "crates/wikitest",
 ]
 resolver = "2"
@@ -9,14 +12,16 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "AGPL-3.0-only"
-version = "0.6.1"
+version = "0.7.0"
 
 [workspace.dependencies]
 anyhow = "1.0.101"
 clap = { version = "4.5.60", features = ["derive"] }
+chrono = { version = "0.4.42", default-features = false, features = ["std"] }
 dotenvy = "0.15.7"
 full_moon = "2.1.1"
-reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "cookies", "form", "json", "multipart", "query", "rustls"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "cookies", "form", "json", "query", "rustls"] }
+scraper = "0.24.0"
 selene-lib = "0.30.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
@@ -24,6 +29,9 @@ serde_yaml = "0.9.34"
 similar = "2.7.0"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 sha2 = "0.10.9"
+tiny_http = "0.12.0"
 walkdir = "2.5.0"
 toml = "0.8"
+url = "2.5.7"
+percent-encoding = "2.3.2"
 zip = { version = "0.6.6", default-features = false, features = ["deflate"] }

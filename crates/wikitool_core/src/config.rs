@@ -485,7 +485,7 @@ folder = "Custom"
         let config_path = temp.path().join("config.toml");
         fs::write(
             &config_path,
-            "[adapter]\npath = \"site-adapter/profile.toml\"\n",
+            "[adapter]\npath = \"site-adapter/site-adapter.toml\"\n",
         )
         .expect("write config");
 
@@ -499,7 +499,7 @@ folder = "Custom"
                     id: 3000,
                     folder: Some("Lore".to_string()),
                 }]),
-                set_adapter_path: Some("project-adapter/profile.toml".to_string()),
+                set_adapter_path: Some("project-adapter/site-adapter.toml".to_string()),
             },
         )
         .expect("patch");
@@ -515,7 +515,7 @@ folder = "Custom"
         assert_eq!(config.wiki.custom_namespaces[0].name, "Lore");
         assert_eq!(
             config.adapter.path.as_deref(),
-            Some("project-adapter/profile.toml")
+            Some("project-adapter/site-adapter.toml")
         );
     }
 

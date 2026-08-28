@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::article_lint::document::ParsedArticleDocument;
 use crate::article_lint::model::{ArticleLintIssue, ArticleLintSeverity};
-use crate::profile::{normalize_module_title, supports_invoke_function};
+use crate::site::{normalize_module_title, supports_invoke_function};
 
 use super::IssueMatch;
 use crate::article_lint::resources::LoadedResources;
@@ -87,7 +87,7 @@ fn lint_module_availability(
                     }
                 )),
                 suggested_remediation: Some(
-                    "Use a local Module page from wikitool wiki surface show, add or sync the module source, or replace the direct #invoke with an available template."
+                    "Use a local Module page from `wikitool catalog surface show`, add or sync the module source, or replace the direct #invoke with an available template."
                         .to_string(),
                 ),
                 suggested_fixes: Vec::new(),

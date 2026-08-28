@@ -93,10 +93,12 @@ pub struct RuntimeStatus {
 impl ResolvedPaths {
     pub fn diagnostics(&self) -> String {
         format!(
-            "project_root={} ({})\nstate_dir={}\nwiki_content_dir={}\ntemplates_dir={}\ndata_dir={} ({})\nconfig_path={} ({})\nparser_config_path={}\npolicy={}",
+            "project_root={} ({})\nstate_dir={}\nsync_store_path={}\nacceptance_store_path={}\nwiki_content_dir={}\ntemplates_dir={}\ndata_dir={} ({})\nconfig_path={} ({})\nparser_config_path={}\npolicy={}",
             normalize_for_display(&self.project_root),
             self.root_source.as_str(),
             normalize_for_display(&self.state_dir),
+            normalize_for_display(&self.sync_store_path()),
+            normalize_for_display(&self.acceptance_store_path()),
             normalize_for_display(&self.wiki_content_dir),
             normalize_for_display(&self.templates_dir),
             normalize_for_display(&self.data_dir),
@@ -108,8 +110,25 @@ impl ResolvedPaths {
         )
     }
 
-    pub fn research_cache_dir(&self) -> PathBuf {
-        self.state_dir.join("cache").join("research")
+    pub fn source_cache_dir(&self) -> PathBuf {
+        self.state_dir.join("cache").join("source")
+    }
+
+    /// Durable revision identity and base snapshots used by pull/diff/push.
+    ///
+    /// This store is intentionally outside `data_dir`: the catalog database is
+    /// rebuildable, while deleting sync identity can make local edits impossible
+    /// to classify safely.
+    pub fn sync_store_path(&self) -> PathBuf {
+        self.state_dir.join("sync").join("sync.sqlite3")
+    }
+
+    /// Durable, transactional publication-acceptance authority.
+    ///
+    /// This store is intentionally outside `data_dir`: catalog rebuilds and
+    /// synchronization refreshes must not erase named-human decisions.
+    pub fn acceptance_store_path(&self) -> PathBuf {
+        self.state_dir.join("acceptance").join("acceptance.sqlite3")
     }
 }
 
@@ -284,6 +303,8 @@ pub fn init_layout(paths: &ResolvedPaths, options: &InitOptions) -> Result<InitR
         paths.state_dir.join("tmp"),
         paths.state_dir.join("exports"),
         paths.state_dir.join("backups"),
+        paths.state_dir.join("sync"),
+        paths.state_dir.join("acceptance"),
     ];
     if options.include_templates {
         required_dirs.push(paths.templates_dir.clone());
@@ -330,7 +351,7 @@ pub fn embedded_parser_config() -> &'static str {
 
 pub fn render_materialized_config() -> String {
     format!(
-        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Local DB policy: derived + disposable; delete `.wikitool/data/wikitool.db` for a clean rebuild.\n\n[wiki]\n# Configure a target explicitly or pass --wiki-url/--api-url to `wikitool init`.\n# Temporary overrides are {ENV_WIKITOOL_WIKI_URL}, {ENV_WIKITOOL_WIKI_API_URL},\n# {ENV_WIKITOOL_ARTICLE_PATH}, and {ENV_WIKITOOL_USER_AGENT}.\n# url = \"https://wiki.example.org\"\n# api_url = \"https://wiki.example.org/api.php\"\narticle_path = \"{DEFAULT_ARTICLE_PATH}\"\n# user_agent = \"{DEFAULT_USER_AGENT}\"\n# mark_edits_as_bot = false\n\n# Populated by `wikitool init` namespace discovery when an API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[adapter]\n# Optional project-owned machine policy. Relative paths resolve from project root.\n# path = \"site-adapter/profile.toml\"\n"
+        "# wikitool runtime configuration (materialized by `wikitool init`)\n# Catalog DB policy: derived + disposable; `.wikitool/sync/sync.sqlite3` is durable sync identity.\n\n[wiki]\n# Configure a target explicitly or pass --wiki-url/--api-url to `wikitool init`.\n# Temporary overrides are {ENV_WIKITOOL_WIKI_URL}, {ENV_WIKITOOL_WIKI_API_URL},\n# {ENV_WIKITOOL_ARTICLE_PATH}, and {ENV_WIKITOOL_USER_AGENT}.\n# url = \"https://wiki.example.org\"\n# api_url = \"https://wiki.example.org/api.php\"\narticle_path = \"{DEFAULT_ARTICLE_PATH}\"\n# user_agent = \"{DEFAULT_USER_AGENT}\"\n# mark_edits_as_bot = false\n\n# Populated by `wikitool init` namespace discovery when an API is configured:\n# [[wiki.custom_namespaces]]\n# name = \"Lore\"\n# id = 3000\n# folder = \"Lore\"\n\n[adapter]\n# Optional project-owned machine policy. Relative paths resolve from project root.\n# path = \"site-adapter/site-adapter.toml\"\n"
     )
 }
 
@@ -512,6 +533,20 @@ mod tests {
         assert!(paths.templates_dir.exists());
         assert!(paths.state_dir.exists());
         assert!(paths.data_dir.exists());
+        assert!(
+            paths
+                .sync_store_path()
+                .parent()
+                .expect("sync parent")
+                .is_dir()
+        );
+        assert!(
+            paths
+                .acceptance_store_path()
+                .parent()
+                .expect("acceptance parent")
+                .is_dir()
+        );
         assert!(paths.config_path.exists());
         assert!(paths.parser_config_path.exists());
 

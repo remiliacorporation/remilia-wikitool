@@ -1,10 +1,10 @@
 use anyhow::{Result, bail};
 use clap::ValueEnum;
 use wikitool_core::config::WikiConfig;
-use wikitool_core::sync::{
-    ExternalSearchReport, MediaWikiSearchWhat, NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE,
-    NS_TEMPLATE, search_external_wiki_report_with_config,
+use wikitool_core::source::{
+    ExternalSearchReport, MediaWikiSearchWhat, search_external_wiki_report_with_config,
 };
+use wikitool_core::sync::{NS_CATEGORY, NS_MAIN, NS_MEDIAWIKI, NS_MODULE, NS_TEMPLATE};
 
 use crate::cli_support::normalize_title_query;
 
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn parse_remote_wiki_search_request_normalizes_query_and_scope() {
         let parsed = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research wiki-search",
+            command_name: "source wiki-search",
             query: " Alpha_Beta ",
             limit: 3,
             what: RemoteSearchScope::Nearmatch,
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn parse_remote_wiki_search_request_rejects_zero_limit() {
         let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research wiki-search",
+            command_name: "source wiki-search",
             query: "Alpha",
             limit: 0,
             what: RemoteSearchScope::Text,
@@ -205,14 +205,14 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "research wiki-search requires --limit >= 1"
+            "source wiki-search requires --limit >= 1"
         );
     }
 
     #[test]
     fn parse_remote_wiki_search_request_rejects_blank_query() {
         let error = parse_remote_wiki_search_request(RemoteWikiSearchRequest {
-            command_name: "research wiki-search",
+            command_name: "source wiki-search",
             query: "   ",
             limit: 1,
             what: RemoteSearchScope::Text,
@@ -221,7 +221,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "research wiki-search requires a non-empty query"
+            "source wiki-search requires a non-empty query"
         );
     }
 }

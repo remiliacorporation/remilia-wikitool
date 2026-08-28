@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
@@ -6,10 +7,67 @@ use rusqlite::Connection;
 
 use crate::runtime::ResolvedPaths;
 use crate::support::ensure_db_parent;
+use crate::sync::SyncStoreMigrationReport;
 
-pub const LOCAL_DB_POLICY_MESSAGE: &str = "The local wikitool DB is disposable. Delete `.wikitool/data/wikitool.db` and rerun the relevant sync/import command if you need a clean rebuild.";
+pub const LOCAL_DB_POLICY_MESSAGE: &str = "The catalog DB at `.wikitool/data/wikitool.db` is derived and disposable. The sync store at `.wikitool/sync/sync.sqlite3` and publication-acceptance store at `.wikitool/acceptance/acceptance.sqlite3` are durable authority and must not be deleted by catalog reset or refresh workflows.";
 
 const DB_SCHEMA_SQL: &str = include_str!("schema.sql");
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogResetReport {
+    pub catalog_deleted: bool,
+    pub catalog_sidecars_deleted: Vec<PathBuf>,
+    pub sync_state: SyncStoreMigrationReport,
+    pub acceptance_store_path: PathBuf,
+    pub acceptance_store_preserved: bool,
+}
+
+/// Delete only rebuildable catalog state after durable sync identity has been
+/// migrated or validated. This is the sole reset primitive for callers that
+/// need to remove `wikitool.db`.
+pub fn reset_catalog_preserving_durable_state(paths: &ResolvedPaths) -> Result<CatalogResetReport> {
+    let sync_state = crate::sync::preserve_legacy_sync_state(paths)?;
+    let acceptance_store_path = paths.acceptance_store_path();
+    let acceptance_store_preserved = acceptance_store_path.is_file();
+    let mut catalog_sidecars_deleted = Vec::new();
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = sqlite_sidecar_path(&paths.db_path, suffix);
+        if !sidecar.exists() {
+            continue;
+        }
+        fs::remove_file(&sidecar).with_context(|| {
+            format!(
+                "failed to delete catalog database sidecar {}",
+                sidecar.display()
+            )
+        })?;
+        catalog_sidecars_deleted.push(sidecar);
+    }
+    let catalog_deleted = if paths.db_path.exists() {
+        fs::remove_file(&paths.db_path).with_context(|| {
+            format!(
+                "failed to delete catalog database {}",
+                paths.db_path.display()
+            )
+        })?;
+        true
+    } else {
+        false
+    };
+    Ok(CatalogResetReport {
+        catalog_deleted,
+        catalog_sidecars_deleted,
+        sync_state,
+        acceptance_store_path,
+        acceptance_store_preserved,
+    })
+}
+
+fn sqlite_sidecar_path(database_path: &Path, suffix: &str) -> PathBuf {
+    let mut path = database_path.as_os_str().to_os_string();
+    path.push(suffix);
+    PathBuf::from(path)
+}
 
 /// Fingerprint of the schema text, stamped into `PRAGMA user_version` after a
 /// successful bootstrap so later connection opens skip re-running the DDL batch
@@ -168,7 +226,7 @@ const REQUIRED_TEMPLATE_IMPLEMENTATION_COLUMNS: &[&str] = &[
 ];
 
 const REQUIRED_AUTHORING_CONTRACT_COLUMNS: &[&str] = &[
-    "profile",
+    "site_adapter_id",
     "contract_key",
     "contract_kind",
     "title",
@@ -186,7 +244,7 @@ const REQUIRED_AUTHORING_CONTRACT_COLUMNS: &[&str] = &[
 ];
 
 const REQUIRED_AUTHORING_CONTRACT_EDGE_COLUMNS: &[&str] = &[
-    "profile",
+    "site_adapter_id",
     "from_contract_key",
     "from_kind",
     "from_title",
@@ -324,7 +382,7 @@ pub fn open_database_connection(db_path: &Path) -> Result<Connection> {
     connection
         .pragma_update(None, "journal_mode", "WAL")
         .context("failed to enable WAL journal mode")?;
-    // The local database is disposable state (LOCAL_DB_POLICY_MESSAGE); under WAL,
+    // This catalog database is disposable state (LOCAL_DB_POLICY_MESSAGE); under WAL,
     // NORMAL keeps transactions consistent while dropping per-commit fsync stalls.
     connection
         .pragma_update(None, "synchronous", "NORMAL")
@@ -453,7 +511,7 @@ fn require_columns(
 }
 fn schema_reset_hint(db_path: &Path) -> String {
     format!(
-        "delete {} and rerun the relevant sync/import command to recreate the disposable local database",
+        "run `wikitool db reset --yes` to safely recreate the incompatible catalog at {}; the reset migrates legacy sync identity before deletion",
         db_path.display()
     )
 }
@@ -566,12 +624,152 @@ mod tests {
         let message = error.to_string();
         let chain = error.chain().map(ToString::to_string).collect::<Vec<_>>();
 
-        assert!(message.contains("delete"));
+        assert!(message.contains("wikitool db reset --yes"));
         assert!(
             chain
                 .iter()
                 .any(|entry| entry.contains("older disposable schema"))
         );
         assert!(chain.iter().any(|entry| entry.contains("citation_profile")));
+    }
+
+    #[test]
+    fn catalog_reset_deletes_exact_wal_and_shared_memory_sidecars() {
+        let (_temp, paths) = test_paths();
+        let source = paths.project_root.join("committed-wal-source.db");
+        let source_wal = sqlite_sidecar_path(&source, "-wal");
+        let source_shm = sqlite_sidecar_path(&source, "-shm");
+        let source_connection = Connection::open(&source).expect("open WAL source database");
+        source_connection
+            .query_row("PRAGMA journal_mode = WAL", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .expect("enable WAL mode");
+        source_connection
+            .execute_batch(
+                "PRAGMA wal_autocheckpoint = 0;
+                 CREATE TABLE disposable_catalog (value TEXT NOT NULL);
+                 INSERT INTO disposable_catalog (value) VALUES ('committed in WAL');",
+            )
+            .expect("commit catalog content into WAL");
+        assert!(source_wal.is_file());
+        assert!(source_shm.is_file());
+
+        let catalog_wal = sqlite_sidecar_path(&paths.db_path, "-wal");
+        let catalog_shm = sqlite_sidecar_path(&paths.db_path, "-shm");
+        fs::copy(&source, &paths.db_path).expect("copy catalog database");
+        fs::copy(&source_wal, &catalog_wal).expect("copy committed catalog WAL");
+        fs::copy(&source_shm, &catalog_shm).expect("copy catalog shared memory");
+        assert!(
+            fs::metadata(&catalog_wal)
+                .expect("catalog WAL metadata")
+                .len()
+                > 0
+        );
+
+        let report = reset_catalog_preserving_durable_state(&paths).expect("reset catalog");
+
+        assert!(report.catalog_deleted);
+        assert_eq!(
+            report.catalog_sidecars_deleted,
+            vec![catalog_wal.clone(), catalog_shm.clone()]
+        );
+        assert!(!paths.db_path.exists());
+        assert!(!catalog_wal.exists());
+        assert!(!catalog_shm.exists());
+        drop(source_connection);
+    }
+
+    #[test]
+    fn catalog_reset_migrates_revision_identity_before_deletion() {
+        let (_temp, paths) = test_paths();
+        let acceptance_store_path = paths.acceptance_store_path();
+        fs::create_dir_all(acceptance_store_path.parent().expect("acceptance parent"))
+            .expect("acceptance directory");
+        fs::write(&acceptance_store_path, b"durable acceptance sentinel")
+            .expect("acceptance sentinel");
+        let connection = open_database_connection(&paths.db_path).expect("open legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE sync_ledger_pages (
+                    title TEXT PRIMARY KEY,
+                    namespace INTEGER NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    wiki_modified_at TEXT,
+                    revision_id INTEGER,
+                    page_id INTEGER,
+                    is_redirect INTEGER NOT NULL,
+                    redirect_target TEXT,
+                    last_synced_at_unix INTEGER NOT NULL
+                 );
+                 INSERT INTO sync_ledger_pages (
+                    title, namespace, relative_path, content_hash, wiki_modified_at,
+                    revision_id, page_id, is_redirect, redirect_target, last_synced_at_unix
+                 ) VALUES (
+                    'Alpha', 0, 'wiki_content/Main/Alpha.wiki', 'sha256:alpha',
+                    '2026-08-27T00:00:00Z', 91, 17, 0, NULL, 1777000000
+                 );",
+            )
+            .expect("seed legacy revision identity");
+        drop(connection);
+
+        let report = reset_catalog_preserving_durable_state(&paths).expect("reset catalog");
+        assert!(report.catalog_deleted);
+        assert_eq!(
+            report.sync_state.status,
+            crate::sync::SyncStoreMigrationStatus::MigratedLegacy
+        );
+        assert!(!report.sync_state.established);
+        assert!(report.acceptance_store_preserved);
+        assert_eq!(report.acceptance_store_path, acceptance_store_path);
+        assert!(!paths.db_path.exists());
+        assert_eq!(
+            fs::read(&acceptance_store_path).expect("preserved acceptance store"),
+            b"durable acceptance sentinel"
+        );
+
+        let durable = Connection::open(paths.sync_store_path()).expect("open durable sync store");
+        let revision_id = durable
+            .query_row(
+                "SELECT revision_id FROM sync_ledger_pages WHERE title = 'Alpha'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("read migrated revision identity");
+        assert_eq!(revision_id, 91);
+    }
+
+    #[test]
+    fn catalog_reset_accepts_empty_legacy_sync_tables_as_no_state() {
+        let (_temp, paths) = test_paths();
+        let connection = open_database_connection(&paths.db_path).expect("open legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE sync_ledger_pages (
+                    title TEXT PRIMARY KEY,
+                    namespace INTEGER NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    wiki_modified_at TEXT,
+                    revision_id INTEGER,
+                    page_id INTEGER,
+                    is_redirect INTEGER NOT NULL,
+                    redirect_target TEXT,
+                    last_synced_at_unix INTEGER NOT NULL
+                 );",
+            )
+            .expect("create empty legacy sync table");
+        drop(connection);
+
+        let report = reset_catalog_preserving_durable_state(&paths)
+            .expect("empty legacy tables carry no durable sync identity");
+        assert!(report.catalog_deleted);
+        assert_eq!(
+            report.sync_state.status,
+            crate::sync::SyncStoreMigrationStatus::NoLegacyState
+        );
+        assert!(!paths.db_path.exists());
+        assert!(!paths.sync_store_path().exists());
     }
 }

@@ -1,8 +1,9 @@
 use anyhow::{Context, Result, bail};
 use wikitool_core::config::{WikiConfigPatch, derive_wiki_url, load_config, patch_wiki_config};
-use wikitool_core::profile::site_adapter_resource_paths;
 use wikitool_core::runtime::{InitOptions, init_layout};
-use wikitool_core::sync::discover_custom_namespaces;
+use wikitool_core::site::{
+    discover_custom_namespaces, resolve_project_owned_adapter_path, site_adapter_resource_paths,
+};
 
 use crate::cli_support::{normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
@@ -15,20 +16,18 @@ pub(crate) fn run_init(runtime: &RuntimeOptions, args: InitArgs) -> Result<()> {
     if args.no_config && args.adapter_path.is_some() {
         bail!("--adapter-path cannot be used with --no-config");
     }
-    let configured_adapter_path = args.adapter_path.as_ref().map(normalize_path);
-    if let Some(adapter_path) = &args.adapter_path {
-        let absolute = if adapter_path.is_absolute() {
-            adapter_path.clone()
-        } else {
-            paths.project_root.join(adapter_path)
-        };
-        site_adapter_resource_paths(&absolute).with_context(|| {
+    let configured_adapter_path = if let Some(adapter_path) = &args.adapter_path {
+        let resolved = resolve_project_owned_adapter_path(&paths, adapter_path)?;
+        site_adapter_resource_paths(&resolved.absolute).with_context(|| {
             format!(
                 "invalid site adapter supplied to --adapter-path: {}",
-                normalize_path(&absolute)
+                normalize_path(&resolved.absolute)
             )
         })?;
-    }
+        Some(resolved.project_relative)
+    } else {
+        None
+    };
     let report = init_layout(
         &paths,
         &InitOptions {

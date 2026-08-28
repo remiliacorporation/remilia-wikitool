@@ -7,16 +7,17 @@ replace the other.
 
 ## Design principles
 
-1. **MediaWiki is the live content authority.** Local wikitext is a synchronized working copy;
-   SQLite, search indexes, capabilities, and generated briefs are rebuildable projections.
+1. **MediaWiki is the live content authority.** Local wikitext is a synchronized working copy.
+   Catalog indexes, capability snapshots, and generated briefs are rebuildable projections;
+   revision baselines and publication decisions are separate durable authority stores.
 2. **Evidence identities travel with retrieval.** Paths, revision IDs, hashes, limits, and
    incomplete-scope signals matter more than fluent summaries or retrieval rank.
 3. **The core owns decidable mechanics.** Transport, parsing, revision comparison, template
    contracts, deterministic lint, atomic local writes, and exact-content interlocks belong in Rust.
 4. **Skills own judgment.** Research strategy, claim-source mapping, source suitability, prose,
    due weight, BLP care, and reader value remain inspectable agent procedures outside the binary.
-5. **Sites opt into policy explicitly.** A target-neutral embedded profile works without an
-   adapter. Project policy is loaded only through `[adapter].path`; there is no executable-ancestor
+5. **Sites opt into policy explicitly.** A target-neutral embedded adapter works without a
+   project adapter. Project policy is loaded only through `[adapter].path`; there is no executable-ancestor
    or neighboring-repository discovery.
 6. **Human authority is not identity theater.** Promotion records an exact-content decision and a
    caller-supplied named-human claim, but a free-form local label is not authentication or
@@ -36,16 +37,27 @@ agent skills
 project site adapter
   typed site policy + hashed supplemental guidance
         |
-wikitool core and CLI
-  MediaWiki IO; revision CAS; parsing; indexing; evidence; lint; ledgers
+thin wikitool CLI + application core
+  workspace; revision CAS; indexing; context packets; lint; authority stores
+        |
+mediawiki_protocol + bounded source acquisition
+  authenticated API transport; read/write constraints; source capture
         |
 MediaWiki + local source files + external source documents
 ```
 
-### Core
+### Protocol, sync, publication, application core, and CLI
 
-`crates/wikitool_core` owns reusable behavior and typed models. `crates/wikitool` owns command
-parsing, bounded presentation, and maintainer packaging. The core may report that a citation URL
+`crates/mediawiki_protocol` owns MediaWiki API models, authentication, reads, writes, rendered-page
+decoding, and the no-write-retry transport contract. It has no workspace, adapter, acceptance,
+catalog, or agent concepts. `crates/wikitool_sync` owns the target-bound durable sync repository,
+pull/plan/diff/push/delete state transitions, exact preview-plan identities, and mutation
+reconciliation over narrow project paths, target identity, protocol, and publication-preflight
+ports. `crates/wikitool_publication` implements the encyclopedic preflight and owns transactional
+acceptance/changeset authority; sync does not know what an article or human acceptance is.
+`crates/wikitool_core` adapts project configuration, catalog effects, site adapters, lint, source
+capture, and authoring-support packets onto those lower layers. `crates/wikitool` owns command
+composition and bounded presentation. The core may report that a citation URL
 matches a configured review rule; it may not declare that source universally reliable or infer a
 prose verdict from the match.
 
@@ -60,10 +72,10 @@ relationship importance, and sensitive-claim adequacy.
 
 ```toml
 [adapter]
-path = "site-adapter/profile.toml"
+path = "site-adapter/site-adapter.toml"
 ```
 
-The `site_adapter_v1` TOML is strict and may configure:
+The `site_adapter_v2` TOML is strict and may configure:
 
 - short-description, quality-banner, appendix, and wikitext mechanics;
 - citation template preferences and URL source-review matchers;
@@ -71,8 +83,9 @@ The `site_adapter_v1` TOML is strict and may configure:
 - parser-tag, parser-function, template, and module contracts;
 - relative supplemental guidance documents.
 
-The adapter and each named guidance document receive a content hash in the site profile. Markdown
-is context for agents, not executable policy. Source-review rules are routing signals, not bans.
+The adapter and each named guidance document receive a content hash in the resolved adapter
+identity. Markdown is context for agents, not executable policy. Source-review rules are routing
+signals, not bans.
 The embedded `mediawiki-generic` adapter has no target URL, branded prose, or site-specific source
 list.
 
@@ -93,10 +106,10 @@ skills with host-project skills. An explicit host can contribute only a site-ada
 ## Authoring flow
 
 ```text
-local wiki evidence + inspected external sources + human notes
+local wiki context + inspected external sources + human notes
                            |
                            v
-          article_start_v4 machine evidence surface
+          article_scout_v1 machine context surface
                            |
                            v
           claim-source map and explicit unknowns
@@ -111,13 +124,13 @@ local wiki evidence + inspected external sources + human notes
         named human reads the exact final prose
                            |
                            v
- article_acceptance_ledger_v1 -> promotion -> revision-bound push
+ article_acceptance_ledger_v3 -> promotion -> revision-bound push
 ```
 
-`knowledge article-start --format json --view brief` returns local state, evidence coverage,
-stable evidence identities, comparable-page observations, observed categories, available
+`article scout --format json --view brief` returns local state, context coverage,
+stable context identities, comparable-page observations, observed categories, available
 templates, and blocking ledger gaps. It does not contain prompt prose, a recommended editorial
-action, a canned question agenda, or a quality claim. `drafting_ready` means the configured local
+action, a canned question agenda, or a quality claim. `retrieval_ready` means the configured local
 artifacts are current enough to retrieve; it does not mean the topic is researched.
 
 Local and neighboring articles can establish target-wiki state and internal relationships. They
@@ -126,7 +139,7 @@ snippets, retrieval rank, and fluent synthesis are never evidence.
 
 ## Interview ledger
 
-`knowledge interview init|validate|show|audit|open-item` owns deterministic paths, a parseable
+`interview init|validate|show|audit|open-item` owns deterministic paths, a parseable
 frontmatter schema, neutral sections, structured negative evidence, and freshness. The CLI creates
 no question agenda and does not grade the interview's editorial sufficiency.
 
@@ -150,40 +163,85 @@ review skill instead locates concrete failures:
 Mechanical lint runs after this review and remains a separate result. Zero lint findings cannot
 certify truth, originality, readability, or source fidelity.
 
-## Acceptance ledger
+## Publication-acceptance store
 
-Changed non-redirect Main-namespace prose requires a matching local
-`article_acceptance_ledger_v1` entry before promotion and push. The entry binds:
+Changed non-redirect Main-namespace prose requires a matching authorization row in
+`.wikitool/acceptance/acceptance.sqlite3` before promotion and push. Its
+`article_acceptance_ledger_v3` payload binds:
 
 - source and target paths, title, and exact content SHA-256;
 - the self-reported human editor claim and `self_reported_unverified` assurance;
+- the acceptance timestamp;
 - prose origin and the `accepted_for_main_namespace_promotion` decision;
-- lint counts and whether warnings were explicitly accepted.
+- lint counts and whether warnings were explicitly accepted;
+- the normalized MediaWiki API endpoint and full SHA-256 identity of the active site-adapter
+  policy plus every declared guidance document.
 
-Any byte change invalidates the entry; `--force` cannot bypass the content binding. The ledger is
-useful accountability and a workflow interlock. It is not identity authentication, proof that the
-named person actually reviewed the article, or a machine quality certificate.
+Any byte, configured target, or publication-policy change invalidates the row; `--force` cannot
+bypass these bindings. Legacy JSON ledgers are detected and rejected clearly as historical,
+unbound evidence; they are never a parallel authority path. The store is useful accountability and
+a workflow interlock. It is not identity authentication, proof that the named person actually
+reviewed the article, or a machine quality certificate.
+
+For a coherent multi-article review, `article changeset prepare` freezes canonical title, source
+and target paths, exact content hash, prose origin, and complete lint evidence for every item.
+`article changeset accept` records one named decision and every independently invalidating member
+authorization in a single SQLite transaction. A process failure or late write error rolls back the
+whole replacement and preserves all prior authorizations. The decision timestamp is part of the
+decision digest and must match every member row. Push reports expose the verified content hash,
+acceptance timestamp,
+prose origin, identity-assurance level, warning decision, target/policy authority, and changeset
+identity, but claimed editor names are never added to public MediaWiki edit summaries.
 
 ## Sync and local durability
 
 Existing-page edits send MediaWiki `baserevid`; creations send `createonly`. Remote presence is
 reported explicitly. A locally modified page deleted remotely is a conflict; an operator can
 recreate it only with `--force`, and the request remains `createonly`. Deletions re-fetch revision
-identity immediately before mutation and refuse a same-run race even under `--force`. An already
-absent remote page causes local sync-state reconciliation without a delete request. Mutating
-requests are not generically retried, preventing an ambiguous write from being silently replayed.
+identity immediately before mutation and refuse a mismatch observed by that check even under
+`--force`. MediaWiki offers no revision-conditional delete parameter, so the check narrows but
+cannot close the time-of-check/time-of-use window before `action=delete`. An already absent remote
+page causes local sync-state reconciliation without a delete request. Mutating requests are not
+generically retried, preventing an ambiguous write from being silently replayed.
 The MediaWiki `bot` marker is an explicit `wiki.mark_edits_as_bot` transport setting, independent
 of who wrote or reviewed the prose.
 
-Acceptance entries, promotions, imports, interview state, research sessions, configuration
-patches, pull writes, and deletion backups use same-directory atomic replacement. The database is
-still disposable and can be rebuilt from source files and live state.
+Push and standalone delete preview by default and bind apply to a SHA-256 plan identity over the
+normalized target and the exact selected local, sync, remote, policy, and summary inputs relevant
+to the operation. Before any write request, sync persists a target-bound mutation intent; request
+start, response identity, current remote observation, reconciliation, and local state advancement
+are distinct durable phases. Ledger and base-snapshot changes commit together. Ambiguous outcomes
+block later writes for that title and expose public list/show/reconcile commands; no recovery path
+replays the mutation. When neither content/revision lineage nor an exact delete log can prove the
+outcome, an operator may close the receipt as `operator_closed_unresolved`. That closure has its
+own actor/reason/timestamp provenance, makes no assertion about remote success, invalidates the
+title's baseline, and requires a fresh `pull --full --all` before another write. Delete-local
+staging and exact backup validation are part of the same durable recovery protocol; disposable
+catalog cleanup cannot hide a terminal mutation receipt.
 
-## Research boundary
+Promotions, imports, interview state, source-access sessions, configuration patches, pull writes, and
+deletion backups use same-directory atomic replacement. Publication decisions and member
+authorizations use the separate durable acceptance store and commit transactionally. The catalog
+database remains disposable and can be rebuilt from source files and live state. Sync revision
+identity, incremental checkpoints, and exact base snapshots live in a separate durable SQLite
+store; catalog reset and pull/catalog refresh operations preserve both durable stores, and sync
+planning fails closed when sync identity is absent. Only an explicitly global, successful
+`pull --full --all` writes global baseline
+authority; scoped or category pulls and legacy migrations may preserve rows but cannot prove
+coverage and therefore cannot unlock global diff/status/review/push. Establishment atomically binds
+the store to a normalized MediaWiki API endpoint. Every planning and publication read verifies that
+identity, and target mismatch fails before network conflict hydration or mutation; `--force` cannot
+waive it.
 
-Research uses one outbound HTTP policy: HTTP(S) only, no embedded credentials, no local or
+## Source-acquisition boundary
+
+`source` uses one outbound HTTP policy: HTTP(S) only, no embedded credentials, no local or
 special-use targets, and validation across redirects. Session cookies honor secure, host-only, and
-path constraints. Cache keys include extractor and session identity and have bounded lifetimes.
+path constraints. On Windows, their directory and files use a native, protected, current-user-only
+DACL. On Unix, they use verified current-effective-user ownership with directory mode `0700` and
+file mode `0600`. The atomic staging file is protected before secret bytes are written, and both
+platforms verify protection again after publication and before loading; uncertainty fails closed.
+Cache keys include extractor and session identity and have bounded lifetimes.
 
 Source acquisition does not establish source suitability. The writing and review skills must open
 the work, bind claims to exact passages, preserve source role, and disclose inaccessible material.
@@ -192,8 +250,8 @@ the work, bind claims to exact passages, preserve source role, and disclose inac
 
 `crates/wikitest` is a source-resident evaluator, not a library back door or a prose grader inside
 Wikitool. It invokes the public executable in isolated projects or an explicitly admitted
-read-only host root. Its generic catalog covers mechanical article state transitions and synthetic
-local-index retrieval; a host repository may add supplemental real-corpus scenarios without
+read-only host root. Its generic catalog covers mechanical article state transitions, a local
+MediaWiki HTTP sync boundary, and synthetic local-index retrieval; a host repository may add supplemental real-corpus scenarios without
 embedding site policy in either general-purpose crate.
 
 Prose assignments freeze the inspected sources and canonical skill bytes, accept an external
@@ -202,14 +260,20 @@ identified reviewer. Controlled cases test stable verdict axes and disposition, 
 matching. Receipts bind both the exact Wikitest driver and the evaluated Wikitool binary. Every
 run-producing command re-inspects that receipt before success, and state advances preflight the
 recorded identities so a stale evaluator cannot partially mutate a prose run. CI can
-deterministically run mechanics, knowledge fixtures, and packet construction; model-backed prose
+deterministically run mechanics, catalog fixtures, and packet construction; model-backed prose
 performance remains an explicit dogfood campaign whose participant and receipt evidence must be
-reported separately.
+reported separately. Prose packet preparation records prepared coverage only; demonstrated
+coverage exists only after `prose evaluate-suite` replays completed independent review receipts
+and passes any held-out oracle.
 
 ## Release boundary
 
 Release archives contain a target-neutral AI pack, generic adapter example, and canonical skills.
-`--host-project-root` is explicit and accepts only the typed `wikitool_adapter/profile.toml` plus
+Receipt inspection replays deterministic observations and capability-to-step bindings. It reports
+the self-contained artifact set as unanchored rather than claiming authenticity; release evidence
+needs an independently published immutable digest or signature.
+
+`--host-project-root` is explicit and accepts only the typed `wikitool_adapter/site-adapter.toml` plus
 the guidance files it declares as a supplement under `site_adapter/project/`; undeclared neighbor
 files are not shipped. The supplement never replaces public `CLAUDE.md`, `AGENTS.md`, rules,
 wrappers, or skills. Unknown, malformed, traversing, or incomplete host adapter state fails
@@ -226,12 +290,13 @@ Contextmink source fork and no duplicate installer.
 
 - The acceptance editor label is unauthenticated. Strong identity would require an external signed
   review or authenticated interactive system, not another CLI string.
-- Post-write reconciliation does not yet persist the edit-response revision as a durable mutation
-  receipt before later observation.
-- DNS validation and the HTTP connection do not yet share a pinned resolution, leaving a bounded
-  DNS-rebinding window.
-- Windows research-session files mask values in output but do not yet receive an explicit
-  user-only ACL.
+- Sync currently implements MediaWiki `first-letter` title identity and a fixed built-in namespace
+  prefix set. Case-sensitive namespaces are not a supported write target until siteinfo namespace
+  case policy participates in planning, ledger, mutation, and target identities.
+- Target-specific preservation-projection artifacts developed alongside the host archive campaign
+  are intentionally excluded from the core crate, default binary, generated reference, and release
+  package. Their Minibeast input and Remilia receipt schemas belong in a separately versioned
+  application companion owned by that archive workflow.
 - Wikitext parsing is deterministic and bounded, not a complete replacement for MediaWiki's
   production parser; rendered behavior must be checked through `wiki render-check` where relevant.
 - Wikitest provides replayable structural and closed-world evidence, but model performance must be
@@ -247,6 +312,6 @@ When behavior changes:
 3. regenerate `docs/wikitool/reference.md` from clap help;
 4. run `docs audit` to verify target neutrality, skill package shape, adapter routing, and generated
    reference freshness;
-5. run the relevant Wikitest suites and retain their self-inspected receipts;
+5. run the relevant Wikitest suites, replay their receipts, and externally anchor release evidence;
 6. package both the generic AI pack and an explicit host-adapter supplement;
 7. keep live writes out of tests unless the test is explicitly authorized and revision-bound.

@@ -8,11 +8,8 @@ use crate::cli_support::OutputFormat;
 mod capabilities;
 mod cargo;
 mod output;
-mod profile;
 mod render_check;
-mod rules;
 mod summary;
-mod surface;
 
 #[cfg(test)]
 mod tests;
@@ -28,16 +25,8 @@ enum WikiSubcommand {
     Capabilities(WikiCapabilitiesArgs),
     #[command(about = "Query the live wiki's Cargo extension tables")]
     Cargo(WikiCargoArgs),
-    #[command(about = "Show the combined live and site-adapter wiki surface")]
-    Profile(WikiProfileArgs),
     #[command(about = "Validate rendered live HTML and scoped link contracts")]
     RenderCheck(WikiRenderCheckArgs),
-    #[command(about = "Show the typed local site-adapter rules")]
-    Rules(WikiRulesArgs),
-    #[command(
-        about = "Show the agent-facing template, module, asset, and extension authoring surface"
-    )]
-    Surface(WikiSurfaceArgs),
 }
 
 #[derive(Debug, Args)]
@@ -216,6 +205,29 @@ enum WikiCapabilitiesSubcommand {
     Sync(WikiCapabilitiesFormatArgs),
     #[command(about = "Show the last stored wiki capability manifest")]
     Show(WikiCapabilitiesFormatArgs),
+    #[command(about = "Inspect a remote MediaWiki capability surface without storing it")]
+    Remote(WikiRemoteCapabilitiesArgs),
+}
+
+#[derive(Debug, Args)]
+struct WikiRemoteCapabilitiesArgs {
+    url: String,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = OutputFormat::Json,
+        value_name = "FORMAT",
+        help = "Output format: text|json"
+    )]
+    format: OutputFormat,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = WikiJsonView::Summary,
+        value_name = "VIEW",
+        help = "JSON view: summary|full"
+    )]
+    view: WikiJsonView,
 }
 
 #[derive(Debug, Args)]
@@ -236,18 +248,6 @@ struct WikiCapabilitiesFormatArgs {
         help = "JSON view: summary|full"
     )]
     view: WikiJsonView,
-}
-
-#[derive(Debug, Args)]
-struct WikiFormatArgs {
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = OutputFormat::Text,
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: OutputFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -275,114 +275,10 @@ impl std::fmt::Display for WikiJsonView {
     }
 }
 
-#[derive(Debug, Args)]
-pub(crate) struct WikiProfileArgs {
-    #[command(subcommand)]
-    command: WikiProfileSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum WikiProfileSubcommand {
-    #[command(about = "Refresh the local site-adapter artifact and live capability snapshot")]
-    Sync(WikiCapabilitiesFormatArgs),
-    #[command(about = "Show the current combined profile snapshot")]
-    Show(WikiCapabilitiesFormatArgs),
-    #[command(about = "Inspect a remote target wiki capability profile without storing it locally")]
-    Remote(WikiRemoteProfileArgs),
-}
-
-#[derive(Debug, Args)]
-struct WikiRemoteProfileArgs {
-    url: String,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = OutputFormat::Json,
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: OutputFormat,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = WikiJsonView::Summary,
-        value_name = "VIEW",
-        help = "JSON view: summary|full"
-    )]
-    view: WikiJsonView,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct WikiRulesArgs {
-    #[command(subcommand)]
-    command: WikiRulesSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum WikiRulesSubcommand {
-    #[command(about = "Show the current typed site-adapter rules")]
-    Show(WikiFormatArgs),
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct WikiSurfaceArgs {
-    #[command(subcommand)]
-    command: WikiSurfaceSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-enum WikiSurfaceSubcommand {
-    #[command(about = "Refresh and show the agent-facing authoring surface")]
-    Sync(WikiSurfaceFormatArgs),
-    #[command(about = "Show the current agent-facing authoring surface")]
-    Show(WikiSurfaceFormatArgs),
-}
-
-#[derive(Debug, Args)]
-struct WikiSurfaceFormatArgs {
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = OutputFormat::Text,
-        value_name = "FORMAT",
-        help = "Output format: text|json"
-    )]
-    format: OutputFormat,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = BriefView::Brief,
-        value_name = "VIEW",
-        help = "JSON view: brief|full"
-    )]
-    view: BriefView,
-    #[arg(long = "template-limit", default_value_t = 64, value_name = "N")]
-    template_limit: usize,
-    #[arg(long = "template-example-limit", default_value_t = 2, value_name = "N")]
-    template_example_limit: usize,
-    #[arg(long = "module-limit", default_value_t = 128, value_name = "N")]
-    module_limit: usize,
-    #[arg(long = "asset-limit", default_value_t = 128, value_name = "N")]
-    asset_limit: usize,
-    #[arg(long = "extension-limit", default_value_t = 128, value_name = "N")]
-    extension_limit: usize,
-    #[arg(long = "extension-tag-limit", default_value_t = 128, value_name = "N")]
-    extension_tag_limit: usize,
-    #[arg(
-        long = "parser-function-limit",
-        default_value_t = 128,
-        value_name = "N"
-    )]
-    parser_function_limit: usize,
-}
-
 pub(crate) fn run_wiki(runtime: &RuntimeOptions, args: WikiArgs) -> Result<()> {
     match args.command {
         WikiSubcommand::Capabilities(args) => capabilities::run_wiki_capabilities(runtime, args),
         WikiSubcommand::Cargo(args) => cargo::run_wiki_cargo(runtime, args),
-        WikiSubcommand::Profile(args) => profile::run_wiki_profile(runtime, args),
         WikiSubcommand::RenderCheck(args) => render_check::run_wiki_render_check(runtime, args),
-        WikiSubcommand::Rules(args) => rules::run_wiki_rules(runtime, args),
-        WikiSubcommand::Surface(args) => surface::run_wiki_surface(runtime, args),
     }
 }

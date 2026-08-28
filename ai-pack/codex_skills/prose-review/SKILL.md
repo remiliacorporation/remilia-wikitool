@@ -7,17 +7,36 @@ description: Adversarially review encyclopedic wiki prose for source fidelity, d
 
 Review encyclopedic prose as critically as a code reviewer reviews a change: reconstruct what it claims, test those claims against the actual inputs, identify reader-facing failures, and report actionable findings before any summary.
 
+## Frozen packet mode
+
+When an evaluation or delegated task supplies a frozen, blinded review packet, that export is the
+complete review boundary. Read only files explicitly listed in the export. Do not traverse to a
+parent run directory or repository, load ambient project state, run live Wikitool or network
+commands, inspect an author claim map or rationale, or seek a held-out oracle. Use only the packet's
+bound site context, candidate, sources, and mechanical observations. Reconstruct the claim map from
+the candidate itself. Missing material is a disclosed review limit, not permission to escape the
+packet.
+
 ## Required context
 
 1. Read [source-fidelity.md](references/source-fidelity.md) for every review.
 2. Read [reader-value.md](references/reader-value.md) for every review.
 3. Read [blp-sensitive.md](references/blp-sensitive.md) whenever a living person, health, crime, drugs, sexuality, identity, harassment, finances, allegations, or reputational claim appears or may be implied.
-4. Run `wikitool wiki profile show --format json` and read the active project's supplemental guidance. Treat source-review matches as review prompts, not automatic reliability verdicts.
+4. In an ordinary project, run `wikitool adapter inspect --format json` and read the active adapter's supplemental guidance. In frozen packet mode, use only the supplied bound site context. Treat source-review matches as review prompts, not automatic reliability verdicts.
 5. Inspect the exact article bytes and the exact source documents. If the source packet is incomplete, state the review limit and do not certify source fidelity.
 
 ## Independence
 
-Do not silently rewrite the article while reviewing it. Keep findings separate from repair. When the same agent authored the draft, explicitly adopt an adversarial pass: discard the authoring rationale, rebuild the claim-source map from the text, and look for reasons the prose should not ship.
+Do not silently rewrite the article while reviewing it. Keep findings separate from repair. A
+publication-grade review must come from a different agent invocation or human than the authoring
+pass and must receive only the frozen candidate, source packet, site guidance, and review
+procedure—not the author's rationale or intended verdict. Self-reported participant IDs establish
+workflow separation, not identity.
+
+When no independent reviewer is available, perform a clearly labelled self-review: discard the
+authoring rationale, rebuild the claim-source map from the text, and look for reasons the prose
+should not ship. A self-review may find and block defects, but it cannot satisfy the independent
+review exit condition.
 
 ## Procedure
 
@@ -61,7 +80,7 @@ Do not report “sounds AI-generated” as a standalone finding. Point to the ex
 
 ### 7. Run mechanical checks last
 
-Use Wikitool lint, duplicate-reference inspection, validation, and live link/redirect verification as appropriate. Mechanical findings supplement the editorial review; they cannot override it.
+In an ordinary project, use Wikitool lint, duplicate-reference inspection, validation, and live link/redirect verification as appropriate. In frozen packet mode, inspect only the supplied mechanical observations and disclose anything they do not establish. Mechanical findings supplement the editorial review; they cannot override it.
 
 ## Findings format
 
@@ -81,8 +100,10 @@ After findings, provide:
 3. **Disposition:** `accept`, `revise`, or `block`.
 4. **Residual risk:** what still requires a human judgment or inaccessible source.
 
+Map severity to disposition consistently: any P0 or P1 requires `block`; one or more P2 findings with no P0/P1 require `revise`; P3-only findings may accompany `accept`. A P3 is a bounded polish item, not a hidden publication block.
+
 If there are no findings, say so explicitly and still state the evidence scope. Do not inflate a review with cosmetic comments.
 
 ## Exit conditions
 
-A review is complete only when the target is fixed, the cited source packet has been inspected or its absence disclosed, conditional sensitive review has run, mechanical checks are separated from editorial judgment, and the disposition follows from enumerated findings. Review completion is not human acceptance and must not create an acceptance ledger entry.
+A review is complete only when the exact target bytes are frozen and identified, the cited source packet has been inspected or its absence disclosed, conditional sensitive review has run, mechanical checks are separated from editorial judgment, and the disposition follows from enumerated findings. Review completion is not human acceptance and must not create a publication authorization.

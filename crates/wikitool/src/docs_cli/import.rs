@@ -2,7 +2,6 @@ use super::*;
 use wikitool_core::docs::{
     DocsImportProfileReport, DocsImportReport, DocsImportTechnicalReport, is_transient_docs_error,
 };
-use wikitool_core::knowledge::status::DEFAULT_DOCS_PROFILE;
 
 #[derive(Debug, Args)]
 pub(super) struct DocsImportArgs {
@@ -48,8 +47,11 @@ pub(super) struct DocsImportTechnicalArgs {
 
 #[derive(Debug, Args)]
 pub(super) struct DocsImportProfileArgs {
-    #[arg(value_name = "PROFILE", default_value = DEFAULT_DOCS_PROFILE)]
-    profile: String,
+    #[arg(
+        value_name = "PROFILE",
+        help = "Docs profile to hydrate (default: configured site adapter)"
+    )]
+    profile: Option<String>,
     #[arg(long, help = "Discover installed extensions from the configured wiki")]
     installed: bool,
     #[arg(
@@ -286,11 +288,12 @@ pub(super) fn run_docs_import_profile(
     runtime: &RuntimeOptions,
     args: DocsImportProfileArgs,
 ) -> Result<()> {
-    let (paths, config) = resolve_runtime_with_config(runtime)?;
+    let (paths, config, profile) =
+        resolve_runtime_with_docs_profile(runtime, args.profile.as_deref())?;
     let report = match import_docs_profile_with_config(
         &paths,
         &DocsImportProfileOptions {
-            profile: normalize_title_query(&args.profile),
+            profile: normalize_title_query(&profile),
             include_installed_extensions: args.installed,
             include_extension_subpages: !args.no_extension_subpages,
             extra_extensions: normalize_title_list(args.extensions),
@@ -300,7 +303,7 @@ pub(super) fn run_docs_import_profile(
     ) {
         Ok(report) => report,
         Err(error) if is_transient_docs_error(&error) => {
-            transient_docs_profile_report(&args.profile, &error)
+            transient_docs_profile_report(&profile, &error)
         }
         Err(error) => return Err(error),
     };

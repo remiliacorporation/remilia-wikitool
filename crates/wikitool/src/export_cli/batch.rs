@@ -7,8 +7,8 @@ use anyhow::{Context, Result, bail};
 use wikitool_core::external::{
     DEFAULT_EXPORTS_DIR, ExportFormat, ExternalFetchResult, sanitize_filename,
 };
-use wikitool_core::research::load_research_session_for_url;
 use wikitool_core::runtime::ResolvedPaths;
+use wikitool_core::source::load_source_access_session_for_url;
 use wikitool_core::support::compute_hash;
 
 use crate::cli_support::normalize_path;
@@ -35,7 +35,7 @@ pub(super) fn run_urls_file_export(
     let mut failures = Vec::new();
 
     for url in urls {
-        let session = load_research_session_for_url(paths, &url)?;
+        let session = load_source_access_session_for_url(paths, &url)?;
         match fetch_single_export_page(&url, ExportFormat::Markdown, session) {
             Ok(page) => successes.push(UrlBatchSuccess {
                 source_url: url,

@@ -84,12 +84,12 @@ pub(super) fn lint_source_review_rules(
     resources: &LoadedResources,
     matches: &mut Vec<IssueMatch>,
 ) {
-    if resources.profile.citations.source_review_rules.is_empty() {
+    if resources.adapter.citations.source_review_rules.is_empty() {
         return;
     }
     let references = extract_reference_records(&document.content);
     let lowered_content = document.content.to_ascii_lowercase();
-    for rule in &resources.profile.citations.source_review_rules {
+    for rule in &resources.adapter.citations.source_review_rules {
         let review_host = rule.host.trim().to_ascii_lowercase();
         if review_host.is_empty() {
             continue;

@@ -1,35 +1,3 @@
-CREATE TABLE IF NOT EXISTS sync_ledger_pages (
-    title TEXT PRIMARY KEY,
-    namespace INTEGER NOT NULL,
-    relative_path TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    wiki_modified_at TEXT,
-    revision_id INTEGER,
-    page_id INTEGER,
-    is_redirect INTEGER NOT NULL,
-    redirect_target TEXT,
-    last_synced_at_unix INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_sync_ledger_pages_namespace ON sync_ledger_pages(namespace);
-CREATE INDEX IF NOT EXISTS idx_sync_ledger_pages_relative_path ON sync_ledger_pages(relative_path);
-CREATE INDEX IF NOT EXISTS idx_sync_ledger_pages_lower_title
-    ON sync_ledger_pages(lower(title));
-
-CREATE TABLE IF NOT EXISTS sync_config (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS sync_snapshots (
-    title TEXT PRIMARY KEY,
-    relative_path TEXT NOT NULL,
-    content_text TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_sync_snapshots_relative_path
-    ON sync_snapshots(relative_path);
-CREATE INDEX IF NOT EXISTS idx_sync_snapshots_lower_title
-    ON sync_snapshots(lower(title));
-
 CREATE TABLE IF NOT EXISTS indexed_pages (
     relative_path TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -427,7 +395,7 @@ CREATE INDEX IF NOT EXISTS idx_indexed_template_implementation_pages_role
     ON indexed_template_implementation_pages(role);
 
 CREATE TABLE IF NOT EXISTS authoring_contracts (
-    profile TEXT NOT NULL,
+    site_adapter_id TEXT NOT NULL,
     contract_key TEXT PRIMARY KEY,
     contract_kind TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -443,8 +411,8 @@ CREATE TABLE IF NOT EXISTS authoring_contracts (
     token_estimate INTEGER NOT NULL,
     source TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_authoring_contracts_profile
-    ON authoring_contracts(profile);
+CREATE INDEX IF NOT EXISTS idx_authoring_contracts_site_adapter
+    ON authoring_contracts(site_adapter_id);
 CREATE INDEX IF NOT EXISTS idx_authoring_contracts_kind
     ON authoring_contracts(contract_kind);
 CREATE INDEX IF NOT EXISTS idx_authoring_contracts_title
@@ -465,7 +433,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS authoring_contracts_fts USING fts5(
 );
 
 CREATE TABLE IF NOT EXISTS authoring_contract_edges (
-    profile TEXT NOT NULL,
+    site_adapter_id TEXT NOT NULL,
     from_contract_key TEXT NOT NULL,
     from_kind TEXT NOT NULL,
     from_title TEXT NOT NULL,
@@ -474,7 +442,7 @@ CREATE TABLE IF NOT EXISTS authoring_contract_edges (
     to_title TEXT NOT NULL,
     relation TEXT NOT NULL,
     evidence TEXT NOT NULL,
-    PRIMARY KEY (profile, from_contract_key, to_contract_key, relation)
+    PRIMARY KEY (site_adapter_id, from_contract_key, to_contract_key, relation)
 );
 CREATE INDEX IF NOT EXISTS idx_authoring_contract_edges_from
     ON authoring_contract_edges(from_contract_key);

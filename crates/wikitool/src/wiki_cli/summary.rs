@@ -1,7 +1,6 @@
 use serde::Serialize;
-use wikitool_core::profile::{
-    SiteProfile, TemplateCatalogSummary, WikiCapabilityManifest, WikiProfileSnapshot,
-};
+use wikitool_core::site::WikiCapabilityManifest;
+
 #[derive(Debug, Serialize)]
 pub(super) struct WikiCapabilityManifestSummary<'a> {
     pub(super) schema_version: &'a str,
@@ -32,17 +31,9 @@ pub(super) struct WikiCapabilityManifestSummary<'a> {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct WikiProfileSnapshotSummary<'a> {
-    base_profile_id: &'a str,
-    adapter: SiteProfileSummary<'a>,
-    pub(super) capabilities: Option<WikiCapabilityManifestSummary<'a>>,
-    template_catalog: Option<TemplateCatalogSummaryView<'a>>,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct RemoteWikiProfileReport<'a> {
+pub(super) struct RemoteWikiCapabilitiesReport<'a> {
     pub(super) schema_version: &'a str,
-    pub(super) profile_scope: &'a str,
+    pub(super) capability_scope: &'a str,
     pub(super) source_url: &'a str,
     pub(super) storage: &'a str,
     pub(super) target_compatibility_note: &'a str,
@@ -50,84 +41,18 @@ pub(super) struct RemoteWikiProfileReport<'a> {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct RemoteWikiProfileSummary<'a> {
+pub(super) struct RemoteWikiCapabilitiesSummary<'a> {
     pub(super) schema_version: &'a str,
-    pub(super) profile_scope: &'a str,
+    pub(super) capability_scope: &'a str,
     pub(super) source_url: &'a str,
     pub(super) storage: &'a str,
     pub(super) target_compatibility_note: &'a str,
     pub(super) capabilities: WikiCapabilityManifestSummary<'a>,
 }
 
-#[derive(Debug, Serialize)]
-pub(super) struct SiteProfileSummary<'a> {
-    pub(super) schema_version: &'a str,
-    profile_id: &'a str,
-    base_profile_id: &'a str,
-    docs_profile: &'a str,
-    source_document_count: usize,
-    authoring: ProfileAuthoringSummary<'a>,
-    citations: ProfileCitationSummary<'a>,
-    templates: ProfileTemplateSummary<'a>,
-    categories: ProfileCategorySummary<'a>,
-    lint: ProfileLintSummary,
-    extension_contract_count: usize,
-    refreshed_at: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct ProfileAuthoringSummary<'a> {
-    require_short_description: bool,
-    short_description_forms: &'a [String],
-    require_article_quality_banner: bool,
-    article_quality_template: Option<&'a str>,
-    article_quality_default_state: Option<&'a str>,
-    required_appendix_sections: &'a [String],
-    references_template: Option<&'a str>,
-    prefer_sentence_case_headings: bool,
-    prefer_wikitext_only: bool,
-    forbid_markdown: bool,
-    require_straight_quotes: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct ProfileCitationSummary<'a> {
-    preferred_templates: &'a [wikitool_core::profile::CitationTemplateRule],
-    use_named_references: bool,
-    leave_archive_fields_blank: bool,
-    source_review_rule_count: usize,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct ProfileTemplateSummary<'a> {
-    infobox_preferences: &'a [wikitool_core::profile::InfoboxPreference],
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct ProfileCategorySummary<'a> {
-    preferred_categories: &'a [String],
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct ProfileLintSummary {
-    forbid_curly_quotes: bool,
-    forbid_placeholder_fragment_count: usize,
-}
-
-#[derive(Debug, Serialize)]
-pub(super) struct TemplateCatalogSummaryView<'a> {
-    profile_id: &'a str,
-    template_count: usize,
-    templatedata_count: usize,
-    redirect_alias_count: usize,
-    usage_index_ready: bool,
-    profile_template_titles: &'a [String],
-    refreshed_at: &'a str,
-}
-
-pub(super) fn summarize_capability_manifest<'a>(
-    manifest: &'a WikiCapabilityManifest,
-) -> WikiCapabilityManifestSummary<'a> {
+pub(super) fn summarize_capability_manifest(
+    manifest: &WikiCapabilityManifest,
+) -> WikiCapabilityManifestSummary<'_> {
     WikiCapabilityManifestSummary {
         schema_version: &manifest.schema_version,
         wiki_id: &manifest.wiki_id,
@@ -157,90 +82,15 @@ pub(super) fn summarize_capability_manifest<'a>(
     }
 }
 
-pub(super) fn summarize_profile_snapshot<'a>(
-    snapshot: &'a WikiProfileSnapshot,
-) -> WikiProfileSnapshotSummary<'a> {
-    WikiProfileSnapshotSummary {
-        base_profile_id: &snapshot.base_profile_id,
-        adapter: summarize_profile(&snapshot.adapter),
-        capabilities: snapshot
-            .capabilities
-            .as_ref()
-            .map(summarize_capability_manifest),
-        template_catalog: snapshot
-            .template_catalog
-            .as_ref()
-            .map(summarize_template_catalog_summary),
-    }
-}
-
-pub(super) fn summarize_remote_profile_report<'a>(
-    report: &'a RemoteWikiProfileReport<'a>,
-) -> RemoteWikiProfileSummary<'a> {
-    RemoteWikiProfileSummary {
+pub(super) fn summarize_remote_capabilities_report<'a>(
+    report: &'a RemoteWikiCapabilitiesReport<'a>,
+) -> RemoteWikiCapabilitiesSummary<'a> {
+    RemoteWikiCapabilitiesSummary {
         schema_version: report.schema_version,
-        profile_scope: report.profile_scope,
+        capability_scope: report.capability_scope,
         source_url: report.source_url,
         storage: report.storage,
         target_compatibility_note: report.target_compatibility_note,
         capabilities: summarize_capability_manifest(report.capabilities),
-    }
-}
-
-fn summarize_profile<'a>(profile: &'a SiteProfile) -> SiteProfileSummary<'a> {
-    SiteProfileSummary {
-        schema_version: &profile.schema_version,
-        profile_id: &profile.profile_id,
-        base_profile_id: &profile.base_profile_id,
-        docs_profile: &profile.docs_profile,
-        source_document_count: profile.source_documents.len(),
-        authoring: ProfileAuthoringSummary {
-            require_short_description: profile.authoring.require_short_description,
-            short_description_forms: &profile.authoring.short_description_forms,
-            require_article_quality_banner: profile.authoring.require_article_quality_banner,
-            article_quality_template: profile.authoring.article_quality_template.as_deref(),
-            article_quality_default_state: profile
-                .authoring
-                .article_quality_default_state
-                .as_deref(),
-            required_appendix_sections: &profile.authoring.required_appendix_sections,
-            references_template: profile.authoring.references_template.as_deref(),
-            prefer_sentence_case_headings: profile.authoring.prefer_sentence_case_headings,
-            prefer_wikitext_only: profile.authoring.prefer_wikitext_only,
-            forbid_markdown: profile.authoring.forbid_markdown,
-            require_straight_quotes: profile.authoring.require_straight_quotes,
-        },
-        citations: ProfileCitationSummary {
-            preferred_templates: &profile.citations.preferred_templates,
-            use_named_references: profile.citations.use_named_references,
-            leave_archive_fields_blank: profile.citations.leave_archive_fields_blank,
-            source_review_rule_count: profile.citations.source_review_rules.len(),
-        },
-        templates: ProfileTemplateSummary {
-            infobox_preferences: &profile.templates.infobox_preferences,
-        },
-        categories: ProfileCategorySummary {
-            preferred_categories: &profile.categories.preferred_categories,
-        },
-        lint: ProfileLintSummary {
-            forbid_curly_quotes: profile.lint.forbid_curly_quotes,
-            forbid_placeholder_fragment_count: profile.lint.forbid_placeholder_fragments.len(),
-        },
-        extension_contract_count: profile.extension_contracts.len(),
-        refreshed_at: &profile.refreshed_at,
-    }
-}
-
-fn summarize_template_catalog_summary<'a>(
-    summary: &'a TemplateCatalogSummary,
-) -> TemplateCatalogSummaryView<'a> {
-    TemplateCatalogSummaryView {
-        profile_id: &summary.profile_id,
-        template_count: summary.template_count,
-        templatedata_count: summary.templatedata_count,
-        redirect_alias_count: summary.redirect_alias_count,
-        usage_index_ready: summary.usage_index_ready,
-        profile_template_titles: &summary.profile_template_titles,
-        refreshed_at: &summary.refreshed_at,
     }
 }

@@ -21,7 +21,7 @@ use wikitool_core::external::{
     ExportFormat, ExternalFetchFormat, ExternalFetchOptions, ExternalFetchProfile,
     default_export_path, fetch_pages_by_titles, list_subpages, parse_wiki_url,
 };
-use wikitool_core::research::load_research_session_for_url;
+use wikitool_core::source::load_source_access_session_for_url;
 
 use crate::cli_support::{ExportContentFormat, normalize_path, resolve_runtime_paths};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
@@ -105,7 +105,7 @@ pub(crate) fn run_export(runtime: &RuntimeOptions, args: ExportArgs) -> Result<(
         format: ExternalFetchFormat::Wikitext,
         max_bytes: 1_000_000,
         profile: ExternalFetchProfile::MediaWiki,
-        session: load_research_session_for_url(&paths, url)?,
+        session: load_source_access_session_for_url(&paths, url)?,
     };
 
     if args.subpages {

@@ -1,6 +1,6 @@
 use crate::article_lint::document::ParsedArticleDocument;
 use crate::article_lint::model::{ArticleLintIssue, ArticleLintSeverity};
-use crate::profile::normalize_asset_title;
+use crate::site::normalize_asset_title;
 
 use super::IssueMatch;
 use crate::article_lint::resources::LoadedResources;
@@ -54,7 +54,7 @@ fn lint_templatestyles_sources(
                 span: document.span_for_range(occurrence.start, occurrence.end),
                 evidence: Some(format!("{source_title} normalized={normalized}")),
                 suggested_remediation: Some(
-                    "Use a stylesheet listed by `wikitool wiki surface show`, add/sync the stylesheet page, or remove the TemplateStyles tag."
+                    "Use a stylesheet listed by `wikitool catalog surface show`, add/sync the stylesheet page, or remove the TemplateStyles tag."
                         .to_string(),
                 ),
                 suggested_fixes: Vec::new(),

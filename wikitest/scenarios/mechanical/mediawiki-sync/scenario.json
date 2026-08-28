@@ -1,0 +1,709 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-mediawiki-sync",
+  "title": "Revision-bound MediaWiki synchronization",
+  "description": "Exercises pull, redirects, local diff, exact preview-bound push and delete plans, authenticated one-shot writes, durable mutation reconciliation, and evidence-preserving operator closure through Wikitool's public HTTP boundary.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "mediawiki-http", "steps": ["pull-templates", "assert-authenticated-one-shot-wire-contract"]},
+    {"capability": "pull", "steps": ["pull-templates"]},
+    {"capability": "redirects", "steps": ["pull-templates"]},
+    {"capability": "diff", "steps": ["diff-local-changes"]},
+    {"capability": "remote-conflicts", "steps": ["detect-stale-revision"]},
+    {"capability": "push", "steps": ["apply-force-revision-bound-push", "assert-authenticated-one-shot-wire-contract"]},
+    {"capability": "push-plan-binding", "steps": ["preview-force-revision-bound-push", "apply-force-revision-bound-push", "preview-force-ambiguous-one-shot-push", "apply-force-ambiguous-one-shot-push"]},
+    {"capability": "baserevid", "steps": ["assert-authenticated-one-shot-wire-contract"]},
+    {"capability": "createonly", "steps": ["assert-authenticated-one-shot-wire-contract"]},
+    {"capability": "no-write-retry", "steps": ["apply-force-ambiguous-one-shot-push", "apply-ambiguous-reconciled-delete", "apply-ambiguous-irreconcilable-delete", "assert-authenticated-one-shot-wire-contract"]},
+    {"capability": "delete", "steps": ["apply-standalone-delete", "apply-missingtitle-delete", "apply-post-pull-delete", "assert-authenticated-one-shot-wire-contract"]},
+    {"capability": "delete-plan-binding", "steps": ["preview-standalone-delete", "apply-standalone-delete", "preview-ambiguous-reconciled-delete", "apply-ambiguous-reconciled-delete", "preview-ambiguous-irreconcilable-delete", "apply-ambiguous-irreconcilable-delete", "preview-post-pull-delete", "apply-post-pull-delete"]},
+    {"capability": "delete-missingtitle", "steps": ["preview-missingtitle-delete", "apply-missingtitle-delete", "assert-authenticated-one-shot-wire-contract"]},
+    {"capability": "delete-log-lineage", "steps": ["reconcile-ambiguous-delete-from-visible-marker", "reconcile-irreconcilable-delete", "assert-authenticated-one-shot-wire-contract"]},
+    {"capability": "mutation-reconciliation", "steps": ["show-ambiguous-delete", "reconcile-ambiguous-delete-from-visible-marker", "show-reconciled-delete"]},
+    {"capability": "mutation-operator-closure", "steps": ["reconcile-irreconcilable-delete", "close-irreconcilable-delete", "show-closed-delete", "list-closed-delete", "reject-write-before-refresh", "refresh-after-operator-closure", "apply-post-pull-delete"]}
+  ],
+  "mediawiki_fixture": {
+    "source": "fixtures/mediawiki.json",
+    "sha256": "2c52a768db9b953bc8b1a99f6bbf979d62add1872bf02dead366d14551bd16d0"
+  },
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": [
+        "init",
+        "--templates",
+        "--no-network",
+        "--wiki-url",
+        "http://127.0.0.1",
+        "--api-url",
+        "{MEDIAWIKI_API_URL}"
+      ],
+      "expect": {
+        "exit_code": 0,
+        "files": [
+          {"kind": "contains", "path": ".wikitool/config.toml", "value": "127.0.0.1"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "pull-templates",
+      "argv": ["pull", "--full", "--all", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/report/success", "value": true},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/report/pulled", "value": 3}
+        ],
+        "files": [
+          {"kind": "contains", "path": "templates/misc/Template_Infobox_existing.wiki", "value": "Existing fixture v1"},
+          {"kind": "contains", "path": "templates/misc/_redirects/Template_Infobox_alias.wiki", "value": "#REDIRECT"}
+        ]
+      }
+    },
+    {
+      "action": "copy",
+      "id": "modify-existing-template",
+      "source": "fixtures/existing-updated.wiki",
+      "target": "templates/misc/Template_Infobox_existing.wiki",
+      "sha256": "0067aaac3727d84a0c9b3bc181580c99e8412ef622f7a7df76d7483a181ecced"
+    },
+    {
+      "action": "copy",
+      "id": "add-new-template",
+      "source": "fixtures/created.wiki",
+      "target": "templates/misc/Template_Infobox_created.wiki",
+      "sha256": "18a862c0c2367b061e37ba23e4ec1ccae293a3e93f14559cd6263cbece488cbf"
+    },
+    {
+      "action": "command",
+      "id": "diff-local-changes",
+      "argv": ["diff", "--templates", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_array_item_pointer_equals", "pointer": "/changes", "item_pointer": "/title", "value": "Template:Infobox existing"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/changes", "item_pointer": "/title", "value": "Template:Infobox created"}
+        ]
+      }
+    },
+    {
+      "action": "mediawiki_update",
+      "id": "advance-remote-revision",
+      "page": {
+        "title": "Template:Infobox existing",
+        "namespace": 10,
+        "page_id": 10,
+        "revision_id": 102,
+        "timestamp": "2026-08-27T11:00:00Z",
+        "content": "<includeonly>Concurrent remote edit</includeonly>\n"
+      }
+    },
+    {
+      "action": "command",
+      "id": "detect-stale-revision",
+      "argv": ["push", "--all", "--templates", "--summary", "Wikitest preview", "--format", "json"],
+      "expect": {
+        "exit_code": 1,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/report/success", "value": false},
+          {"kind": "json_array_contains", "pointer": "/report/conflicts", "value": "Template:Infobox existing"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/report/pages", "item_pointer": "/action", "value": "would_create"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "preview-force-revision-bound-push",
+      "argv": ["push", "--force", "--all", "--templates", "--summary", "Wikitest revision-bound push", "--format", "json"],
+      "captures": [
+        {"name": "REVISION_PUSH_PLAN_ID", "pointer": "/report/plan_id"}
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/mode", "value": "preview"},
+          {"kind": "json_pointer_equals", "pointer": "/report/success", "value": true},
+          {"kind": "json_pointer_non_blank", "pointer": "/report/plan_id"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-force-revision-bound-push",
+      "argv": ["push", "--force", "--all", "--templates", "--summary", "Wikitest revision-bound push", "--apply", "${REVISION_PUSH_PLAN_ID}", "--format", "json"],
+      "environment": {
+        "WIKITOOL_BOT_USER": "wikitest-bot",
+        "WIKITOOL_BOT_PASS": "wikitest-secret"
+      },
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/report/success", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/report/created", "value": 1},
+          {"kind": "json_pointer_equals", "pointer": "/report/updated", "value": 1}
+        ]
+      }
+    },
+    {
+      "action": "copy",
+      "id": "modify-ambiguous-template",
+      "source": "fixtures/ambiguous-updated.wiki",
+      "target": "templates/misc/Template_Infobox_ambiguous.wiki",
+      "sha256": "15d21b7f9911a4aebad05b8f48ed53a1087860f7e4672f6b7e025e7a4fb036de"
+    },
+    {
+      "action": "command",
+      "id": "preview-force-ambiguous-one-shot-push",
+      "argv": ["push", "--force", "--all", "--templates", "--summary", "Wikitest ambiguous one-shot push", "--format", "json"],
+      "captures": [
+        {"name": "AMBIGUOUS_PUSH_PLAN_ID", "pointer": "/report/plan_id"}
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/mode", "value": "preview"},
+          {"kind": "json_pointer_equals", "pointer": "/report/success", "value": true},
+          {"kind": "json_pointer_non_blank", "pointer": "/report/plan_id"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-force-ambiguous-one-shot-push",
+      "argv": ["push", "--force", "--all", "--templates", "--summary", "Wikitest ambiguous one-shot push", "--apply", "${AMBIGUOUS_PUSH_PLAN_ID}", "--format", "json"],
+      "environment": {
+        "WIKITOOL_BOT_USER": "wikitest-bot",
+        "WIKITOOL_BOT_PASS": "wikitest-secret"
+      },
+      "expect": {
+        "exit_code": 1,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/report/success", "value": false},
+          {"kind": "json_pointer_equals", "pointer": "/report/pushed", "value": 0}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "preview-standalone-delete",
+      "argv": ["delete", "Template:Delete normal", "--reason", "Wikitest standalone delete", "--format", "json"],
+      "captures": [
+        {"name": "DELETE_NORMAL_PLAN_ID", "pointer": "/plan/plan_id"}
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/mode", "value": "plan"},
+          {"kind": "json_pointer_equals", "pointer": "/plan/canonical_title", "value": "Template:Delete normal"},
+          {"kind": "json_pointer_equals", "pointer": "/plan/observed_state", "value": "present"},
+          {"kind": "json_pointer_non_blank", "pointer": "/plan/plan_id"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-standalone-delete",
+      "argv": ["delete", "Template:Delete normal", "--reason", "Wikitest standalone delete", "--apply", "${DELETE_NORMAL_PLAN_ID}", "--format", "json"],
+      "environment": {
+        "WIKITOOL_BOT_USER": "wikitest-bot",
+        "WIKITOOL_BOT_PASS": "wikitest-secret"
+      },
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/success", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/mode", "value": "apply"},
+          {"kind": "json_pointer_equals", "pointer": "/remote/status", "value": "deleted"},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/remote/deletion_log_id", "value": 1}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "preview-missingtitle-delete",
+      "argv": ["delete", "Template:Delete missingtitle", "--reason", "Wikitest missingtitle delete", "--format", "json"],
+      "captures": [
+        {"name": "DELETE_MISSINGTITLE_PLAN_ID", "pointer": "/plan/plan_id"}
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/mode", "value": "plan"},
+          {"kind": "json_pointer_equals", "pointer": "/plan/observed_state", "value": "present"},
+          {"kind": "json_pointer_non_blank", "pointer": "/plan/plan_id"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-missingtitle-delete",
+      "argv": ["delete", "Template:Delete missingtitle", "--reason", "Wikitest missingtitle delete", "--apply", "${DELETE_MISSINGTITLE_PLAN_ID}", "--format", "json"],
+      "environment": {
+        "WIKITOOL_BOT_USER": "wikitest-bot",
+        "WIKITOOL_BOT_PASS": "wikitest-secret"
+      },
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/success", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/remote/status", "value": "already_missing"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "preview-ambiguous-reconciled-delete",
+      "argv": ["delete", "Template:Delete reconciled", "--reason", "Wikitest ambiguous reconciled delete", "--format", "json"],
+      "captures": [
+        {"name": "DELETE_RECONCILED_PLAN_ID", "pointer": "/plan/plan_id"}
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/mode", "value": "plan"},
+          {"kind": "json_pointer_non_blank", "pointer": "/plan/plan_id"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-ambiguous-reconciled-delete",
+      "argv": ["delete", "Template:Delete reconciled", "--reason", "Wikitest ambiguous reconciled delete", "--apply", "${DELETE_RECONCILED_PLAN_ID}", "--format", "json"],
+      "environment": {
+        "WIKITOOL_BOT_USER": "wikitest-bot",
+        "WIKITOOL_BOT_PASS": "wikitest-secret"
+      },
+      "captures": [
+        {"name": "DELETE_RECONCILED_MUTATION_ID", "pointer": "/mutation_id"}
+      ],
+      "expect": {
+        "exit_code": 1,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/success", "value": false},
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "outcome_ambiguous"},
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete reconciled"},
+          {"kind": "json_pointer_equals", "pointer": "/next_action/operation", "value": "delete"},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/mutation_id", "value": 1}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "show-ambiguous-delete",
+      "argv": ["mutation", "show", "delete", "${DELETE_RECONCILED_MUTATION_ID}", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/operation", "value": "delete"},
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete reconciled"},
+          {"kind": "json_pointer_equals", "pointer": "/phase", "value": "outcome_ambiguous"},
+          {"kind": "json_pointer_equals", "pointer": "/request_started", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/local_effect_status", "value": "backup_ready"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reconcile-ambiguous-delete-from-visible-marker",
+      "argv": ["mutation", "reconcile", "delete", "${DELETE_RECONCILED_MUTATION_ID}", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/operation", "value": "delete"},
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete reconciled"},
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "state_advanced"},
+          {"kind": "json_pointer_equals", "pointer": "/request_count", "value": 3},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/deletion_log_id", "value": 1}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "show-reconciled-delete",
+      "argv": ["mutation", "show", "delete", "${DELETE_RECONCILED_MUTATION_ID}", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete reconciled"},
+          {"kind": "json_pointer_equals", "pointer": "/phase", "value": "state_advanced"},
+          {"kind": "json_pointer_equals", "pointer": "/local_effect_status", "value": "complete"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "preview-ambiguous-irreconcilable-delete",
+      "argv": ["delete", "Template:Delete irreconcilable", "--reason", "Wikitest ambiguous irreconcilable delete", "--format", "json"],
+      "captures": [
+        {"name": "DELETE_IRRECONCILABLE_PLAN_ID", "pointer": "/plan/plan_id"}
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/mode", "value": "plan"},
+          {"kind": "json_pointer_non_blank", "pointer": "/plan/plan_id"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-ambiguous-irreconcilable-delete",
+      "argv": ["delete", "Template:Delete irreconcilable", "--reason", "Wikitest ambiguous irreconcilable delete", "--apply", "${DELETE_IRRECONCILABLE_PLAN_ID}", "--format", "json"],
+      "environment": {
+        "WIKITOOL_BOT_USER": "wikitest-bot",
+        "WIKITOOL_BOT_PASS": "wikitest-secret"
+      },
+      "captures": [
+        {"name": "DELETE_IRRECONCILABLE_MUTATION_ID", "pointer": "/mutation_id"}
+      ],
+      "expect": {
+        "exit_code": 1,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/success", "value": false},
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "outcome_ambiguous"},
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete irreconcilable"},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/mutation_id", "value": 1}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "show-irreconcilable-delete",
+      "argv": ["mutation", "show", "delete", "${DELETE_IRRECONCILABLE_MUTATION_ID}", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete irreconcilable"},
+          {"kind": "json_pointer_equals", "pointer": "/phase", "value": "outcome_ambiguous"},
+          {"kind": "json_pointer_equals", "pointer": "/request_started", "value": true}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reconcile-irreconcilable-delete",
+      "argv": ["mutation", "reconcile", "delete", "${DELETE_IRRECONCILABLE_MUTATION_ID}", "--format", "json"],
+      "expect": {
+        "exit_code": 1,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/operation", "value": "delete"},
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete irreconcilable"},
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "still_ambiguous"},
+          {"kind": "json_pointer_equals", "pointer": "/request_count", "value": 3}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "close-irreconcilable-delete",
+      "argv": ["mutation", "close", "delete", "${DELETE_IRRECONCILABLE_MUTATION_ID}", "--actor", "Wikitest operator", "--reason", "Fixture hides the delete marker", "--confirm", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/operation", "value": "delete"},
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete irreconcilable"},
+          {"kind": "json_pointer_equals", "pointer": "/previous_phase", "value": "outcome_ambiguous"},
+          {"kind": "json_pointer_equals", "pointer": "/terminal_outcome", "value": "operator_closed_unresolved"},
+          {"kind": "json_pointer_equals", "pointer": "/actor", "value": "Wikitest operator"},
+          {"kind": "json_pointer_equals", "pointer": "/reason", "value": "Fixture hides the delete marker"},
+          {"kind": "json_pointer_equals", "pointer": "/sync_baseline_invalidated", "value": true},
+          {"kind": "json_pointer_non_blank", "pointer": "/next_action"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "show-closed-delete",
+      "argv": ["mutation", "show", "delete", "${DELETE_IRRECONCILABLE_MUTATION_ID}", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/title", "value": "Template:Delete irreconcilable"},
+          {"kind": "json_pointer_equals", "pointer": "/phase", "value": "resolved"},
+          {"kind": "json_pointer_equals", "pointer": "/terminal_outcome", "value": "operator_closed_unresolved"},
+          {"kind": "json_pointer_equals", "pointer": "/closure/actor", "value": "Wikitest operator"},
+          {"kind": "json_pointer_equals", "pointer": "/closure/reason", "value": "Fixture hides the delete marker"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "list-closed-delete",
+      "argv": ["mutation", "list", "--all", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/unresolved_only", "value": false},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/mutations", "item_pointer": "/title", "value": "Template:Delete irreconcilable"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/mutations", "item_pointer": "/terminal_outcome", "value": "operator_closed_unresolved"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reject-write-before-refresh",
+      "argv": ["delete", "Template:Delete irreconcilable", "--reason", "Wikitest blocked before refresh", "--format", "json"],
+      "expect": {
+        "exit_code": 1,
+        "stderr": [
+          {"kind": "contains", "value": "was invalidated by operator closure"},
+          {"kind": "contains", "value": "target-bound pull"}
+        ]
+      }
+    },
+    {
+      "action": "mediawiki_update",
+      "id": "recreate-closed-delete-target",
+      "page": {
+        "title": "Template:Delete irreconcilable",
+        "namespace": 10,
+        "page_id": 23,
+        "revision_id": 900,
+        "timestamp": "2026-08-27T23:00:00Z",
+        "content": "<includeonly>Irreconcilable delete fixture</includeonly>\n"
+      }
+    },
+    {
+      "action": "command",
+      "id": "refresh-after-operator-closure",
+      "argv": ["pull", "--full", "--all", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/report/success", "value": true},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/report/pages", "item_pointer": "/title", "value": "Template:Delete irreconcilable"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "preview-post-pull-delete",
+      "argv": ["delete", "Template:Delete irreconcilable", "--reason", "Wikitest post-pull delete", "--format", "json"],
+      "captures": [
+        {"name": "DELETE_POST_PULL_PLAN_ID", "pointer": "/plan/plan_id"}
+      ],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/mode", "value": "plan"},
+          {"kind": "json_pointer_equals", "pointer": "/plan/observed_revision_id", "value": 900},
+          {"kind": "json_pointer_non_blank", "pointer": "/plan/plan_id"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-post-pull-delete",
+      "argv": ["delete", "Template:Delete irreconcilable", "--reason", "Wikitest post-pull delete", "--apply", "${DELETE_POST_PULL_PLAN_ID}", "--format", "json"],
+      "environment": {
+        "WIKITOOL_BOT_USER": "wikitest-bot",
+        "WIKITOOL_BOT_PASS": "wikitest-secret"
+      },
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/success", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/remote/status", "value": "deleted"},
+          {"kind": "json_pointer_equals", "pointer": "/remote/observed_revision_id", "value": 900}
+        ]
+      }
+    },
+    {
+      "action": "mediawiki_assert",
+      "id": "assert-authenticated-one-shot-wire-contract",
+      "expect": {
+        "requests": [
+          {
+            "method": "POST",
+            "params": {
+              "action": "edit"
+            },
+            "count": 3
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "login",
+              "lgname": "wikitest-bot"
+            },
+            "count": 7
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "edit",
+              "title": "Template:Infobox existing",
+              "baserevid": "102"
+            },
+            "count": 1
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "edit",
+              "title": "Template:Infobox ambiguous",
+              "baserevid": "301"
+            },
+            "count": 1
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "edit",
+              "title": "Template:Infobox created",
+              "createonly": "1"
+            },
+            "count": 1
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "delete"
+            },
+            "count": 5
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "delete",
+              "title": "Template:Delete normal"
+            },
+            "count": 1
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "delete",
+              "title": "Template:Delete missingtitle"
+            },
+            "count": 1
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "delete",
+              "title": "Template:Delete reconciled"
+            },
+            "count": 1
+          },
+          {
+            "method": "POST",
+            "params": {
+              "action": "delete",
+              "title": "Template:Delete irreconcilable"
+            },
+            "count": 2
+          },
+          {
+            "method": "GET",
+            "params": {
+              "action": "query",
+              "list": "logevents"
+            },
+            "count": 4
+          },
+          {
+            "method": "GET",
+            "params": {
+              "action": "query",
+              "list": "logevents",
+              "letitle": "Template:Delete reconciled"
+            },
+            "count": 2
+          },
+          {
+            "method": "GET",
+            "params": {
+              "action": "query",
+              "list": "logevents",
+              "letitle": "Template:Delete irreconcilable"
+            },
+            "count": 2
+          },
+          {
+            "method": "GET",
+            "params": {
+              "action": "query",
+              "list": "logevents",
+              "lecontinue": "1"
+            },
+            "count": 2
+          },
+          {
+            "method": "GET",
+            "params": {
+              "action": "query",
+              "list": "logevents",
+              "letitle": "Template:Delete reconciled",
+              "lecontinue": "1"
+            },
+            "count": 1
+          },
+          {
+            "method": "GET",
+            "params": {
+              "action": "query",
+              "list": "logevents",
+              "letitle": "Template:Delete irreconcilable",
+              "lecontinue": "1"
+            },
+            "count": 1
+          }
+        ],
+        "pages": [
+          {
+            "title": "Template:Infobox existing",
+            "content_sha256": "0067aaac3727d84a0c9b3bc181580c99e8412ef622f7a7df76d7483a181ecced"
+          },
+          {
+            "title": "Template:Infobox created",
+            "content_sha256": "18a862c0c2367b061e37ba23e4ec1ccae293a3e93f14559cd6263cbece488cbf"
+          },
+          {
+            "title": "Template:Infobox ambiguous",
+            "content_sha256": "15d21b7f9911a4aebad05b8f48ed53a1087860f7e4672f6b7e025e7a4fb036de"
+          }
+        ],
+        "missing_pages": [
+          "Template:Delete normal",
+          "Template:Delete missingtitle",
+          "Template:Delete reconciled",
+          "Template:Delete irreconcilable"
+        ],
+        "delete_logs": [
+          {
+            "title": "Template:Delete normal",
+            "comment_contains": "Wikitest standalone delete",
+            "comment_hidden": false,
+            "count": 1
+          },
+          {
+            "title": "Template:Delete missingtitle",
+            "count": 0
+          },
+          {
+            "title": "Template:Delete reconciled",
+            "comment_contains": "Wikitest ambiguous reconciled delete",
+            "comment_hidden": false,
+            "count": 1
+          },
+          {
+            "title": "Template:Delete irreconcilable",
+            "comment_hidden": true,
+            "count": 1
+          },
+          {
+            "title": "Template:Delete irreconcilable",
+            "comment_contains": "Wikitest post-pull delete",
+            "comment_hidden": false,
+            "count": 1
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -71,7 +71,7 @@ pub struct ArticleLintResourcesStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArticleLintReport {
     pub schema_version: String,
-    pub profile_id: String,
+    pub site_adapter_id: String,
     pub relative_path: String,
     pub title: String,
     pub namespace: String,
@@ -112,7 +112,7 @@ pub struct AppliedFixRecord {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArticleFixResult {
     pub schema_version: String,
-    pub profile_id: String,
+    pub site_adapter_id: String,
     pub relative_path: String,
     pub title: String,
     pub namespace: String,

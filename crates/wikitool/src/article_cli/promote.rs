@@ -19,7 +19,7 @@ struct ArticlePromoteReport {
     target_path: String,
     overwritten: bool,
     source_preserved: bool,
-    acceptance_ledger_path: String,
+    acceptance_store_path: String,
     human_editor_claim: String,
     editor_identity_assurance: String,
     prose_origin: String,
@@ -65,19 +65,17 @@ pub(super) fn run_article_promote(
         );
     }
     let accepted = load_accepted_article(&paths, &source_absolute, &title, &target_path)?;
-    let acceptance_ledger_path =
-        wikitool_core::article_acceptance::article_acceptance_ledger_path(&paths, &target_path)?;
     atomic_write(&target_absolute, accepted.content.as_bytes())?;
 
     let report = ArticlePromoteReport {
-        schema_version: "article_promote_v3",
+        schema_version: "article_promote_v4",
         project_root: normalize_path(&paths.project_root),
         source_path: normalize_path(&source_absolute),
         title,
         target_path,
         overwritten,
         source_preserved: true,
-        acceptance_ledger_path: normalize_path(&acceptance_ledger_path),
+        acceptance_store_path: normalize_path(paths.acceptance_store_path()),
         human_editor_claim: accepted.ledger_entry.human_editor_claim,
         editor_identity_assurance: accepted.ledger_entry.editor_identity_assurance,
         prose_origin: accepted.ledger_entry.prose_origin.as_str().to_string(),
@@ -95,7 +93,7 @@ pub(super) fn run_article_promote(
         println!("target_path: {}", report.target_path);
         println!("overwritten: {}", flag(report.overwritten));
         println!("source_preserved: {}", flag(report.source_preserved));
-        println!("acceptance_ledger_path: {}", report.acceptance_ledger_path);
+        println!("acceptance_store_path: {}", report.acceptance_store_path);
         println!("human_editor_claim: {}", report.human_editor_claim);
         println!(
             "editor_identity_assurance: {}",

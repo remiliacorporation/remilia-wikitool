@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use walkdir::WalkDir;
 
 use crate::artifact::{
     atomic_write, atomic_write_json, portable, relative_locator, resolve_existing_plain_file,
@@ -12,16 +14,35 @@ use crate::artifact::{
 };
 use crate::catalog::{Manifest, load_manifest, resolve_manifest};
 use crate::identity::current_driver_identity;
+use crate::mediawiki::{MediaWikiFixture, MediaWikiService, evaluate_expectation};
 use crate::model::{
-    ArtifactIdentity, AssertionReceipt, FileAssertion, MissingDisposition, OutputArtifact,
-    OutputAssertion, RECEIPT_SCHEMA, Requirement, RequirementReceipt, RunReceipt, RunStatus,
-    SUITE_RECEIPT_SCHEMA, ScenarioEnvironment, ScenarioIdentity, ScenarioManifest, ScenarioStep,
-    StepReceipt, SuiteIdentity, SuiteReceipt, SuiteRunEntry, ToolIdentity,
+    ArtifactIdentity, AssertionReceipt, FileAssertion, FileObservation, FileObservationState,
+    JsonScalarCapture, JsonScalarCaptureReceipt, MissingDisposition, OutputArtifact,
+    OutputAssertion, RECEIPT_SCHEMA, REQUIREMENT_OBSERVATION_SCHEMA, Requirement,
+    RequirementObservation, RequirementReceipt, RunReceipt, RunStatus, SUITE_RECEIPT_SCHEMA,
+    ScenarioEnvironment, ScenarioIdentity, ScenarioManifest, ScenarioStep, StepReceipt,
+    SuiteIdentity, SuiteReceipt, SuiteRunEntry, ToolIdentity,
 };
 use crate::process::{CapturedStream, probe_version, run_bounded};
 
 const DEFAULT_OUTPUT_BUDGET: usize = 2 * 1024 * 1024;
 const FILE_ASSERTION_BUDGET: u64 = 16 * 1024 * 1024;
+const HOST_SNAPSHOT_PATHS: &[&str] =
+    &[".wikitool", "wiki_content", "templates", "wikitool_adapter"];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HostSnapshotEntry {
+    locator: String,
+    sha256: String,
+    bytes: u64,
+}
+
+#[derive(Debug)]
+struct HostSnapshot {
+    root: PathBuf,
+    entries: Vec<HostSnapshotEntry>,
+}
 
 #[derive(Debug, Clone)]
 pub struct RunOptions {
@@ -116,21 +137,27 @@ fn run_loaded_scenario(
         &run_directory,
         &mut inputs,
     )?;
+    let mediawiki_snapshot = snapshot_mediawiki_fixture(
+        scenario,
+        scenario_directory,
+        &inputs_directory,
+        &run_directory,
+        &mut inputs,
+    )?;
 
-    let workspace = match scenario.environment {
-        ScenarioEnvironment::Isolated => {
-            let path = run_directory.join("workspace");
-            fs::create_dir_all(&path)?;
-            path
-        }
-        ScenarioEnvironment::HostReadOnly => options
-            .host_root
-            .as_ref()
-            .context("host_read_only scenario requires --host-root")
-            .and_then(|path| {
-                fs::canonicalize(path)
-                    .with_context(|| format!("failed to resolve host root {}", path.display()))
-            })?,
+    let workspace = create_execution_workspace(&run_id)?;
+    let host_root = match scenario.environment {
+        ScenarioEnvironment::Isolated => None,
+        ScenarioEnvironment::HostReadOnly => Some(
+            options
+                .host_root
+                .as_ref()
+                .context("host_read_only scenario requires --host-root")
+                .and_then(|path| {
+                    fs::canonicalize(path)
+                        .with_context(|| format!("failed to resolve host root {}", path.display()))
+                })?,
+        ),
     };
 
     let executable = fs::canonicalize(&options.wikitool).with_context(|| {
@@ -150,6 +177,13 @@ fn run_loaded_scenario(
         .strip_prefix(&options.repository)
         .map(portable)
         .unwrap_or_else(|_| portable(&executable));
+
+    let mediawiki = mediawiki_snapshot
+        .as_deref()
+        .map(MediaWikiFixture::from_path)
+        .transpose()?
+        .map(MediaWikiService::start)
+        .transpose()?;
 
     let mut receipt = RunReceipt {
         schema: RECEIPT_SCHEMA.to_owned(),
@@ -182,12 +216,14 @@ fn run_loaded_scenario(
     };
     atomic_write_json(&receipt_path, &receipt)?;
 
-    let variables = Variables {
+    let mut variables = Variables {
         repository: &options.repository,
         scenario_directory,
         run_directory: &run_directory,
         workspace: &workspace,
-        host_root: options.host_root.as_deref(),
+        host_root: host_root.as_deref(),
+        mediawiki_api_url: mediawiki.as_ref().map(MediaWikiService::endpoint),
+        captures: BTreeMap::new(),
     };
     if let Some(status) = evaluate_requirements(scenario, &variables, &mut receipt)? {
         receipt.status = status;
@@ -205,6 +241,18 @@ fn run_loaded_scenario(
             run_directory,
         });
     }
+    let host_snapshot = host_root
+        .as_deref()
+        .map(|root| {
+            snapshot_host_root(
+                root,
+                &workspace,
+                &inputs_directory,
+                &run_directory,
+                &mut receipt.inputs,
+            )
+        })
+        .transpose()?;
     atomic_write_json(&receipt_path, &receipt)?;
 
     let scenario_timeout = Duration::from_millis(scenario.timeout_ms);
@@ -240,6 +288,7 @@ fn run_loaded_scenario(
                 cwd,
                 timeout_ms,
                 environment,
+                captures,
                 expect,
             } => {
                 let remaining = scenario_timeout.saturating_sub(started.elapsed());
@@ -251,6 +300,7 @@ fn run_loaded_scenario(
                     argv,
                     cwd.as_deref(),
                     environment,
+                    captures,
                     expect,
                     &variables,
                     &executable,
@@ -261,10 +311,30 @@ fn run_loaded_scenario(
                     &workspace,
                 )
             }
+            ScenarioStep::MediaWikiUpdate { id, page } => run_mediawiki_update_step(
+                index,
+                id,
+                page,
+                mediawiki
+                    .as_ref()
+                    .context("mediawiki update step has no fixture service")?,
+                &steps_directory,
+                &run_directory,
+            ),
+            ScenarioStep::MediaWikiAssert { id, expect } => run_mediawiki_assert_step(
+                index,
+                id,
+                expect,
+                mediawiki
+                    .as_ref()
+                    .context("mediawiki assertion step has no fixture service")?,
+                &steps_directory,
+                &run_directory,
+            ),
         };
 
         match step_receipt {
-            Ok(step_receipt) => {
+            Ok(mut step_receipt) => {
                 receipt.output_truncated |= step_receipt
                     .stdout
                     .as_ref()
@@ -273,8 +343,17 @@ fn run_loaded_scenario(
                         .stderr
                         .as_ref()
                         .is_some_and(|output| output.truncated);
-                let passed = step_receipt.status == RunStatus::Passed;
-                if !passed {
+                let mut passed = step_receipt.status == RunStatus::Passed;
+                if passed && let Err(error) = variables.bind_captures(&step_receipt.captures) {
+                    step_receipt.status = RunStatus::Error;
+                    step_receipt.failure = Some(format!("capture binding failed: {error:#}"));
+                    receipt.failure = Some(format!(
+                        "step '{}' could not bind captured values: {error:#}",
+                        step.id()
+                    ));
+                    execution_error = true;
+                    passed = false;
+                } else if !passed {
                     receipt.failure = Some(format!("step '{}' did not pass", step.id()));
                 }
                 receipt.steps.push(step_receipt);
@@ -296,7 +375,9 @@ fn run_loaded_scenario(
                     stdout: None,
                     stderr: None,
                     assertions: Vec::new(),
+                    captures: Vec::new(),
                     copied: None,
+                    observation: None,
                     failure: Some(format!("{error:#}")),
                 });
                 receipt.failure =
@@ -307,6 +388,14 @@ fn run_loaded_scenario(
                 break;
             }
         }
+    }
+
+    if let Some(snapshot) = &host_snapshot
+        && let Err(error) = verify_host_unchanged(snapshot)
+    {
+        receipt.failure = Some(format!("{error:#}"));
+        failed = true;
+        execution_error = true;
     }
 
     receipt.status = if execution_error {
@@ -353,19 +442,25 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
         .strip_prefix(&options.repository)
         .map(portable)
         .unwrap_or_else(|_| portable(path));
-    let mut observed_coverage = BTreeSet::new();
+    let mut declared_coverage = BTreeSet::new();
     for scenario_id in &suite.scenarios {
         let scenario_path = resolve_manifest(scenario_id, &options.catalogs, "scenario")?;
         let (manifest, _) = load_manifest(&scenario_path)?;
         let Manifest::Scenario(scenario) = manifest else {
             bail!("suite entry '{scenario_id}' does not identify a scenario");
         };
-        observed_coverage.extend(scenario.coverage);
+        scenario.validate()?;
+        declared_coverage.extend(
+            scenario
+                .coverage
+                .iter()
+                .map(|binding| binding.capability.clone()),
+        );
     }
     let missing_coverage = suite
         .required_coverage
         .iter()
-        .filter(|coverage| !observed_coverage.contains(coverage.as_str()))
+        .filter(|coverage| !declared_coverage.contains(coverage.as_str()))
         .cloned()
         .collect::<Vec<_>>();
     if !missing_coverage.is_empty() {
@@ -392,11 +487,12 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
         duration_ms: 0,
         complete: false,
         required_coverage: suite.required_coverage,
-        observed_coverage: observed_coverage.into_iter().collect(),
+        observed_coverage: Vec::new(),
         runs: Vec::new(),
     };
     atomic_write_json(&receipt_path, &receipt)?;
     let mut all_child_complete = true;
+    let mut observed_coverage = BTreeSet::new();
 
     for scenario in suite.scenarios {
         let scenario_path = match resolve_manifest(&scenario, &options.catalogs, "scenario") {
@@ -418,6 +514,7 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
         match run_scenario(&scenario_path, options) {
             Ok(run) => {
                 all_child_complete &= run.receipt.complete;
+                observed_coverage.extend(successful_coverage(&run.receipt));
                 let (digest, _) = sha256_file(&run.receipt_path)?;
                 receipt.runs.push(SuiteRunEntry {
                     scenario,
@@ -458,9 +555,14 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
         .runs
         .iter()
         .any(|run| run.status == RunStatus::Skipped);
+    receipt.observed_coverage = observed_coverage.into_iter().collect();
+    let runtime_missing_coverage = receipt
+        .required_coverage
+        .iter()
+        .any(|required| !receipt.observed_coverage.contains(required));
     receipt.status = if has_error {
         RunStatus::Error
-    } else if has_failure || (require_all && has_skip) {
+    } else if has_failure || runtime_missing_coverage || (require_all && has_skip) {
         RunStatus::Failed
     } else {
         RunStatus::Passed
@@ -481,6 +583,192 @@ pub fn run_suite(path: &Path, options: &RunOptions, require_all: bool) -> Result
         receipt_path,
         run_directory,
     })
+}
+
+pub(crate) fn successful_coverage(receipt: &RunReceipt) -> BTreeSet<String> {
+    let passed_steps = receipt
+        .steps
+        .iter()
+        .filter(|step| step.status == RunStatus::Passed)
+        .map(|step| step.id.as_str())
+        .collect::<BTreeSet<_>>();
+    receipt
+        .scenario
+        .coverage
+        .iter()
+        .filter(|binding| {
+            !binding.steps.is_empty()
+                && binding
+                    .steps
+                    .iter()
+                    .all(|step| passed_steps.contains(step.as_str()))
+        })
+        .map(|binding| binding.capability.clone())
+        .collect()
+}
+
+pub(crate) fn create_execution_workspace(run_id: &str) -> Result<PathBuf> {
+    let base = std::env::temp_dir().join("wikitest-execution-workspaces");
+    fs::create_dir_all(&base)?;
+    let workspace = base.join(run_id);
+    if workspace.exists() {
+        bail!(
+            "execution workspace already exists and will not be reused: {}",
+            workspace.display()
+        );
+    }
+    fs::create_dir(&workspace)?;
+    atomic_write(&workspace.join(".env"), b"")?;
+    fs::canonicalize(&workspace).with_context(|| {
+        format!(
+            "failed to resolve execution workspace {}",
+            workspace.display()
+        )
+    })
+}
+
+fn snapshot_host_root(
+    host_root: &Path,
+    workspace: &Path,
+    inputs_directory: &Path,
+    run_directory: &Path,
+    inputs: &mut Vec<ArtifactIdentity>,
+) -> Result<HostSnapshot> {
+    let entries = capture_host_entries(host_root)?;
+    if entries.is_empty() {
+        bail!("host_read_only root has no recognized Wikitool runtime surfaces");
+    }
+    for entry in &entries {
+        let source = resolve_existing_plain_file(host_root, &entry.locator)?;
+        let bytes = fs::read(&source)?;
+        let digest = sha256_bytes(&bytes);
+        if digest != entry.sha256 || bytes.len() as u64 != entry.bytes {
+            bail!(
+                "host source changed while it was being snapshotted: {}",
+                entry.locator
+            );
+        }
+        let destination = resolve_output_path(workspace, &entry.locator)?;
+        atomic_write(&destination, &bytes)?;
+    }
+    if capture_host_entries(host_root)? != entries {
+        bail!("host source changed while the isolated snapshot was being created");
+    }
+    verify_snapshot_adapter_is_contained(workspace, &entries)?;
+    let manifest_path = inputs_directory.join("host-snapshot.json");
+    atomic_write_json(&manifest_path, &entries)?;
+    let (sha256, bytes) = sha256_file(&manifest_path)?;
+    inputs.push(ArtifactIdentity {
+        locator: relative_locator(run_directory, &manifest_path)?,
+        sha256,
+        bytes,
+    });
+    Ok(HostSnapshot {
+        root: host_root.to_path_buf(),
+        entries,
+    })
+}
+
+fn verify_snapshot_adapter_is_contained(
+    workspace: &Path,
+    entries: &[HostSnapshotEntry],
+) -> Result<()> {
+    let config_path = workspace.join(".wikitool/config.toml");
+    let config_bytes = match fs::read(&config_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error).context("failed to read snapshotted Wikitool config"),
+    };
+    let config = std::str::from_utf8(&config_bytes)
+        .context("snapshotted Wikitool config is not UTF-8")?
+        .parse::<toml::Value>()
+        .context("snapshotted Wikitool config is invalid TOML")?;
+    let Some(adapter_path) = config
+        .get("adapter")
+        .and_then(toml::Value::as_table)
+        .and_then(|adapter| adapter.get("path"))
+    else {
+        return Ok(());
+    };
+    let adapter_path = adapter_path
+        .as_str()
+        .context("snapshotted [adapter].path must be a string")?;
+    let resolved = resolve_output_path(workspace, adapter_path).with_context(|| {
+        format!("snapshotted adapter.path must remain inside the isolated snapshot: {adapter_path}")
+    })?;
+    let metadata = fs::symlink_metadata(&resolved).with_context(|| {
+        format!(
+            "snapshotted adapter.path is not present in the isolated snapshot: {}",
+            resolved.display()
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        bail!(
+            "snapshotted adapter.path is not a regular retained file: {}",
+            resolved.display()
+        );
+    }
+    let locator = relative_locator(workspace, &resolved)?;
+    if !entries.iter().any(|entry| entry.locator == locator) {
+        bail!("snapshotted adapter.path is not bound by the host snapshot: {locator}");
+    }
+    Ok(())
+}
+
+fn capture_host_entries(host_root: &Path) -> Result<Vec<HostSnapshotEntry>> {
+    let mut entries = Vec::new();
+    for relative in HOST_SNAPSHOT_PATHS {
+        let path = host_root.join(relative);
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if metadata.file_type().is_symlink() {
+            bail!("host snapshot surface is a symlink: {}", path.display());
+        }
+        if metadata.is_file() {
+            entries.push(host_snapshot_entry(host_root, &path)?);
+            continue;
+        }
+        if !metadata.is_dir() {
+            bail!(
+                "host snapshot surface is not a file or directory: {}",
+                path.display()
+            );
+        }
+        for entry in WalkDir::new(&path).follow_links(false) {
+            let entry = entry?;
+            if entry.file_type().is_symlink() {
+                bail!(
+                    "host snapshot contains a symlink: {}",
+                    entry.path().display()
+                );
+            }
+            if entry.file_type().is_file() {
+                entries.push(host_snapshot_entry(host_root, entry.path())?);
+            }
+        }
+    }
+    entries.sort_by(|left, right| left.locator.cmp(&right.locator));
+    Ok(entries)
+}
+
+fn host_snapshot_entry(host_root: &Path, path: &Path) -> Result<HostSnapshotEntry> {
+    let bytes = fs::read(path)?;
+    Ok(HostSnapshotEntry {
+        locator: relative_locator(host_root, path)?,
+        sha256: sha256_bytes(&bytes),
+        bytes: bytes.len() as u64,
+    })
+}
+
+fn verify_host_unchanged(snapshot: &HostSnapshot) -> Result<()> {
+    let observed = capture_host_entries(&snapshot.root)?;
+    if observed != snapshot.entries {
+        bail!("host_read_only source changed during isolated scenario execution");
+    }
+    Ok(())
 }
 
 fn snapshot_copy_inputs(
@@ -520,6 +808,35 @@ fn snapshot_copy_inputs(
     Ok(snapshots)
 }
 
+fn snapshot_mediawiki_fixture(
+    scenario: &ScenarioManifest,
+    scenario_directory: &Path,
+    inputs_directory: &Path,
+    run_directory: &Path,
+    inputs: &mut Vec<ArtifactIdentity>,
+) -> Result<Option<PathBuf>> {
+    let Some(fixture) = &scenario.mediawiki_fixture else {
+        return Ok(None);
+    };
+    let source = resolve_existing_plain_file(scenario_directory, &fixture.source)?;
+    let bytes = fs::read(&source)?;
+    let digest = sha256_bytes(&bytes);
+    if fixture.sha256 != digest {
+        bail!(
+            "MediaWiki fixture digest mismatch: got {digest}, expected {}",
+            fixture.sha256
+        );
+    }
+    let snapshot = inputs_directory.join("mediawiki-fixture.json");
+    atomic_write(&snapshot, &bytes)?;
+    inputs.push(ArtifactIdentity {
+        locator: relative_locator(run_directory, &snapshot)?,
+        sha256: digest,
+        bytes: bytes.len() as u64,
+    });
+    Ok(Some(snapshot))
+}
+
 fn run_copy_step(
     index: usize,
     id: &str,
@@ -551,12 +868,15 @@ fn run_copy_step(
             assertion: "copied_sha256".to_owned(),
             passed: true,
             detail: digest.clone(),
+            file_evidence: None,
         }],
+        captures: Vec::new(),
         copied: Some(ArtifactIdentity {
             locator: relative_locator(run_directory, &retained_output)?,
             sha256: digest,
             bytes: bytes.len() as u64,
         }),
+        observation: None,
         failure: None,
     })
 }
@@ -568,6 +888,7 @@ fn run_command_step(
     declared_argv: &[String],
     declared_cwd: Option<&str>,
     declared_environment: &BTreeMap<String, String>,
+    declared_captures: &[JsonScalarCapture],
     expect: &crate::model::CommandExpectation,
     variables: &Variables<'_>,
     executable: &Path,
@@ -584,6 +905,16 @@ fn run_command_step(
     let mut process_argv = vec![
         "--project-root".to_owned(),
         workspace.to_string_lossy().into_owned(),
+        "--data-dir".to_owned(),
+        workspace
+            .join(".wikitool/data")
+            .to_string_lossy()
+            .into_owned(),
+        "--config".to_owned(),
+        workspace
+            .join(".wikitool/config.toml")
+            .to_string_lossy()
+            .into_owned(),
     ];
     process_argv.extend(expanded_argv);
     let cwd = match declared_cwd {
@@ -623,6 +954,7 @@ fn run_command_step(
                 |code| code.to_string()
             )
         ),
+        file_evidence: None,
     }];
     assertions.push(AssertionReceipt {
         target: "process".to_owned(),
@@ -633,6 +965,7 @@ fn run_command_step(
         } else {
             format!("process completed in {} ms", outcome.duration_ms)
         },
+        file_evidence: None,
     });
     assertions.extend(evaluate_output_assertions(
         "stdout",
@@ -644,13 +977,23 @@ fn run_command_step(
         &outcome.stderr,
         &expect.stderr,
     ));
-    assertions.extend(evaluate_file_assertions(workspace, &expect.files));
+    let (captures, capture_assertions) =
+        evaluate_json_captures(id, declared_captures, &outcome.stdout);
+    assertions.extend(capture_assertions);
+    let file_evidence_directory = steps_directory.join(format!("{index:03}-{id}.files"));
+    assertions.extend(evaluate_file_assertions(
+        workspace,
+        &expect.files,
+        &file_evidence_directory,
+        run_directory,
+    ));
     if outcome.stdout.truncated || outcome.stderr.truncated {
         assertions.push(AssertionReceipt {
             target: "process".to_owned(),
             assertion: "output_complete".to_owned(),
             passed: false,
             detail: "captured output exceeded the configured byte budget".to_owned(),
+            file_evidence: None,
         });
     }
     let passed = assertions.iter().all(|assertion| assertion.passed);
@@ -669,12 +1012,173 @@ fn run_command_step(
         stdout: Some(stdout_artifact),
         stderr: Some(stderr_artifact),
         assertions,
+        captures,
         copied: None,
+        observation: None,
         failure: (!passed).then(|| "one or more command expectations failed".to_owned()),
     })
 }
 
-fn evaluate_output_assertions(
+pub(crate) fn evaluate_json_captures(
+    source_step: &str,
+    declared: &[JsonScalarCapture],
+    stdout: &CapturedStream,
+) -> (Vec<JsonScalarCaptureReceipt>, Vec<AssertionReceipt>) {
+    if declared.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let document = if stdout.truncated {
+        Err("stdout was truncated".to_owned())
+    } else {
+        serde_json::from_slice::<Value>(&stdout.bytes)
+            .map_err(|error| format!("stdout is not valid JSON: {error}"))
+    };
+    let mut captured = Vec::new();
+    let mut assertions = Vec::with_capacity(declared.len());
+    for capture in declared {
+        let result = match &document {
+            Ok(document) => document
+                .pointer(&capture.pointer)
+                .ok_or_else(|| "JSON pointer is missing".to_owned())
+                .and_then(captured_scalar_value),
+            Err(error) => Err(error.clone()),
+        };
+        match result {
+            Ok(value) => {
+                captured.push(JsonScalarCaptureReceipt {
+                    name: capture.name.clone(),
+                    source_step: source_step.to_owned(),
+                    pointer: capture.pointer.clone(),
+                    value: value.clone(),
+                    source_stdout_sha256: stdout.stored_sha256.clone(),
+                });
+                assertions.push(AssertionReceipt {
+                    target: format!("capture:{}", capture.name),
+                    assertion: "json_scalar_capture".to_owned(),
+                    passed: true,
+                    detail: format!(
+                        "captured {} from step '{}' pointer '{}' stdout {}",
+                        value, source_step, capture.pointer, stdout.stored_sha256
+                    ),
+                    file_evidence: None,
+                });
+            }
+            Err(error) => assertions.push(AssertionReceipt {
+                target: format!("capture:{}", capture.name),
+                assertion: "json_scalar_capture".to_owned(),
+                passed: false,
+                detail: format!(
+                    "could not capture step '{}' pointer '{}': {error}",
+                    source_step, capture.pointer
+                ),
+                file_evidence: None,
+            }),
+        }
+    }
+    (captured, assertions)
+}
+
+fn captured_scalar_value(value: &Value) -> std::result::Result<String, String> {
+    match value {
+        Value::String(value) if !value.trim().is_empty() && !value.contains('\0') => {
+            Ok(value.clone())
+        }
+        Value::Number(value) => Ok(value.to_string()),
+        Value::Bool(value) => Ok(value.to_string()),
+        Value::String(value) if value.contains('\0') => {
+            Err("captured string contains NUL".to_owned())
+        }
+        Value::String(_) => Err("captured string is blank".to_owned()),
+        Value::Null | Value::Array(_) | Value::Object(_) => {
+            Err("captured value is not a string, number, or boolean".to_owned())
+        }
+    }
+}
+
+fn run_mediawiki_update_step(
+    index: usize,
+    id: &str,
+    page: &crate::model::MediaWikiPage,
+    service: &MediaWikiService,
+    steps_directory: &Path,
+    run_directory: &Path,
+) -> Result<StepReceipt> {
+    let started = Instant::now();
+    service.update_page(page.clone())?;
+    let observation = service.observation()?;
+    let observation_path = steps_directory.join(format!("{index:03}-{id}.mediawiki.json"));
+    atomic_write_json(&observation_path, &observation)?;
+    let (sha256, bytes) = sha256_file(&observation_path)?;
+    Ok(StepReceipt {
+        id: id.to_owned(),
+        action: "mediawiki_update".to_owned(),
+        status: RunStatus::Passed,
+        duration_ms: started.elapsed().as_millis(),
+        argv: Vec::new(),
+        exit_code: None,
+        timed_out: None,
+        stdout: None,
+        stderr: None,
+        assertions: vec![AssertionReceipt {
+            target: format!("mediawiki.page:{}", page.title),
+            assertion: "fixture_page_updated".to_owned(),
+            passed: true,
+            detail: format!("revision_id={}", page.revision_id),
+            file_evidence: None,
+        }],
+        captures: Vec::new(),
+        copied: None,
+        observation: Some(ArtifactIdentity {
+            locator: relative_locator(run_directory, &observation_path)?,
+            sha256,
+            bytes,
+        }),
+        failure: None,
+    })
+}
+
+fn run_mediawiki_assert_step(
+    index: usize,
+    id: &str,
+    expect: &crate::model::MediaWikiExpectation,
+    service: &MediaWikiService,
+    steps_directory: &Path,
+    run_directory: &Path,
+) -> Result<StepReceipt> {
+    let started = Instant::now();
+    let observation = service.observation()?;
+    let assertions = evaluate_expectation(&observation, expect);
+    let passed = assertions.iter().all(|assertion| assertion.passed);
+    let observation_path = steps_directory.join(format!("{index:03}-{id}.mediawiki.json"));
+    atomic_write_json(&observation_path, &observation)?;
+    let (sha256, bytes) = sha256_file(&observation_path)?;
+    Ok(StepReceipt {
+        id: id.to_owned(),
+        action: "mediawiki_assert".to_owned(),
+        status: if passed {
+            RunStatus::Passed
+        } else {
+            RunStatus::Failed
+        },
+        duration_ms: started.elapsed().as_millis(),
+        argv: Vec::new(),
+        exit_code: None,
+        timed_out: None,
+        stdout: None,
+        stderr: None,
+        assertions,
+        captures: Vec::new(),
+        copied: None,
+        observation: Some(ArtifactIdentity {
+            locator: relative_locator(run_directory, &observation_path)?,
+            sha256,
+            bytes,
+        }),
+        failure: (!passed).then(|| "one or more MediaWiki expectations failed".to_owned()),
+    })
+}
+
+pub(crate) fn evaluate_output_assertions(
     target: &str,
     output: &CapturedStream,
     assertions: &[OutputAssertion],
@@ -701,6 +1205,7 @@ fn evaluate_output_assertions(
                     } else {
                         format!("did not find {value:?}")
                     },
+                    file_evidence: None,
                 }
             }
             OutputAssertion::NotContains { value } => {
@@ -717,6 +1222,7 @@ fn evaluate_output_assertions(
                     } else {
                         format!("did not find {value:?}")
                     },
+                    file_evidence: None,
                 }
             }
             OutputAssertion::JsonPointerExists { pointer } => {
@@ -728,6 +1234,7 @@ fn evaluate_output_assertions(
                     assertion: "json_pointer_exists".to_owned(),
                     passed: value.is_some(),
                     detail: json_detail(output, parsed.as_ref(), pointer, value),
+                    file_evidence: None,
                 }
             }
             OutputAssertion::JsonPointerEquals { pointer, value } => {
@@ -742,6 +1249,7 @@ fn evaluate_output_assertions(
                         "pointer {pointer:?}: expected {value}, observed {}",
                         observed.map_or_else(|| "<missing>".to_owned(), Value::to_string)
                     ),
+                    file_evidence: None,
                 }
             }
             OutputAssertion::JsonArrayContains { pointer, value } => {
@@ -759,6 +1267,7 @@ fn evaluate_output_assertions(
                         "pointer {pointer:?}: expected array member {value}, observed {}",
                         observed.map_or_else(|| "<missing>".to_owned(), Value::to_string)
                     ),
+                    file_evidence: None,
                 }
             }
             OutputAssertion::JsonArrayItemPointerEquals {
@@ -782,6 +1291,7 @@ fn evaluate_output_assertions(
                         "pointer {pointer:?}: expected an item whose {item_pointer:?} equals {value}, observed {} item(s)",
                         observed.and_then(Value::as_array).map_or(0, Vec::len)
                     ),
+                    file_evidence: None,
                 }
             }
             OutputAssertion::JsonPointerU64AtLeast { pointer, value } => {
@@ -797,6 +1307,7 @@ fn evaluate_output_assertions(
                         "pointer {pointer:?}: expected at least {value}, observed {}",
                         observed.map_or_else(|| "<missing or non-u64>".to_owned(), |value| value.to_string())
                     ),
+                    file_evidence: None,
                 }
             }
             OutputAssertion::JsonPointerNonBlank { pointer } => {
@@ -812,6 +1323,7 @@ fn evaluate_output_assertions(
                         "pointer {pointer:?}: observed {}",
                         observed.map_or("<missing or non-string>", |value| value)
                     ),
+                    file_evidence: None,
                 }
             }
         })
@@ -836,55 +1348,114 @@ fn json_detail(
     )
 }
 
-fn evaluate_file_assertions(root: &Path, assertions: &[FileAssertion]) -> Vec<AssertionReceipt> {
+fn evaluate_file_assertions(
+    root: &Path,
+    assertions: &[FileAssertion],
+    evidence_directory: &Path,
+    run_directory: &Path,
+) -> Vec<AssertionReceipt> {
     assertions
         .iter()
-        .map(|assertion| match evaluate_file_assertion(root, assertion) {
-            Ok(receipt) => receipt,
-            Err(error) => AssertionReceipt {
+        .enumerate()
+        .map(|(index, assertion)| {
+            capture_file_observation(
+                root,
+                assertion.path(),
+                evidence_directory,
+                run_directory,
+                index,
+            )
+            .and_then(|(evidence, bytes)| {
+                evaluate_file_assertion(assertion, evidence, bytes.as_deref())
+            })
+            .unwrap_or_else(|error| AssertionReceipt {
                 target: assertion.path().to_owned(),
                 assertion: file_assertion_name(assertion).to_owned(),
                 passed: false,
                 detail: format!("{error:#}"),
-            },
+                file_evidence: None,
+            })
         })
         .collect()
 }
 
-fn evaluate_file_assertion(root: &Path, assertion: &FileAssertion) -> Result<AssertionReceipt> {
-    let path = resolve_output_path(root, assertion.path())?;
+fn capture_file_observation(
+    root: &Path,
+    relative: &str,
+    evidence_directory: &Path,
+    run_directory: &Path,
+    index: usize,
+) -> Result<(FileObservation, Option<Vec<u8>>)> {
+    let path = resolve_output_path(root, relative)?;
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((
+                FileObservation {
+                    state: FileObservationState::Missing,
+                    artifact: None,
+                },
+                None,
+            ));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Ok((
+            FileObservation {
+                state: FileObservationState::Other,
+                artifact: None,
+            },
+            None,
+        ));
+    }
+    if metadata.len() > FILE_ASSERTION_BUDGET {
+        bail!(
+            "{} exceeds the {} byte file assertion budget",
+            path.display(),
+            FILE_ASSERTION_BUDGET
+        );
+    }
+    let bytes = fs::read(&path)?;
+    let snapshot = evidence_directory.join(format!("{index:03}.bin"));
+    atomic_write(&snapshot, &bytes)?;
+    let evidence = FileObservation {
+        state: FileObservationState::PlainFile,
+        artifact: Some(ArtifactIdentity {
+            locator: relative_locator(run_directory, &snapshot)?,
+            sha256: sha256_bytes(&bytes),
+            bytes: bytes.len() as u64,
+        }),
+    };
+    Ok((evidence, Some(bytes)))
+}
+
+pub(crate) fn evaluate_file_assertion(
+    assertion: &FileAssertion,
+    evidence: FileObservation,
+    bytes: Option<&[u8]>,
+) -> Result<AssertionReceipt> {
     let (passed, detail) = match assertion {
         FileAssertion::Exists { .. } => (
-            path.is_file(),
-            if path.is_file() {
+            evidence.state == FileObservationState::PlainFile,
+            if evidence.state == FileObservationState::PlainFile {
                 "plain file exists".to_owned()
             } else {
                 "plain file does not exist".to_owned()
             },
         ),
         FileAssertion::Missing { .. } => (
-            !path.exists(),
-            if path.exists() {
-                "path exists".to_owned()
-            } else {
+            evidence.state == FileObservationState::Missing,
+            if evidence.state == FileObservationState::Missing {
                 "path is absent".to_owned()
+            } else {
+                "path exists".to_owned()
             },
         ),
         FileAssertion::Contains { value, .. } | FileAssertion::NotContains { value, .. } => {
-            let metadata = fs::metadata(&path)
-                .with_context(|| format!("failed to inspect {}", path.display()))?;
-            if !metadata.is_file() {
-                bail!("{} is not a plain file", path.display());
-            }
-            if metadata.len() > FILE_ASSERTION_BUDGET {
-                bail!(
-                    "{} exceeds the {} byte file assertion budget",
-                    path.display(),
-                    FILE_ASSERTION_BUDGET
-                );
-            }
-            let bytes = fs::read(&path)?;
-            let text = String::from_utf8(bytes).context("asserted file is not UTF-8")?;
+            let text =
+                String::from_utf8(bytes.context("asserted file bytes are missing")?.to_vec())
+                    .context("asserted file is not UTF-8")?;
             let found = text.contains(value);
             let expected_found = matches!(assertion, FileAssertion::Contains { .. });
             (
@@ -896,7 +1467,7 @@ fn evaluate_file_assertion(root: &Path, assertion: &FileAssertion) -> Result<Ass
             )
         }
         FileAssertion::Sha256 { value, .. } => {
-            let (observed, _) = sha256_file(&path)?;
+            let observed = sha256_bytes(bytes.context("asserted file bytes are missing")?);
             (
                 observed == *value,
                 format!("expected {value}, observed {observed}"),
@@ -908,6 +1479,7 @@ fn evaluate_file_assertion(root: &Path, assertion: &FileAssertion) -> Result<Ass
         assertion: file_assertion_name(assertion).to_owned(),
         passed,
         detail,
+        file_evidence: Some(evidence),
     })
 }
 
@@ -942,19 +1514,56 @@ fn evaluate_requirements(
     receipt: &mut RunReceipt,
 ) -> Result<Option<RunStatus>> {
     let mut status = None;
-    for requirement in &scenario.requirements {
+    for (index, requirement) in scenario.requirements.iter().enumerate() {
         match requirement {
             Requirement::PathExists { path, on_missing } => {
                 let expanded = variables.expand(path)?;
-                let exists = Path::new(&expanded).exists();
+                let metadata = match fs::metadata(&expanded) {
+                    Ok(metadata) => Some(metadata),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(error) => {
+                        return Err(error).with_context(|| {
+                            format!("failed to inspect required path {expanded}")
+                        });
+                    }
+                };
+                let exists = metadata.is_some();
+                let expanded_path = portable(Path::new(&expanded));
+                let observation = RequirementObservation {
+                    schema: REQUIREMENT_OBSERVATION_SCHEMA.to_owned(),
+                    kind: "path_exists".to_owned(),
+                    declared_path: path.clone(),
+                    expanded_path: expanded_path.clone(),
+                    exists,
+                    path_kind: metadata.as_ref().map(|metadata| {
+                        if metadata.is_file() {
+                            "file"
+                        } else if metadata.is_dir() {
+                            "directory"
+                        } else {
+                            "other"
+                        }
+                        .to_owned()
+                    }),
+                };
+                let observation_path = variables
+                    .run_directory
+                    .join(format!("requirements/{index:04}-path-exists.json"));
+                atomic_write_json(&observation_path, &observation)?;
+                let (sha256, bytes) = sha256_file(&observation_path)?;
                 receipt.requirements.push(RequirementReceipt {
                     kind: "path_exists".to_owned(),
                     passed: exists,
                     disposition: *on_missing,
                     detail: if exists {
-                        format!("path exists: {}", portable(Path::new(&expanded)))
+                        format!("path exists: {expanded_path}")
                     } else {
-                        format!("path is missing: {}", portable(Path::new(&expanded)))
+                        format!("path is missing: {expanded_path}")
+                    },
+                    observation: ArtifactIdentity {
+                        locator: relative_locator(variables.run_directory, &observation_path)?,
+                        sha256,
+                        bytes,
                     },
                 });
                 if !exists {
@@ -1013,6 +1622,8 @@ fn step_action(step: &ScenarioStep) -> &'static str {
     match step {
         ScenarioStep::Copy { .. } => "copy",
         ScenarioStep::Command { .. } => "command",
+        ScenarioStep::MediaWikiUpdate { .. } => "mediawiki_update",
+        ScenarioStep::MediaWikiAssert { .. } => "mediawiki_assert",
     }
 }
 
@@ -1022,28 +1633,72 @@ struct Variables<'a> {
     run_directory: &'a Path,
     workspace: &'a Path,
     host_root: Option<&'a Path>,
+    mediawiki_api_url: Option<&'a str>,
+    captures: BTreeMap<String, String>,
 }
 
 impl Variables<'_> {
     fn expand(&self, value: &str) -> Result<String> {
-        let mut output = value.to_owned();
-        for (token, replacement) in [
-            ("{REPO_ROOT}", Some(self.repository)),
-            ("{SCENARIO_DIR}", Some(self.scenario_directory)),
-            ("{RUN_DIR}", Some(self.run_directory)),
-            ("{WORKSPACE}", Some(self.workspace)),
-            ("{HOST_ROOT}", self.host_root),
-        ] {
-            if output.contains(token) {
-                let replacement =
-                    replacement.with_context(|| format!("{token} is unavailable in this run"))?;
-                output = output.replace(token, &replacement.to_string_lossy());
+        let mut output = String::with_capacity(value.len());
+        let mut remaining = value;
+        while !remaining.is_empty() {
+            if let Some(after_start) = remaining.strip_prefix("${") {
+                let end = after_start
+                    .find('}')
+                    .with_context(|| format!("unterminated capture interpolation in {value:?}"))?;
+                let name = &after_start[..end];
+                let replacement = self
+                    .captures
+                    .get(name)
+                    .with_context(|| format!("capture '{name}' is unavailable in this run"))?;
+                output.push_str(replacement);
+                remaining = &after_start[end + 1..];
+            } else if let Some(after_start) = remaining.strip_prefix('{') {
+                let end = after_start
+                    .find('}')
+                    .with_context(|| format!("unterminated interpolation token in {value:?}"))?;
+                let name = &after_start[..end];
+                match name {
+                    "REPO_ROOT" => output.push_str(&portable(self.repository)),
+                    "SCENARIO_DIR" => output.push_str(&portable(self.scenario_directory)),
+                    "RUN_DIR" => output.push_str(&portable(self.run_directory)),
+                    "WORKSPACE" => output.push_str(&portable(self.workspace)),
+                    "HOST_ROOT" => output.push_str(&portable(
+                        self.host_root
+                            .context("{HOST_ROOT} is unavailable in this run")?,
+                    )),
+                    "MEDIAWIKI_API_URL" => output.push_str(
+                        self.mediawiki_api_url
+                            .context("{MEDIAWIKI_API_URL} is unavailable in this run")?,
+                    ),
+                    _ => bail!("unknown interpolation token '{{{name}}}' in {value:?}"),
+                }
+                remaining = &after_start[end + 1..];
+            } else if remaining.starts_with('}') {
+                bail!("unmatched interpolation terminator in {value:?}");
+            } else {
+                let ch = remaining
+                    .chars()
+                    .next()
+                    .context("empty interpolation input")?;
+                output.push(ch);
+                remaining = &remaining[ch.len_utf8()..];
             }
         }
-        if output.contains('{') || output.contains('}') {
-            bail!("unknown interpolation token in {value:?}");
-        }
         Ok(output)
+    }
+
+    fn bind_captures(&mut self, captures: &[JsonScalarCaptureReceipt]) -> Result<()> {
+        for capture in captures {
+            if self.captures.contains_key(&capture.name) {
+                bail!("capture '{}' would be redefined", capture.name);
+            }
+        }
+        for capture in captures {
+            self.captures
+                .insert(capture.name.clone(), capture.value.clone());
+        }
+        Ok(())
     }
 }
 
@@ -1098,7 +1753,190 @@ mod tests {
             run_directory: root,
             workspace: root,
             host_root: None,
+            mediawiki_api_url: None,
+            captures: BTreeMap::new(),
         };
         assert!(variables.expand("{UNKNOWN}").is_err());
+        assert!(variables.expand("${UNKNOWN}").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn path_interpolation_normalizes_verbatim_windows_roots_before_suffixes() {
+        let root = Path::new(r"\\?\F:\AI\wiki");
+        let variables = Variables {
+            repository: root,
+            scenario_directory: root,
+            run_directory: root,
+            workspace: root,
+            host_root: Some(root),
+            mediawiki_api_url: None,
+            captures: BTreeMap::new(),
+        };
+
+        assert_eq!(
+            variables
+                .expand("{HOST_ROOT}/.wikitool/data/wikitool.db")
+                .expect("expand host path"),
+            "F:/AI/wiki/.wikitool/data/wikitool.db"
+        );
+    }
+
+    #[test]
+    fn json_captures_bind_hash_bound_scalars_for_later_argv() {
+        let stdout = output(
+            br#"{"report":{"plan_id":"plan-123","count":2,"ready":true}}"#,
+            false,
+        );
+        let declared = vec![
+            JsonScalarCapture {
+                name: "PLAN_ID".to_owned(),
+                pointer: "/report/plan_id".to_owned(),
+            },
+            JsonScalarCapture {
+                name: "COUNT".to_owned(),
+                pointer: "/report/count".to_owned(),
+            },
+            JsonScalarCapture {
+                name: "READY".to_owned(),
+                pointer: "/report/ready".to_owned(),
+            },
+        ];
+        let (captures, assertions) = evaluate_json_captures("preview", &declared, &stdout);
+        assert!(assertions.iter().all(|assertion| assertion.passed));
+        assert_eq!(
+            captures
+                .iter()
+                .map(|capture| capture.value.as_str())
+                .collect::<Vec<_>>(),
+            ["plan-123", "2", "true"]
+        );
+        assert!(
+            captures
+                .iter()
+                .all(|capture| capture.source_stdout_sha256 == stdout.stored_sha256)
+        );
+
+        let root = Path::new("root");
+        let mut variables = Variables {
+            repository: root,
+            scenario_directory: root,
+            run_directory: root,
+            workspace: root,
+            host_root: None,
+            mediawiki_api_url: None,
+            captures: BTreeMap::new(),
+        };
+        variables.bind_captures(&captures).expect("bind captures");
+        assert_eq!(
+            variables
+                .expand("push --apply ${PLAN_ID}")
+                .expect("expand capture"),
+            "push --apply plan-123"
+        );
+        assert!(variables.bind_captures(&captures).is_err());
+    }
+
+    #[test]
+    fn json_captures_fail_on_missing_blank_nonscalar_or_truncated_values() {
+        let declared = [
+            JsonScalarCapture {
+                name: "MISSING".to_owned(),
+                pointer: "/missing".to_owned(),
+            },
+            JsonScalarCapture {
+                name: "OBJECT".to_owned(),
+                pointer: "/object".to_owned(),
+            },
+            JsonScalarCapture {
+                name: "BLANK".to_owned(),
+                pointer: "/blank".to_owned(),
+            },
+        ];
+        let (captures, assertions) = evaluate_json_captures(
+            "preview",
+            &declared,
+            &output(br#"{"object":{},"blank":"  "}"#, false),
+        );
+        assert!(captures.is_empty());
+        assert!(assertions.iter().all(|assertion| !assertion.passed));
+
+        let (captures, assertions) =
+            evaluate_json_captures("preview", &declared[..1], &output(b"{}", true));
+        assert!(captures.is_empty());
+        assert!(!assertions[0].passed);
+        assert!(assertions[0].detail.contains("truncated"));
+    }
+
+    #[test]
+    fn host_snapshot_is_mutable_without_mutating_source_and_detects_source_drift() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let host = directory.path().join("host");
+        let workspace = directory.path().join("workspace");
+        let run = directory.path().join("run");
+        let inputs_directory = run.join("inputs");
+        fs::create_dir_all(host.join(".wikitool/data")).expect("host data");
+        fs::create_dir_all(&workspace).expect("workspace");
+        fs::create_dir_all(&inputs_directory).expect("inputs");
+        fs::write(host.join(".wikitool/data/wikitool.db"), b"host-db").expect("host db");
+        let mut inputs = Vec::new();
+        let snapshot = snapshot_host_root(&host, &workspace, &inputs_directory, &run, &mut inputs)
+            .expect("snapshot");
+
+        fs::write(
+            workspace.join(".wikitool/data/wikitool.db"),
+            b"snapshot mutation",
+        )
+        .expect("mutate snapshot");
+        verify_host_unchanged(&snapshot).expect("host remains unchanged");
+        assert_eq!(
+            fs::read(host.join(".wikitool/data/wikitool.db")).expect("host bytes"),
+            b"host-db"
+        );
+
+        fs::write(host.join(".wikitool/data/wikitool.db"), b"host mutation").expect("mutate host");
+        assert!(verify_host_unchanged(&snapshot).is_err());
+    }
+
+    #[test]
+    fn host_snapshot_refuses_an_adapter_outside_the_retained_tree() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let host = directory.path().join("host");
+        let workspace = directory.path().join("workspace");
+        let run = directory.path().join("run");
+        let outside = directory.path().join("outside/site-adapter.toml");
+        fs::create_dir_all(host.join(".wikitool")).expect("host config directory");
+        fs::create_dir_all(outside.parent().expect("outside parent")).expect("outside directory");
+        fs::create_dir_all(&workspace).expect("workspace");
+        fs::create_dir_all(run.join("inputs")).expect("inputs");
+        fs::write(&outside, b"schema = \"wikitool.site-adapter.v1\"\n").expect("external adapter");
+        let escaped = outside.to_string_lossy().replace('\\', "\\\\");
+        fs::write(
+            host.join(".wikitool/config.toml"),
+            format!("[adapter]\npath = \"{escaped}\"\n"),
+        )
+        .expect("host config");
+
+        let error = snapshot_host_root(
+            &host,
+            &workspace,
+            &run.join("inputs"),
+            &run,
+            &mut Vec::new(),
+        )
+        .expect_err("external adapter must be refused");
+        assert!(error.to_string().contains("adapter.path"));
+    }
+
+    #[test]
+    fn execution_workspace_has_a_local_empty_dotenv() {
+        let run_id = format!(
+            "workspace-test-{}-{}",
+            std::process::id(),
+            unix_ms().unwrap()
+        );
+        let workspace = create_execution_workspace(&run_id).expect("workspace");
+        assert_eq!(fs::read(workspace.join(".env")).expect("dotenv"), b"");
+        assert!(!workspace.starts_with(env!("CARGO_MANIFEST_DIR")));
     }
 }

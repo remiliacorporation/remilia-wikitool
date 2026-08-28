@@ -7,16 +7,16 @@ use serde::{Deserialize, Serialize};
 use crate::artifact::join_relative;
 use crate::model::{ArtifactIdentity, OutputArtifact, ToolIdentity};
 
-pub const PROSE_ASSIGNMENT_SCHEMA: &str = "wikitest.prose-assignment.v1";
+pub const PROSE_ASSIGNMENT_SCHEMA: &str = "wikitest.prose-assignment.v2";
 pub const PROSE_SUITE_SCHEMA: &str = "wikitest.prose-suite.v1";
-pub const PROSE_PACKET_SCHEMA: &str = "wikitest.prose-packet.v1";
+pub const PROSE_PACKET_SCHEMA: &str = "wikitest.prose-packet.v3";
 pub const AUTHOR_REQUEST_SCHEMA: &str = "wikitest.author-request.v1";
 pub const AUTHOR_SUBMISSION_SCHEMA: &str = "wikitest.author-submission.v1";
 pub const CLAIM_MAP_SCHEMA: &str = "wikitest.claim-map.v1";
-pub const REVIEW_REQUEST_SCHEMA: &str = "wikitest.review-request.v1";
+pub const REVIEW_REQUEST_SCHEMA: &str = "wikitest.review-request.v2";
 pub const REVIEW_SUBMISSION_SCHEMA: &str = "wikitest.review-submission.v1";
-pub const PROSE_RECEIPT_SCHEMA: &str = "wikitest.prose-receipt.v2";
-pub const PROSE_SUITE_RECEIPT_SCHEMA: &str = "wikitest.prose-suite-receipt.v2";
+pub const PROSE_RECEIPT_SCHEMA: &str = "wikitest.prose-receipt.v5";
+pub const PROSE_SUITE_RECEIPT_SCHEMA: &str = "wikitest.prose-suite-receipt.v5";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -121,6 +121,26 @@ pub enum ProseRunStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ProseSuiteStatus {
+    Prepared,
+    Passed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProseCoverageStatus {
+    AwaitingReview,
+    MissingOracle,
+    OracleFailed,
+    ReviewIncomplete,
+    AuthoringIncomplete,
+    AuthoringRejected,
+    Demonstrated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum InputRoot {
     Assignment,
     Repository,
@@ -146,6 +166,7 @@ pub struct ProseAssignment {
     pub do_not_assert: Vec<String>,
     #[serde(default)]
     pub allowed_decisions: Vec<ArticleDecision>,
+    pub finding_tag_vocabulary: Vec<String>,
     pub review_axes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate: Option<BoundInput>,
@@ -165,7 +186,7 @@ pub struct ProseSuite {
     pub assignments: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ArticleBrief {
     pub title: String,
@@ -283,6 +304,7 @@ pub struct ReviewSubmission {
     pub review_packet_sha256: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate_sha256: Option<String>,
+    pub finding_tag_vocabulary: Vec<String>,
     pub reviewer: Participant,
     pub scope: ReviewScope,
     pub reader_verdict: String,
@@ -338,9 +360,18 @@ pub struct PacketBinding {
 #[serde(deny_unknown_fields)]
 pub struct ReviewPacketBinding {
     pub schema: String,
-    pub assignment: ProseAssignmentIdentity,
+    pub assignment: ReviewAssignmentProjection,
     pub inputs: Vec<ArtifactIdentity>,
     pub mechanical_observations: Vec<MechanicalObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewAssignmentProjection {
+    pub participant_assignment_id: String,
+    pub article: ArticleBrief,
+    pub finding_tag_vocabulary: Vec<String>,
+    pub review_axes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -394,15 +425,15 @@ pub struct ReviewRequest {
     pub context: Vec<PacketInput>,
     pub sources: Vec<PacketSource>,
     pub candidate: Option<ArtifactIdentity>,
-    pub claim_map: Option<ArtifactIdentity>,
     pub mechanical_observations: Vec<MechanicalObservation>,
+    pub finding_tag_vocabulary: Vec<String>,
     pub review_axes: Vec<String>,
     pub axis_verdict_values: Vec<AxisVerdict>,
     pub submission_schema: String,
     pub submission_template: ArtifactIdentity,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProseAssignmentIdentity {
     pub id: String,
@@ -417,6 +448,8 @@ pub struct ProseAssignmentIdentity {
 #[serde(deny_unknown_fields)]
 pub struct MechanicalObservation {
     pub argv: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<ArtifactIdentity>,
     pub exit_code: Option<i32>,
     pub timed_out: bool,
     pub duration_ms: u128,
@@ -471,8 +504,9 @@ pub struct ReviewStageReceipt {
 pub struct ProseReceipt {
     pub schema: String,
     pub run_id: String,
+    pub participant_assignment_id: String,
     pub driver: ToolIdentity,
-    pub assignment: ProseAssignmentIdentity,
+    pub public_assignment: ProseAssignmentIdentity,
     pub tool: ToolIdentity,
     pub status: ProseRunStatus,
     pub created_at_unix_ms: u128,
@@ -484,9 +518,13 @@ pub struct ProseReceipt {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author_request: Option<ArtifactIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author_export: Option<ParticipantExport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<AuthorStageReceipt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_request: Option<ArtifactIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_export: Option<ParticipantExport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_packet: Option<ArtifactIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -508,7 +546,17 @@ pub struct ProseSuiteRun {
     pub assignment_id: String,
     pub run_locator: String,
     pub preparation_receipt: ArtifactIdentity,
+    pub current_receipt: ArtifactIdentity,
     pub status: ProseRunStatus,
+    pub coverage_status: ProseCoverageStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParticipantExport {
+    pub root: String,
+    pub request: ArtifactIdentity,
+    pub output_directory: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -519,8 +567,12 @@ pub struct ProseSuiteReceipt {
     pub driver: ToolIdentity,
     pub suite: ProseSuiteIdentity,
     pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    pub status: ProseSuiteStatus,
+    pub evaluation_complete: bool,
     pub required_coverage: Vec<String>,
-    pub observed_coverage: Vec<String>,
+    pub prepared_coverage: Vec<String>,
+    pub demonstrated_coverage: Vec<String>,
     pub runs: Vec<ProseSuiteRun>,
 }
 
@@ -548,6 +600,11 @@ impl ProseAssignment {
             }
         }
         validate_texts(&self.do_not_assert, "assignment.do_not_assert")?;
+        validate_keys(
+            &self.finding_tag_vocabulary,
+            "assignment.finding_tag_vocabulary",
+            true,
+        )?;
         validate_keys(&self.review_axes, "assignment.review_axes", false)?;
         if self.review_instructions.is_empty() {
             bail!("assignment.review_instructions must not be empty");
@@ -568,8 +625,8 @@ impl ProseAssignment {
                 if self.allowed_decisions.is_empty() {
                     bail!("authoring assignment requires allowed_decisions");
                 }
-                if self.candidate.is_some() || self.claim_map.is_some() || self.oracle.is_some() {
-                    bail!("authoring assignment cannot embed candidate, claim_map, or oracle");
+                if self.candidate.is_some() || self.claim_map.is_some() {
+                    bail!("authoring assignment cannot embed candidate or claim_map");
                 }
             }
             ProseMode::Review => {
@@ -588,7 +645,7 @@ impl ProseAssignment {
             claim_map.validate("assignment.claim_map")?;
         }
         if let Some(oracle) = &self.oracle {
-            oracle.validate(&self.review_axes)?;
+            oracle.validate(&self.review_axes, &self.finding_tag_vocabulary)?;
         }
         Ok(())
     }
@@ -638,7 +695,7 @@ impl SourceInput {
 }
 
 impl ReviewOracle {
-    fn validate(&self, review_axes: &[String]) -> Result<()> {
+    fn validate(&self, review_axes: &[String], finding_tag_vocabulary: &[String]) -> Result<()> {
         validate_keys(
             &self.required_finding_tags,
             "assignment.oracle.required_finding_tags",
@@ -699,6 +756,22 @@ impl ReviewOracle {
             .any(|tag| required.contains(tag))
         {
             bail!("oracle finding tags cannot be both required and forbidden");
+        }
+        let declared_tags = finding_tag_vocabulary
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        for tag in self
+            .required_finding_tags
+            .iter()
+            .chain(&self.forbidden_finding_tags)
+        {
+            if !declared_tags.contains(tag.as_str()) {
+                bail!(
+                    "assignment.oracle finding tag '{}' is absent from assignment.finding_tag_vocabulary",
+                    tag
+                );
+            }
         }
         let allowed = self
             .allowed_dispositions
@@ -832,9 +905,17 @@ impl ReviewSubmission {
         if let Some(candidate_sha256) = &self.candidate_sha256 {
             validate_sha256(candidate_sha256, "review_submission.candidate_sha256")?;
         }
+        if self.finding_tag_vocabulary != assignment.finding_tag_vocabulary {
+            bail!("review submission finding_tag_vocabulary does not match assignment");
+        }
         self.reviewer.validate("review_submission.reviewer")?;
         non_blank(&self.reader_verdict, "review_submission.reader_verdict")?;
         non_blank(&self.residual_risk, "review_submission.residual_risk")?;
+        let declared_finding_tags = assignment
+            .finding_tag_vocabulary
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
         let mut finding_ids = BTreeSet::new();
         for (index, finding) in self.findings.iter().enumerate() {
             let source = format!("review_submission.findings[{index}]");
@@ -852,6 +933,44 @@ impl ReviewSubmission {
                 non_blank(value, &format!("{source}.{field}"))?;
             }
             validate_keys(&finding.tags, &format!("{source}.tags"), true)?;
+            for tag in &finding.tags {
+                if !declared_finding_tags.contains(tag.as_str()) {
+                    bail!(
+                        "{source}.tags contains '{}' outside assignment.finding_tag_vocabulary",
+                        tag
+                    );
+                }
+            }
+        }
+        match self.disposition {
+            ReviewDisposition::Revise => {
+                if self.findings.iter().any(|finding| {
+                    matches!(finding.severity, FindingSeverity::P0 | FindingSeverity::P1)
+                }) || !self
+                    .findings
+                    .iter()
+                    .any(|finding| finding.severity == FindingSeverity::P2)
+                {
+                    bail!("revise disposition requires P2 and cannot retain P0 or P1 findings");
+                }
+            }
+            ReviewDisposition::Block => {
+                if !self.findings.iter().any(|finding| {
+                    matches!(finding.severity, FindingSeverity::P0 | FindingSeverity::P1)
+                }) {
+                    bail!("block disposition requires at least one P0 or P1 finding");
+                }
+            }
+            ReviewDisposition::Accept => {
+                if self.findings.iter().any(|finding| {
+                    matches!(
+                        finding.severity,
+                        FindingSeverity::P0 | FindingSeverity::P1 | FindingSeverity::P2
+                    )
+                }) {
+                    bail!("accept disposition cannot retain unresolved P0-P2 findings");
+                }
+            }
         }
         let mut observation_tags = BTreeSet::new();
         for (index, observation) in self.observations.iter().enumerate() {
@@ -1005,6 +1124,7 @@ mod tests {
             "review_instructions": [{"id":"review-skill","root":"repository","locator":"skills/review.md","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}],
             "sources": [{"id":"s1","title":"About","locator":"sources/about.txt","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","role":"primary","citation":"Fixture about page"}],
             "allowed_decisions": ["article", "hold"],
+            "finding_tag_vocabulary": [],
             "review_axes": ["reader-value", "source-fidelity"]
         }))
         .expect("assignment JSON")
@@ -1031,6 +1151,7 @@ mod tests {
             "assignment_id": "aster-authoring",
             "review_packet_sha256": "d".repeat(64),
             "candidate_sha256": "e".repeat(64),
+            "finding_tag_vocabulary": [],
             "reviewer": {"id":"reviewer-1","display_name":"Reviewer","kind":"human"},
             "scope": "complete",
             "reader_verdict": "Readable.",
@@ -1048,5 +1169,118 @@ mod tests {
     fn axis_verdict_accepts_explicit_failure() {
         let verdict: AxisVerdict = serde_json::from_str("\"fail\"").expect("failure verdict");
         assert_eq!(verdict, AxisVerdict::Fail);
+    }
+
+    #[test]
+    fn oracle_tags_must_come_from_the_public_vocabulary() {
+        let mut assignment = assignment();
+        assignment.oracle = Some(ReviewOracle {
+            required_finding_tags: vec!["hidden-expected-label".to_owned()],
+            forbidden_finding_tags: Vec::new(),
+            axis_expectations: Vec::new(),
+            allowed_dispositions: vec![ReviewDisposition::Accept],
+        });
+        let error = assignment
+            .validate()
+            .expect_err("hidden oracle tag must fail");
+        assert!(error.to_string().contains("finding_tag_vocabulary"));
+    }
+
+    #[test]
+    fn submitted_finding_tags_must_come_from_the_public_vocabulary() {
+        let assignment = assignment();
+        let submission: ReviewSubmission = serde_json::from_value(json!({
+            "schema": REVIEW_SUBMISSION_SCHEMA,
+            "run_id": "run-1",
+            "assignment_id": "aster-authoring",
+            "review_packet_sha256": "d".repeat(64),
+            "candidate_sha256": "e".repeat(64),
+            "finding_tag_vocabulary": [],
+            "reviewer": {"id":"reviewer-1","display_name":"Reviewer","kind":"human"},
+            "scope": "complete",
+            "reader_verdict": "Needs repair.",
+            "source_verdict": "complete",
+            "disposition": "revise",
+            "findings": [{
+                "id": "finding-1",
+                "severity": "p2",
+                "location": "Lead",
+                "problem": "The lead overstates the record.",
+                "evidence": "The supplied source does not support the wording.",
+                "impact": "Readers receive a distorted account.",
+                "repair_direction": "Narrow the sentence to the source.",
+                "basis": "verified",
+                "tags": ["hidden-expected-label"]
+            }],
+            "observations": [],
+            "axes": [
+                {"axis":"reader-value","verdict":"concern","rationale":"The lead misleads."},
+                {"axis":"source-fidelity","verdict":"fail","rationale":"The source does not entail it."}
+            ],
+            "residual_risk": "None identified."
+        }))
+        .expect("review JSON");
+        let error = submission
+            .validate(&assignment)
+            .expect_err("undeclared finding tag must fail");
+        assert!(error.to_string().contains("finding_tag_vocabulary"));
+    }
+
+    #[test]
+    fn disposition_must_close_findings_at_the_declared_severity() {
+        let assignment = assignment();
+        let submission = |disposition: &str, severities: &[&str]| {
+            let findings = severities
+                .iter()
+                .enumerate()
+                .map(|(index, severity)| {
+                    json!({
+                        "id": format!("finding-{}", index + 1),
+                        "severity": severity,
+                        "location": "Lead",
+                        "problem": "The wording does not match the supplied record.",
+                        "evidence": "The source packet supports a narrower statement.",
+                        "impact": "Readers receive a distorted account.",
+                        "repair_direction": "Narrow the statement to the source.",
+                        "basis": "verified",
+                        "tags": []
+                    })
+                })
+                .collect::<Vec<_>>();
+            serde_json::from_value::<ReviewSubmission>(json!({
+                "schema": REVIEW_SUBMISSION_SCHEMA,
+                "run_id": "run-1",
+                "assignment_id": "aster-authoring",
+                "review_packet_sha256": "d".repeat(64),
+                "candidate_sha256": "e".repeat(64),
+                "finding_tag_vocabulary": [],
+                "reviewer": {"id":"reviewer-1","display_name":"Reviewer","kind":"human"},
+                "scope": "complete",
+                "reader_verdict": "Recorded against the supplied packet.",
+                "source_verdict": "complete",
+                "disposition": disposition,
+                "findings": findings,
+                "observations": [],
+                "axes": [
+                    {"axis":"reader-value","verdict":"concern","rationale":"Reader impact assessed."},
+                    {"axis":"source-fidelity","verdict":"concern","rationale":"Source fidelity assessed."}
+                ],
+                "residual_risk": "None identified."
+            }))
+            .expect("review JSON")
+        };
+
+        submission("accept", &[])
+            .validate(&assignment)
+            .expect("accept without material findings");
+        submission("revise", &["p2"])
+            .validate(&assignment)
+            .expect("revise closes P2");
+        submission("block", &["p1"])
+            .validate(&assignment)
+            .expect("block closes P1");
+        assert!(submission("accept", &["p2"]).validate(&assignment).is_err());
+        assert!(submission("revise", &["p1"]).validate(&assignment).is_err());
+        assert!(submission("block", &["p2"]).validate(&assignment).is_err());
     }
 }

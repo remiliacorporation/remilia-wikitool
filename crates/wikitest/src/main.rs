@@ -19,8 +19,8 @@ use wikitest::model::{
 use wikitest::runner::{RunOptions, run_scenario, run_suite};
 use wikitest::{
     prose::{
-        ProseOptions, prepare_assignment, prepare_suite as prepare_prose_suite, submit_author,
-        submit_review,
+        ProseOptions, evaluate_suite as evaluate_prose_suite, prepare_assignment,
+        prepare_suite as prepare_prose_suite, submit_author, submit_review,
     },
     prose_model::{
         AUTHOR_REQUEST_SCHEMA, AUTHOR_SUBMISSION_SCHEMA, CLAIM_MAP_SCHEMA, PROSE_ASSIGNMENT_SCHEMA,
@@ -89,7 +89,7 @@ enum Command {
         #[arg(long)]
         require_all: bool,
     },
-    /// Verify a run or suite receipt against its retained artifacts.
+    /// Replay a run or suite receipt against its retained evidence.
     Inspect { receipt: PathBuf },
     /// Prepare and record externally authored or reviewed prose evaluations.
     Prose {
@@ -104,6 +104,8 @@ enum ProseCommand {
     Prepare { assignment: String },
     /// Prepare every assignment in a prose suite.
     PrepareSuite { suite: String },
+    /// Recompute demonstrated coverage from every live reviewed suite run.
+    EvaluateSuite { run: PathBuf },
     /// Bind an external author's candidate and claim map to a prepared run.
     SubmitAuthor {
         run: PathBuf,
@@ -157,7 +159,7 @@ fn execute(cli: Cli) -> Result<u8> {
                 "submission_schemas": [AUTHOR_SUBMISSION_SCHEMA, CLAIM_MAP_SCHEMA, REVIEW_SUBMISSION_SCHEMA],
                 "request_schemas": [AUTHOR_REQUEST_SCHEMA, REVIEW_REQUEST_SCHEMA],
                 "commands": ["describe", "list", "validate", "run", "suite", "prose", "inspect"],
-                "scenario_kinds": ["mechanical", "knowledge"],
+                "scenario_kinds": ["mechanical", "catalog"],
                 "environments": ["isolated", "host_read_only"],
                 "authority": {
                     "deterministic": "Wikitest can assert process, structured output, file, hash, and completeness facts.",
@@ -170,7 +172,7 @@ fn execute(cli: Cli) -> Result<u8> {
                     "Wikitest — executable Wikitool dogfooding laboratory".to_owned(),
                     format!("scenario schema: {SCENARIO_SCHEMA}"),
                     format!("suite schema: {SUITE_SCHEMA}"),
-                    "mechanical and knowledge assertions are deterministic; prose judgment is external".to_owned(),
+                    "mechanical and catalog assertions are deterministic; prose judgment is external".to_owned(),
                 ]
                 .join("\n")
             })?;
@@ -185,7 +187,7 @@ fn execute(cli: Cli) -> Result<u8> {
                             Some(
                                 match value.kind {
                                     wikitest::model::ScenarioKind::Mechanical => "mechanical",
-                                    wikitest::model::ScenarioKind::Knowledge => "knowledge",
+                                    wikitest::model::ScenarioKind::Catalog => "catalog",
                                 }
                                 .to_owned(),
                             ),
@@ -272,7 +274,7 @@ fn execute(cli: Cli) -> Result<u8> {
             let path = resolve_manifest(&scenario, &catalogs, "scenario")?;
             let options = run_options(&cli, &repository, &catalogs)?;
             let run = run_scenario(&path, &options)?;
-            require_verified_receipt(&run.receipt_path, &repository)?;
+            require_replayable_receipt(&run.receipt_path, &repository)?;
             let value = serde_json::to_value(&run.receipt)?;
             render_value(cli.format, &value, || {
                 format!(
@@ -289,7 +291,7 @@ fn execute(cli: Cli) -> Result<u8> {
             let path = resolve_manifest(&suite, &catalogs, "suite")?;
             let options = run_options(&cli, &repository, &catalogs)?;
             let run = run_suite(&path, &options, require_all)?;
-            require_verified_receipt(&run.receipt_path, &repository)?;
+            require_replayable_receipt(&run.receipt_path, &repository)?;
             let value = serde_json::to_value(&run.receipt)?;
             render_value(cli.format, &value, || {
                 format!(
@@ -308,8 +310,8 @@ fn execute(cli: Cli) -> Result<u8> {
             let value = serde_json::to_value(&inspection)?;
             render_value(cli.format, &value, || {
                 let mut lines = vec![format!(
-                    "verified: {} ({})",
-                    inspection.verified, inspection.source_status
+                    "evidence replayed: {} ({}, authenticity: {:?})",
+                    inspection.evidence_replayed, inspection.source_status, inspection.authenticity
                 )];
                 lines.extend(inspection.checks.iter().map(|check| {
                     format!(
@@ -321,7 +323,7 @@ fn execute(cli: Cli) -> Result<u8> {
                 }));
                 lines.join("\n")
             })?;
-            Ok(if inspection.verified { 0 } else { 1 })
+            Ok(if inspection.evidence_replayed { 0 } else { 1 })
         }
         Command::Prose { command } => {
             validate_output_budget(cli.max_output_bytes)?;
@@ -330,15 +332,17 @@ fn execute(cli: Cli) -> Result<u8> {
                 ProseCommand::Prepare { assignment } => {
                     let path = resolve_manifest(&assignment, &catalogs, "prose_assignment")?;
                     let prepared = prepare_assignment(&path, &options)?;
-                    require_verified_receipt(&prepared.receipt_path, &repository)?;
+                    require_replayable_receipt(&prepared.receipt_path, &repository)?;
                     let value = serde_json::to_value(&prepared.receipt)?;
                     render_value(cli.format, &value, || {
                         format!(
-                            "{}: {:?}\nreceipt: {}\nrequest: {}",
-                            prepared.receipt.assignment.id,
+                            "{}: {:?}\nreceipt: {}\nrequest: {}\noutput: {}",
+                            prepared.receipt.public_assignment.id,
                             prepared.receipt.status,
                             portable(&prepared.receipt_path),
                             prose_request_path(&prepared.receipt_path, &prepared.receipt)
+                                .unwrap_or_else(|| "<none>".to_owned()),
+                            prose_output_path(&prepared.receipt)
                                 .unwrap_or_else(|| "<none>".to_owned())
                         )
                     })?;
@@ -347,8 +351,13 @@ fn execute(cli: Cli) -> Result<u8> {
                 ProseCommand::PrepareSuite { suite } => {
                     let path = resolve_manifest(&suite, &catalogs, "prose_suite")?;
                     let prepared = prepare_prose_suite(&path, &options)?;
-                    require_verified_receipt(&prepared.receipt_path, &repository)?;
+                    require_replayable_receipt(&prepared.receipt_path, &repository)?;
                     let value = serde_json::to_value(&prepared.receipt)?;
+                    let suite_root = prepared
+                        .receipt_path
+                        .parent()
+                        .context("prose suite receipt has no parent")?
+                        .to_path_buf();
                     render_value(cli.format, &value, || {
                         let mut lines = vec![format!(
                             "{}: prepared {} assignment(s)\nreceipt: {}",
@@ -356,49 +365,72 @@ fn execute(cli: Cli) -> Result<u8> {
                             prepared.receipt.runs.len(),
                             portable(&prepared.receipt_path)
                         )];
-                        lines.extend(
-                            prepared
-                                .receipt
-                                .runs
-                                .iter()
-                                .map(|run| format!("{}: {}", run.assignment_id, run.run_locator)),
-                        );
+                        lines.extend(prepared.receipt.runs.iter().map(|run| {
+                            format!(
+                                "{}: {}",
+                                run.assignment_id,
+                                portable(&suite_root.join(&run.run_locator))
+                            )
+                        }));
                         lines.join("\n")
                     })?;
                     Ok(0)
                 }
+                ProseCommand::EvaluateSuite { run } => {
+                    require_replayable_receipt(&prose_receipt_candidate(&run), &repository)?;
+                    let evaluated = evaluate_prose_suite(&run, &options)?;
+                    require_replayable_receipt(&evaluated.receipt_path, &repository)?;
+                    let value = serde_json::to_value(&evaluated.receipt)?;
+                    render_value(cli.format, &value, || {
+                        format!(
+                            "{}: {:?} (demonstrated {}/{})\nreceipt: {}",
+                            evaluated.receipt.suite.id,
+                            evaluated.receipt.status,
+                            evaluated.receipt.demonstrated_coverage.len(),
+                            evaluated.receipt.required_coverage.len(),
+                            portable(&evaluated.receipt_path)
+                        )
+                    })?;
+                    Ok(match evaluated.receipt.status {
+                        wikitest::prose_model::ProseSuiteStatus::Failed => 1,
+                        wikitest::prose_model::ProseSuiteStatus::Prepared
+                        | wikitest::prose_model::ProseSuiteStatus::Passed => 0,
+                    })
+                }
                 ProseCommand::SubmitAuthor { run, submission } => {
-                    require_verified_receipt(&prose_receipt_candidate(&run), &repository)?;
+                    require_replayable_receipt(&prose_receipt_candidate(&run), &repository)?;
                     let prepared = submit_author(&run, &submission, &options)?;
-                    require_verified_receipt(&prepared.receipt_path, &repository)?;
+                    require_replayable_receipt(&prepared.receipt_path, &repository)?;
                     let value = serde_json::to_value(&prepared.receipt)?;
                     render_value(cli.format, &value, || {
                         format!(
-                            "{}: {:?}\nreceipt: {}\nreview request: {}",
-                            prepared.receipt.assignment.id,
+                            "{}: {:?}\nreceipt: {}\nreview request: {}\noutput: {}",
+                            prepared.receipt.public_assignment.id,
                             prepared.receipt.status,
                             portable(&prepared.receipt_path),
                             prose_request_path(&prepared.receipt_path, &prepared.receipt)
+                                .unwrap_or_else(|| "<none>".to_owned()),
+                            prose_output_path(&prepared.receipt)
                                 .unwrap_or_else(|| "<none>".to_owned())
                         )
                     })?;
                     Ok(0)
                 }
                 ProseCommand::SubmitReview { run, submission } => {
-                    require_verified_receipt(&prose_receipt_candidate(&run), &repository)?;
+                    require_replayable_receipt(&prose_receipt_candidate(&run), &repository)?;
                     let prepared = submit_review(&run, &submission, &options)?;
-                    require_verified_receipt(&prepared.receipt_path, &repository)?;
+                    require_replayable_receipt(&prepared.receipt_path, &repository)?;
                     let oracle = prepared
                         .receipt
                         .review
                         .as_ref()
                         .and_then(|review| review.oracle.as_ref());
-                    let oracle_passed = oracle.is_none_or(|oracle| oracle.passed);
+                    let oracle_passed = oracle.is_some_and(|oracle| oracle.passed);
                     let value = serde_json::to_value(&prepared.receipt)?;
                     render_value(cli.format, &value, || {
                         format!(
                             "{}: {:?}\nreceipt: {}\noracle: {}",
-                            prepared.receipt.assignment.id,
+                            prepared.receipt.public_assignment.id,
                             prepared.receipt.status,
                             portable(&prepared.receipt_path),
                             match oracle {
@@ -423,9 +455,9 @@ fn prose_receipt_candidate(run: &Path) -> PathBuf {
     }
 }
 
-fn require_verified_receipt(receipt_path: &Path, repository: &Path) -> Result<()> {
+fn require_replayable_receipt(receipt_path: &Path, repository: &Path) -> Result<()> {
     let inspection = inspect_receipt(receipt_path, repository)?;
-    if inspection.verified {
+    if inspection.evidence_replayed {
         return Ok(());
     }
 
@@ -460,12 +492,31 @@ fn prose_request_path(
     receipt_path: &Path,
     receipt: &wikitest::prose_model::ProseReceipt,
 ) -> Option<String> {
+    if let Some(export) = receipt
+        .review_export
+        .as_ref()
+        .or(receipt.author_export.as_ref())
+    {
+        return Some(portable(
+            &PathBuf::from(&export.root).join(&export.request.locator),
+        ));
+    }
     let root = receipt_path.parent()?;
     let artifact = receipt
         .review_request
         .as_ref()
         .or(receipt.author_request.as_ref())?;
     Some(portable(&root.join(&artifact.locator)))
+}
+
+fn prose_output_path(receipt: &wikitest::prose_model::ProseReceipt) -> Option<String> {
+    let export = receipt
+        .review_export
+        .as_ref()
+        .or(receipt.author_export.as_ref())?;
+    Some(portable(
+        &PathBuf::from(&export.root).join(&export.output_directory),
+    ))
 }
 
 fn run_options(cli: &Cli, repository: &Path, catalogs: &[PathBuf]) -> Result<RunOptions> {
@@ -523,39 +574,53 @@ fn resolve_any_manifest(
 }
 
 fn validate_manifest_closure(manifest: &Manifest, catalogs: &[PathBuf]) -> Result<()> {
-    let (required, members, expected_kind) = match manifest {
-        Manifest::Suite(suite) => (&suite.required_coverage, &suite.scenarios, "scenario"),
-        Manifest::ProseSuite(suite) => (
-            &suite.required_coverage,
-            &suite.assignments,
-            "prose_assignment",
-        ),
-        Manifest::Scenario(_) | Manifest::ProseAssignment(_) => return Ok(()),
-    };
-    let mut observed = std::collections::BTreeSet::new();
-    for member in members {
-        let path = resolve_manifest(member, catalogs, expected_kind)?;
-        let (resolved, _) = load_manifest(&path)?;
-        match resolved {
-            Manifest::Scenario(scenario) if expected_kind == "scenario" => {
-                observed.extend(scenario.coverage);
+    match manifest {
+        Manifest::Suite(suite) => {
+            let mut observed = std::collections::BTreeSet::new();
+            for member in &suite.scenarios {
+                let path = resolve_manifest(member, catalogs, "scenario")?;
+                let (resolved, _) = load_manifest(&path)?;
+                let Manifest::Scenario(scenario) = resolved else {
+                    bail!("suite member '{member}' resolved to the wrong manifest kind");
+                };
+                scenario.validate()?;
+                observed.extend(
+                    scenario
+                        .coverage
+                        .into_iter()
+                        .map(|binding| binding.capability),
+                );
             }
-            Manifest::ProseAssignment(assignment) if expected_kind == "prose_assignment" => {
+            require_declared_coverage(manifest.id(), &suite.required_coverage, &observed)
+        }
+        Manifest::ProseSuite(suite) => {
+            let mut observed = std::collections::BTreeSet::new();
+            for member in &suite.assignments {
+                let path = resolve_manifest(member, catalogs, "prose_assignment")?;
+                let (resolved, _) = load_manifest(&path)?;
+                let Manifest::ProseAssignment(assignment) = resolved else {
+                    bail!("suite member '{member}' resolved to the wrong manifest kind");
+                };
                 observed.extend(assignment.coverage);
             }
-            _ => bail!("suite member '{member}' resolved to the wrong manifest kind"),
+            require_declared_coverage(manifest.id(), &suite.required_coverage, &observed)
         }
+        Manifest::Scenario(_) | Manifest::ProseAssignment(_) => Ok(()),
     }
+}
+
+fn require_declared_coverage(
+    suite: &str,
+    required: &[String],
+    observed: &std::collections::BTreeSet<String>,
+) -> Result<()> {
     let missing = required
         .iter()
         .filter(|capability| !observed.contains(capability.as_str()))
         .cloned()
         .collect::<Vec<_>>();
     if !missing.is_empty() {
-        bail!(
-            "suite '{}' is missing required coverage {missing:?}",
-            manifest.id()
-        );
+        bail!("suite '{suite}' is missing required coverage {missing:?}");
     }
     Ok(())
 }

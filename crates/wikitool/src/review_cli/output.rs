@@ -15,7 +15,7 @@ pub(super) struct ReviewBrief<'a> {
     selection: ReviewSelectionBrief<'a>,
     counts: ReviewCountsBrief,
     interview_brief: Option<ReviewInterviewBriefCard<'a>>,
-    dry_run_push: ReviewDryRunBrief<'a>,
+    push_preview: ReviewPushPreviewBrief<'a>,
     hard_failures: &'a [String],
     next_steps: &'a [ReviewNextStep],
     full_view_command: BriefCommand,
@@ -43,7 +43,7 @@ struct ReviewCountsBrief {
 
 #[derive(Debug, Serialize)]
 struct ReviewInterviewBriefCard<'a> {
-    status: &'a wikitool_core::knowledge_interview::InterviewValidationStatus,
+    status: &'a wikitool_core::wiki_interview::InterviewValidationStatus,
     path: &'a str,
     title: Option<&'a str>,
     intent: Option<&'a str>,
@@ -55,7 +55,7 @@ struct ReviewInterviewBriefCard<'a> {
 }
 
 #[derive(Debug, Serialize)]
-struct ReviewDryRunBrief<'a> {
+struct ReviewPushPreviewBrief<'a> {
     attempted: bool,
     success: bool,
     skipped_reason: Option<&'a str>,
@@ -63,6 +63,7 @@ struct ReviewDryRunBrief<'a> {
     page_count: usize,
     conflict_count: usize,
     error_count: usize,
+    plan_id: Option<&'a str>,
 }
 
 pub(super) fn build_review_brief(report: &ReviewReport) -> ReviewBrief<'_> {
@@ -95,29 +96,34 @@ pub(super) fn build_review_brief(report: &ReviewReport) -> ReviewBrief<'_> {
                 .unwrap_or_default(),
         },
         interview_brief: report.interview_brief.as_ref().map(interview_brief_card),
-        dry_run_push: ReviewDryRunBrief {
-            attempted: report.dry_run_push.attempted,
-            success: report.dry_run_push.success,
-            skipped_reason: report.dry_run_push.skipped_reason.as_deref(),
-            error: report.dry_run_push.error.as_deref(),
+        push_preview: ReviewPushPreviewBrief {
+            attempted: report.push_preview.attempted,
+            success: report.push_preview.success,
+            skipped_reason: report.push_preview.skipped_reason.as_deref(),
+            error: report.push_preview.error.as_deref(),
             page_count: report
-                .dry_run_push
+                .push_preview
                 .report
                 .as_ref()
                 .map(|push| push.pages.len())
                 .unwrap_or_default(),
             conflict_count: report
-                .dry_run_push
+                .push_preview
                 .report
                 .as_ref()
                 .map(|push| push.conflicts.len())
                 .unwrap_or_default(),
             error_count: report
-                .dry_run_push
+                .push_preview
                 .report
                 .as_ref()
                 .map(|push| push.errors.len())
                 .unwrap_or_default(),
+            plan_id: report
+                .push_preview
+                .report
+                .as_ref()
+                .and_then(|push| push.plan_id.as_deref()),
         },
         hard_failures: &report.hard_failures,
         next_steps: &report.next_steps,
@@ -229,9 +235,9 @@ pub(super) fn print_review_report(report: &ReviewReport) {
         println!(
             "interview_brief.status: {}",
             match brief.status {
-                wikitool_core::knowledge_interview::InterviewValidationStatus::Valid => "valid",
-                wikitool_core::knowledge_interview::InterviewValidationStatus::Warning => "warning",
-                wikitool_core::knowledge_interview::InterviewValidationStatus::Invalid => "invalid",
+                wikitool_core::wiki_interview::InterviewValidationStatus::Valid => "valid",
+                wikitool_core::wiki_interview::InterviewValidationStatus::Warning => "warning",
+                wikitool_core::wiki_interview::InterviewValidationStatus::Invalid => "invalid",
             }
         );
         if let Some(title) = &brief.summary.title {
@@ -256,18 +262,22 @@ pub(super) fn print_review_report(report: &ReviewReport) {
             println!("interview_brief.warning: {warning}");
         }
     }
-    println!("push_dry_run.attempted: {}", report.dry_run_push.attempted);
-    println!("push_dry_run.success: {}", report.dry_run_push.success);
-    if let Some(reason) = &report.dry_run_push.skipped_reason {
-        println!("push_dry_run.skipped_reason: {reason}");
+    println!("push_preview.attempted: {}", report.push_preview.attempted);
+    println!("push_preview.success: {}", report.push_preview.success);
+    if let Some(reason) = &report.push_preview.skipped_reason {
+        println!("push_preview.skipped_reason: {reason}");
     }
-    if let Some(push) = &report.dry_run_push.report {
-        println!("push_dry_run.pages: {}", push.pages.len());
-        println!("push_dry_run.conflicts: {}", push.conflicts.len());
-        println!("push_dry_run.errors: {}", push.errors.len());
+    if let Some(push) = &report.push_preview.report {
+        println!("push_preview.pages: {}", push.pages.len());
+        println!("push_preview.conflicts: {}", push.conflicts.len());
+        println!("push_preview.errors: {}", push.errors.len());
+        println!(
+            "push_preview.plan_id: {}",
+            push.plan_id.as_deref().unwrap_or("<none>")
+        );
     }
-    if let Some(error) = &report.dry_run_push.error {
-        println!("push_dry_run.error: {error}");
+    if let Some(error) = &report.push_preview.error {
+        println!("push_preview.error: {error}");
     }
     println!("next_steps.count: {}", report.next_steps.len());
     for step in &report.next_steps {

@@ -141,7 +141,7 @@ fn review_next_steps_are_empty_for_sync_reviews() {
 }
 
 #[test]
-fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
+fn review_next_steps_guide_draft_promotion_and_bound_push() {
     let temp = TestDir::new("draft-next");
     let paths = test_paths(&temp.path);
     let selection = DraftReviewSelection {
@@ -152,7 +152,7 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
     let steps = build_review_next_steps(&paths, Some(&selection), "Draft review", None)
         .expect("next steps");
 
-    assert_eq!(steps.len(), 7);
+    assert_eq!(steps.len(), 8);
     assert_eq!(steps[0].kind, "lint_draft");
     assert_eq!(
         steps[0].command.as_ref().expect("lint command").argv,
@@ -207,7 +207,7 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
     );
     let push = steps
         .iter()
-        .find(|step| step.kind == "push_dry_run")
+        .find(|step| step.kind == "push_preview")
         .and_then(|step| step.command.as_ref())
         .expect("push command");
     assert_eq!(
@@ -215,7 +215,6 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
         vec![
             "wikitool",
             "push",
-            "--dry-run",
             "--path",
             "wiki_content/Main/Cheetah.wiki",
             "--summary",
@@ -223,6 +222,17 @@ fn review_next_steps_guide_draft_promotion_and_push_dry_run() {
             "--format",
             "json"
         ]
+    );
+    let apply = steps
+        .iter()
+        .find(|step| step.kind == "push_apply")
+        .and_then(|step| step.command.as_ref())
+        .expect("push apply command");
+    assert!(
+        apply
+            .argv
+            .windows(2)
+            .any(|pair| pair == ["--apply", "<PLAN_ID>"])
     );
 }
 

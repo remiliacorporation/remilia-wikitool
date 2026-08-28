@@ -14,10 +14,27 @@
     "wikitext-parsing",
     "internal-links",
     "chunk-retrieval",
-    "article-start"
+    "article-scout",
+    "mediawiki-http",
+    "pull",
+    "redirects",
+    "diff",
+    "remote-conflicts",
+    "push",
+    "push-plan-binding",
+    "baserevid",
+    "createonly",
+    "no-write-retry",
+    "delete",
+    "delete-plan-binding",
+    "delete-missingtitle",
+    "delete-log-lineage",
+    "mutation-reconciliation",
+    "mutation-operator-closure"
   ],
   "scenarios": [
     "mechanical-article-lifecycle",
-    "knowledge-indexed-retrieval"
+    "catalog-indexed-retrieval",
+    "mechanical-mediawiki-sync"
   ]
 }

@@ -1,25 +1,25 @@
 {
-  "schema": "wikitest.scenario.v1",
+  "schema": "wikitest.scenario.v4",
   "id": "mechanical-article-lifecycle",
   "title": "Mechanical article lifecycle",
-  "description": "Exercises explicit adapter initialization, deterministic lint and safe fixes, the exact-content acceptance ledger, draft promotion, and stale-acceptance refusal in an isolated project.",
+  "description": "Exercises explicit adapter initialization, deterministic lint and safe fixes, the exact-content acceptance store, draft promotion, and stale-acceptance refusal in an isolated project.",
   "kind": "mechanical",
   "environment": "isolated",
   "timeout_ms": 120000,
   "coverage": [
-    "project-initialization",
-    "site-adapter",
-    "article-lint",
-    "safe-fix",
-    "acceptance-ledger",
-    "draft-promotion",
-    "stale-acceptance"
+    {"capability": "project-initialization", "steps": ["initialize-generic", "initialize-adapter"]},
+    {"capability": "site-adapter", "steps": ["initialize-adapter"]},
+    {"capability": "article-lint", "steps": ["lint-broken-draft", "lint-fixed-draft"]},
+    {"capability": "safe-fix", "steps": ["apply-safe-fixes"]},
+    {"capability": "acceptance-ledger", "steps": ["record-fixture-acceptance"]},
+    {"capability": "draft-promotion", "steps": ["promote-accepted-draft"]},
+    {"capability": "stale-acceptance", "steps": ["reject-stale-acceptance"]}
   ],
   "steps": [
     {
       "action": "command",
       "id": "initialize-generic",
-      "argv": ["init", "--templates", "--no-network"],
+      "argv": ["init", "--templates", "--api-url", "https://wikitest.invalid/api.php", "--no-network"],
       "expect": {
         "exit_code": 0,
         "files": [
@@ -31,9 +31,9 @@
     {
       "action": "copy",
       "id": "install-adapter",
-      "source": "fixtures/profile.toml",
-      "target": "site-adapter/profile.toml",
-      "sha256": "e7c3b712e9be8de62f73217d1c2efdd740261ea08593e11e5ee1d2aee03b9a34"
+      "source": "fixtures/site-adapter.toml",
+      "target": "site-adapter/site-adapter.toml",
+      "sha256": "ea9f51c73bb11e3e4592d2e3b9a7e190eeee0562ff433776bec529421357cbe4"
     },
     {
       "action": "command",
@@ -42,14 +42,16 @@
         "init",
         "--templates",
         "--no-network",
+        "--api-url",
+        "https://wikitest.invalid/api.php",
         "--force",
         "--adapter-path",
-        "site-adapter/profile.toml"
+        "site-adapter/site-adapter.toml"
       ],
       "expect": {
         "exit_code": 0,
         "files": [
-          {"kind": "contains", "path": ".wikitool/config.toml", "value": "site-adapter/profile.toml"}
+          {"kind": "contains", "path": ".wikitool/config.toml", "value": "site-adapter/site-adapter.toml"}
         ]
       }
     },
@@ -97,7 +99,7 @@
       "expect": {
         "exit_code": 1,
         "stdout": [
-          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_lint_v2"},
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_lint_v3"},
           {"kind": "json_pointer_u64_at_least", "pointer": "/errors", "value": 1},
           {"kind": "json_array_item_pointer_equals", "pointer": "/issues", "item_pointer": "/rule_id", "value": "structure.markdown_heading"},
           {"kind": "json_array_item_pointer_equals", "pointer": "/issues", "item_pointer": "/rule_id", "value": "structure.require_reflist"},
@@ -126,7 +128,7 @@
       "expect": {
         "exit_code": 0,
         "stdout": [
-          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_fix_v1"},
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_fix_v2"},
           {"kind": "json_pointer_equals", "pointer": "/changed", "value": true},
           {"kind": "json_pointer_u64_at_least", "pointer": "/applied_fix_count", "value": 3},
           {"kind": "json_pointer_equals", "pointer": "/remaining_report/errors", "value": 0}
@@ -178,9 +180,14 @@
       "expect": {
         "exit_code": 0,
         "stdout": [
-          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_accept_v2"},
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_accept_v3"},
           {"kind": "json_pointer_equals", "pointer": "/decision", "value": "accepted_for_main_namespace_promotion"},
           {"kind": "json_pointer_equals", "pointer": "/editor_identity_assurance", "value": "self_reported_unverified"},
+          {"kind": "json_pointer_equals", "pointer": "/prose_origin", "value": "agent_draft"},
+          {"kind": "json_pointer_equals", "pointer": "/content_sha256", "value": "c9c8787e616a883af5913ff71b17bd19b1e364fe957c01cfb5c0fef115a61cfe"},
+          {"kind": "json_pointer_equals", "pointer": "/publication_authority/target_api_url", "value": "https://wikitest.invalid/api.php"},
+          {"kind": "json_pointer_equals", "pointer": "/publication_authority/site_adapter_id", "value": "wikitest-wiki"},
+          {"kind": "json_pointer_equals", "pointer": "/publication_authority/publication_policy_sha256", "value": "1f281c51187b9b8c34b9ab95cdbf45a43b37303311f2db3cc0130bf6e571cd69"},
           {"kind": "json_pointer_equals", "pointer": "/warnings_explicitly_accepted", "value": true}
         ]
       }
@@ -200,9 +207,11 @@
       "expect": {
         "exit_code": 0,
         "stdout": [
-          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_promote_v3"},
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "article_promote_v4"},
           {"kind": "json_pointer_equals", "pointer": "/source_preserved", "value": true},
-          {"kind": "json_pointer_equals", "pointer": "/editor_identity_assurance", "value": "self_reported_unverified"}
+          {"kind": "json_pointer_equals", "pointer": "/editor_identity_assurance", "value": "self_reported_unverified"},
+          {"kind": "json_pointer_equals", "pointer": "/prose_origin", "value": "agent_draft"},
+          {"kind": "json_pointer_equals", "pointer": "/content_sha256", "value": "c9c8787e616a883af5913ff71b17bd19b1e364fe957c01cfb5c0fef115a61cfe"}
         ],
         "files": [
           {"kind": "exists", "path": "wiki_content/Main/Example_Draft.wiki"},

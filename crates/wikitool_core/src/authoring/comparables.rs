@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::content_store::parsing;
-use crate::knowledge::prelude::{
+use crate::catalog::prelude::{
     TermProfilePageHit, candidate_limit, query_page_records_from_aliases_for_connection,
     query_page_records_from_sections_for_connection,
 };
-use crate::knowledge::templates::load_page_summary_for_connection;
-use crate::knowledge::{model::*, prelude::*};
+use crate::catalog::templates::load_page_summary_for_connection;
+use crate::catalog::{model::*, prelude::*};
+use crate::content_store::parsing;
 use crate::title_variants::is_translation_variant;
 
 use super::topic_assessment::query_local_search_for_connection;
@@ -42,7 +42,7 @@ pub(crate) fn load_term_profile_page_hits(
     query_terms: &[String],
     limit: usize,
 ) -> Result<Vec<TermProfilePageHit>> {
-    crate::knowledge::prelude::load_term_profile_page_hits(connection, query_terms, limit)
+    crate::catalog::prelude::load_term_profile_page_hits(connection, query_terms, limit)
 }
 
 pub(crate) fn collect_related_pages_for_authoring(

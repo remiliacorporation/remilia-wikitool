@@ -1,26 +1,22 @@
 use super::WikiJsonView;
-use super::summary::{summarize_capability_manifest, summarize_profile_snapshot};
-use wikitool_core::profile::{
-    AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule, InfoboxPreference,
-    LintRules, ProfileSourceDocument, SiteProfile, TemplateCatalogSummary, TemplateRules,
-    WikiCapabilityManifest, WikiProfileSnapshot,
-};
+use super::summary::summarize_capability_manifest;
+use wikitool_core::site::WikiCapabilityManifest;
 
 fn sample_manifest() -> WikiCapabilityManifest {
     WikiCapabilityManifest {
         schema_version: "wiki_capabilities_v1".to_string(),
-        wiki_id: "remilia".to_string(),
+        wiki_id: "example".to_string(),
         wiki_url: "https://wiki.example".to_string(),
         api_url: "https://wiki.example/api.php".to_string(),
         rest_url: Some("https://wiki.example/rest.php".to_string()),
         article_path: "/wiki/$1".to_string(),
         mediawiki_version: Some("1.44".to_string()),
-        namespaces: vec![wikitool_core::profile::NamespaceInfo {
+        namespaces: vec![wikitool_core::site::NamespaceInfo {
             id: 0,
             canonical_name: Some(String::new()),
             display_name: "Main".to_string(),
         }],
-        extensions: vec![wikitool_core::profile::ExtensionInfo {
+        extensions: vec![wikitool_core::site::ExtensionInfo {
             name: "Scribunto".to_string(),
             version: Some("1.0".to_string()),
             category: Some("parser".to_string()),
@@ -41,70 +37,6 @@ fn sample_manifest() -> WikiCapabilityManifest {
         supports_rest_html: true,
         rest_html_path_template: Some("/rest.php/page/html/$1".to_string()),
         refreshed_at: "1739000000".to_string(),
-    }
-}
-
-fn sample_snapshot() -> WikiProfileSnapshot {
-    WikiProfileSnapshot {
-        base_profile_id: "mediawiki-generic".to_string(),
-        adapter: SiteProfile {
-            schema_version: "site_profile_v1".to_string(),
-            profile_id: "example-wiki".to_string(),
-            base_profile_id: "mediawiki-generic".to_string(),
-            docs_profile: "remilia-wiki".to_string(),
-            source_documents: vec![ProfileSourceDocument {
-                relative_path: "docs/profile.md".to_string(),
-                content_hash: "abc".to_string(),
-            }],
-            authoring: AuthoringRules {
-                require_short_description: true,
-                short_description_forms: vec!["SHORTDESC".to_string()],
-                require_article_quality_banner: true,
-                article_quality_template: Some("Template:Article quality".to_string()),
-                article_quality_default_state: Some("unverified".to_string()),
-                required_appendix_sections: vec!["References".to_string()],
-                references_template: Some("Template:Reflist".to_string()),
-                prefer_sentence_case_headings: true,
-                prefer_wikitext_only: true,
-                forbid_markdown: true,
-                require_straight_quotes: true,
-            },
-            citations: CitationRules {
-                preferred_templates: vec![CitationTemplateRule {
-                    family: "web".to_string(),
-                    template_title: "Template:Cite web".to_string(),
-                }],
-                use_named_references: true,
-                leave_archive_fields_blank: true,
-                source_review_rules: Vec::new(),
-            },
-            templates: TemplateRules {
-                infobox_preferences: vec![InfoboxPreference {
-                    subject_type: "concept".to_string(),
-                    template_title: "Template:Infobox concept".to_string(),
-                }],
-            },
-            categories: CategoryRules {
-                preferred_categories: vec!["Category:Ideas".to_string()],
-            },
-            lint: LintRules {
-                forbid_curly_quotes: true,
-                forbid_placeholder_fragments: vec!["todo".to_string()],
-                proper_nouns: vec!["Webring".to_string()],
-            },
-            extension_contracts: Vec::new(),
-            refreshed_at: "1739000000".to_string(),
-        },
-        capabilities: Some(sample_manifest()),
-        template_catalog: Some(TemplateCatalogSummary {
-            profile_id: "example-wiki".to_string(),
-            template_count: 2,
-            templatedata_count: 1,
-            redirect_alias_count: 1,
-            usage_index_ready: true,
-            profile_template_titles: vec!["Template:Infobox concept".to_string()],
-            refreshed_at: "1739000000".to_string(),
-        }),
     }
 }
 
@@ -130,37 +62,4 @@ fn capability_summary_json_omits_raw_arrays() {
     );
     assert!(full_json.get("namespaces").is_some());
     assert!(full_json.get("extensions").is_some());
-}
-
-#[test]
-fn profile_summary_json_uses_profile_template_titles() {
-    let snapshot = sample_snapshot();
-    let summary = summarize_profile_snapshot(&snapshot);
-    let summary_json = serde_json::to_value(&summary).expect("summary json");
-    let full_json = serde_json::to_value(&snapshot).expect("full json");
-
-    let template_catalog = summary_json
-        .get("template_catalog")
-        .and_then(|value| value.as_object())
-        .expect("template catalog summary");
-    assert!(template_catalog.get("profile_template_titles").is_some());
-    assert!(
-        template_catalog
-            .get("recommended_template_titles")
-            .is_none()
-    );
-    assert!(
-        summary_json
-            .get("capabilities")
-            .and_then(|value| value.get("extensions"))
-            .is_none()
-    );
-    assert!(
-        full_json
-            .get("capabilities")
-            .and_then(|value| value.get("extensions"))
-            .is_some()
-    );
-    assert!(summary_json.get("adapter").is_some());
-    assert!(summary_json.get("overlay").is_none());
 }

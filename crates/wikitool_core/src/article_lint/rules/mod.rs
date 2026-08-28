@@ -46,6 +46,7 @@ pub(super) fn collect_issue_matches(
     structure::lint_malformed_headings(document, &mut matches);
     structure::lint_duplicate_headings(document, &mut matches);
     structure::lint_sentence_case_headings(document, resources, &mut matches);
+    structure::lint_unrendered_inline_references(document, resources, &mut matches);
     structure::lint_missing_references_section(document, resources, &mut matches);
     structure::lint_missing_reflist(document, resources, &mut matches);
     citation::lint_citation_after_punctuation(document, &mut matches);
@@ -53,7 +54,7 @@ pub(super) fn collect_issue_matches(
     style::lint_mojibake(document, &mut matches);
     style::lint_curly_quotes(document, resources, &mut matches);
     style::lint_placeholder_fragments(document, resources, &mut matches);
-    template::lint_citation_needed(document, &mut matches);
+    template::lint_citation_needed(document, resources, &mut matches);
     template::lint_template_availability(document, resources, &mut matches);
     module::lint_module_invocations(document, resources, &mut matches);
     asset::lint_asset_references(document, resources, &mut matches);

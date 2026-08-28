@@ -2,28 +2,28 @@ use std::collections::BTreeSet;
 
 use anyhow::bail;
 
-use crate::content_store::parsing;
-use crate::knowledge::prelude::{
+use crate::catalog::prelude::{
     ChunkRerankSignals, ChunkRetrievalPlan, RetrievalAudience, build_authority_page_weight_map,
     build_identifier_page_weight_map, build_semantic_page_weight_map,
 };
-use crate::knowledge::references::summarize_reference_usage_for_sources;
-use crate::knowledge::retrieval::{
+use crate::catalog::references::summarize_reference_usage_for_sources;
+use crate::catalog::retrieval::{
     build_related_page_weight_map, build_template_match_score_map,
     load_reference_authority_page_hits, load_reference_identifier_page_hits,
     retrieve_reranked_chunks_across_pages,
 };
-use crate::knowledge::templates::{
+use crate::catalog::templates::{
     build_authoring_module_patterns, collect_authoring_template_reference_titles,
     load_authoring_template_references, summarize_template_usage_for_sources,
 };
-use crate::knowledge::{model::*, prelude::*};
-use crate::profile::{
-    build_template_catalog_with_profile, load_latest_template_catalog, load_or_build_site_profile,
+use crate::catalog::{model::*, prelude::*};
+use crate::content_store::parsing;
+use crate::site::{
+    build_template_catalog_with_adapter, load_latest_template_catalog, load_site_adapter,
 };
 use crate::title_variants::is_translation_variant;
 
-pub mod article_start;
+pub mod article_scout;
 pub mod comparables;
 pub mod contract_traversal;
 pub mod contracts;
@@ -32,15 +32,15 @@ pub mod model;
 pub mod suggestions;
 pub mod topic_assessment;
 
-pub fn build_authoring_knowledge_pack(
+pub fn build_authoring_context(
     paths: &ResolvedPaths,
     topic: Option<&str>,
     stub_content: Option<&str>,
-    options: &AuthoringKnowledgePackOptions,
-) -> Result<AuthoringKnowledgePack> {
+    options: &AuthoringContextOptions,
+) -> Result<AuthoringContextOutcome> {
     let connection = match parsing::open_indexed_connection(paths)? {
         Some(connection) => connection,
-        None => return Ok(AuthoringKnowledgePack::IndexMissing),
+        None => return Ok(AuthoringContextOutcome::IndexMissing),
     };
 
     let normalized_topic = topic
@@ -56,7 +56,7 @@ pub fn build_authoring_knowledge_pack(
         String::new()
     };
     if topic.is_empty() {
-        return Ok(AuthoringKnowledgePack::QueryMissing);
+        return Ok(AuthoringContextOutcome::QueryMissing);
     }
     if is_translation_variant(&topic) {
         bail!(
@@ -74,7 +74,7 @@ pub fn build_authoring_knowledge_pack(
 
     let query_terms = expand_authoring_query_terms(&topic, &stub_link_titles);
     if query_terms.is_empty() {
-        return Ok(AuthoringKnowledgePack::QueryMissing);
+        return Ok(AuthoringContextOutcome::QueryMissing);
     }
     let query = query_terms[0].clone();
     let topic_assessment = topic_assessment::build_topic_assessment(&connection, &topic)?;
@@ -269,10 +269,10 @@ pub fn build_authoring_knowledge_pack(
             .map(|p| p.title.clone())
             .collect::<Vec<_>>(),
     )?;
-    let site_profile = load_or_build_site_profile(paths)?;
+    let site_adapter = load_site_adapter(paths)?;
     let fallback_catalog = match load_latest_template_catalog(paths)? {
         Some(catalog) => Some(catalog),
-        None => Some(build_template_catalog_with_profile(paths, &site_profile)?),
+        None => Some(build_template_catalog_with_adapter(paths, &site_adapter)?),
     };
     let contract_query = options
         .contract_query
@@ -285,7 +285,7 @@ pub fn build_authoring_knowledge_pack(
         .unwrap_or_else(|| query_terms.clone());
     let contract_plan = contract_traversal::build_authoring_contract_plan_for_connection(
         &connection,
-        &site_profile.profile_id,
+        &site_adapter.adapter_id,
         &contract_traversal::AuthoringContractPlanOptions {
             query: contract_query.unwrap_or_else(|| query.clone()),
             query_terms: contract_query_terms,
@@ -317,7 +317,7 @@ pub fn build_authoring_knowledge_pack(
             contract_plan,
         });
 
-    let mut report = AuthoringKnowledgePackResult {
+    let mut report = AuthoringContextPacket {
         topic,
         query,
         query_terms,
@@ -344,9 +344,9 @@ pub fn build_authoring_knowledge_pack(
         comparable_page_headings,
     };
     contracts::apply_payload_mode(&mut report);
-    report.pack_token_estimate_total = estimate_authoring_pack_total(&report);
+    report.pack_token_estimate_total = estimate_authoring_context_total(&report);
 
-    Ok(AuthoringKnowledgePack::Found(Box::new(report)))
+    Ok(AuthoringContextOutcome::Found(Box::new(report)))
 }
 
 pub fn extract_authoring_stub_hints(
@@ -443,8 +443,8 @@ struct AuthoringPackEstimateInputs<'a> {
     chunks: &'a [RetrievedChunk],
 }
 
-fn estimate_authoring_pack_total(report: &AuthoringKnowledgePackResult) -> usize {
-    estimate_authoring_pack_total_from_inputs(AuthoringPackEstimateInputs {
+fn estimate_authoring_context_total(report: &AuthoringContextPacket) -> usize {
+    estimate_authoring_context_total_from_inputs(AuthoringPackEstimateInputs {
         related_pages: &report.related_pages,
         suggested_links: &report.suggested_links,
         suggested_categories: &report.suggested_categories,
@@ -465,7 +465,7 @@ fn estimate_authoring_pack_total(report: &AuthoringKnowledgePackResult) -> usize
     )
 }
 
-fn estimate_authoring_pack_total_from_inputs(inputs: AuthoringPackEstimateInputs<'_>) -> usize {
+fn estimate_authoring_context_total_from_inputs(inputs: AuthoringPackEstimateInputs<'_>) -> usize {
     let page_summary_tokens = inputs
         .related_pages
         .iter()

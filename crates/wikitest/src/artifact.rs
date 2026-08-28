@@ -98,12 +98,12 @@ fn replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
         MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
     };
 
-    let source = source
+    let source = windows_extended_file_path(source)?
         .as_os_str()
         .encode_wide()
         .chain(std::iter::once(0))
         .collect::<Vec<_>>();
-    let destination = destination
+    let destination = windows_extended_file_path(destination)?
         .as_os_str()
         .encode_wide()
         .chain(std::iter::once(0))
@@ -121,6 +121,25 @@ fn replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
     } else {
         Ok(())
     }
+}
+
+#[cfg(windows)]
+fn windows_extended_file_path(path: &Path) -> std::io::Result<PathBuf> {
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("path {} has no parent", path.display()),
+        )
+    })?;
+    let file_name = path.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("path {} has no file name", path.display()),
+        )
+    })?;
+    let mut extended = fs::canonicalize(parent)?;
+    extended.push(file_name);
+    Ok(extended)
 }
 
 pub fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
@@ -229,5 +248,23 @@ mod tests {
         let value: serde_json::Value =
             serde_json::from_slice(&fs::read(path).expect("read")).expect("json");
         assert_eq!(value["complete"], true);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn atomic_write_replaces_files_beyond_the_legacy_windows_path_limit() {
+        use std::os::windows::ffi::OsStrExt;
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let mut path = directory.path().to_path_buf();
+        for index in 0..6 {
+            path.push(format!("segment-{index}-{}", "x".repeat(40)));
+        }
+        path.push("receipt.json");
+        assert!(path.as_os_str().encode_wide().count() > 260);
+
+        atomic_write(&path, b"prepared\n").expect("initial long-path write");
+        atomic_write(&path, b"evaluated\n").expect("replacement long-path write");
+        assert_eq!(fs::read(path).expect("long-path receipt"), b"evaluated\n");
     }
 }

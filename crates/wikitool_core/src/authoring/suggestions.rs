@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::catalog::{model::AuthoringSuggestion, prelude::*};
 use crate::content_store::parsing;
-use crate::knowledge::{model::AuthoringSuggestion, prelude::*};
 
 #[derive(Default)]
 struct SuggestionAccumulator {

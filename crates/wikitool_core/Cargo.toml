@@ -6,9 +6,12 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 full_moon.workspace = true
+mediawiki_protocol = { path = "../mediawiki_protocol" }
 reqwest.workspace = true
 rusqlite.workspace = true
+scraper.workspace = true
 selene-lib.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -16,5 +19,21 @@ serde_yaml.workspace = true
 similar.workspace = true
 sha2.workspace = true
 toml.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
 walkdir.workspace = true
 tempfile = "3.25.0"
+wikitool_sync = { path = "../wikitool_sync" }
+wikitool_publication = { path = "../wikitool_publication" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Threading",
+] }

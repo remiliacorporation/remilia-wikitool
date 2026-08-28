@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
-use wikitool_core::profile::site_adapter_resource_paths;
+use wikitool_core::site::site_adapter_resource_paths;
 
 use crate::cli_support::{
     copy_dir_recursive, copy_file, format_flag, is_markdown_file, normalize_path, reset_directory,
@@ -212,10 +212,10 @@ fn copy_integration_and_site_adapter(
         &host_adapter,
         "host project root is missing required wikitool_adapter directory",
     )?;
-    let policy = host_adapter.join("profile.toml");
+    let policy = host_adapter.join("site-adapter.toml");
     if !policy.is_file() {
         bail!(
-            "host site adapter is missing required profile.toml: {}",
+            "host site adapter is missing required site-adapter.toml: {}",
             normalize_path(&policy)
         );
     }
@@ -394,7 +394,7 @@ mod tests {
         create_repo(&repo_root);
         create_host(&host_root, "# Host CLAUDE\n", None);
         write_file(
-            &host_root.join("wikitool_adapter/profile.toml"),
+            &host_root.join("wikitool_adapter/site-adapter.toml"),
             VALID_ADAPTER,
         );
 
@@ -415,7 +415,7 @@ mod tests {
         assert!(output_dir.join("site_adapter/generic.toml").is_file());
         assert!(
             output_dir
-                .join("site_adapter/project/profile.toml")
+                .join("site_adapter/project/site-adapter.toml")
                 .is_file()
         );
         assert!(!output_dir.join("WIKITOOL_CLAUDE.md").exists());
@@ -444,7 +444,7 @@ mod tests {
         create_repo(&repo_root);
         create_host(&host_root, "# Host CLAUDE\n", None);
         write_file(
-            &host_root.join("wikitool_adapter/profile.toml"),
+            &host_root.join("wikitool_adapter/site-adapter.toml"),
             &VALID_ADAPTER.replace(
                 "guidance_documents = []",
                 "guidance_documents = [\"editorial.md\"]",
@@ -467,7 +467,7 @@ mod tests {
             "# Host supplement\n"
         );
         assert_eq!(
-            fs::read_to_string(output_dir.join("site_adapter/project/profile.toml"))
+            fs::read_to_string(output_dir.join("site_adapter/project/site-adapter.toml"))
                 .expect("read host policy"),
             VALID_ADAPTER.replace(
                 "guidance_documents = []",
@@ -501,9 +501,13 @@ mod tests {
         );
 
         let error = build_ai_pack(&repo_root, &output_dir, Some(&host_root))
-            .expect_err("host site adapter without profile.toml must fail closed");
+            .expect_err("host site adapter without site-adapter.toml must fail closed");
 
-        assert!(error.to_string().contains("missing required profile.toml"));
+        assert!(
+            error
+                .to_string()
+                .contains("missing required site-adapter.toml")
+        );
     }
 
     #[test]
@@ -515,10 +519,10 @@ mod tests {
         create_repo(&repo_root);
         create_host(&host_root, "# Host CLAUDE\n", None);
         write_file(
-            &host_root.join("wikitool_adapter/profile.toml"),
+            &host_root.join("wikitool_adapter/site-adapter.toml"),
             &VALID_ADAPTER.replace(
-                "schema_version = \"site_adapter_v1\"",
-                "schema_version = \"site_adapter_v1\"\nunknown_policy = true",
+                "schema_version = \"site_adapter_v2\"",
+                "schema_version = \"site_adapter_v2\"\nunknown_policy = true",
             ),
         );
 

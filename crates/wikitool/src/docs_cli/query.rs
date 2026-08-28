@@ -14,7 +14,7 @@ pub(super) struct DocsSearchArgs {
     #[arg(
         long,
         value_name = "PROFILE",
-        help = "Restrict search to a docs profile"
+        help = "Docs profile to search (default: configured site adapter)"
     )]
     profile: Option<String>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format: text|json")]
@@ -60,7 +60,7 @@ pub(super) struct DocsContextArgs {
     #[arg(
         long,
         value_name = "PROFILE",
-        help = "Restrict context retrieval to a docs profile"
+        help = "Docs profile for retrieval (default: configured site adapter)"
     )]
     profile: Option<String>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Output format: text|json")]
@@ -83,7 +83,7 @@ pub(super) struct DocsSymbolsArgs {
     #[arg(
         long,
         value_name = "PROFILE",
-        help = "Restrict symbol lookup to a docs profile"
+        help = "Docs profile for lookup (default: configured site adapter)"
     )]
     profile: Option<String>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format: text|json")]
@@ -93,13 +93,14 @@ pub(super) struct DocsSymbolsArgs {
 }
 
 pub(super) fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, _config, profile) =
+        resolve_runtime_with_docs_profile(runtime, args.profile.as_deref())?;
     let hits = search_docs(
         &paths,
         &args.query,
         &DocsSearchOptions {
             tier: args.tier.map(|tier| tier.as_str().to_string()),
-            profile: args.profile.clone(),
+            profile: Some(profile.clone()),
             limit: args.limit.max(1),
         },
     )?;
@@ -116,7 +117,7 @@ pub(super) fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) ->
         "tier: {}",
         args.tier.map(DocsSearchTier::as_str).unwrap_or("<all>")
     );
-    println!("profile: {}", args.profile.as_deref().unwrap_or("<all>"));
+    println!("profile: {profile}");
     println!("limit: {}", args.limit.max(1));
     println!("hits.count: {}", hits.len());
     for hit in &hits {
@@ -130,12 +131,13 @@ pub(super) fn run_docs_search(runtime: &RuntimeOptions, args: DocsSearchArgs) ->
 }
 
 pub(super) fn run_docs_context(runtime: &RuntimeOptions, args: DocsContextArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, _config, profile) =
+        resolve_runtime_with_docs_profile(runtime, args.profile.as_deref())?;
     let report = build_docs_context(
         &paths,
         &args.query,
         &DocsContextOptions {
-            profile: args.profile.clone(),
+            profile: Some(profile),
             limit: args.limit.max(1),
             token_budget: args.token_budget.max(1),
         },
@@ -188,13 +190,14 @@ pub(super) fn run_docs_context(runtime: &RuntimeOptions, args: DocsContextArgs) 
 }
 
 pub(super) fn run_docs_symbols(runtime: &RuntimeOptions, args: DocsSymbolsArgs) -> Result<()> {
-    let paths = resolve_runtime_paths(runtime)?;
+    let (paths, _config, profile) =
+        resolve_runtime_with_docs_profile(runtime, args.profile.as_deref())?;
     let hits = lookup_docs_symbols(
         &paths,
         &args.query,
         &DocsSymbolLookupOptions {
             kind: args.kind.clone(),
-            profile: args.profile.clone(),
+            profile: Some(profile.clone()),
             limit: args.limit.max(1),
         },
     )?;
@@ -207,7 +210,7 @@ pub(super) fn run_docs_symbols(runtime: &RuntimeOptions, args: DocsSymbolsArgs) 
     println!("docs symbols");
     println!("query: {}", collapse_whitespace(&args.query));
     println!("kind: {}", args.kind.as_deref().unwrap_or("<all>"));
-    println!("profile: {}", args.profile.as_deref().unwrap_or("<all>"));
+    println!("profile: {profile}");
     println!("hits.count: {}", hits.len());
     for hit in &hits {
         println!(

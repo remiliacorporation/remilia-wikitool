@@ -5,8 +5,8 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, params};
 
+use crate::catalog::status::record_docs_profile_artifact;
 use crate::config::WikiConfig;
-use crate::knowledge::status::record_docs_profile_artifact;
 use crate::runtime::ResolvedPaths;
 use crate::schema::open_initialized_database_connection;
 use crate::support::{compute_hash, unix_timestamp};

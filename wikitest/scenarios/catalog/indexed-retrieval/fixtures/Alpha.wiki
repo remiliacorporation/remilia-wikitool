@@ -1,0 +1,12 @@
+{{SHORTDESC:Fictional archive in a controlled catalog fixture}}
+
+'''Alpha Archive''' is a fictional archive of twenty printed bulletins. It was established in 2018 by the fictional Vale Library.<ref>{{Cite web|url=https://fixtures.invalid/alpha|title=Alpha Archive catalogue}}</ref>
+
+== Catalogue ==
+
+The catalogue groups the bulletins by year and printer. It links to the related [[Beta Index]] and the missing [[Gamma Catalogue]].
+
+== References ==
+{{Reflist}}
+
+[[Category:Wikitest fixtures]]

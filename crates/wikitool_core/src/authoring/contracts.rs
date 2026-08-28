@@ -1,15 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::content_store::parsing;
-use crate::docs::{DocsContextExample, DocsContextSection, DocsSymbolHit};
-use crate::knowledge::model::{
-    AuthoringContextSummary, AuthoringContractEdge, AuthoringContractTraversalPlan,
-    AuthoringKnowledgePackResult, AuthoringPageCandidate, AuthoringPayloadMode,
+use crate::catalog::model::{
+    AuthoringContextPacket, AuthoringContextSummary, AuthoringContractEdge,
+    AuthoringContractTraversalPlan, AuthoringPageCandidate, AuthoringPayloadMode,
     AuthoringSourceCount, AuthoringSubjectContext, AuthoringTopicAssessment,
     AuthoringWikiContractContext, ModuleContractSummary, ModuleUsageSummary,
     TemplateContractSummary, TemplateReference, TemplateUsageSummary,
 };
-use crate::knowledge::retrieval::RetrievedChunk;
+use crate::catalog::retrieval::RetrievedChunk;
+use crate::content_store::parsing;
+use crate::docs::{DocsContextExample, DocsContextSection, DocsSymbolHit};
 
 pub(crate) struct AuthoringContextSummaryInputs<'a> {
     pub(crate) topic_assessment: &'a AuthoringTopicAssessment,
@@ -20,7 +20,7 @@ pub(crate) struct AuthoringContextSummaryInputs<'a> {
     pub(crate) template_baseline: &'a [TemplateUsageSummary],
     pub(crate) template_references: &'a [TemplateReference],
     pub(crate) module_patterns: &'a [ModuleUsageSummary],
-    pub(crate) docs_context: Option<&'a crate::knowledge::model::AuthoringDocsContext>,
+    pub(crate) docs_context: Option<&'a crate::catalog::model::AuthoringDocsContext>,
     pub(crate) contract_plan: AuthoringContractTraversalPlan,
 }
 
@@ -48,7 +48,7 @@ pub(crate) fn build_context_summary(
     }
 }
 
-pub(crate) fn apply_payload_mode(report: &mut AuthoringKnowledgePackResult) {
+pub(crate) fn apply_payload_mode(report: &mut AuthoringContextPacket) {
     if report.payload_mode == AuthoringPayloadMode::Full {
         refresh_contract_token_estimate(&mut report.context_summary.wiki_contract_context);
         return;
@@ -73,7 +73,7 @@ pub(crate) fn apply_payload_mode(report: &mut AuthoringKnowledgePackResult) {
     let omitted = &mut report.context_summary.wiki_contract_context.omitted_detail;
     push_unique(
         omitted,
-        "template implementation chunks omitted; use `knowledge inspect templates TEMPLATE --format json` for full source context",
+        "template implementation chunks omitted; use `catalog inspect templates TEMPLATE --format json` for full source context",
     );
     push_unique(
         omitted,
@@ -113,7 +113,7 @@ fn build_wiki_contract_context(
     template_baseline: &[TemplateUsageSummary],
     template_references: &[TemplateReference],
     module_patterns: &[ModuleUsageSummary],
-    docs_context: Option<&crate::knowledge::model::AuthoringDocsContext>,
+    docs_context: Option<&crate::catalog::model::AuthoringDocsContext>,
     contract_plan: AuthoringContractTraversalPlan,
 ) -> AuthoringWikiContractContext {
     let reference_by_title = template_references
@@ -319,7 +319,7 @@ fn compact_module_summary(module: &mut ModuleUsageSummary) {
     module.example_invocations.truncate(2);
 }
 
-fn compact_docs_context(context: &mut crate::knowledge::model::AuthoringDocsContext) {
+fn compact_docs_context(context: &mut crate::catalog::model::AuthoringDocsContext) {
     context.pages.truncate(4);
     context.sections.truncate(4);
     for section in &mut context.sections {

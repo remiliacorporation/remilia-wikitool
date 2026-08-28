@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
-use clap::Args;
+use clap::{Args, Subcommand, ValueEnum};
 
 use crate::cli_support::OutputFormat;
 
 mod delete;
 mod diff;
 mod init;
+mod mutation;
 mod pull;
 mod push;
 mod shared;
@@ -15,6 +16,7 @@ mod status;
 pub(crate) use delete::run_delete;
 pub(crate) use diff::run_diff;
 pub(crate) use init::run_init;
+pub(crate) use mutation::run_mutation;
 pub(crate) use pull::run_pull;
 pub(crate) use push::run_push;
 pub(crate) use status::run_status;
@@ -28,7 +30,7 @@ pub(crate) struct InitArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Explicit site-adapter profile path to validate and store in project config"
+        help = "Project-relative site-adapter path to validate and store in project config"
     )]
     pub(crate) adapter_path: Option<PathBuf>,
     #[arg(long, help = "Create templates/ during initialization")]
@@ -69,10 +71,18 @@ pub(crate) struct PullArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct PushArgs {
-    #[arg(long, value_name = "TEXT", help = "Edit summary for pushed changes")]
-    pub(crate) summary: Option<String>,
-    #[arg(long, help = "Preview push actions without writing to the wiki")]
-    pub(crate) dry_run: bool,
+    #[arg(
+        long,
+        value_name = "TEXT",
+        help = "Edit summary for the bound push plan"
+    )]
+    pub(crate) summary: String,
+    #[arg(
+        long,
+        value_name = "PLAN_ID",
+        help = "Apply the exact plan ID returned by a current preview; without this option the command only previews"
+    )]
+    pub(crate) apply: Option<String>,
     #[arg(long, help = "Force push even when remote timestamps diverge")]
     pub(crate) force: bool,
     #[arg(long, help = "Propagate local deletions to remote wiki pages")]
@@ -81,6 +91,11 @@ pub(crate) struct PushArgs {
     pub(crate) templates: bool,
     #[arg(long, help = "Limit push to Category namespace pages")]
     pub(crate) categories: bool,
+    #[arg(
+        long,
+        help = "Explicitly include every eligible current change (cannot be combined with title/path selection)"
+    )]
+    pub(crate) all: bool,
     #[arg(long = "title", value_name = "TITLE")]
     pub(crate) titles: Vec<String>,
     #[arg(long = "path", value_name = "PATH")]
@@ -174,11 +189,15 @@ pub(crate) struct DeleteArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Custom backup directory under .wikitool/"
+        help = "Custom backup directory under .wikitool/sync/"
     )]
     pub(crate) backup_dir: Option<PathBuf>,
-    #[arg(long, help = "Preview deletion without making changes")]
-    pub(crate) dry_run: bool,
+    #[arg(
+        long,
+        value_name = "PLAN_ID",
+        help = "Apply the exact target/content/revision-bound plan ID; without this option the command only previews"
+    )]
+    pub(crate) apply: Option<String>,
     #[arg(
         long,
         value_enum,
@@ -187,4 +206,79 @@ pub(crate) struct DeleteArgs {
         help = "Output format: text|json"
     )]
     pub(crate) format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct MutationArgs {
+    #[command(subcommand)]
+    pub(crate) command: MutationCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum MutationCommand {
+    #[command(about = "List target-bound durable remote mutation receipts")]
+    List {
+        #[arg(
+            long,
+            help = "Include terminal receipts as well as unresolved mutations"
+        )]
+        all: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    #[command(about = "Show one target-bound remote mutation receipt")]
+    Show {
+        #[arg(value_enum)]
+        operation: MutationOperationArg,
+        mutation_id: i64,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    #[command(about = "Reconcile one mutation without replaying its write")]
+    Reconcile {
+        #[arg(value_enum)]
+        operation: MutationOperationArg,
+        mutation_id: i64,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+    #[command(
+        about = "Close an irreconcilable mutation without claiming a remote outcome",
+        long_about = "Close an irreconcilable target-bound mutation, retain its evidence, and invalidate the title's sync baseline. A fresh target-bound pull is required before another write."
+    )]
+    Close {
+        #[arg(value_enum)]
+        operation: MutationOperationArg,
+        mutation_id: i64,
+        #[arg(long, value_name = "ACTOR", help = "Operator recording the closure")]
+        actor: String,
+        #[arg(
+            long,
+            value_name = "REASON",
+            help = "Reason remote truth cannot be proved"
+        )]
+        reason: String,
+        #[arg(
+            long,
+            help = "Confirm evidence-preserving closure and sync-baseline invalidation"
+        )]
+        confirm: bool,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum MutationOperationArg {
+    Edit,
+    Delete,
+}
+
+impl From<MutationOperationArg> for wikitool_core::sync::RemoteMutationOperation {
+    fn from(value: MutationOperationArg) -> Self {
+        match value {
+            MutationOperationArg::Edit => Self::Edit,
+            MutationOperationArg::Delete => Self::Delete,
+        }
+    }
 }

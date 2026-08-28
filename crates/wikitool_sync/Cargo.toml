@@ -1,0 +1,17 @@
+[package]
+name = "wikitool_sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+mediawiki_protocol = { path = "../mediawiki_protocol" }
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+similar.workspace = true
+sha2.workspace = true
+tempfile = "3.25.0"
+url.workspace = true
+walkdir.workspace = true

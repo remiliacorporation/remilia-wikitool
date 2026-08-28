@@ -1,4 +1,4 @@
 interface:
   display_name: "Wiki Interview"
   short_description: "Capture human knowledge in a neutral wiki interview ledger"
-  default_prompt: "Use $wiki-interview to conduct an adaptive article-knowledge interview and maintain the Wikitool ledger."
+  default_prompt: "Use $wiki-interview to conduct an adaptive wiki article interview and maintain the Wikitool ledger."

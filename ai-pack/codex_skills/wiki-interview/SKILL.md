@@ -11,7 +11,7 @@ Conduct an adaptive editorial interview while preserving the human's knowledge a
 
 1. Read [interview-ledger.md](references/interview-ledger.md).
 2. Read every material the human supplied before asking narrowing questions.
-3. Run `wikitool wiki profile show --format json` and read project-owned supplemental guidance when the subject or site has specialized terminology, privacy, or source rules.
+3. Run `wikitool adapter inspect --format json` and read project-owned supplemental guidance when the subject or site has specialized terminology, privacy, or source rules.
 4. Use current CLI help for command flags.
 
 ## Procedure
@@ -27,7 +27,7 @@ Ask whether any supplied material or part of the conversation is private, off th
 Read supplied documents, notes, transcripts, drafts, screenshots, and links first. Then initialize the ledger with the local scout unless the user explicitly wants a blank record:
 
 ```text
-wikitool knowledge interview init "TITLE" --intent new --format json
+wikitool interview init "TITLE" --intent new --format json
 ```
 
 Inspect the generated brief and scout facts. Local existence, comparable pages, templates, categories, and missing query terms should sharpen questions, not dictate the article's framing.
@@ -78,7 +78,7 @@ Ask the human to confirm the article object, key chronology, terminology, materi
 Run:
 
 ```text
-wikitool knowledge interview validate PATH --format json
+wikitool interview validate PATH --format json
 ```
 
 Resolve structural errors and explain meaningful warnings. Validation proves that the ledger is parseable, current, and internally linked; it does not make human statements independent evidence and does not make the article drafting-ready by itself.

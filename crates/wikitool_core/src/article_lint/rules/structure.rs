@@ -5,7 +5,9 @@ use crate::article_lint::fix::TextEdit;
 use crate::article_lint::model::{
     ArticleLintIssue, ArticleLintSeverity, SuggestedFix, SuggestedFixKind,
 };
-use crate::content_store::parsing::{make_content_preview, normalize_spaces, parse_heading_line};
+use crate::content_store::parsing::{
+    canonical_template_title, make_content_preview, normalize_spaces, parse_heading_line,
+};
 use crate::filesystem::Namespace;
 
 use super::common::{
@@ -24,7 +26,7 @@ pub(super) fn lint_missing_short_description(
     if document.namespace != Namespace::Main.as_str() || document.is_redirect {
         return;
     }
-    if !resources.profile.authoring.require_short_description {
+    if !resources.adapter.authoring.require_short_description {
         return;
     }
     if document
@@ -49,7 +51,7 @@ pub(super) fn lint_missing_short_description(
             suggested_fixes: vec![SuggestedFix {
                 label: "Insert short description header".to_string(),
                 kind: SuggestedFixKind::AssistedFix,
-                replacement_preview: Some(preferred_short_description_snippet(&resources.profile)),
+                replacement_preview: Some(preferred_short_description_snippet(&resources.adapter)),
                 patch: None,
             }],
         },
@@ -65,12 +67,12 @@ pub(super) fn lint_article_quality_banner(
     if document.namespace != Namespace::Main.as_str() || document.is_redirect {
         return;
     }
-    if !resources.profile.authoring.require_article_quality_banner {
+    if !resources.adapter.authoring.require_article_quality_banner {
         return;
     }
 
     let Some(template_title) = resources
-        .profile
+        .adapter
         .authoring
         .article_quality_template
         .as_deref()
@@ -78,7 +80,7 @@ pub(super) fn lint_article_quality_banner(
         return;
     };
     let state = resources
-        .profile
+        .adapter
         .authoring
         .article_quality_default_state
         .as_deref();
@@ -329,7 +331,7 @@ pub(super) fn lint_missing_references_section(
         return;
     }
     if !resources
-        .profile
+        .adapter
         .authoring
         .required_appendix_sections
         .iter()
@@ -355,7 +357,7 @@ pub(super) fn lint_missing_references_section(
                 .first_nonblank_line()
                 .and_then(|line| document.span_for_line(line)),
             evidence: Some("== References ==".to_string()),
-            suggested_remediation: Some(match resources.profile.authoring.references_template.as_deref() {
+            suggested_remediation: Some(match resources.adapter.authoring.references_template.as_deref() {
                 Some(template) => format!(
                     "Add a References section near the end of the article and render it with {}.",
                     template_invocation(template, None)
@@ -365,13 +367,70 @@ pub(super) fn lint_missing_references_section(
             suggested_fixes: vec![SuggestedFix {
                 label: "Insert References section".to_string(),
                 kind: SuggestedFixKind::AssistedFix,
-                replacement_preview: Some(match resources.profile.authoring.references_template.as_deref() {
+                replacement_preview: Some(match resources.adapter.authoring.references_template.as_deref() {
                     Some(template) => format!(
                         "== References ==\n{}",
                         template_invocation(template, None)
                     ),
                     None => "== References ==".to_string(),
                 }),
+                patch: None,
+            }],
+        },
+        safe_fixes: Vec::new(),
+    });
+}
+
+pub(super) fn lint_unrendered_inline_references(
+    document: &ParsedArticleDocument,
+    resources: &LoadedResources,
+    matches: &mut Vec<IssueMatch>,
+) {
+    if document.namespace != Namespace::Main.as_str()
+        || document.is_redirect
+        || document.references.is_empty()
+    {
+        return;
+    }
+
+    let has_references_tag = document
+        .parser_tags
+        .iter()
+        .any(|tag| tag.tag_name.eq_ignore_ascii_case("references"));
+    let references_template = resources.adapter.authoring.references_template.as_deref();
+    let has_references_template = references_template.is_some_and(|template| {
+        canonical_template_title(template).is_some_and(|canonical| {
+            document
+                .templates
+                .iter()
+                .any(|occurrence| occurrence.template_title.eq_ignore_ascii_case(&canonical))
+        })
+    });
+    if has_references_tag || has_references_template {
+        return;
+    }
+
+    let renderer = references_template
+        .map(|template| template_invocation(template, None))
+        .unwrap_or_else(|| "<references />".to_string());
+    matches.push(IssueMatch {
+        issue: ArticleLintIssue {
+            rule_id: "structure.require_reference_renderer".to_string(),
+            severity: ArticleLintSeverity::Error,
+            message: "Inline citations are present but no reference-list renderer is present."
+                .to_string(),
+            span: document
+                .references
+                .first()
+                .and_then(|reference| document.span_for_range(reference.start, reference.end)),
+            evidence: Some(renderer.clone()),
+            suggested_remediation: Some(format!(
+                "Render the inline citations near the end of the article with {renderer}."
+            )),
+            suggested_fixes: vec![SuggestedFix {
+                label: "Insert reference-list renderer".to_string(),
+                kind: SuggestedFixKind::AssistedFix,
+                replacement_preview: Some(format!("== References ==\n{renderer}")),
                 patch: None,
             }],
         },
@@ -387,7 +446,7 @@ pub(super) fn lint_missing_reflist(
     let Some(section) = document.find_section("References") else {
         return;
     };
-    let Some(references_template) = resources.profile.authoring.references_template.as_deref()
+    let Some(references_template) = resources.adapter.authoring.references_template.as_deref()
     else {
         return;
     };

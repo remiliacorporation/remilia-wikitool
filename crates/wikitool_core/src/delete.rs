@@ -7,163 +7,126 @@ use serde::Serialize;
 use crate::filesystem::{ScanOptions, scan_files, validate_scoped_path};
 use crate::runtime::ResolvedPaths;
 use crate::schema::open_initialized_database_connection;
-use crate::support::{
-    atomic_write, normalize_path, normalize_pathbuf, table_exists, unix_timestamp,
-};
-
-#[derive(Debug, Clone)]
-pub struct DeleteOptions {
-    pub reason: String,
-    pub no_backup: bool,
-    pub backup_dir: Option<PathBuf>,
-    pub dry_run: bool,
-}
+use crate::support::{compute_sha256, normalize_path, normalize_pathbuf, table_exists};
 
 #[derive(Debug, Clone, Serialize)]
-pub struct DeleteReport {
-    pub title: String,
-    pub reason: String,
-    pub relative_path: String,
-    pub dry_run: bool,
-    pub backup_path: Option<String>,
-    pub deleted_local_file: bool,
-    pub deleted_index_rows: usize,
+pub struct LocalDeleteEffectPlan {
+    pub tracked_title: Option<String>,
+    pub relative_path: Option<String>,
+    pub policy: wikitool_sync::RemoteDeleteLocalEffectPolicy,
 }
 
-pub fn delete_local_page(
+/// Resolve the exact local effect that the sync-owned delete plan must bind.
+/// This function is read-only: backup creation and source staging happen only
+/// inside the durable sync mutation state machine.
+pub fn plan_local_delete_effect(
     paths: &ResolvedPaths,
     title: &str,
-    options: &DeleteOptions,
-) -> Result<DeleteReport> {
-    delete_local_page_if_present(paths, title, options)?
-        .ok_or_else(|| anyhow::anyhow!("page not found locally: {}", normalize_title(title)))
-}
-
-/// Remove a page from the local content corpus when it is tracked there.
-///
-/// Remote MediaWiki deletion is not contingent on local tracking. CLI callers
-/// use this variant so namespaces such as File can be deleted normally while
-/// still backing up and removing a corresponding local source when one exists.
-pub fn delete_local_page_if_present(
-    paths: &ResolvedPaths,
-    title: &str,
-    options: &DeleteOptions,
-) -> Result<Option<DeleteReport>> {
-    let normalized_title = normalize_title(title);
-    if normalized_title.is_empty() {
+    no_backup: bool,
+    backup_dir: Option<&Path>,
+) -> Result<LocalDeleteEffectPlan> {
+    let requested = wikitool_sync::mediawiki_title_identity(title);
+    if requested.is_empty() {
         bail!("delete requires a non-empty title");
     }
-    if options.reason.trim().is_empty() {
-        bail!("delete requires a non-empty reason");
-    }
-
-    let Some(file) = scan_files(paths, &ScanOptions::default())?
+    let mut matches = scan_files(paths, &ScanOptions::default())?
         .into_iter()
-        .find(|item| item.title.eq_ignore_ascii_case(&normalized_title))
-    else {
-        return Ok(None);
+        .filter(|item| wikitool_sync::mediawiki_title_identity(&item.title) == requested)
+        .collect::<Vec<_>>();
+    if matches.len() > 1 {
+        let paths = matches
+            .iter()
+            .map(|item| item.relative_path.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        bail!("multiple local sources resolve to MediaWiki title identity {requested:?}: {paths}");
+    }
+    let Some(file) = matches.pop() else {
+        return Ok(LocalDeleteEffectPlan {
+            tracked_title: None,
+            relative_path: None,
+            policy: wikitool_sync::RemoteDeleteLocalEffectPolicy {
+                backup_enabled: false,
+                backup_directory: None,
+                backup_path: None,
+                local_content_sha256: None,
+            },
+        });
     };
 
-    let absolute_path = absolute_path_from_relative(paths, &file.relative_path);
+    let absolute_path = paths.project_root.join(&file.relative_path);
     validate_scoped_path(paths, &absolute_path)?;
-
-    let backup_path = if options.no_backup {
-        None
+    let content = fs::read_to_string(&absolute_path)
+        .with_context(|| format!("failed to read {}", absolute_path.display()))?;
+    let content_sha256 = compute_sha256(&content);
+    let (backup_directory, backup_path) = if no_backup {
+        (None, None)
     } else {
-        Some(plan_backup_path(
-            paths,
-            &normalized_title,
-            options.backup_dir.as_deref(),
-        )?)
+        let directory = resolve_backup_directory(paths, backup_dir)?;
+        let safe_title = sanitize_title_for_filename(&file.title);
+        let backup = directory.join(format!("{safe_title}_{content_sha256}.wiki"));
+        (
+            Some(normalize_path(&directory)),
+            Some(normalize_path(&backup)),
+        )
     };
-
-    if options.dry_run {
-        return Ok(Some(DeleteReport {
-            title: file.title,
-            reason: options.reason.trim().to_string(),
-            relative_path: file.relative_path,
-            dry_run: true,
-            backup_path: backup_path.as_ref().map(normalize_path),
-            deleted_local_file: false,
-            deleted_index_rows: 0,
-        }));
-    }
-
-    if let Some(backup_path) = &backup_path {
-        let content = fs::read_to_string(&absolute_path)
-            .with_context(|| format!("failed to read {}", absolute_path.display()))?;
-        atomic_write(backup_path, content)?;
-    }
-
-    fs::remove_file(&absolute_path)
-        .with_context(|| format!("failed to remove local file {}", absolute_path.display()))?;
-    let deleted_index_rows = delete_from_index(paths, &file.relative_path)?;
-
-    Ok(Some(DeleteReport {
-        title: file.title,
-        reason: options.reason.trim().to_string(),
-        relative_path: file.relative_path,
-        dry_run: false,
-        backup_path: backup_path.as_ref().map(normalize_path),
-        deleted_local_file: true,
-        deleted_index_rows,
-    }))
+    Ok(LocalDeleteEffectPlan {
+        tracked_title: Some(file.title),
+        relative_path: Some(file.relative_path),
+        policy: wikitool_sync::RemoteDeleteLocalEffectPolicy {
+            backup_enabled: !no_backup,
+            backup_directory,
+            backup_path,
+            local_content_sha256: Some(content_sha256),
+        },
+    })
 }
 
-fn plan_backup_path(
+/// The catalog index is derived state, not publication authority. Remove its
+/// stale row after a terminal delete receipt; a crash merely requires rebuild.
+pub fn remove_deleted_page_from_index(
     paths: &ResolvedPaths,
-    title: &str,
-    backup_dir: Option<&Path>,
-) -> Result<PathBuf> {
-    let directory = match backup_dir {
-        Some(dir) if dir.is_absolute() => dir.to_path_buf(),
-        Some(dir) => paths.project_root.join(dir),
-        None => paths.state_dir.join("backups").join("deleted"),
+    relative_path: Option<&str>,
+) -> Result<usize> {
+    let Some(relative_path) = relative_path else {
+        return Ok(0);
     };
-    validate_scoped_path(paths, &directory)?;
-
-    let normalized_state = normalize_pathbuf(&paths.state_dir);
-    let normalized_dir = normalize_pathbuf(&directory);
-    if !normalized_dir.starts_with(&normalized_state) {
-        bail!(
-            "backup directory must be under .wikitool/: {}",
-            normalize_path(&normalized_dir)
-        );
-    }
-
-    let timestamp = unix_timestamp()?;
-    let safe_title = sanitize_title_for_filename(title);
-    Ok(directory.join(format!("{safe_title}_{timestamp}.wiki")))
-}
-
-fn delete_from_index(paths: &ResolvedPaths, relative_path: &str) -> Result<usize> {
     if !paths.db_path.exists() {
         return Ok(0);
     }
-
     let connection = open_initialized_database_connection(&paths.db_path)?;
-
     if !table_exists(&connection, "indexed_pages")? {
         return Ok(0);
     }
-
-    let deleted = connection
+    connection
         .execute(
             "DELETE FROM indexed_pages WHERE relative_path = ?1",
             [relative_path],
         )
-        .with_context(|| format!("failed to delete indexed row for {relative_path}"))?;
-    Ok(deleted)
+        .with_context(|| format!("failed to delete indexed row for {relative_path}"))
 }
 
-fn absolute_path_from_relative(paths: &ResolvedPaths, relative: &str) -> PathBuf {
-    let mut out = paths.project_root.clone();
-    for segment in relative.split('/') {
-        if !segment.is_empty() {
-            out.push(segment);
-        }
+fn resolve_backup_directory(paths: &ResolvedPaths, backup_dir: Option<&Path>) -> Result<PathBuf> {
+    let sync_state_dir = paths
+        .sync_store_path()
+        .parent()
+        .expect("sync store path has a parent")
+        .to_path_buf();
+    let directory = match backup_dir {
+        Some(dir) if dir.is_absolute() => dir.to_path_buf(),
+        Some(dir) => paths.project_root.join(dir),
+        None => sync_state_dir.join("backups").join("deleted"),
+    };
+    validate_scoped_path(paths, &directory)?;
+    let normalized_state = normalize_pathbuf(&sync_state_dir);
+    let normalized_dir = normalize_pathbuf(&directory);
+    if !normalized_dir.starts_with(&normalized_state) {
+        bail!(
+            "delete backup directory must be under the durable sync state root .wikitool/sync/: {}",
+            normalize_path(&normalized_dir)
+        );
     }
-    out
+    Ok(normalized_dir)
 }
 
 fn sanitize_title_for_filename(title: &str) -> String {
@@ -183,43 +146,25 @@ fn sanitize_title_for_filename(title: &str) -> String {
     }
 }
 
-fn normalize_title(value: &str) -> String {
-    value.replace('_', " ").trim().to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     use tempfile::tempdir;
 
-    use super::{DeleteOptions, delete_local_page, delete_local_page_if_present};
-    use crate::filesystem::ScanOptions;
-    use crate::knowledge::content_index::{load_stored_index_stats, rebuild_index};
+    use super::plan_local_delete_effect;
     use crate::runtime::{ResolvedPaths, ValueSource};
-
-    fn write_file(path: &Path, content: &str) {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("create parent");
-        }
-        fs::write(path, content).expect("write");
-    }
 
     fn paths(project_root: &Path) -> ResolvedPaths {
         ResolvedPaths {
             wiki_content_dir: project_root.join("wiki_content"),
             templates_dir: project_root.join("templates"),
             state_dir: project_root.join(".wikitool"),
-            data_dir: project_root.join(".wikitool").join("data"),
-            db_path: project_root
-                .join(".wikitool")
-                .join("data")
-                .join("wikitool.db"),
-            config_path: project_root.join(".wikitool").join("config.toml"),
-            parser_config_path: project_root
-                .join(".wikitool")
-                .join(crate::runtime::PARSER_CONFIG_FILENAME),
+            data_dir: project_root.join(".wikitool/data"),
+            db_path: project_root.join(".wikitool/data/wikitool.db"),
+            config_path: project_root.join(".wikitool/config.toml"),
+            parser_config_path: project_root.join(".wikitool/parser.toml"),
             project_root: project_root.to_path_buf(),
             root_source: ValueSource::Flag,
             data_source: ValueSource::Default,
@@ -228,137 +173,81 @@ mod tests {
     }
 
     #[test]
-    fn delete_creates_backup_and_removes_file() {
+    fn local_delete_plan_is_read_only_and_content_bound() {
         let temp = tempdir().expect("tempdir");
-        let project_root = temp.path().join("project");
-        fs::create_dir_all(&project_root).expect("create root");
-        let paths = paths(&project_root);
+        let paths = paths(temp.path());
+        let source = paths.wiki_content_dir.join("Main/Alpha.wiki");
+        fs::create_dir_all(source.parent().expect("parent")).expect("content dir");
+        fs::write(&source, "alpha body").expect("source");
 
-        write_file(
-            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
-            "alpha body",
+        let plan = plan_local_delete_effect(&paths, "Alpha", false, None).expect("plan");
+        assert_eq!(plan.tracked_title.as_deref(), Some("Alpha"));
+        assert!(plan.policy.backup_enabled);
+        assert!(plan.policy.local_content_sha256.is_some());
+        assert_eq!(
+            Path::new(
+                plan.policy
+                    .backup_directory
+                    .as_deref()
+                    .expect("backup directory")
+            ),
+            paths.state_dir.join("sync/backups/deleted")
         );
-        fs::create_dir_all(paths.state_dir.join("backups").join("deleted"))
-            .expect("create backups");
-
-        let report = delete_local_page(
-            &paths,
-            "Alpha",
-            &DeleteOptions {
-                reason: "cleanup".to_string(),
-                no_backup: false,
-                backup_dir: None,
-                dry_run: false,
-            },
-        )
-        .expect("delete");
-
-        assert!(report.deleted_local_file);
-        let deleted_path = paths.wiki_content_dir.join("Main").join("Alpha.wiki");
-        assert!(!deleted_path.exists());
-        let backup_path = report.backup_path.expect("backup path");
-        assert!(PathBuf::from(backup_path).exists());
-    }
-
-    #[test]
-    fn delete_dry_run_keeps_original_file() {
-        let temp = tempdir().expect("tempdir");
-        let project_root = temp.path().join("project");
-        fs::create_dir_all(&project_root).expect("create root");
-        let paths = paths(&project_root);
-
-        write_file(
-            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
-            "alpha body",
-        );
-        fs::create_dir_all(paths.state_dir.join("backups").join("deleted"))
-            .expect("create backups");
-
-        let report = delete_local_page(
-            &paths,
-            "Alpha",
-            &DeleteOptions {
-                reason: "preview".to_string(),
-                no_backup: false,
-                backup_dir: None,
-                dry_run: true,
-            },
-        )
-        .expect("dry run");
-
-        assert!(!report.deleted_local_file);
+        assert!(source.exists(), "planning must not mutate the source");
         assert!(
-            paths
-                .wiki_content_dir
-                .join("Main")
-                .join("Alpha.wiki")
-                .exists()
+            plan.policy
+                .backup_path
+                .as_deref()
+                .is_some_and(|path| !Path::new(path).exists()),
+            "planning must not pre-create the backup"
         );
-        if let Some(backup_path) = report.backup_path {
-            assert!(!PathBuf::from(backup_path).exists());
-        }
     }
 
     #[test]
-    fn delete_updates_index_rows_when_index_exists() {
+    fn title_identity_preserves_case_after_the_initial_character() {
         let temp = tempdir().expect("tempdir");
-        let project_root = temp.path().join("project");
-        fs::create_dir_all(&project_root).expect("create root");
-        let paths = paths(&project_root);
+        let paths = paths(temp.path());
+        let upper = paths.wiki_content_dir.join("Main/ALPHA.wiki");
+        fs::create_dir_all(upper.parent().expect("parent")).expect("content dir");
+        fs::write(&upper, "upper").expect("source");
 
-        write_file(
-            &paths.wiki_content_dir.join("Main").join("Alpha.wiki"),
-            "[[Beta]]",
-        );
-        write_file(
-            &paths.wiki_content_dir.join("Main").join("Beta.wiki"),
-            "beta body",
-        );
-        rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+        let plan = plan_local_delete_effect(&paths, "Alpha", true, None).expect("plan");
+        assert!(plan.tracked_title.is_none());
+        assert!(upper.exists());
+    }
 
-        let before = load_stored_index_stats(&paths)
-            .expect("stats")
-            .expect("stats exist");
-        assert_eq!(before.indexed_rows, 2);
+    #[test]
+    fn local_delete_backup_is_confined_to_the_sync_state_root() {
+        let temp = tempdir().expect("tempdir");
+        let paths = paths(temp.path());
+        let source = paths.wiki_content_dir.join("Main/Alpha.wiki");
+        fs::create_dir_all(source.parent().expect("parent")).expect("content dir");
+        fs::write(&source, "alpha body").expect("source");
 
-        let report = delete_local_page(
+        let error = plan_local_delete_effect(
             &paths,
             "Alpha",
-            &DeleteOptions {
-                reason: "cleanup".to_string(),
-                no_backup: true,
-                backup_dir: None,
-                dry_run: false,
-            },
+            false,
+            Some(Path::new(".wikitool/backups/deleted")),
         )
-        .expect("delete");
-        assert_eq!(report.deleted_index_rows, 1);
+        .expect_err("backup outside sync state must fail closed");
+        assert!(error.to_string().contains(".wikitool/sync/"));
 
-        let after = load_stored_index_stats(&paths)
-            .expect("stats")
-            .expect("stats exist");
-        assert_eq!(after.indexed_rows, 1);
-    }
-
-    #[test]
-    fn delete_if_present_skips_pages_outside_local_corpus() {
-        let temp = tempdir().expect("tempdir");
-        let project_root = temp.path().join("project");
-        fs::create_dir_all(&project_root).expect("create root");
-        let paths = paths(&project_root);
-
-        let report = delete_local_page_if_present(
+        let plan = plan_local_delete_effect(
             &paths,
-            "File:Remote only.png",
-            &DeleteOptions {
-                reason: "obsolete derivative".to_string(),
-                no_backup: false,
-                backup_dir: None,
-                dry_run: false,
-            },
+            "Alpha",
+            false,
+            Some(Path::new(".wikitool/sync/custom-delete-backups")),
         )
-        .expect("missing local page is not an error");
-
-        assert!(report.is_none());
+        .expect("custom backup under sync state");
+        assert_eq!(
+            Path::new(
+                plan.policy
+                    .backup_directory
+                    .as_deref()
+                    .expect("backup directory")
+            ),
+            paths.state_dir.join("sync/custom-delete-backups")
+        );
     }
 }

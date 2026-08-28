@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use crate::article_lint::document::ParsedArticleDocument;
 use crate::article_lint::model::{ArticleLintIssue, ArticleLintSeverity};
-use crate::profile::{
-    TemplateCatalogEntry, TemplateCatalogEntryLookup, find_template_catalog_entry,
+use crate::site::{
+    LintRuleLevel, TemplateCatalogEntry, TemplateCatalogEntryLookup, find_template_catalog_entry,
     unknown_template_parameter_keys,
 };
 
@@ -12,8 +12,14 @@ use crate::article_lint::resources::LoadedResources;
 
 pub(super) fn lint_citation_needed(
     document: &ParsedArticleDocument,
+    resources: &LoadedResources,
     matches: &mut Vec<IssueMatch>,
 ) {
+    let severity = match resources.adapter.lint.citation_needed {
+        LintRuleLevel::Ignore => return,
+        LintRuleLevel::Warning => ArticleLintSeverity::Warning,
+        LintRuleLevel::Error => ArticleLintSeverity::Error,
+    };
     for template in &document.templates {
         if !template
             .template_title
@@ -23,10 +29,9 @@ pub(super) fn lint_citation_needed(
         }
         matches.push(IssueMatch {
             issue: ArticleLintIssue {
-                rule_id: "profile.no_citation_needed".to_string(),
-                severity: ArticleLintSeverity::Error,
-                message: "AI-generated drafts should not ship with {{Citation needed}} markers."
-                    .to_string(),
+                rule_id: "adapter.citation_needed_forbidden".to_string(),
+                severity,
+                message: "Article contains a {{Citation needed}} marker.".to_string(),
                 span: document.span_for_range(template.start, template.end),
                 evidence: Some(template.raw_wikitext.clone()),
                 suggested_remediation: Some(

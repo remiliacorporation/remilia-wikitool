@@ -1,8 +1,8 @@
 # Wikitool
 
 Wikitool is a general-purpose, agent-native CLI for MediaWiki. It pulls and pushes revision-bound
-wikitext, builds a disposable local knowledge index, exposes templates and capabilities, fetches
-research material, applies deterministic checks, and packages substantive agent skills for
+wikitext, builds a disposable local content catalog, exposes templates and capabilities, captures
+source material, applies deterministic checks, and packages substantive agent skills for
 encyclopedic writing and review.
 
 The binary does not contain an LLM and does not decide whether prose is good. Its Rust core owns
@@ -37,28 +37,36 @@ Wikitool has no built-in target wiki. Initialize a project with an explicit Medi
 wikitool init \
   --wiki-url https://wiki.example.org/ \
   --api-url https://wiki.example.org/api.php
-wikitool workflow session-refresh
+wikitool pull --full --all
+wikitool catalog warm --docs-mode missing
+wikitool wiki capabilities sync
+wikitool templates catalog build
 ```
 
-This creates `.wikitool/config.toml`, pulls content, builds the local index, and discovers the
-wiki's capability surface. Read-only work needs no credentials. Writes use bot-password credentials
-from the project-root `.env`:
+This creates `.wikitool/config.toml`, establishes an authoritative all-namespace sync baseline,
+builds the local index, and discovers the wiki's capability surface. Read-only work needs no
+credentials. Writes use bot-password credentials from the selected project-root `.env` (ancestor
+`.env` files are ignored; explicit process variables take precedence):
 
 ```bash
 WIKITOOL_BOT_USER=Username@BotName
 WIKITOOL_BOT_PASS=your-bot-password
 ```
 
+The 0.7 sync authority supports MediaWiki's usual `first-letter` title-case policy. Do not use its
+write/sync surface on a case-sensitive namespace yet: title identity would not be safe until the
+namespace case policy is carried from siteinfo into every local and remote authority key.
+
 Set `wiki.mark_edits_as_bot = true` only when edits should carry MediaWiki's bot flag. Human review
-or an acceptance-ledger entry does not imply bot or non-bot transport policy.
+or a publication-acceptance authorization does not imply bot or non-bot transport policy.
 
 ## Site adapters
 
-Without an adapter, Wikitool uses a conservative embedded `mediawiki-generic` profile. A project
+Without an adapter, Wikitool uses a conservative embedded `mediawiki-generic` adapter. A project
 can opt into typed policy:
 
 ```bash
-wikitool init --adapter-path site-adapter/profile.toml
+wikitool init --adapter-path site-adapter/site-adapter.toml
 ```
 
 This validates the complete declared adapter bundle before recording its path. The equivalent
@@ -66,15 +74,15 @@ configuration is:
 
 ```toml
 [adapter]
-path = "site-adapter/profile.toml"
+path = "site-adapter/site-adapter.toml"
 ```
 
-Start from `config/generic-site-adapter.toml`. Adapters may declare authoring mechanics, citation
+Start from the strict `site_adapter_v2` example in `config/generic-site-adapter.toml`. Adapters may declare authoring mechanics, citation
 templates and source-review host rules, template preferences, deterministic lint configuration,
 extension contracts, and supplemental Markdown documents. Unknown fields fail closed. A source
 matcher is a review signal, not a universal source ban. Adapter Markdown is hashed and exposed to
 agents but is never interpreted as machine policy. Release packaging strictly parses the adapter
-and ships only `profile.toml` plus guidance files declared there; undeclared neighboring files are
+and ships only `site-adapter.toml` plus guidance files declared there; undeclared neighboring files are
 excluded.
 
 ## Agent workflow
@@ -90,8 +98,8 @@ The packaged skills divide responsibility deliberately:
 A typical authoring lane is:
 
 ```bash
-wikitool knowledge article-start "Topic" --intent new --format json --view brief
-wikitool research fetch "https://source.example/work" --format rendered-html --output json
+wikitool article scout "Topic" --intent new --format json --view brief
+wikitool source fetch "https://source.example/work" --format rendered-html --output json
 # use wiki-writing to build a claim-source map and draft the factual body, then the lead
 # use prose-review in a fresh context when possible
 wikitool article lint .wikitool/drafts/Title.wiki --title "Title" --format json
@@ -101,31 +109,48 @@ wikitool article accept .wikitool/drafts/Title.wiki --title "Title" \
   --human-editor "EDITOR" --prose-origin agent-draft --format json
 wikitool article promote .wikitool/drafts/Title.wiki --title "Title" --format json
 wikitool review --format json --view brief --summary "Review Title"
-wikitool push --dry-run --summary "Update Title"
+wikitool push --path wiki_content/Main/Title.wiki --summary "Update Title" --format json
+# inspect report.plan_id, then apply those exact target/content/revision bytes
+wikitool push --path wiki_content/Main/Title.wiki --summary "Update Title" --apply "PLAN_ID"
 ```
 
-The acceptance ledger binds a decision to the exact SHA-256 content. The editor label is a
-self-reported, unauthenticated claim; it is not identity proof, and an agent must never
-self-attest. Any prose change invalidates the entry.
+The durable acceptance store binds a decision to the exact SHA-256 content, target wiki, and active
+adapter-policy identity. The editor label is a self-reported, unauthenticated claim; it is not identity
+proof, and an agent must never self-attest. Any prose, target, or policy change invalidates the
+authorization. A multi-article decision and every member authorization commit in one SQLite
+transaction.
 
 ## Core capabilities
 
-- `pull`, `status`, `diff`, `review`, `push` — revision-aware synchronization. Existing edits use
+- `pull`, `status`, `diff`, `review`, `push`, `delete`, and `mutation` — revision-aware
+  synchronization with target-bound plans and durable remote-mutation receipts. Push and standalone
+  delete preview by default and apply only the exact returned plan ID. Existing edits use
   `baserevid`; creates and explicit remote-deletion recreations use `createonly`; deletes recheck
-  revision identity immediately before mutation; mutating requests are not generically retried.
-- `knowledge build|status|article-start|inspect` — bounded local retrieval with explicit readiness
+  revision identity immediately before mutation. MediaWiki exposes no `baserevid`-equivalent for
+  delete, so this narrows but cannot eliminate the interval between that check and the delete
+  request. Mutating requests are not generically retried.
+- `catalog build|status|inspect` and `article scout` — bounded local retrieval with explicit readiness
   and evidence identities.
-- `templates`, `wiki capabilities|profile|surface`, `docs` — target capability and contract
-  discovery.
-- `research wiki-search|fetch|discover|session|mediawiki-templates` — source acquisition with a
+- `adapter inspect`, `wiki capabilities`, `templates`, `catalog surface`, `docs` — explicit
+  adapter policy, live capability, and derived contract discovery.
+- `source wiki-search|fetch|discover|session|mediawiki-templates` — source acquisition with a
   shared outbound HTTP policy.
 - `article lint|fix`, `validate`, `module lint`, `wiki render-check` — deterministic mechanical
   checks. Passing them is not an editorial quality verdict.
-- `knowledge interview` — stable brief paths, neutral sections, structured open items, freshness,
+- `interview` — stable brief paths, neutral sections, structured open items, freshness,
   and validation; conversational judgment stays in the skill.
 
 Every command has `--help`. `docs/wikitool/reference.md` is generated from the CLI and is the flag
 authority.
+
+If a network or process failure leaves a write outcome uncertain, do not repeat the write. Use
+`wikitool mutation list`, `mutation show`, and `mutation reconcile` to inspect the target-bound
+receipt and remote lineage. If remote truth cannot be proved, `mutation close ... --confirm`
+records an operator-attributed unresolved closure without inventing an outcome, invalidates that
+title's sync authority, and requires `wikitool pull --full --all` before another write. A present
+remote page whose local source has drifted may additionally require an explicit
+`--overwrite-local` pull. Closure provenance remains visible through `mutation show` and
+`mutation list --all`.
 
 ## Runtime state
 
@@ -134,18 +159,23 @@ project-root/
   .env
   .wikitool/config.toml
   .wikitool/data/wikitool.db       derived and disposable
+  .wikitool/sync/sync.sqlite3      durable target-bound revision identity and base snapshots
+  .wikitool/acceptance/
+    acceptance.sqlite3             durable transactional publication authority
   .wikitool/drafts/
-  .wikitool/acceptance-ledger/
-  site-adapter/profile.toml        optional, project-owned
+  site-adapter/site-adapter.toml   optional, project-owned
   wiki_content/                    synchronized wikitext
   templates/                       template and module sources
 ```
 
-Reset stale derived state with:
+Reset stale derived state without deleting sync or publication-acceptance authority with:
 
 ```bash
 wikitool db reset --yes
-wikitool workflow full-refresh
+wikitool pull --full --all
+wikitool catalog warm --docs-mode refresh
+wikitool wiki capabilities sync
+wikitool templates catalog build
 ```
 
 ## Contextmink boundary
@@ -157,7 +187,7 @@ templates, project setup, and install receipt; Wikitool does not carry a fork or
 
 Source checkouts include `wikitest`, a separate workspace binary that exercises the public
 `wikitool` executable rather than reaching through crate internals. It owns strict catalogs for
-mechanical workflows, synthetic knowledge-index retrieval, and externally authored and reviewed
+mechanical workflows, synthetic catalog retrieval, and externally authored and reviewed
 prose assignments:
 
 ```bash
@@ -165,10 +195,14 @@ cargo build -p wikitool -p wikitest
 target/debug/wikitest validate
 target/debug/wikitest suite core-dogfood --require-all
 target/debug/wikitest prose prepare-suite prose-dogfood
+# after every author and reviewer submission:
+target/debug/wikitest prose evaluate-suite RUN
 ```
 
-Run-producing commands re-open and verify their hash-bound receipts—including the exact Wikitest
-driver and evaluated Wikitool binaries—before returning success. A host wiki can add a read-only
+Run-producing commands re-open and replay their hash-bound evidence—including the exact Wikitest
+driver and evaluated Wikitool binaries—before returning success. Inspection labels the resulting
+self-contained artifact set `unanchored`: an external immutable digest or signed build record is
+still required for authenticity. A host wiki can add a read-only
 supplemental catalog for its real local database without moving site doctrine into Wikitest or
 Wikitool. Wikitest and its catalogs are development/release-evaluation substrate and are
 intentionally absent from end-user release archives; see `wikitest/README.md`.
@@ -196,7 +230,7 @@ cargo run --package wikitool --features maintainer -- docs audit
 | `docs/wikitool/architecture.md` | Layering and authority boundaries |
 | `ai-pack/integration/` | Generic agent and site-adapter contracts |
 | `ai-pack/codex_skills/` | Canonical editorial and operator skills |
-| `wikitest/README.md` | Executable mechanical, knowledge, and prose evaluation laboratory |
+| `wikitest/README.md` | Executable mechanical, catalog, and prose evaluation laboratory |
 | `VERSIONING.md` / `CHANGELOG.md` | Release policy and history |
 
 ## License

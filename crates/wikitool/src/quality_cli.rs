@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use clap::{Args, ValueEnum};
 use serde::Serialize;
-use wikitool_core::knowledge::inspect::{
+use wikitool_core::catalog::inspect::{
     LiveValidationReport, ValidationReport, run_validation_checks, verify_validation_report_live,
 };
 use wikitool_core::lint::{LuaLintReport, LuaLintResult, lint_modules};
@@ -160,7 +160,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
     let report = match run_validation_checks(&paths)? {
         Some(report) => report,
         None => {
-            let message = "content_index.storage: <not built> (run `wikitool knowledge build`)";
+            let message = "content_index.storage: <not built> (run `wikitool catalog build`)";
             if args.format.is_json() {
                 println!(
                     "{}",
@@ -180,7 +180,7 @@ pub(crate) fn run_validate(runtime: &RuntimeOptions, args: ValidateArgs) -> Resu
             }
             println!("validate");
             println!("project_root: {}", normalize_path(&paths.project_root));
-            println!("content_index.storage: <not built> (run `wikitool knowledge build`)");
+            println!("content_index.storage: <not built> (run `wikitool catalog build`)");
             println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
             if runtime.diagnostics {
                 println!("\n[diagnostics]\n{}", paths.diagnostics());
@@ -622,7 +622,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use wikitool_core::knowledge::inspect::{BrokenLinkIssue, DoubleRedirectIssue};
+    use wikitool_core::catalog::inspect::{BrokenLinkIssue, DoubleRedirectIssue};
     use wikitool_core::lint::{LuaLintIssue, LuaLintSeverity};
 
     #[test]

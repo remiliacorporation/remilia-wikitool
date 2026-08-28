@@ -4,8 +4,8 @@ use anyhow::Result;
 use clap::Args;
 use serde::Serialize;
 use wikitool_core::article_lint::ArticleLintReport;
-use wikitool_core::knowledge_interview::{InterviewBriefSummary, InterviewValidationStatus};
 use wikitool_core::sync::{PushReport, SyncPlanReport, SyncSelection};
+use wikitool_core::wiki_interview::{InterviewBriefSummary, InterviewValidationStatus};
 
 use crate::RuntimeOptions;
 use crate::briefs::BriefView;
@@ -55,13 +55,13 @@ pub(crate) struct ReviewArgs {
     #[arg(
         long = "draft-path",
         value_name = "PATH",
-        help = "Review one off-wiki draft path under .wikitool/drafts/; requires exactly one --title and skips push dry-run"
+        help = "Review one off-wiki draft path under .wikitool/drafts/; requires exactly one --title and skips the push preview"
     )]
     draft_paths: Vec<PathBuf>,
     #[arg(
         long = "brief-path",
         value_name = "PATH",
-        help = "Validate and include a knowledge interview brief in the review gate"
+        help = "Validate and include an article interview brief in the review gate"
     )]
     brief_path: Option<PathBuf>,
     #[arg(
@@ -80,8 +80,8 @@ pub(crate) struct ReviewArgs {
     #[arg(
         long,
         value_name = "TEXT",
-        default_value = "wikitool review dry-run",
-        help = "Edit summary used for the push dry-run report"
+        default_value = "wikitool review preview",
+        help = "Edit summary bound into the push preview plan"
     )]
     summary: String,
 }
@@ -96,7 +96,7 @@ struct ReviewReport {
     changed_article_lint: ReviewArticleLint,
     validation: ReviewValidation,
     interview_brief: Option<ReviewInterviewBrief>,
-    dry_run_push: ReviewDryRunPush,
+    push_preview: ReviewPushPreview,
     next_steps: Vec<ReviewNextStep>,
 }
 
@@ -154,7 +154,7 @@ struct ReviewInterviewBrief {
 }
 
 #[derive(Debug, Serialize)]
-struct ReviewDryRunPush {
+struct ReviewPushPreview {
     attempted: bool,
     success: bool,
     report: Option<PushReport>,

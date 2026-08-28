@@ -4,7 +4,7 @@ use crate::article_lint::document::{ArticleSection, ParsedArticleDocument, Templ
 use crate::article_lint::fix::TextEdit;
 use crate::article_lint::model::{SuggestedFix, SuggestedFixKind};
 use crate::content_store::parsing::{make_content_preview, normalize_spaces};
-use crate::profile::SiteProfile;
+use crate::site::SiteAdapter;
 
 const COMMON_SENTENCE_CASE_HEADINGS: &[(&str, &str)] = &[
     ("see also", "See also"),
@@ -38,8 +38,8 @@ pub(super) fn line_has_short_description(line: &str) -> bool {
         || lowered.starts_with("{{short description |")
 }
 
-pub(super) fn preferred_short_description_snippet(profile: &SiteProfile) -> String {
-    if profile
+pub(super) fn preferred_short_description_snippet(adapter: &SiteAdapter) -> String {
+    if adapter
         .authoring
         .short_description_forms
         .iter()
@@ -119,7 +119,7 @@ pub(super) fn canonical_sentence_case_heading(
 }
 
 /// True when a heading word matches the proper-noun vocabulary (page titles + the
-/// profile's configured proper nouns). Cleaned to alphanumerics and lowercased to match
+/// adapter's configured proper nouns). Cleaned to alphanumerics and lowercased to match
 /// how the vocabulary is stored.
 pub(super) fn is_known_proper_noun(word: &str, proper_nouns: &BTreeSet<String>) -> bool {
     let cleaned: String = word

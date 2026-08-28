@@ -4,8 +4,8 @@ use anyhow::Result;
 use serde::Serialize;
 use serde_json::Value;
 use wikitool_core::mw::{
-    CargoField, CargoRowsOptions, MediaWikiClient, cargo_count_rows, cargo_list_tables,
-    cargo_query_rows, cargo_table_fields,
+    CargoField, CargoRowsOptions, cargo_count_rows, cargo_list_tables, cargo_query_rows,
+    cargo_table_fields,
 };
 
 use crate::RuntimeOptions;
@@ -55,7 +55,7 @@ pub(super) fn run_wiki_cargo(runtime: &RuntimeOptions, args: WikiCargoArgs) -> R
 
 fn run_wiki_cargo_count(runtime: &RuntimeOptions, args: WikiCargoCountArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let mut client = MediaWikiClient::from_config(&config)?;
+    let mut client = wikitool_core::mw::client_from_wikitool_config(&config)?;
     let rows = cargo_count_rows(&mut client, &args.table)?;
     let report = WikiCargoCountReport {
         table: args.table,
@@ -79,7 +79,7 @@ fn run_wiki_cargo_count(runtime: &RuntimeOptions, args: WikiCargoCountArgs) -> R
 
 fn run_wiki_cargo_tables(runtime: &RuntimeOptions, args: WikiCargoTablesArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let mut client = MediaWikiClient::from_config(&config)?;
+    let mut client = wikitool_core::mw::client_from_wikitool_config(&config)?;
     let report = WikiCargoTablesReport {
         tables: cargo_list_tables(&mut client)?,
     };
@@ -103,7 +103,7 @@ fn run_wiki_cargo_tables(runtime: &RuntimeOptions, args: WikiCargoTablesArgs) ->
 
 fn run_wiki_cargo_fields(runtime: &RuntimeOptions, args: WikiCargoFieldsArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let mut client = MediaWikiClient::from_config(&config)?;
+    let mut client = wikitool_core::mw::client_from_wikitool_config(&config)?;
     let report = WikiCargoFieldsReport {
         fields: cargo_table_fields(&mut client, &args.table)?,
         table: args.table,
@@ -139,7 +139,7 @@ fn run_wiki_cargo_fields(runtime: &RuntimeOptions, args: WikiCargoFieldsArgs) ->
 
 fn run_wiki_cargo_rows(runtime: &RuntimeOptions, args: WikiCargoRowsArgs) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
-    let mut client = MediaWikiClient::from_config(&config)?;
+    let mut client = wikitool_core::mw::client_from_wikitool_config(&config)?;
 
     // Default the selection to the table's full schema so `wiki cargo rows <table>`
     // works without the caller knowing the fields.

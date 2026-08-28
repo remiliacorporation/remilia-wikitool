@@ -1,5 +1,5 @@
 {
-  "schema": "wikitest.prose-assignment.v1",
+  "schema": "wikitest.prose-assignment.v2",
   "id": "review-sensitive-claim",
   "title": "Unsupported sensitive claim review",
   "description": "A closed-world review control with unsupported drug, arrest, and health claims attached to an unrelated profile citation.",
@@ -13,7 +13,7 @@
     "sensitive": true
   },
   "review_instructions": [
-    {"id": "prose-review", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/SKILL.md", "sha256": "560097c3b15f5fbf04be53f960da3517ae1c4a08be79e5eab9d74cfdfdf6df37"},
+    {"id": "prose-review", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
     {"id": "source-fidelity", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
     {"id": "reader-value", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"},
     {"id": "blp-sensitive", "root": "repository", "locator": "ai-pack/codex_skills/prose-review/references/blp-sensitive.md", "sha256": "bad7f47c24897ef9e17c91987332ef56c4feda8a0ed07e1aaf3717beccae15c8"}
@@ -22,9 +22,11 @@
     {"id": "s1", "title": "Studio visit: Mara Vale", "locator": "sources/profile.txt", "sha256": "9a6b1850a730b1ef9d6c9d2806a6324d9aa74b35a4ef1d569b9a712d4fe52a1d", "role": "independent_secondary", "citation": "Niko Ames, Studio visit: Mara Vale, Software Arts Quarterly, 2 August 2023, https://fixtures.invalid/mara-vale/profile"},
     {"id": "s2", "title": "North Room checklist: Folded Clock", "locator": "sources/exhibition.txt", "sha256": "cda6b60099a867f2f24820a6a64fb6ea9b02e038226c51cf2fd25bd1fc67ccef", "role": "authoritative", "citation": "North Room, North Room checklist: Folded Clock, 3 June 2023, https://fixtures.invalid/mara-vale/exhibition"}
   ],
+  "finding_tag_vocabulary": ["chronology-uncertainty", "citation-integrity", "due-weight", "gratuitous-framing", "sensitive-claim", "source-entailment"],
   "review_axes": ["article-object", "source-fidelity", "citation-integrity", "due-weight", "subject-control", "reader-value", "structure", "prose-specificity", "sensitive-claims", "mechanical-validity", "residual-risk"],
   "candidate": {"id": "article", "root": "assignment", "locator": "candidate.wiki", "sha256": "d97d89844130c8e7941b61e569f39de2caf8d246acdc6c63aa2996e5a1c1b715"},
   "oracle": {
+    "required_finding_tags": ["sensitive-claim"],
     "axis_expectations": [
       {"axis": "source-fidelity", "allowed_verdicts": ["fail"]},
       {"axis": "citation-integrity", "allowed_verdicts": ["fail"]},

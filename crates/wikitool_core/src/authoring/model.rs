@@ -15,7 +15,7 @@ pub enum LocalExistenceState {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextSurfaceSource {
-    Profile,
+    Adapter,
     ExactPage,
     Comparables,
     ExactPageAndComparables,
@@ -25,7 +25,7 @@ pub enum ContextSurfaceSource {
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ArticleStartIntent {
+pub enum ArticleScoutIntent {
     #[default]
     New,
     Expand,
@@ -34,7 +34,7 @@ pub enum ArticleStartIntent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EvidenceRef {
+pub struct ContextRef {
     pub id: String,
     pub source_kind: String,
     pub source_title: String,
@@ -45,7 +45,7 @@ pub struct EvidenceRef {
     /// it was previously (mis)named `score`.
     pub token_estimate: u32,
     /// Leading excerpt of the chunk so the reference is usable without a
-    /// follow-up `knowledge inspect chunks` call.
+    /// follow-up `catalog inspect chunks` call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_preview: Option<String>,
 }
@@ -105,11 +105,11 @@ pub struct SectionCandidate {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SubjectResearchLane {
+pub struct ResearchContextLane {
     /// Top retrieved chunk text. For a subject with no local page this is
     /// prose from *other* pages, not facts about the subject.
-    pub top_local_excerpt: Option<String>,
-    pub evidence: Vec<EvidenceRef>,
+    pub top_retrieved_excerpt: Option<String>,
+    pub context_refs: Vec<ContextRef>,
     /// Verbatim chunk texts from related pages other than the exact subject page.
     /// This is adjacency context to inspect, never evidence for a subject claim.
     pub comparable_page_excerpts: Vec<String>,
@@ -128,17 +128,17 @@ pub struct QueryTermCoverage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EvidenceCoverageItem {
+pub struct ContextCoverageItem {
     pub source_kind: String,
     pub source_title: String,
     pub locator: Option<String>,
     pub matched_query_terms: Vec<String>,
     pub missing_query_terms: Vec<String>,
-    pub evidence_id: Option<String>,
+    pub context_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ArticleEvidenceProfile {
+pub struct ArticleContextProfile {
     pub query: String,
     pub query_terms: Vec<String>,
     pub exact_local_title: Option<String>,
@@ -146,14 +146,14 @@ pub struct ArticleEvidenceProfile {
     pub backlink_count: usize,
     /// Local wiki records and chunks that directly match the subject query.
     /// This is editing context, not automatic support for a factual claim.
-    pub subject_context: Vec<EvidenceCoverageItem>,
-    pub broad_context: Vec<EvidenceCoverageItem>,
-    pub comparable_pages: Vec<EvidenceCoverageItem>,
+    pub subject_context: Vec<ContextCoverageItem>,
+    pub broad_context: Vec<ContextCoverageItem>,
+    pub comparable_pages: Vec<ContextCoverageItem>,
     pub live_leads_status: String,
-    pub live_leads: Vec<EvidenceCoverageItem>,
+    pub live_leads: Vec<ContextCoverageItem>,
     pub missing_query_terms: Vec<String>,
     pub query_term_coverage: Vec<QueryTermCoverage>,
-    pub missing_evidence_warnings: Vec<String>,
+    pub context_gaps: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -186,19 +186,19 @@ pub struct LocalIntegrationLane {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ArticleStartResult {
+pub struct ArticleScoutResult {
     pub schema_version: String,
     pub topic: String,
-    pub intent: ArticleStartIntent,
+    pub intent: ArticleScoutIntent,
     pub local_state: LocalExistenceState,
-    pub evidence_profile: ArticleEvidenceProfile,
-    pub subject_research: SubjectResearchLane,
+    pub context_profile: ArticleContextProfile,
+    pub research_context: ResearchContextLane,
     pub local_integration: LocalIntegrationLane,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ArticleStart {
+pub enum ArticleScout {
     IndexMissing,
     QueryMissing,
-    Found(Box<ArticleStartResult>),
+    Found(Box<ArticleScoutResult>),
 }

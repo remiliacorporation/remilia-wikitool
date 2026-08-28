@@ -23,15 +23,15 @@ use resources::{LoadedResources, load_resources};
 use rules::{IssueMatch, SafeFixEdit, collect_issue_matches};
 
 #[cfg(test)]
-use crate::knowledge::status::KNOWLEDGE_GENERATION;
-#[cfg(test)]
-use crate::profile::WikiCapabilityManifest;
+use crate::catalog::status::CATALOG_GENERATION;
 #[cfg(test)]
 use crate::schema::open_initialized_database_connection;
+#[cfg(test)]
+use crate::site::WikiCapabilityManifest;
 
-const ARTICLE_LINT_SCHEMA_VERSION: &str = "article_lint_v2";
-const ARTICLE_FIX_SCHEMA_VERSION: &str = "article_fix_v1";
-/// Project-wide lint context (site profile, template catalog, local scans,
+const ARTICLE_LINT_SCHEMA_VERSION: &str = "article_lint_v3";
+const ARTICLE_FIX_SCHEMA_VERSION: &str = "article_fix_v2";
+/// Project-wide lint context (site adapter, template catalog, local scans,
 /// index connection). Loading it walks the whole project, so batch callers must
 /// load once and lint every file through [`lint_article_with_resources`].
 #[derive(Debug)]
@@ -104,7 +104,7 @@ pub fn fix_article_with_title(
         lint_article_with_resources(paths, article_path, title_override, &resources)?;
     Ok(ArticleFixResult {
         schema_version: ARTICLE_FIX_SCHEMA_VERSION.to_string(),
-        profile_id: resources.inner.profile.profile_id.clone(),
+        site_adapter_id: resources.inner.adapter.adapter_id.clone(),
         relative_path: remaining_report.relative_path.clone(),
         title: remaining_report.title.clone(),
         namespace: remaining_report.namespace.clone(),
@@ -151,7 +151,7 @@ fn build_report(
 
     ArticleLintReport {
         schema_version: ARTICLE_LINT_SCHEMA_VERSION.to_string(),
-        profile_id: resources.profile.profile_id.clone(),
+        site_adapter_id: resources.adapter.adapter_id.clone(),
         relative_path: document.relative_path.clone(),
         title: document.title.clone(),
         namespace: document.namespace.clone(),

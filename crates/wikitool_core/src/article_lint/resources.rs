@@ -5,22 +5,22 @@ use rusqlite::Connection;
 
 use crate::content_store::parsing::open_indexed_connection;
 use crate::filesystem::{ScanOptions, scan_files};
-use crate::profile::{
-    SiteProfile, TemplateCatalog, WikiCapabilityManifest, build_template_catalog_with_profile,
-    load_latest_wiki_capabilities, load_or_build_site_profile, scan_local_asset_titles,
+use crate::runtime::ResolvedPaths;
+use crate::site::{
+    SiteAdapter, TemplateCatalog, WikiCapabilityManifest, build_template_catalog_with_adapter,
+    load_latest_wiki_capabilities, load_site_adapter, scan_local_asset_titles,
     scan_local_module_functions, scan_local_module_titles,
 };
-use crate::runtime::ResolvedPaths;
 
 #[derive(Debug)]
 pub(super) struct LoadedResources {
-    pub(super) profile: SiteProfile,
+    pub(super) adapter: SiteAdapter,
     pub(super) capabilities: Option<WikiCapabilityManifest>,
     pub(super) template_catalog: Option<TemplateCatalog>,
     pub(super) local_module_titles: BTreeSet<String>,
     pub(super) local_module_functions: BTreeMap<String, BTreeSet<String>>,
     pub(super) local_asset_titles: BTreeSet<String>,
-    /// Lowercased single words drawn from local page/template titles and the profile's
+    /// Lowercased single words drawn from local page/template titles and the adapter's
     /// configured proper nouns. The sentence-case heading rule treats these as proper
     /// nouns that may stay capitalized mid-heading.
     pub(super) proper_noun_words: BTreeSet<String>,
@@ -28,7 +28,7 @@ pub(super) struct LoadedResources {
 }
 
 pub(super) fn load_resources(paths: &ResolvedPaths) -> Result<LoadedResources> {
-    let profile = load_or_build_site_profile(paths)?;
+    let adapter = load_site_adapter(paths)?;
 
     let capabilities = if paths.db_path.exists() {
         load_latest_wiki_capabilities(paths)?
@@ -36,7 +36,7 @@ pub(super) fn load_resources(paths: &ResolvedPaths) -> Result<LoadedResources> {
         None
     };
     let template_catalog = {
-        let built = build_template_catalog_with_profile(paths, &profile)?;
+        let built = build_template_catalog_with_adapter(paths, &adapter)?;
         if built.entries.is_empty() {
             None
         } else {
@@ -46,11 +46,11 @@ pub(super) fn load_resources(paths: &ResolvedPaths) -> Result<LoadedResources> {
     let local_module_titles = scan_local_module_titles(paths)?;
     let local_module_functions = scan_local_module_functions(paths)?;
     let local_asset_titles = scan_local_asset_titles(paths)?;
-    let proper_noun_words = build_proper_noun_words(paths, &profile)?;
+    let proper_noun_words = build_proper_noun_words(paths, &adapter)?;
     let index_connection = open_indexed_connection(paths)?;
 
     Ok(LoadedResources {
-        profile,
+        adapter,
         capabilities,
         template_catalog,
         local_module_titles,
@@ -62,16 +62,16 @@ pub(super) fn load_resources(paths: &ResolvedPaths) -> Result<LoadedResources> {
 }
 
 /// Build the proper-noun vocabulary the sentence-case rule consults. Sources, in order:
-/// the profile's configured `proper_nouns`, then local main/template titles. Title-derived
-/// words are intentionally narrower than profile terms: a MediaWiki title's first word is
+/// the adapter's configured `proper_nouns`, then local main/template titles. Title-derived
+/// words are intentionally narrower than adapter terms: a MediaWiki title's first word is
 /// capitalized by convention, so it is not enough by itself to prove proper-noun casing.
 fn build_proper_noun_words(
     paths: &ResolvedPaths,
-    profile: &SiteProfile,
+    adapter: &SiteAdapter,
 ) -> Result<BTreeSet<String>> {
     let mut words = BTreeSet::new();
-    for term in &profile.lint.proper_nouns {
-        insert_profile_proper_noun_words(&mut words, term);
+    for term in &adapter.lint.proper_nouns {
+        insert_adapter_proper_noun_words(&mut words, term);
     }
     let files = scan_files(
         paths,
@@ -93,7 +93,7 @@ fn build_proper_noun_words(
     Ok(words)
 }
 
-fn insert_profile_proper_noun_words(words: &mut BTreeSet<String>, phrase: &str) {
+fn insert_adapter_proper_noun_words(words: &mut BTreeSet<String>, phrase: &str) {
     for raw in phrase.split_whitespace() {
         insert_cleaned_proper_noun_word(words, raw);
     }

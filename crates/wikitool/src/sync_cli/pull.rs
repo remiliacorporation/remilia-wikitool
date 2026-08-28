@@ -1,9 +1,9 @@
 use anyhow::{Result, bail};
 use serde::Serialize;
 use wikitool_core::runtime::{ensure_runtime_ready_for_sync, inspect_runtime};
-use wikitool_core::sync::{PullOptions, PullReport, pull_from_remote_with_config};
+use wikitool_core::sync::{PullCoverage, PullOptions, PullReport, pull_from_remote_with_config};
 
-use crate::cli_support::{normalize_path, print_scan_stats, resolve_runtime_with_config};
+use crate::cli_support::{normalize_path, resolve_runtime_with_config};
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 use super::PullArgs;
@@ -34,6 +34,11 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
             namespaces: namespaces.clone(),
             category: args.category.clone(),
             full: args.full,
+            coverage: if args.full && args.all {
+                PullCoverage::GlobalAllNamespaces
+            } else {
+                PullCoverage::Scoped
+            },
             overwrite_local: args.overwrite_local,
         },
         &config,
@@ -69,6 +74,10 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
     println!("categories: {}", args.categories);
     println!("all: {}", args.all);
     println!(
+        "pull.global_baseline_established: {}",
+        report.global_baseline_established
+    );
+    println!(
         "namespaces: {}",
         namespaces
             .iter()
@@ -81,6 +90,7 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
     println!("pull.pulled: {}", report.pulled);
     println!("pull.created: {}", report.created);
     println!("pull.updated: {}", report.updated);
+    println!("pull.deleted: {}", report.deleted);
     println!("pull.skipped: {}", report.skipped);
     println!("pull.errors.count: {}", report.errors.len());
     for page in &report.pages {
@@ -96,12 +106,12 @@ pub(crate) fn run_pull(runtime: &RuntimeOptions, args: PullArgs) -> Result<()> {
             println!("pull.error: {error}");
         }
     }
-    if let Some(reindex) = &report.reindex {
-        println!("pull.reindex.inserted_rows: {}", reindex.inserted_rows);
-        println!("pull.reindex.inserted_links: {}", reindex.inserted_links);
-        print_scan_stats("pull.reindex.scan", &reindex.scan);
-    } else {
-        println!("pull.reindex: skipped (no local writes)");
+    println!("pull.changed_paths.count: {}", report.changed_paths.len());
+    for effect in &report.changed_paths {
+        println!(
+            "pull.changed_path: path={} kind={:?}",
+            effect.relative_path, effect.kind
+        );
     }
 
     if !status.warnings.is_empty() {

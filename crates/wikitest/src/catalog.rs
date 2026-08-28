@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -119,7 +120,13 @@ pub fn scan_catalogs(roots: &[PathBuf]) -> Result<Vec<CatalogEntry>> {
         if !root.is_dir() {
             bail!("catalog root does not exist: {}", root.display());
         }
-        for entry in WalkDir::new(root).follow_links(false) {
+        let walker = WalkDir::new(root)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(|entry| {
+                entry.depth() == 0 || entry.file_name() != OsStr::new("evidence")
+            });
+        for entry in walker {
             let entry = entry.with_context(|| format!("failed to scan {}", root.display()))?;
             if !entry.file_type().is_file() {
                 continue;
@@ -288,7 +295,7 @@ mod tests {
             let mut file = fs::File::create(path.join("scenario.json")).expect("manifest");
             write!(
                 file,
-                "{{\"schema\":\"{SCENARIO_SCHEMA}\",\"id\":\"same\",\"title\":\"Same\",\"description\":\"Same scenario.\",\"kind\":\"mechanical\",\"environment\":\"isolated\",\"timeout_ms\":1000,\"coverage\":[\"public-cli\"],\"steps\":[{{\"action\":\"command\",\"id\":\"status\",\"argv\":[\"status\"],\"expect\":{{\"exit_code\":0}}}}]}}"
+                "{{\"schema\":\"{SCENARIO_SCHEMA}\",\"id\":\"same\",\"title\":\"Same\",\"description\":\"Same scenario.\",\"kind\":\"mechanical\",\"environment\":\"isolated\",\"timeout_ms\":1000,\"coverage\":[{{\"capability\":\"public-cli\",\"steps\":[\"status\"]}}],\"steps\":[{{\"action\":\"command\",\"id\":\"status\",\"argv\":[\"status\"],\"expect\":{{\"exit_code\":0}}}}]}}"
             )
             .expect("write manifest");
         }
@@ -297,5 +304,25 @@ mod tests {
             error.to_string().contains("duplicate scenario id"),
             "{error:#}"
         );
+    }
+
+    #[test]
+    fn catalog_excludes_retained_evidence_trees() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        for parent in ["live", "evidence/archived/inputs"] {
+            let path = directory.path().join(parent);
+            fs::create_dir_all(&path).expect("directory");
+            let mut file = fs::File::create(path.join("scenario.json")).expect("manifest");
+            write!(
+                file,
+                "{{\"schema\":\"{SCENARIO_SCHEMA}\",\"id\":\"same\",\"title\":\"Same\",\"description\":\"Same scenario.\",\"kind\":\"mechanical\",\"environment\":\"isolated\",\"timeout_ms\":1000,\"coverage\":[{{\"capability\":\"public-cli\",\"steps\":[\"status\"]}}],\"steps\":[{{\"action\":\"command\",\"id\":\"status\",\"argv\":[\"status\"],\"expect\":{{\"exit_code\":0}}}}]}}"
+            )
+            .expect("write manifest");
+        }
+
+        let entries = scan_catalogs(&[directory.path().to_path_buf()]).expect("scan catalog");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].manifest.id(), "same");
+        assert!(entries[0].path.ends_with("live/scenario.json"));
     }
 }
