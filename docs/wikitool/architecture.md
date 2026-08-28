@@ -61,6 +61,12 @@ composition and bounded presentation. The core may report that a citation URL
 matches a configured review rule; it may not declare that source universally reliable or infer a
 prose verdict from the match.
 
+`crates/mediawiki_html_to_wikitext` is a separate library boundary for deterministic HTML5 DOM
+traversal into conservative MediaWiki primitives. It accepts caller-supplied link, media, and
+table-template policy plus a separately verified media inventory. It does not decode an acquisition
+bundle, choose a site template, emit a preservation receipt, or write to MediaWiki. Producer and
+site-specific projection companions remain outside the core and default CLI.
+
 Mechanical checks include wikitext structure, citation placement, required templates, configured
 placeholder fragments, extension availability, link/index integrity, and revision-bound sync.
 They deliberately exclude reader interest, prose specificity, due weight, source entailment,
@@ -295,8 +301,8 @@ Contextmink source fork and no duplicate installer.
   case policy participates in planning, ledger, mutation, and target identities.
 - Target-specific preservation-projection artifacts developed alongside the host archive campaign
   are intentionally excluded from the core crate, default binary, generated reference, and release
-  package. Their Minibeast input and Remilia receipt schemas belong in a separately versioned
-  application companion owned by that archive workflow.
+  package. The generic DOM renderer is reusable, but Minibeast input and Remilia receipt schemas
+  belong to the separately versioned archive-compiler companion.
 - Wikitext parsing is deterministic and bounded, not a complete replacement for MediaWiki's
   production parser; rendered behavior must be checked through `wiki render-check` where relevant.
 - Wikitest provides replayable structural and closed-world evidence, but model performance must be

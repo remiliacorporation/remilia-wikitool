@@ -1201,6 +1201,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mediawiki_html_to_wikitext"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "percent-encoding",
+ "scraper",
+ "serde",
+ "url",
+]
+
+[[package]]
 name = "mediawiki_protocol"
 version = "0.7.0"
 dependencies = [

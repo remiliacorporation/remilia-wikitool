@@ -4,5 +4,6 @@
 - `architecture.md` - internal command/core/guidance boundaries and agentic token contract
 - `reference.md` - canonical command/flag reference (auto-generated from CLI help)
 - `source-access.md` - human-in-loop source access sessions for browser challenge cases
+- `html-to-wikitext.md` - generic deterministic DOM-to-MediaWiki conversion boundary
 
 For flags: `wikitool <command> --help` or `reference.md`.

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/mediawiki_html_to_wikitext",
   "crates/mediawiki_protocol",
   "crates/wikitool",
   "crates/wikitool_core",

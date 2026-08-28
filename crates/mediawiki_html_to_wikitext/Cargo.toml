@@ -1,0 +1,12 @@
+[package]
+name = "mediawiki_html_to_wikitext"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+percent-encoding.workspace = true
+scraper.workspace = true
+serde.workspace = true
+url.workspace = true
