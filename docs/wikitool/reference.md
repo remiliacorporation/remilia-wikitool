@@ -18,30 +18,31 @@ Wiki management CLI
 Usage: wikitool [OPTIONS] [COMMAND]
 
 Commands:
-  init       Initialize a new wikitool project
-  config     Show resolved configuration and target-wiki sources
-  pull       Pull wiki content and templates to local files
-  push       Push local changes to the live wiki
-  diff       Show local changes not yet pushed to the wiki
-  status     Show sync status and local project state
-  validate   Run structural and link integrity checks
-  review     Run the structured pre-push review gate
-  module     Run Lua module linting and related checks
-  export     Export a remote wiki page tree to local files
-  delete     Delete a page from the live wiki
-  mutation   Inspect and reconcile durable remote mutation receipts
-  db         Inspect or reset the local runtime database
-  docs       Manage and query pinned MediaWiki docs corpora
-  import     Import content from external sources
-  catalog    Build and query the disposable local catalog
-  adapter    Inspect the explicit project-owned site adapter
-  interview  Create, validate, show, and audit neutral article interview ledgers
-  source     Inspect target-wiki evidence and fetch source URLs without mutating the wiki
-  wiki       Sync and inspect live wiki capability metadata
-  templates  Build and inspect the local template catalog
-  article    Lint and mechanically remediate article drafts
-  lsp        Generate parser config and editor integration settings
-  help       Print this message or the help of the given subcommand(s)
+  init        Initialize a new wikitool project
+  config      Show resolved configuration and target-wiki sources
+  pull        Pull wiki content and templates to local files
+  push        Push local changes to the live wiki
+  diff        Show local changes not yet pushed to the wiki
+  status      Show sync status and local project state
+  validate    Run structural and link integrity checks
+  review      Run the structured pre-push review gate
+  module      Run Lua module linting and related checks
+  export      Export a remote wiki page tree to local files
+  delete      Delete a page from the live wiki
+  mutation    Inspect and reconcile durable remote mutation receipts
+  db          Inspect or reset the local runtime database
+  docs        Manage and query pinned MediaWiki docs corpora
+  import      Import content from external sources
+  catalog     Build and query the disposable local catalog
+  adapter     Inspect the explicit project-owned site adapter
+  interview   Create, validate, show, and audit neutral article interview ledgers
+  source      Inspect target-wiki evidence and fetch source URLs without mutating the wiki
+  wiki        Sync and inspect live wiki capability metadata
+  templates   Build and inspect the local template catalog
+  article     Lint and mechanically remediate article drafts
+  lsp         Generate parser config and editor integration settings
+  companions  Inspect optional release companions without changing their lifecycle state
+  help        Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -2510,6 +2511,23 @@ Usage: wikitool lsp info [OPTIONS]
 Options:
       --project-root <PATH>
       --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## companions
+
+```text
+Inspect optional release companions without changing their lifecycle state
+
+Usage: wikitool companions [OPTIONS]
+
+Options:
+      --manifest <PATH>      Inspect this release-companions.json instead of the file beside the executable
+      --project-root <PATH>
+      --data-dir <PATH>
+      --format <FORMAT>      Output format: text|json [default: json] [possible values: text, json]
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
