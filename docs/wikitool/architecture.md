@@ -304,8 +304,8 @@ Contextmink source fork and no duplicate installer.
   case policy participates in planning, ledger, mutation, and target identities.
 - Target-specific preservation-projection artifacts developed alongside the host archive campaign
   are intentionally excluded from the core crate, generated reference, and release package. The
-  default binary exposes generic profiled DOM compilation, but Minibeast input and Remilia receipt
-  schemas belong to the separately versioned archive-compiler companion.
+  default binary exposes generic profiled DOM compilation, but private producer input and
+  target-specific receipt schemas belong to separately versioned companions.
 - Wikitext parsing is deterministic and bounded, not a complete replacement for MediaWiki's
   production parser; rendered behavior must be checked through `wiki render-check` where relevant.
 - Wikitest provides replayable structural and closed-world evidence, but model performance must be

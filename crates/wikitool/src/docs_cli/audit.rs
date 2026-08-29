@@ -389,6 +389,7 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
         if path.file_name().is_some_and(|name| name == "CHANGELOG.md") {
             continue;
         }
+        let lowered = body.to_ascii_lowercase();
         for term in [
             "wikitool search",
             "wikitool fetch",
@@ -397,8 +398,9 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
             "--view agent-card",
             "function-card",
             "function-context",
+            "minibeast",
         ] {
-            if body.contains(term) {
+            if lowered.contains(term) {
                 failures.push(format!("{} contains `{term}`", normalize_path(&path)));
             }
         }
@@ -409,7 +411,7 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
         failures.is_empty(),
         Some(repo_root),
         if failures.is_empty() {
-            "guidance does not mention retired public surfaces".to_string()
+            "guidance does not mention retired or private public surfaces".to_string()
         } else {
             failures.join("; ")
         },

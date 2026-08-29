@@ -295,6 +295,8 @@ fn run_cargo_release_build_for_target(
         .arg("--package")
         .arg("wikitool")
         .arg("--release")
+        .arg("--target-dir")
+        .arg(repo_root.join("target"))
         .arg("--target")
         .arg(target);
     if use_locked {

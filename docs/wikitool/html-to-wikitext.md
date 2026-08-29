@@ -42,9 +42,8 @@ drift, and invalid media types. It does not fetch a page, decide which content i
 valuable, infer unconfigured template semantics, decode a producer schema, generate an acceptance
 decision, or publish anything.
 
-Applications own the surrounding evidence contract. The Remilia PreservationArchive companion,
-for example, validates private Minibeast bundle schemas through a producer adapter, supplies the
-tracked TCRF source profile and Remilia target profile, admits the live Wikitool authoring surface,
-and emits the exact archive transform receipt. The producer schemas and archive commands are
-deliberately absent from the default `wikitool` executable; only the normalized profiled compiler
-is public there.
+Applications own the surrounding evidence contract. A target-specific archive companion, for
+example, can validate private bundle schemas through a producer adapter, supply tracked source and
+target profiles, admit a live Wikitool authoring surface, and emit an exact archive transform
+receipt. Producer schemas and archive commands are deliberately absent from the default `wikitool`
+executable; only the normalized profiled compiler is public there.

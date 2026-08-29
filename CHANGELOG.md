@@ -6,6 +6,13 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-29
+
+### Fixed
+
+- Public architecture and HTML-conversion guidance now describes private producer boundaries generically, and the documentation audit rejects private implementation names before they can enter release archives.
+- `release build-matrix` now binds its child Cargo build to the repository target directory it packages, so a caller-level `CARGO_TARGET_DIR` cannot make it silently copy stale binaries from another build root.
+
 ## [0.7.0] - 2026-08-29
 
 ### Added
