@@ -1065,7 +1065,7 @@ mod tests {
         );
         assert!(release_archive_hash_from_pins(&pins, "missing.zip").is_err());
         assert!(release_archive_hash_from_pins("bad hash line\n", archive).is_err());
-        let source_commit = "5ab25a6eadb0efb085f0208e11d42753395541ff";
+        let source_commit = "97c24a117e576c794d48fae7c34b4d334f511c13";
         let manifest: serde_json::Value = serde_json::json!({
             "schema": "contextmink.release-manifest.v1",
             "name": "contextmink",
@@ -1253,7 +1253,7 @@ mod tests {
         );
         assert_eq!(
             manifest["companions"][0]["source_commit"],
-            serde_json::json!("5ab25a6eadb0efb085f0208e11d42753395541ff")
+            serde_json::json!("97c24a117e576c794d48fae7c34b4d334f511c13")
         );
         assert_eq!(
             manifest["companions"][1]["planner_binary"],
