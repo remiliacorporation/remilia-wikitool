@@ -1,4 +1,4 @@
-3f446aee5c886319fddd17ce946715d5b422d184aefa19a92680792ae8015e77  contextmink-0.9.0-linux-x86_64.tar.gz
-b691909a26dbec1b3ef18fae17e4eb44e6597bfec9a5039376a33c1fbad88c5f  contextmink-0.9.0-macos-arm64.tar.gz
-7fe8e409030ea1d23eeff895ce1d056913029f871e270368edfaa88d2f2caa2f  contextmink-0.9.0-macos-x86_64.tar.gz
-56e1bde757ede27439cdb2971ef60a06298ef1d4d02c986364f4c0e20dc8465c  contextmink-0.9.0-windows-x86_64.zip
+3bfd15d6685fcf80ec02a75e2914f30a54f4a4eebd91acf9cc7a95ed966992d2  contextmink-0.9.1-linux-x86_64.tar.gz
+741771764de4c45de7b4e895fc4a493a678b902b7f9faee92c012e7bb3244ee5  contextmink-0.9.1-macos-arm64.tar.gz
+e55154dfa891de7ea2bea279849bc7cd61e847a7a38a83174497fe4b85ac6826  contextmink-0.9.1-macos-x86_64.tar.gz
+25fb54cc1698ace2324160f908789a2f56187a976e72e27f72978c590b4e1d20  contextmink-0.9.1-windows-x86_64.zip

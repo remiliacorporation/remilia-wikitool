@@ -76,6 +76,7 @@ stage_platform() {
   local version="$1"
   local selected_platform="$2"
   local hashes_file="$3"
+  local expected_source_commit="$4"
   local archive
   archive="$(archive_name "$version" "$selected_platform")"
   local expected
@@ -137,8 +138,10 @@ stage_platform() {
     echo "fetch_contextmink: release archive lacks expected manifest: $source_root/manifest.json" >&2
     exit 65
   fi
-  if ! grep -Eq '"version"[[:space:]]*:[[:space:]]*"'"$version"'"' "$source_root/manifest.json" \
-    || ! grep -Eq '"platform"[[:space:]]*:[[:space:]]*"'"$selected_platform"'"' "$source_root/manifest.json"; then
+  if ! grep -Fq '"schema": "contextmink.release-manifest.v1"' "$source_root/manifest.json" \
+    || ! grep -Fq '"version": "'"$version"'"' "$source_root/manifest.json" \
+    || ! grep -Fq '"source_commit": "'"$expected_source_commit"'"' "$source_root/manifest.json" \
+    || ! grep -Fq '"platform": "'"$selected_platform"'"' "$source_root/manifest.json"; then
     echo "fetch_contextmink: release manifest does not match ${version}/${selected_platform}" >&2
     exit 65
   fi
@@ -169,7 +172,8 @@ while [[ $# -gt 0 ]]; do
       ;;
     --help | -h)
       echo "usage: fetch_contextmink.sh [--platform <platform> | --all] [--dest <dir>]"
-      echo "  Downloads the version pinned by config/contextmink.version and verifies"
+      echo "  Downloads the release pinned by config/contextmink.version and"
+      echo "  config/contextmink.source-commit, then verifies"
       echo "  it against config/contextmink-sha256s.txt before staging release files."
       echo "  --platform defaults to the host platform."
       exit 0
@@ -185,7 +189,8 @@ if [[ "$fetch_all" -eq 1 && -n "$platform" ]]; then
   echo "fetch_contextmink: --all and --platform are mutually exclusive" >&2
   exit 64
 fi
-if [[ ! -f config/contextmink.version || ! -f config/contextmink-sha256s.txt ]]; then
+if [[ ! -f config/contextmink.version || ! -f config/contextmink.source-commit \
+  || ! -f config/contextmink-sha256s.txt ]]; then
   echo "fetch_contextmink: run from the wikitool repository root (Contextmink pin files not found)" >&2
   exit 65
 fi
@@ -194,15 +199,20 @@ if [[ ! "$pin" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
   echo "fetch_contextmink: invalid version pin: $pin" >&2
   exit 65
 fi
+source_commit="$(tr -d ' \t\r\n' < config/contextmink.source-commit)"
+if [[ ! "$source_commit" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "fetch_contextmink: invalid source commit pin: $source_commit" >&2
+  exit 65
+fi
 
 if [[ "$fetch_all" -eq 1 ]]; then
   for selected in "${supported_platforms[@]}"; do
-    stage_platform "$pin" "$selected" "config/contextmink-sha256s.txt"
+    stage_platform "$pin" "$selected" "config/contextmink-sha256s.txt" "$source_commit"
   done
 else
   if [[ -z "$platform" ]]; then
     platform="$(host_platform)"
   fi
   validate_platform "$platform"
-  stage_platform "$pin" "$platform" "config/contextmink-sha256s.txt"
+  stage_platform "$pin" "$platform" "config/contextmink-sha256s.txt" "$source_commit"
 fi

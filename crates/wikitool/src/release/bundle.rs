@@ -394,6 +394,8 @@ fn stage_prebuilt_contextmink_pack(
     dist: &Path,
 ) -> Result<()> {
     let pin = read_release_pin(repo_root, "Contextmink", "config/contextmink.version")?;
+    let source_commit =
+        read_release_source_commit(repo_root, "Contextmink", "config/contextmink.source-commit")?;
     let source = dist.join(platform_slug);
     let manifest_path = source.join("manifest.json");
     let manifest_text = fs::read_to_string(&manifest_path).with_context(|| {
@@ -404,7 +406,7 @@ fn stage_prebuilt_contextmink_pack(
     })?;
     let manifest: serde_json::Value = serde_json::from_str(&manifest_text)
         .with_context(|| format!("invalid JSON in {}", normalize_path(&manifest_path)))?;
-    validate_contextmink_manifest(&manifest, &pin, platform_slug)?;
+    validate_contextmink_manifest(&manifest, &pin, &source_commit, platform_slug)?;
     validate_release_archive_receipt(
         repo_root,
         &source,
@@ -500,8 +502,15 @@ fn release_archive_hash_from_pins(raw: &str, archive: &str) -> Result<String> {
 fn validate_contextmink_manifest(
     manifest: &serde_json::Value,
     pin: &str,
+    expected_source_commit: &str,
     platform_slug: &str,
 ) -> Result<()> {
+    let schema = manifest.get("schema").and_then(serde_json::Value::as_str);
+    if schema != Some("contextmink.release-manifest.v1") {
+        bail!(
+            "contextmink manifest schema is {schema:?}, expected contextmink.release-manifest.v1"
+        );
+    }
     let name = manifest.get("name").and_then(serde_json::Value::as_str);
     if name != Some("contextmink") {
         bail!("contextmink manifest name is {name:?}, expected \"contextmink\"");
@@ -510,6 +519,14 @@ fn validate_contextmink_manifest(
     if version != Some(pin) {
         bail!(
             "contextmink bundle version {version:?} does not match the pin {pin} in config/contextmink.version"
+        );
+    }
+    let source_commit = manifest
+        .get("source_commit")
+        .and_then(serde_json::Value::as_str);
+    if source_commit != Some(expected_source_commit) {
+        bail!(
+            "contextmink bundle source commit {source_commit:?} does not match the pin {expected_source_commit} in config/contextmink.source-commit"
         );
     }
     let platform = manifest.get("platform").and_then(serde_json::Value::as_str);
@@ -582,7 +599,8 @@ fn stage_prebuilt_papertiger_pack(
     dist: &Path,
 ) -> Result<()> {
     let pin = read_release_pin(repo_root, "Papertiger", "config/papertiger.version")?;
-    let source_commit = read_release_source_commit(repo_root)?;
+    let source_commit =
+        read_release_source_commit(repo_root, "Papertiger", "config/papertiger.source-commit")?;
     let source = dist.join(platform_slug);
     let manifest_path = source.join("manifest.json");
     let manifest_text = fs::read_to_string(&manifest_path).with_context(|| {
@@ -708,8 +726,12 @@ fn validate_papertiger_manifest(
     Ok(())
 }
 
-fn read_release_source_commit(repo_root: &Path) -> Result<String> {
-    let path = repo_root.join("config/papertiger.source-commit");
+fn read_release_source_commit(
+    repo_root: &Path,
+    product: &str,
+    relative_path: &str,
+) -> Result<String> {
+    let path = repo_root.join(relative_path);
     let raw = fs::read_to_string(&path)
         .with_context(|| format!("failed to read {}", normalize_path(&path)))?;
     let source_commit = raw.trim().to_string();
@@ -718,7 +740,7 @@ fn read_release_source_commit(repo_root: &Path) -> Result<String> {
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
-        bail!("Papertiger source commit pin must be exactly 40 lowercase hexadecimal characters");
+        bail!("{product} source commit pin must be exactly 40 lowercase hexadecimal characters");
     }
     Ok(source_commit)
 }
@@ -750,9 +772,12 @@ fn write_release_companion_manifest(
 ) -> Result<()> {
     let contextmink_version =
         read_release_pin(repo_root, "Contextmink", "config/contextmink.version")?;
+    let contextmink_source_commit =
+        read_release_source_commit(repo_root, "Contextmink", "config/contextmink.source-commit")?;
     let papertiger_version =
         read_release_pin(repo_root, "Papertiger", "config/papertiger.version")?;
-    let papertiger_source_commit = read_release_source_commit(repo_root)?;
+    let papertiger_source_commit =
+        read_release_source_commit(repo_root, "Papertiger", "config/papertiger.source-commit")?;
     let (contextmink_binary, _) = expected_contextmink_pack_layout(platform_slug)?;
     let papertiger_binaries = expected_papertiger_pack_layout(platform_slug)?;
     let manifest = serde_json::json!({
@@ -761,6 +786,7 @@ fn write_release_companion_manifest(
             {
                 "id": "contextmink",
                 "version": contextmink_version,
+                "source_commit": contextmink_source_commit,
                 "directory": "contextmink",
                 "binary": format!("contextmink/{contextmink_binary}"),
                 "manifest": "contextmink/manifest.json",
@@ -1039,50 +1065,100 @@ mod tests {
         );
         assert!(release_archive_hash_from_pins(&pins, "missing.zip").is_err());
         assert!(release_archive_hash_from_pins("bad hash line\n", archive).is_err());
+        let source_commit = "5ab25a6eadb0efb085f0208e11d42753395541ff";
         let manifest: serde_json::Value = serde_json::json!({
+            "schema": "contextmink.release-manifest.v1",
             "name": "contextmink",
             "version": "0.3.0",
+            "source_commit": source_commit,
             "platform": "windows-x86_64",
             "binary": "contextmink.exe",
             "bridge_binary": "contextmink-bridge.exe",
         });
-        assert!(validate_contextmink_manifest(&manifest, "0.3.0", "windows-x86_64").is_ok());
-        assert!(validate_contextmink_manifest(&manifest, "0.4.0", "windows-x86_64").is_err());
-        assert!(validate_contextmink_manifest(&manifest, "0.3.0", "linux-x86_64").is_err());
-        let linux_manifest: serde_json::Value = serde_json::json!({
-            "name": "contextmink",
-            "version": "0.3.0",
-            "platform": "linux-x86_64",
-            "binary": "contextmink",
-        });
-        assert!(validate_contextmink_manifest(&linux_manifest, "0.3.0", "linux-x86_64").is_ok());
-        let linux_with_bridge: serde_json::Value = serde_json::json!({
-            "name": "contextmink",
-            "version": "0.3.0",
-            "platform": "linux-x86_64",
-            "binary": "contextmink",
-            "bridge_binary": "contextmink-bridge.exe",
-        });
         assert!(
-            validate_contextmink_manifest(&linux_with_bridge, "0.3.0", "linux-x86_64").is_err()
+            validate_contextmink_manifest(&manifest, "0.3.0", source_commit, "windows-x86_64")
+                .is_ok()
         );
-        let windows_without_bridge: serde_json::Value = serde_json::json!({
-            "name": "contextmink",
-            "version": "0.3.0",
-            "platform": "windows-x86_64",
-            "binary": "contextmink.exe",
-        });
         assert!(
-            validate_contextmink_manifest(&windows_without_bridge, "0.3.0", "windows-x86_64")
+            validate_contextmink_manifest(&manifest, "0.4.0", source_commit, "windows-x86_64")
                 .is_err()
         );
-        let wrong_binary: serde_json::Value = serde_json::json!({
+        assert!(
+            validate_contextmink_manifest(&manifest, "0.3.0", source_commit, "linux-x86_64")
+                .is_err()
+        );
+        let mut wrong_schema = manifest.clone();
+        wrong_schema["schema"] = serde_json::json!("contextmink.release-manifest.v2");
+        assert!(
+            validate_contextmink_manifest(&wrong_schema, "0.3.0", source_commit, "windows-x86_64")
+                .is_err()
+        );
+        let mut wrong_source = manifest.clone();
+        wrong_source["source_commit"] =
+            serde_json::json!("0000000000000000000000000000000000000000");
+        assert!(
+            validate_contextmink_manifest(&wrong_source, "0.3.0", source_commit, "windows-x86_64")
+                .is_err()
+        );
+        let linux_manifest: serde_json::Value = serde_json::json!({
+            "schema": "contextmink.release-manifest.v1",
             "name": "contextmink",
             "version": "0.3.0",
+            "source_commit": source_commit,
+            "platform": "linux-x86_64",
+            "binary": "contextmink",
+        });
+        assert!(
+            validate_contextmink_manifest(&linux_manifest, "0.3.0", source_commit, "linux-x86_64")
+                .is_ok()
+        );
+        let linux_with_bridge: serde_json::Value = serde_json::json!({
+            "schema": "contextmink.release-manifest.v1",
+            "name": "contextmink",
+            "version": "0.3.0",
+            "source_commit": source_commit,
+            "platform": "linux-x86_64",
+            "binary": "contextmink",
+            "bridge_binary": "contextmink-bridge.exe",
+        });
+        assert!(
+            validate_contextmink_manifest(
+                &linux_with_bridge,
+                "0.3.0",
+                source_commit,
+                "linux-x86_64"
+            )
+            .is_err()
+        );
+        let windows_without_bridge: serde_json::Value = serde_json::json!({
+            "schema": "contextmink.release-manifest.v1",
+            "name": "contextmink",
+            "version": "0.3.0",
+            "source_commit": source_commit,
+            "platform": "windows-x86_64",
+            "binary": "contextmink.exe",
+        });
+        assert!(
+            validate_contextmink_manifest(
+                &windows_without_bridge,
+                "0.3.0",
+                source_commit,
+                "windows-x86_64"
+            )
+            .is_err()
+        );
+        let wrong_binary: serde_json::Value = serde_json::json!({
+            "schema": "contextmink.release-manifest.v1",
+            "name": "contextmink",
+            "version": "0.3.0",
+            "source_commit": source_commit,
             "platform": "linux-x86_64",
             "binary": "contextmink.exe",
         });
-        assert!(validate_contextmink_manifest(&wrong_binary, "0.3.0", "linux-x86_64").is_err());
+        assert!(
+            validate_contextmink_manifest(&wrong_binary, "0.3.0", source_commit, "linux-x86_64")
+                .is_err()
+        );
 
         assert!(!host_platform_slug().is_empty());
         for binary in [
@@ -1176,12 +1252,16 @@ mod tests {
             serde_json::json!(false)
         );
         assert_eq!(
+            manifest["companions"][0]["source_commit"],
+            serde_json::json!("5ab25a6eadb0efb085f0208e11d42753395541ff")
+        );
+        assert_eq!(
             manifest["companions"][1]["planner_binary"],
             serde_json::json!("papertiger/papertiger.exe")
         );
         assert_eq!(
             manifest["companions"][1]["source_commit"],
-            serde_json::json!("3f2a1ef6f40ad01ca9b07d44b28b10d7a3276af0")
+            serde_json::json!("1b7a04fb639bfff7ddfa19d85eea41236c303bb1")
         );
         assert_eq!(
             manifest["companions"][1]["setup_initializes_task_authority"],
