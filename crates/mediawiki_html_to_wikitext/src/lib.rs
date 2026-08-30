@@ -174,6 +174,7 @@ pub struct MediaReference {
     pub candidate_index: Option<usize>,
     pub descriptor: Option<String>,
     pub source_url: String,
+    pub source_name: String,
     pub alt: Option<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -474,7 +475,15 @@ fn validate_target_template_contract(target: &TargetProfile) -> Result<()> {
     }
     let image = allowed_template(target, &target.media_policy.image_template)
         .context("media image template is absent from allowed_templates")?;
-    for parameter in ["site", "sha256", "alt", "decorative", "width", "height"] {
+    for parameter in [
+        "site",
+        "sha256",
+        "filename",
+        "alt",
+        "decorative",
+        "width",
+        "height",
+    ] {
         ensure!(
             image.parameters.contains(parameter),
             "allowed media template is missing parameter {parameter}"
@@ -495,12 +504,16 @@ fn validate_target_template_contract(target: &TargetProfile) -> Result<()> {
             "transcript",
             "source1_sha256",
             "source1_type",
+            "source1_filename",
             "source2_sha256",
             "source2_type",
+            "source2_filename",
             "source3_sha256",
             "source3_type",
+            "source3_filename",
             "source4_sha256",
             "source4_type",
+            "source4_filename",
         ] {
             ensure!(
                 audio.parameters.contains(parameter),
@@ -792,6 +805,14 @@ fn convert_with_content_policy(
     input: HtmlToWikitextInput<'_>,
     content_policy: Option<&SourceContentPolicy>,
 ) -> Result<HtmlToWikitextOutput> {
+    for media in input.images.values() {
+        validate_media_reference(media)?;
+    }
+    if let Some(occurrences) = input.media_occurrences {
+        for media in occurrences {
+            validate_media_reference(media)?;
+        }
+    }
     let base_url = Url::parse(input.canonical_url).context("parse canonical article URL")?;
     let document = Html::parse_fragment(input.html);
     let drop_selectors = content_policy
@@ -1334,10 +1355,11 @@ impl Renderer<'_> {
             .strip_prefix("Template:")
             .unwrap_or(&self.input.media_policy.image_template);
         let mut invocation = format!(
-            "{{{{{}|site={}|sha256={}|alt={}",
+            "{{{{{}|site={}|sha256={}|filename={}|alt={}",
             template,
             escape_template_value(self.input.media_scope),
             media.sha256,
+            escape_template_value(&media.source_name),
             escape_template_value(alt)
         );
         if alt.trim().is_empty()
@@ -1433,10 +1455,12 @@ impl Renderer<'_> {
         for (index, (media, declared_type)) in sources.iter().enumerate() {
             let source_type = audio_source_type(declared_type.as_deref(), &media.content_type)?;
             invocation.push_str(&format!(
-                "|source{}_sha256={}|source{}_type={source_type}",
+                "|source{}_sha256={}|source{}_type={source_type}|source{}_filename={}",
                 index + 1,
                 media.sha256,
-                index + 1
+                index + 1,
+                index + 1,
+                escape_template_value(&media.source_name)
             ));
             self.used_media.insert(media.source_url.clone());
             self.coverage.archived_audio_locators += 1;
@@ -2002,6 +2026,22 @@ fn descriptor_score(value: &str, fallback: usize) -> Result<u64> {
     Ok((fallback + 1) as u64)
 }
 
+fn validate_media_reference(media: &MediaReference) -> Result<()> {
+    ensure!(
+        !media.source_name.is_empty() && media.source_name.trim() == media.source_name,
+        "media source_name must be nonempty and have no surrounding whitespace"
+    );
+    ensure!(
+        media.source_name.chars().count() <= 1024,
+        "media source_name exceeds 1024 characters"
+    );
+    ensure!(
+        !media.source_name.chars().any(char::is_control),
+        "media source_name contains a control character"
+    );
+    Ok(())
+}
+
 fn positive_dimension(value: Option<&str>) -> Option<u32> {
     value
         .and_then(|value| value.parse::<u32>().ok())
@@ -2246,14 +2286,7 @@ fn audio_source_type(declared: Option<&str>, captured: &str) -> Result<&'static 
 fn source_audio_label(sources: &[(MediaReference, Option<&str>)]) -> Result<String> {
     let filename = sources
         .iter()
-        .filter_map(|(media, _)| {
-            Url::parse(&media.source_url)
-                .ok()?
-                .path_segments()?
-                .next_back()
-                .filter(|segment| !segment.is_empty())
-                .map(|segment| percent_decode_str(segment).decode_utf8_lossy().into_owned())
-        })
+        .map(|(media, _)| media.source_name.clone())
         .min_by_key(String::len)
         .context("retained audio omitted both an accessible label and a source filename")?;
     let stem = filename
@@ -2355,6 +2388,7 @@ mod tests {
                 candidate_index: None,
                 descriptor: None,
                 source_url: source_url.clone(),
+                source_name: "example.png".to_string(),
                 alt: Some("Captured example".to_string()),
                 width: Some(320),
                 height: Some(200),
@@ -2384,9 +2418,37 @@ mod tests {
         assert!(
             output
                 .wikitext
-                .contains("|alt=Captured example|width=320|height=200}}")
+                .contains("|filename=example.png|alt=Captured example|width=320|height=200}}")
         );
         assert_eq!(output.used_media, BTreeSet::from([source_url]));
+    }
+
+    #[test]
+    fn media_source_names_are_explicit_bounded_evidence() {
+        let valid = MediaReference {
+            ordinal: None,
+            media_kind: Some("image".to_string()),
+            owner_element: None,
+            owner_ordinal: None,
+            element: None,
+            attribute: None,
+            candidate_index: None,
+            descriptor: None,
+            source_url: "https://source.example/media/example.png".to_string(),
+            source_name: "example.png".to_string(),
+            alt: None,
+            width: None,
+            height: None,
+            content_type: "image/png".to_string(),
+            sha256: "a".repeat(64),
+        };
+        validate_media_reference(&valid).expect("valid exact source filename");
+
+        for source_name in ["".to_string(), " example.png".to_string(), "a".repeat(1025)] {
+            let mut invalid = valid.clone();
+            invalid.source_name = source_name;
+            assert!(validate_media_reference(&invalid).is_err());
+        }
     }
 
     fn profiled_policies() -> (SourceProfile, TargetProfile) {
@@ -2448,6 +2510,7 @@ mod tests {
                         parameters: BTreeSet::from([
                             "site".to_string(),
                             "sha256".to_string(),
+                            "filename".to_string(),
                             "alt".to_string(),
                             "decorative".to_string(),
                             "width".to_string(),
@@ -2586,6 +2649,7 @@ mod tests {
                 candidate_index: None,
                 descriptor: None,
                 source_url,
+                source_name: "notice.png".to_string(),
                 alt: Some("Notice icon".to_string()),
                 width: Some(40),
                 height: Some(40),
@@ -2678,6 +2742,7 @@ mod tests {
                 candidate_index: None,
                 descriptor: None,
                 source_url: source_url.clone(),
+                source_name: "example.png".to_string(),
                 alt: Some("Foreign media".to_string()),
                 width: None,
                 height: None,

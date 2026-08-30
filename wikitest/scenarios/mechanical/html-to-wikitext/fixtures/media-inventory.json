@@ -1,5 +1,5 @@
 {
-  "schema": "mediawiki.media-reference-inventory.v1",
+  "schema": "mediawiki.media-reference-inventory.v2",
   "images": [],
   "media_occurrences": [
     {
@@ -12,6 +12,7 @@
       "candidate_index": null,
       "descriptor": null,
       "source_url": "https://fixture.example/media/Subject.png",
+      "source_name": "Subject.png",
       "alt": "Fixture subject",
       "width": 320,
       "height": 180,
@@ -28,6 +29,7 @@
       "candidate_index": null,
       "descriptor": null,
       "source_url": "https://fixture.example/media/Notice.png",
+      "source_name": "Notice.png",
       "alt": "",
       "width": 48,
       "height": 48,
@@ -44,6 +46,7 @@
       "candidate_index": 0,
       "descriptor": "audio/ogg",
       "source_url": "https://fixture.example/media/Source_Capture.ogg",
+      "source_name": "Source_Capture.ogg",
       "alt": null,
       "width": null,
       "height": null,

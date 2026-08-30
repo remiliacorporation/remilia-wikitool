@@ -25,7 +25,7 @@
       "id": "install-target-profile",
       "source": "fixtures/target-profile.json",
       "target": "profiles/target.json",
-      "sha256": "0592e788345022055956c0adf222e3e344882a434103ac34f56b6e103de2621f"
+      "sha256": "5d8f64ea6a8fe928cadf855bb652ba096805882df891dee8dcd908acec10aef1"
     },
     {
       "action": "copy",
@@ -39,7 +39,7 @@
       "id": "install-media-inventory",
       "source": "fixtures/media-inventory.json",
       "target": "evidence/media-inventory.json",
-      "sha256": "19c29c9c4770a9e5f163a70a5c022e1a3c3492c599ccd01bc4078bf35217ad68"
+      "sha256": "eb1fdceb82494ece20ef17880305e5b172cc28328bc945b00f1f78e40d433dd1"
     },
     {
       "action": "command",
@@ -75,8 +75,8 @@
           {"kind": "json_pointer_equals", "pointer": "/source_profile_id", "value": "fixture-rendered-html-v1"},
           {"kind": "json_pointer_equals", "pointer": "/target_profile_id", "value": "fixture-target-v1"},
           {"kind": "json_pointer_equals", "pointer": "/source_html_sha256", "value": "3099a859cec5250a22f7c284d9f528138692d83691ba6358ac218eb40aa6976c"},
-          {"kind": "json_pointer_equals", "pointer": "/media_inventory_sha256", "value": "19c29c9c4770a9e5f163a70a5c022e1a3c3492c599ccd01bc4078bf35217ad68"},
-          {"kind": "json_pointer_equals", "pointer": "/wikitext_sha256", "value": "cd958ae8f1f2a2738d04bdb239942962494f11daf3831fdc3349c67a4af0faf8"},
+          {"kind": "json_pointer_equals", "pointer": "/media_inventory_sha256", "value": "eb1fdceb82494ece20ef17880305e5b172cc28328bc945b00f1f78e40d433dd1"},
+          {"kind": "json_pointer_equals", "pointer": "/wikitext_sha256", "value": "ba8e9c15d07ae40093e2a4cf50f40a0374504d7836589e40600c634185055e07"},
           {"kind": "json_pointer_equals", "pointer": "/coverage/native_infoboxes", "value": 1},
           {"kind": "json_pointer_equals", "pointer": "/coverage/archived_audio_elements", "value": 1},
           {"kind": "json_pointer_equals", "pointer": "/coverage/discarded_style_elements", "value": 1},
@@ -93,7 +93,9 @@
           {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "| below = Source-authored context"},
           {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "{{Notice box"},
           {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "| image_content = {{Archive image"},
+          {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "|filename=Notice.png"},
           {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "|label=Source Capture"},
+          {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "|source1_filename=Source_Capture.ogg"},
           {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "Audio sample"},
           {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "Coverage"},
           {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "| type = Video game"}

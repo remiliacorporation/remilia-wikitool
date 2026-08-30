@@ -163,7 +163,7 @@ struct HtmlToWikitextJson<'a> {
 const MAX_HTML_INPUT_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_PROFILE_INPUT_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_MEDIA_INVENTORY_BYTES: u64 = 32 * 1024 * 1024;
-const MEDIA_INVENTORY_SCHEMA: &str = "mediawiki.media-reference-inventory.v1";
+const MEDIA_INVENTORY_SCHEMA: &str = "mediawiki.media-reference-inventory.v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum ImportSourceTypeArg {

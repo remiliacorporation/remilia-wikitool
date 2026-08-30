@@ -12,6 +12,10 @@ The release workflow extracts the section for the requested version and fails if
 
 - `mediawiki_wikitext` exposes revision-bound source parsing through strict `mediawiki.wikitext-source-profile.v1` and `mediawiki.wikitext-source-document.v1` contracts, verifies exact source bytes before parsing, and returns bounded templates, parameters, classified links, redirects, and protected literal regions for explicit non-overlapping rewrites; corpus acquisition, template expansion, site mappings, and transformation receipts remain caller-owned.
 
+### Changed
+
+- Media reference inventories are now `mediawiki.media-reference-inventory.v2`: every captured object carries its exact bounded source filename, and generated preservation image/audio invocations retain that readable provenance instead of exposing digest-only file links.
+
 ### Fixed
 
 - Template indexing now distinguishes nested triple-brace parameters from transclusions, preserves complete invocation spans, and omits dynamic parameter expressions from literal example values.

@@ -31,6 +31,7 @@
         "parameters": [
           "alt",
           "decorative",
+          "filename",
           "height",
           "sha256",
           "site",
@@ -43,12 +44,16 @@
           "label",
           "site",
           "source1_sha256",
+          "source1_filename",
           "source1_type",
           "source2_sha256",
+          "source2_filename",
           "source2_type",
           "source3_sha256",
+          "source3_filename",
           "source3_type",
           "source4_sha256",
+          "source4_filename",
           "source4_type",
           "transcript"
         ]
