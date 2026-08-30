@@ -34,6 +34,9 @@ fn exact_path_encodings(path: &Path) -> Result<BTreeSet<Vec<u8>>> {
     }
     for value in values.clone() {
         values.insert(value.replace('\\', "/"));
+        if is_windows_path_encoding(&value) {
+            values.insert(value.replace('/', "\\"));
+        }
     }
     let mut encodings = BTreeSet::new();
     for value in values {
@@ -42,6 +45,16 @@ fn exact_path_encodings(path: &Path) -> Result<BTreeSet<Vec<u8>>> {
         encodings.insert(json.as_bytes()[1..json.len() - 1].to_vec());
     }
     Ok(encodings)
+}
+
+fn is_windows_path_encoding(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    value.starts_with(r"\\")
+        || value.starts_with("//")
+        || (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\'))
 }
 
 fn replace_exact_bytes(bytes: &[u8], value: &[u8], replacement: &[u8]) -> Vec<u8> {
@@ -80,6 +93,27 @@ mod tests {
     fn unrelated_host_content_is_not_rewritten() {
         let root = PathBuf::from(r"C:\Users\Onno\AppData\Local\Temp\wikitest-run");
         let input = br#"source says C:\Users\Onno\Documents\notes.txt"#;
+        assert_eq!(
+            canonicalize_exact_paths(input, &[(root, "<ROOT>")]).expect("canonical"),
+            input
+        );
+    }
+
+    #[test]
+    fn joined_windows_paths_are_canonicalized_on_every_host() {
+        let root = PathBuf::from(r"\\?\C:\Users\Onno\AppData\Local\Temp\wikitest-run");
+        let config = root.join(".wikitool/config.toml");
+        let input = br#"plain=C:/Users/Onno/AppData/Local/Temp/wikitest-run/.wikitool/config.toml json=\\\\?\\C:\\Users\\Onno\\AppData\\Local\\Temp\\wikitest-run\\.wikitool\\config.toml slash=//?/C:/Users/Onno/AppData/Local/Temp/wikitest-run/.wikitool/config.toml"#;
+        let canonical =
+            canonicalize_exact_paths(input, &[(config, "<CONFIG>")]).expect("canonical");
+        let text = String::from_utf8(canonical).expect("utf8");
+        assert_eq!(text, "plain=<CONFIG> json=<CONFIG> slash=<CONFIG>");
+    }
+
+    #[test]
+    fn posix_paths_do_not_claim_unrelated_backslash_text() {
+        let root = PathBuf::from("/var/tmp/wikitest-run");
+        let input = br"literal=\var\tmp\wikitest-run";
         assert_eq!(
             canonicalize_exact_paths(input, &[(root, "<ROOT>")]).expect("canonical"),
             input

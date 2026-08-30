@@ -975,11 +975,19 @@ fn value_contains_external_path(value: &str) -> bool {
     if candidate.starts_with("http://") || candidate.starts_with("https://") {
         return false;
     }
-    let path = std::path::Path::new(candidate);
-    path.is_absolute()
-        || path
-            .components()
-            .any(|component| component == std::path::Component::ParentDir)
+    path_is_absolute_on_supported_host(candidate)
+        || candidate
+            .split(['/', '\\'])
+            .any(|component| component == "..")
+}
+
+fn path_is_absolute_on_supported_host(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    value.starts_with(['/', '\\'])
+        || (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\'))
 }
 
 fn bounded_timeout(value: u64, source: &str) -> Result<()> {
@@ -1138,7 +1146,14 @@ mod tests {
 
     #[test]
     fn host_mode_refuses_literal_absolute_and_parent_paths() {
-        for external in ["C:/outside/wiki.db", "../outside/wiki.db"] {
+        for external in [
+            "C:/outside/wiki.db",
+            r"C:\outside\wiki.db",
+            "/outside/wiki.db",
+            r"\\server\share\wiki.db",
+            "../outside/wiki.db",
+            r"..\outside\wiki.db",
+        ] {
             let mut value = scenario();
             value.environment = ScenarioEnvironment::HostReadOnly;
             let ScenarioStep::Command { argv, .. } = &mut value.steps[0] else {
@@ -1153,6 +1168,17 @@ mod tests {
             let error = value.validate().expect_err("external path must fail");
             assert!(error.to_string().contains("absolute paths"));
         }
+    }
+
+    #[test]
+    fn host_mode_path_isolation_does_not_misclassify_urls_or_titles() {
+        assert!(!value_contains_external_path(
+            "https://example.invalid/wiki/Foo"
+        ));
+        assert!(!value_contains_external_path("Category:Example"));
+        assert!(!value_contains_external_path(
+            "wiki_content/Main/Example.wiki"
+        ));
     }
 
     #[test]

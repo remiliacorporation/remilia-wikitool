@@ -17,6 +17,8 @@ WIKITOOL_MAINTAINER_RAW="${WIKITOOL_MAINTAINER:-}"
 TMP_BASE="${TMPDIR:-$SCRIPT_DIR/.tmp}"
 mkdir -p "$TMP_BASE"
 TMPDIR_ROOT=$(mktemp -d "$TMP_BASE/wikitool-test-XXXXXX")
+MOCK_MEDIAWIKI_PID=""
+MOCK_MEDIAWIKI_API_URL=""
 
 PASS=0
 FAIL=0
@@ -44,6 +46,12 @@ section() {
 }
 
 cleanup() {
+    if [ -n "$MOCK_MEDIAWIKI_PID" ]; then
+        if kill -0 "$MOCK_MEDIAWIKI_PID" > /dev/null 2>&1; then
+            kill "$MOCK_MEDIAWIKI_PID" > /dev/null 2>&1 || true
+        fi
+        wait "$MOCK_MEDIAWIKI_PID" > /dev/null 2>&1 || true
+    fi
     rm -rf "$TMPDIR_ROOT"
 }
 trap cleanup EXIT
@@ -133,6 +141,67 @@ setup_project() {
     echo "$dir"
 }
 
+resolve_python_cmd() {
+    local candidate
+    for candidate in python3 python; do
+        if command -v "$candidate" > /dev/null 2>&1 \
+            && "$candidate" -c 'import http.server' > /dev/null 2>&1; then
+            printf "%s" "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+start_mock_mediawiki() {
+    local python_cmd
+    python_cmd=$(resolve_python_cmd || true)
+    if [ -z "$python_cmd" ]; then
+        echo "ERROR: offline CLI compatibility requires Python 3 for its loopback MediaWiki fixture" >&2
+        exit 1
+    fi
+
+    local ready_file="$TMPDIR_ROOT/mock-mediawiki-api-url.txt"
+    "$python_cmd" "$FIXTURES/mock_mediawiki.py" --ready-file "$ready_file" &
+    MOCK_MEDIAWIKI_PID=$!
+
+    local attempt
+    for attempt in {1..100}; do
+        if [ -s "$ready_file" ]; then
+            MOCK_MEDIAWIKI_API_URL=$(tr -d '\r\n' < "$ready_file")
+            case "$MOCK_MEDIAWIKI_API_URL" in
+                http://127.0.0.1:*/api.php) return ;;
+                *)
+                    echo "ERROR: invalid loopback MediaWiki fixture URL: $MOCK_MEDIAWIKI_API_URL" >&2
+                    exit 1
+                    ;;
+            esac
+        fi
+        if ! kill -0 "$MOCK_MEDIAWIKI_PID" > /dev/null 2>&1; then
+            wait "$MOCK_MEDIAWIKI_PID" || true
+            echo "ERROR: loopback MediaWiki fixture exited before becoming ready" >&2
+            exit 1
+        fi
+        sleep 0.05
+    done
+
+    echo "ERROR: loopback MediaWiki fixture did not become ready" >&2
+    exit 1
+}
+
+write_offline_wiki_config() {
+    local root="$1"
+    local config="$root/.wikitool/config.toml"
+    if ! grep -q '^# api_url = "https://wiki.example.org/api.php"$' "$config"; then
+        echo "ERROR: materialized runtime config lacks the expected API URL placeholder: $config" >&2
+        exit 1
+    fi
+    sed -i.bak \
+        "s|# api_url = \"https://wiki.example.org/api.php\"|api_url = \"$MOCK_MEDIAWIKI_API_URL\"|" \
+        "$config"
+    rm -f "$config.bak"
+}
+
 write_site_adapter() {
     local root="$1"
     mkdir -p "$root/site-adapter"
@@ -175,6 +244,146 @@ release_pack_for_host() {
     if [ -n "$target" ] && [ -f "$pack_root/$target/manifest.json" ]; then
         printf "%s" "$pack_root/$target"
     fi
+}
+
+release_platform_for_host() {
+    if [ "${WIKITOOL_PATH_MODE:-posix}" = "windows" ]; then
+        printf "windows-x86_64"
+        return
+    fi
+    case "$(uname -s):$(uname -m)" in
+        Linux:x86_64) printf "linux-x86_64" ;;
+        Darwin:arm64) printf "macos-arm64" ;;
+        Darwin:x86_64) printf "macos-x86_64" ;;
+        *) return 1 ;;
+    esac
+}
+
+write_pinned_archive_receipt() {
+    local pins_path="$1"
+    local archive="$2"
+    local output="$3"
+    awk -v archive="$archive" \
+        'NF == 2 && $2 == archive { print; matches += 1 } END { if (matches != 1) exit 1 }' \
+        "$pins_path" > "$output"
+}
+
+write_release_fixture_packs() {
+    local root="$1"
+    local platform
+    platform=$(release_platform_for_host || true)
+    if [ -z "$platform" ]; then
+        echo "ERROR: unsupported host platform for companion release fixtures" >&2
+        exit 1
+    fi
+
+    local target archive_ext contextmink_binary papertiger_binary papertiger_mise_binary
+    case "$platform" in
+        windows-x86_64)
+            target="x86_64-pc-windows-msvc"
+            archive_ext="zip"
+            contextmink_binary="contextmink.exe"
+            papertiger_binary="papertiger.exe"
+            papertiger_mise_binary="papertiger-mise.exe"
+            ;;
+        linux-x86_64)
+            target="x86_64-unknown-linux-gnu"
+            archive_ext="tar.gz"
+            contextmink_binary="contextmink"
+            papertiger_binary="papertiger"
+            papertiger_mise_binary="papertiger-mise"
+            ;;
+        macos-x86_64)
+            target="x86_64-apple-darwin"
+            archive_ext="tar.gz"
+            contextmink_binary="contextmink"
+            papertiger_binary="papertiger"
+            papertiger_mise_binary="papertiger-mise"
+            ;;
+        macos-arm64)
+            target="aarch64-apple-darwin"
+            archive_ext="tar.gz"
+            contextmink_binary="contextmink"
+            papertiger_binary="papertiger"
+            papertiger_mise_binary="papertiger-mise"
+            ;;
+    esac
+
+    local contextmink_version contextmink_source_commit contextmink_archive contextmink_dir
+    contextmink_version=$(tr -d '[:space:]' < "$REPO_ROOT/config/contextmink.version")
+    contextmink_source_commit=$(tr -d '[:space:]' < "$REPO_ROOT/config/contextmink.source-commit")
+    contextmink_archive="contextmink-${contextmink_version}-${platform}.${archive_ext}"
+    contextmink_dir="$root/contextmink/$platform"
+    mkdir -p "$contextmink_dir"
+    printf 'offline release fixture\n' > "$contextmink_dir/$contextmink_binary"
+    chmod +x "$contextmink_dir/$contextmink_binary"
+    if [ "$platform" = "windows-x86_64" ]; then
+        printf 'offline release fixture\n' > "$contextmink_dir/contextmink-bridge.exe"
+        chmod +x "$contextmink_dir/contextmink-bridge.exe"
+        cat > "$contextmink_dir/manifest.json" << JSONEOF
+{
+  "schema": "contextmink.release-manifest.v1",
+  "name": "contextmink",
+  "version": "$contextmink_version",
+  "source_commit": "$contextmink_source_commit",
+  "target": "$target",
+  "platform": "$platform",
+  "binary": "$contextmink_binary",
+  "bridge_binary": "contextmink-bridge.exe",
+  "archive": "$contextmink_archive"
+}
+JSONEOF
+    else
+        cat > "$contextmink_dir/manifest.json" << JSONEOF
+{
+  "schema": "contextmink.release-manifest.v1",
+  "name": "contextmink",
+  "version": "$contextmink_version",
+  "source_commit": "$contextmink_source_commit",
+  "target": "$target",
+  "platform": "$platform",
+  "binary": "$contextmink_binary",
+  "archive": "$contextmink_archive"
+}
+JSONEOF
+    fi
+    write_pinned_archive_receipt \
+        "$REPO_ROOT/config/contextmink-sha256s.txt" \
+        "$contextmink_archive" \
+        "$contextmink_dir/archive.sha256"
+
+    local papertiger_version papertiger_source_commit papertiger_archive papertiger_dir required
+    papertiger_version=$(tr -d '[:space:]' < "$REPO_ROOT/config/papertiger.version")
+    papertiger_source_commit=$(tr -d '[:space:]' < "$REPO_ROOT/config/papertiger.source-commit")
+    papertiger_archive="papertiger-${papertiger_version}-${platform}.${archive_ext}"
+    papertiger_dir="$root/papertiger/$platform"
+    mkdir -p "$papertiger_dir"
+    printf 'offline release fixture\n' > "$papertiger_dir/$papertiger_binary"
+    printf 'offline release fixture\n' > "$papertiger_dir/$papertiger_mise_binary"
+    chmod +x "$papertiger_dir/$papertiger_binary" "$papertiger_dir/$papertiger_mise_binary"
+    for required in agent_integration.md README.md CHANGELOG.md MISE.md LICENSE LICENSE-SSL LICENSE-VPL; do
+        printf 'offline release fixture\n' > "$papertiger_dir/$required"
+    done
+    cat > "$papertiger_dir/manifest.json" << JSONEOF
+{
+  "schema": "papertiger.release-manifest.v1",
+  "name": "papertiger",
+  "version": "$papertiger_version",
+  "source_commit": "$papertiger_source_commit",
+  "target": "$target",
+  "platform": "$platform",
+  "archive": "$papertiger_archive",
+  "binaries": ["$papertiger_binary", "$papertiger_mise_binary"],
+  "planner_setup_installs_mise": false
+}
+JSONEOF
+    write_pinned_archive_receipt \
+        "$REPO_ROOT/config/papertiger-sha256s.txt" \
+        "$papertiger_archive" \
+        "$papertiger_dir/archive.sha256"
+
+    CONTEXTMINK_FIXTURE_DIST="$root/contextmink"
+    PAPERTIGER_FIXTURE_DIST="$root/papertiger"
 }
 
 write_live_env() {
@@ -237,6 +446,7 @@ WIKITOOL_CMD=()
 WIKITOOL_MAINTAINER_CMD=()
 WIKITOOL_PATH_MODE=""
 resolve_wikitool_cmd
+start_mock_mediawiki
 
 # --- banner ---
 echo "=== wikitool CLI regression tests ==="
@@ -281,6 +491,8 @@ fi
 section "diff"
 PROJ=$(setup_project diff)
 wt "$PROJ" init > /dev/null 2>&1
+write_offline_wiki_config "$PROJ"
+wt "$PROJ" pull --full --all > /dev/null 2>&1
 # Seed a wiki file
 mkdir -p "$PROJ/wiki_content/Main"
 cat > "$PROJ/wiki_content/Main/Test_Page.wiki" << 'WIKIEOF'
@@ -305,6 +517,8 @@ fi
 section "status"
 PROJ=$(setup_project status)
 wt "$PROJ" init > /dev/null 2>&1
+write_offline_wiki_config "$PROJ"
+wt "$PROJ" pull --full --all > /dev/null 2>&1
 OUTPUT=$(wt "$PROJ" status 2>&1 || true)
 if echo "$OUTPUT" | grep -q "project_root:" && echo "$OUTPUT" | grep -q "wiki_content_exists:"; then
     pass "status shows expected fields"
@@ -370,6 +584,7 @@ fi
 section "template dependency closure"
 TEMPLATE_PROJ=$(setup_project template-closure)
 wt "$TEMPLATE_PROJ" init > /dev/null 2>&1
+write_offline_wiki_config "$TEMPLATE_PROJ"
 mkdir -p "$TEMPLATE_PROJ/templates/core"
 cat > "$TEMPLATE_PROJ/templates/core/Template_Root.wiki" << 'WIKIEOF'
 <includeonly>{{Helper}}{{#invoke:Root|main}}</includeonly><noinclude>{{Documentation only}}</noinclude>
@@ -384,12 +599,13 @@ LUAEOF
 cat > "$TEMPLATE_PROJ/templates/core/Module_Arguments.lua" << 'LUAEOF'
 return {}
 LUAEOF
+wt "$TEMPLATE_PROJ" wiki capabilities sync > /dev/null 2>&1
 wt "$TEMPLATE_PROJ" templates catalog build > /dev/null 2>&1
 OUTPUT=$(wt "$TEMPLATE_PROJ" templates closure "Template:Root" --output .wikitool/template-closure.json --format json 2>&1 || true)
-if echo "$OUTPUT" | grep -q '"schema": "template_dependency_closure_write_v1"' \
+if echo "$OUTPUT" | grep -q '"schema": "template_dependency_closure_write_v2"' \
     && echo "$OUTPUT" | grep -q '"template_count": 2' \
     && echo "$OUTPUT" | grep -q '"module_count": 2' \
-    && grep -q '"schema_version": "template_dependency_closure_v1"' "$TEMPLATE_PROJ/.wikitool/template-closure.json" \
+    && grep -q '"schema_version": "template_dependency_closure_v2"' "$TEMPLATE_PROJ/.wikitool/template-closure.json" \
     && ! grep -q 'Template:Documentation only' "$TEMPLATE_PROJ/.wikitool/template-closure.json"; then
     pass "templates closure exports a transitive runtime-only dependency artifact"
 else
@@ -809,11 +1025,16 @@ fi
 
 # --- delete plan ---
 section "delete plan"
-# Create a file, plan deletion without --apply, and verify it still exists.
-mkdir -p "$PROJ/wiki_content/Main"
-echo "test content" > "$PROJ/wiki_content/Main/Delete_Test.wiki"
-OUTPUT=$(wt "$PROJ" delete "Delete Test" --reason "test plan" --format json 2>&1 || true)
-if [ -f "$PROJ/wiki_content/Main/Delete_Test.wiki" ] && echo "$OUTPUT" | grep -q '"mode": "plan"'; then
+# Establish an exact remote baseline and verify that the default delete plan
+# observes the fixture page without mutating local or remote authority.
+DELETE_PROJ=$(setup_project delete-plan)
+wt "$DELETE_PROJ" init --templates > /dev/null 2>&1
+write_offline_wiki_config "$DELETE_PROJ"
+wt "$DELETE_PROJ" pull --full --all > /dev/null 2>&1
+OUTPUT=$(wt "$DELETE_PROJ" delete "Delete Test" --reason "test plan" --format json 2>&1 || true)
+if [ -f "$DELETE_PROJ/wiki_content/Main/Delete_Test.wiki" ] \
+    && echo "$OUTPUT" | grep -q '"mode": "plan"' \
+    && echo "$OUTPUT" | grep -q '"observed_state": "present"'; then
     pass "delete defaults to a non-mutating plan"
 else
     fail "delete defaults to a non-mutating plan (got: $OUTPUT)"
@@ -968,7 +1189,13 @@ if ! has_maintainer_surface; then
     skip "release package stages a distributable bundle (no maintainer command configured)"
 elif [ -n "$LOCAL_BINARY" ]; then
     RELEASE_OUT="$TMPDIR_ROOT/release-package"
-    OUTPUT=$(wt_maintainer "$PROJ" release package --repo-root "$REPO_ROOT" --binary-path "$LOCAL_BINARY" --output-dir "$RELEASE_OUT" 2>&1 || true)
+    write_release_fixture_packs "$TMPDIR_ROOT/release-companion-fixtures"
+    OUTPUT=$(wt_maintainer "$PROJ" release package \
+        --repo-root "$REPO_ROOT" \
+        --binary-path "$LOCAL_BINARY" \
+        --output-dir "$RELEASE_OUT" \
+        --contextmink-dist "$CONTEXTMINK_FIXTURE_DIST" \
+        --papertiger-dist "$PAPERTIGER_FIXTURE_DIST" 2>&1 || true)
     if [ -f "$RELEASE_OUT/CLAUDE.md" ] && [ -f "$RELEASE_OUT/README.md" ] \
         && [ -d "$RELEASE_OUT/codex_skills" ] && [ -d "$RELEASE_OUT/integration" ] \
         && [ -f "$RELEASE_OUT/site_adapter/generic.toml" ] && [ ! -e "$RELEASE_OUT/SETUP.md" ] \
@@ -977,10 +1204,14 @@ elif [ -n "$LOCAL_BINARY" ]; then
         && [ -f "$RELEASE_OUT/codex_skills/wiki-interview/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/codex_skills/wikitool-operator/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/release-companions.json" ] \
+        && grep -q '"schema": "contextmink.release-manifest.v1"' "$RELEASE_OUT/contextmink/manifest.json" \
+        && grep -q '"source_commit":' "$RELEASE_OUT/contextmink/manifest.json" \
         && { [ -f "$RELEASE_OUT/papertiger/papertiger" ] || [ -f "$RELEASE_OUT/papertiger/papertiger.exe" ]; } \
         && { [ -f "$RELEASE_OUT/papertiger/papertiger-mise" ] || [ -f "$RELEASE_OUT/papertiger/papertiger-mise.exe" ]; } \
         && [ -f "$RELEASE_OUT/papertiger/agent_integration.md" ] \
         && [ -f "$RELEASE_OUT/papertiger/archive.sha256" ] \
+        && grep -q '"schema": "papertiger.release-manifest.v1"' "$RELEASE_OUT/papertiger/manifest.json" \
+        && grep -q '"source_commit":' "$RELEASE_OUT/papertiger/manifest.json" \
         && [ ! -e "$RELEASE_OUT/writing_context" ] \
         && { [ -f "$RELEASE_OUT/wikitool" ] || [ -f "$RELEASE_OUT/wikitool.exe" ]; }; then
         pass "release package stages a distributable bundle"

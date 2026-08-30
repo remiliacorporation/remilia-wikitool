@@ -145,7 +145,7 @@ fn search_page_hits_fts(
          FROM docs_pages_fts
          JOIN docs_pages p ON p.rowid = docs_pages_fts.rowid
          JOIN docs_corpora c ON c.corpus_id = p.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND (?2 = '' OR lower(c.corpus_kind) = lower(?2))
            AND docs_pages_fts MATCH ?3
          ORDER BY bm25(docs_pages_fts, 8.0, 6.0, 2.0, 1.5, 1.0) ASC, p.page_title ASC
@@ -243,7 +243,7 @@ fn search_page_hits_like(
                 p.page_title, p.title_aliases, p.summary_text, p.normalized_content, p.semantic_text
          FROM docs_pages p
          JOIN docs_corpora c ON c.corpus_id = p.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND (?2 = '' OR lower(c.corpus_kind) = lower(?2))
            AND (
                 lower(p.page_title) LIKE ?3
@@ -363,7 +363,7 @@ fn search_section_hits_fts(
          FROM docs_sections_fts
          JOIN docs_sections s ON s.rowid = docs_sections_fts.rowid
          JOIN docs_corpora c ON c.corpus_id = s.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND (?2 = '' OR lower(c.corpus_kind) = lower(?2))
            AND docs_sections_fts MATCH ?3
          ORDER BY bm25(docs_sections_fts, 7.0, 7.0, 2.0, 1.0, 1.0) ASC, s.page_title ASC, s.section_index ASC
@@ -456,7 +456,7 @@ fn search_section_hits_like(
                 s.page_title, s.section_heading, s.summary_text, s.section_text, s.semantic_text
          FROM docs_sections s
          JOIN docs_corpora c ON c.corpus_id = s.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND (?2 = '' OR lower(c.corpus_kind) = lower(?2))
            AND (
                 lower(COALESCE(s.section_heading, '')) LIKE ?3
@@ -587,7 +587,7 @@ fn search_symbol_hits_fts(
          FROM docs_symbols_fts
          JOIN docs_symbols s ON s.rowid = docs_symbols_fts.rowid
          JOIN docs_corpora c ON c.corpus_id = s.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND (?2 = '' OR lower(c.corpus_kind) = lower(?2))
            AND (?3 = '' OR lower(s.symbol_kind) = lower(?3))
            AND docs_symbols_fts MATCH ?4
@@ -703,7 +703,7 @@ fn search_symbol_hits_like(
                 s.normalized_symbol_key
          FROM docs_symbols s
          JOIN docs_corpora c ON c.corpus_id = s.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND (?2 = '' OR lower(c.corpus_kind) = lower(?2))
            AND (?3 = '' OR lower(s.symbol_kind) = lower(?3))
            AND (

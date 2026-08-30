@@ -429,6 +429,9 @@ wikitool lsp info
 Catalog and docs commands default to the configured site adapter's `docs_profile`.
 An explicit `--docs-profile`, docs profile argument, or `--profile` wins; projects
 without an adapter use `mw-1.44-authoring`.
+Schema-v1 precomposed docs bundles are intentionally unprofiled. Their generic
+corpora remain available alongside any selected docs profile, while corpora with
+different non-empty profiles remain isolated from one another.
 
 ```bash
 wikitool docs import-profile

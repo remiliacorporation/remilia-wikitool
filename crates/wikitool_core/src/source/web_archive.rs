@@ -493,14 +493,13 @@ fn read_quoted_or_bare(bytes: &[u8], cursor: &mut usize) -> String {
     }
     let quote = bytes[*cursor];
     let start;
-    let end;
-    if quote == b'"' || quote == b'\'' {
+    let end = if quote == b'"' || quote == b'\'' {
         *cursor += 1;
         start = *cursor;
         while *cursor < bytes.len() && bytes[*cursor] != quote {
             *cursor += 1;
         }
-        end = *cursor;
+        *cursor
     } else {
         start = *cursor;
         while *cursor < bytes.len()
@@ -509,8 +508,8 @@ fn read_quoted_or_bare(bytes: &[u8], cursor: &mut usize) -> String {
         {
             *cursor += 1;
         }
-        end = *cursor;
-    }
+        *cursor
+    };
     String::from_utf8_lossy(&bytes[start..end]).to_string()
 }
 

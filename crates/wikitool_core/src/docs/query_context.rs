@@ -194,7 +194,7 @@ fn load_context_sections_fts(
          FROM docs_sections_fts
          JOIN docs_sections s ON s.rowid = docs_sections_fts.rowid
          JOIN docs_corpora c ON c.corpus_id = s.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND docs_sections_fts MATCH ?2
          ORDER BY bm25(docs_sections_fts, 7.0, 7.0, 2.0, 1.0, 1.0) ASC, s.page_title ASC, s.section_index ASC
          LIMIT ?3",
@@ -276,7 +276,7 @@ fn load_context_sections_like(
                 s.token_estimate, s.semantic_text
          FROM docs_sections s
          JOIN docs_corpora c ON c.corpus_id = s.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND (
                 lower(COALESCE(s.section_heading, '')) LIKE ?2
              OR lower(s.summary_text) LIKE ?2
@@ -379,7 +379,7 @@ fn load_context_examples_fts(
          FROM docs_examples_fts
          JOIN docs_examples e ON e.rowid = docs_examples_fts.rowid
          JOIN docs_corpora c ON c.corpus_id = e.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND docs_examples_fts MATCH ?2
          ORDER BY bm25(docs_examples_fts, 5.0, 5.0, 2.0, 4.0, 2.0, 1.0, 1.0) ASC,
                   e.page_title ASC,
@@ -472,7 +472,7 @@ fn load_context_examples_like(
                 e.summary_text, e.example_text, e.token_estimate, e.retrieval_text
          FROM docs_examples e
          JOIN docs_corpora c ON c.corpus_id = e.corpus_id
-         WHERE (?1 = '' OR lower(c.source_profile) = lower(?1))
+         WHERE (?1 = '' OR c.source_profile = '' OR lower(c.source_profile) = lower(?1))
            AND (
                 lower(COALESCE(e.section_heading, '')) LIKE ?2
              OR lower(e.language_hint) LIKE ?2

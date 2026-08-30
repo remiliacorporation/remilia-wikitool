@@ -15,6 +15,11 @@ The release workflow extracts the section for the requested version and fails if
 ### Fixed
 
 - Template indexing now distinguishes nested triple-brace parameters from transclusions, preserves complete invocation spans, and omits dynamic parameter expressions from literal example values.
+- Wikitest host-read-only isolation now rejects Windows and POSIX absolute or parent-traversal paths consistently on every host, and retained evidence canonicalizes mixed-separator Windows paths without rewriting unrelated POSIX text.
+- Prose dogfood assignments now bind the exact packaged `wiki-writing` skill bytes, restoring deterministic packet preparation.
+- Web-archive attribute scanning now uses expression-scoped value bounds accepted by current stable Rust without changing quoted or bare attribute extraction.
+- Docs imported from schema-v1 precomposed bundles remain searchable as a generic layer under any configured docs profile, while corpora assigned to different non-empty profiles remain isolated.
+- The offline CLI compatibility gate now supplies a loopback MediaWiki authority and repository-pin-bound companion fixtures, so sync, capability, and release-package coverage stays network-independent and cannot accidentally validate stale locally staged packs.
 
 ## [0.7.1] - 2026-08-29
 

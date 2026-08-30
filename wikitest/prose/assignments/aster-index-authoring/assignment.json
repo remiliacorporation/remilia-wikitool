@@ -20,7 +20,7 @@
     "sensitive": false
   },
   "author_instructions": [
-    {"id": "wiki-writing", "root": "repository", "locator": "ai-pack/codex_skills/wiki-writing/SKILL.md", "sha256": "2a30400d83c4beff4905c2007b895eb431f163b11aeb4886bd7d29835355eca9"},
+    {"id": "wiki-writing", "root": "repository", "locator": "ai-pack/codex_skills/wiki-writing/SKILL.md", "sha256": "92556bf31cffa13eca76cfdcfe29cbae9d082f541f02eb4a47375886c9fe6d7d"},
     {"id": "evidence-to-prose", "root": "repository", "locator": "ai-pack/codex_skills/wiki-writing/references/evidence-to-prose.md", "sha256": "2106c5cb8c6503460fc94aea54c94466ddac422d4826f17a7d7bcc37cc017085"},
     {"id": "mediawiki-structure", "root": "repository", "locator": "ai-pack/codex_skills/wiki-writing/references/mediawiki-structure.md", "sha256": "54e1bdb0215c725688e41ed31270da7c5dfa89807ca4a5676aed22beca9c1653"}
   ],
