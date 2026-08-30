@@ -22,7 +22,7 @@ const SITE_ADAPTER_SCHEMA_VERSION: &str = "site_adapter_v2";
 const MEDIAWIKI_GENERIC_ADAPTER_ID: &str = "mediawiki-generic";
 const EMBEDDED_GENERIC_ADAPTER_PATH: &str = "<embedded:mediawiki-generic>";
 const EMBEDDED_GENERIC_ADAPTER: &str =
-    include_str!("../../../../../config/generic-site-adapter.toml");
+    include_str!("../../../../../site_adapters/generic/site-adapter.toml");
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
-use wikitool_core::site::site_adapter_resource_paths;
+use wikitool_core::site::{
+    parse_template_engineering_contract, render_template_scaffold, site_adapter_resource_paths,
+};
 
 use crate::cli_support::{
     copy_dir_recursive, copy_file, format_flag, is_markdown_file, normalize_path, reset_directory,
@@ -12,6 +14,19 @@ use crate::cli_support::{
 
 use super::ReleaseBuildAiPackArgs;
 
+const REMILIA_TEMPLATE_CONTRACT_RESOURCES: &[&str] = &[
+    "template_contracts/README.md",
+    "template_contracts/ambox.json",
+    "template_contracts/claim-status.json",
+    "template_contracts/infobox-subject.json",
+    "template_contracts/preservation-audio.json",
+    "template_contracts/preservation-image.json",
+    "template_contracts/section-notice.json",
+    "template_contracts/table-cell-status.json",
+    "template_contracts/version-label.json",
+    "template_contracts/version-range.json",
+];
+
 #[derive(Debug)]
 pub(super) struct AiPackBuildResult {
     pub(super) output_dir: PathBuf,
@@ -19,6 +34,7 @@ pub(super) struct AiPackBuildResult {
     claude_skills_included: bool,
     integration_included: bool,
     generic_site_adapter_included: bool,
+    remilia_site_adapter_included: bool,
     host_site_adapter_included: bool,
     codex_skills_included: bool,
     docs_bundle_included: bool,
@@ -58,6 +74,10 @@ pub(super) fn print_ai_pack_build_flags(result: &AiPackBuildResult) {
         format_flag(result.generic_site_adapter_included)
     );
     println!(
+        "remilia_site_adapter_included: {}",
+        format_flag(result.remilia_site_adapter_included)
+    );
+    println!(
         "host_site_adapter_included: {}",
         format_flag(result.host_site_adapter_included)
     );
@@ -86,6 +106,7 @@ pub(super) fn build_ai_pack(
         claude_skills_included: false,
         integration_included: false,
         generic_site_adapter_included: false,
+        remilia_site_adapter_included: false,
         host_site_adapter_included: false,
         codex_skills_included: false,
         docs_bundle_included: false,
@@ -191,18 +212,43 @@ fn copy_integration_and_site_adapter(
     }
     result.integration_included = true;
 
-    let generic_adapter = repo_root.join("config/generic-site-adapter.toml");
-    require_file(&generic_adapter, "missing generic site-adapter example")?;
-    let generic_resources = site_adapter_resource_paths(&generic_adapter)
-        .context("generic site-adapter example is invalid")?;
+    let generic_adapter = repo_root.join("site_adapters/generic");
+    let generic_policy = generic_adapter.join("site-adapter.toml");
+    require_dir(&generic_adapter, "missing generic site-adapter template")?;
+    let generic_resources = site_adapter_resource_paths(&generic_policy)
+        .context("generic site-adapter template is invalid")?;
     if generic_resources.len() != 1 {
-        bail!("generic site-adapter example must be self-contained");
+        bail!("generic site-adapter template must be self-contained");
     }
-    copy_file(
+    copy_adapter_resources(
         &generic_adapter,
-        &output_dir.join("site_adapter/generic.toml"),
+        &output_dir.join("site_adapters/generic"),
+        &generic_resources,
     )?;
     result.generic_site_adapter_included = true;
+
+    let remilia_adapter = repo_root.join("site_adapters/remilia-wiki");
+    let remilia_policy = remilia_adapter.join("site-adapter.toml");
+    require_dir(
+        &remilia_adapter,
+        "missing bundled Remilia Wiki site adapter",
+    )?;
+    let remilia_resources = site_adapter_resource_paths(&remilia_policy)
+        .context("bundled Remilia Wiki site adapter is invalid")?;
+    let remilia_destination = output_dir.join("site_adapters/remilia-wiki");
+    copy_adapter_resources(&remilia_adapter, &remilia_destination, &remilia_resources)?;
+    for relative in REMILIA_TEMPLATE_CONTRACT_RESOURCES {
+        let source = remilia_adapter.join(relative);
+        require_file(&source, "missing bundled Remilia Wiki template contract")?;
+        if source
+            .extension()
+            .is_some_and(|extension| extension == "json")
+        {
+            validate_bundled_template_contract(&source)?;
+        }
+        copy_file(&source, &remilia_destination.join(relative))?;
+    }
+    result.remilia_site_adapter_included = true;
 
     let Some(host_root) = host_root else {
         return Ok(());
@@ -221,17 +267,44 @@ fn copy_integration_and_site_adapter(
     }
     let resources =
         site_adapter_resource_paths(&policy).context("host project site adapter is invalid")?;
-    let destination = output_dir.join("site_adapter/project");
+    let destination = output_dir.join("site_adapters/project");
+    copy_adapter_resources(&host_adapter, &destination, &resources)?;
+    result.host_site_adapter_included = true;
+    Ok(())
+}
+
+fn copy_adapter_resources(root: &Path, destination: &Path, resources: &[PathBuf]) -> Result<()> {
     for source in resources {
-        let relative = source.strip_prefix(&host_adapter).with_context(|| {
+        let relative = source.strip_prefix(root).with_context(|| {
             format!(
                 "declared site-adapter resource escaped {}",
-                normalize_path(&host_adapter)
+                normalize_path(root)
             )
         })?;
-        copy_file(&source, &destination.join(relative))?;
+        copy_file(source, &destination.join(relative))?;
     }
-    result.host_site_adapter_included = true;
+    Ok(())
+}
+
+fn validate_bundled_template_contract(path: &Path) -> Result<()> {
+    let content = fs::read_to_string(path).with_context(|| {
+        format!(
+            "failed to read bundled template contract {} as UTF-8",
+            normalize_path(path)
+        )
+    })?;
+    let contract = parse_template_engineering_contract(&content).with_context(|| {
+        format!(
+            "bundled template contract is invalid: {}",
+            normalize_path(path)
+        )
+    })?;
+    render_template_scaffold(&contract).with_context(|| {
+        format!(
+            "bundled template contract is invalid: {}",
+            normalize_path(path)
+        )
+    })?;
     Ok(())
 }
 
@@ -275,12 +348,13 @@ fn write_ai_pack_manifest(result: &AiPackBuildResult) -> Result<()> {
         .unwrap_or_default()
         .as_secs();
     let manifest = serde_json::json!({
-        "schema_version": 2,
+        "schema_version": 3,
         "generated_at_unix": now_unix,
         "claude_rules_included": result.claude_rules_included,
         "claude_skills_included": result.claude_skills_included,
         "integration_included": result.integration_included,
         "generic_site_adapter_included": result.generic_site_adapter_included,
+        "remilia_site_adapter_included": result.remilia_site_adapter_included,
         "host_site_adapter_included": result.host_site_adapter_included,
         "codex_skills_included": result.codex_skills_included,
         "docs_bundle_included": result.docs_bundle_included,
@@ -312,9 +386,25 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::build_ai_pack;
+    use super::{REMILIA_TEMPLATE_CONTRACT_RESOURCES, build_ai_pack};
 
-    const VALID_ADAPTER: &str = include_str!("../../../../config/generic-site-adapter.toml");
+    const VALID_ADAPTER: &str = include_str!("../../../../site_adapters/generic/site-adapter.toml");
+    const REMILIA_ADAPTER: &str =
+        include_str!("../../../../site_adapters/remilia-wiki/site-adapter.toml");
+    const VALID_TEMPLATE_CONTRACT: &str = r#"{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Example",
+  "description": "Release builder test fixture.",
+  "implementation": {
+    "body_wikitext": "Example",
+    "template_dependencies": [],
+    "module_dependencies": []
+  },
+  "parameters": [],
+  "examples": [],
+  "render_fixtures": []
+}
+"#;
 
     struct TestDir {
         path: PathBuf,
@@ -363,9 +453,47 @@ mod tests {
             "# Integration\n",
         );
         write_file(
-            &root.join("config/generic-site-adapter.toml"),
+            &root.join("site_adapters/generic/site-adapter.toml"),
             VALID_ADAPTER,
         );
+        write_file(
+            &root.join("site_adapters/remilia-wiki/site-adapter.toml"),
+            REMILIA_ADAPTER,
+        );
+        for (name, contents) in [
+            (
+                "editorial.md",
+                include_str!("../../../../site_adapters/remilia-wiki/editorial.md"),
+            ),
+            (
+                "extensions.md",
+                include_str!("../../../../site_adapters/remilia-wiki/extensions.md"),
+            ),
+            (
+                "templates.md",
+                include_str!("../../../../site_adapters/remilia-wiki/templates.md"),
+            ),
+            (
+                "visual_subjects.md",
+                include_str!("../../../../site_adapters/remilia-wiki/visual_subjects.md"),
+            ),
+        ] {
+            write_file(
+                &root.join("site_adapters/remilia-wiki").join(name),
+                contents,
+            );
+        }
+        for relative in REMILIA_TEMPLATE_CONTRACT_RESOURCES {
+            let contents = if relative.ends_with(".json") {
+                VALID_TEMPLATE_CONTRACT
+            } else {
+                "# Reviewed template contracts\n"
+            };
+            write_file(
+                &root.join("site_adapters/remilia-wiki").join(relative),
+                contents,
+            );
+        }
         write_file(
             &root.join("ai-pack/.claude/rules/wiki-style.md"),
             "# Rule\n",
@@ -397,6 +525,14 @@ mod tests {
             &host_root.join("wikitool_adapter/site-adapter.toml"),
             VALID_ADAPTER,
         );
+        write_file(
+            &repo_root.join("site_adapters/generic/private-notes.md"),
+            "must not ship\n",
+        );
+        write_file(
+            &repo_root.join("site_adapters/remilia-wiki/private-notes.md"),
+            "must not ship\n",
+        );
 
         build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
 
@@ -412,11 +548,35 @@ mod tests {
         assert!(!output_dir.join(".claude/skills/wt.md").exists());
         assert!(!output_dir.join("SETUP.md").exists());
         assert!(output_dir.join("integration").is_dir());
-        assert!(output_dir.join("site_adapter/generic.toml").is_file());
         assert!(
             output_dir
-                .join("site_adapter/project/site-adapter.toml")
+                .join("site_adapters/generic/site-adapter.toml")
                 .is_file()
+        );
+        assert!(
+            output_dir
+                .join("site_adapters/remilia-wiki/site-adapter.toml")
+                .is_file()
+        );
+        assert!(
+            output_dir
+                .join("site_adapters/remilia-wiki/template_contracts/README.md")
+                .is_file()
+        );
+        assert!(
+            output_dir
+                .join("site_adapters/project/site-adapter.toml")
+                .is_file()
+        );
+        assert!(
+            !output_dir
+                .join("site_adapters/generic/private-notes.md")
+                .exists()
+        );
+        assert!(
+            !output_dir
+                .join("site_adapters/remilia-wiki/private-notes.md")
+                .exists()
         );
         assert!(!output_dir.join("WIKITOOL_CLAUDE.md").exists());
     }
@@ -433,6 +593,45 @@ mod tests {
         let error = build_ai_pack(&repo_root, &output_dir, Some(&host_root))
             .expect_err("explicit host without adapter must fail");
         assert!(error.to_string().contains("wikitool_adapter directory"));
+    }
+
+    #[test]
+    fn build_ai_pack_rejects_missing_bundled_remilia_adapter() {
+        let temp = TestDir::new("missing-remilia-adapter");
+        let repo_root = temp.path.join("repo");
+        let output_dir = temp.path.join("out");
+        create_repo(&repo_root);
+        fs::remove_dir_all(repo_root.join("site_adapters/remilia-wiki"))
+            .expect("remove bundled Remilia Wiki adapter fixture");
+
+        let error = build_ai_pack(&repo_root, &output_dir, None)
+            .expect_err("missing bundled Remilia Wiki adapter must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("missing bundled Remilia Wiki site adapter")
+        );
+    }
+
+    #[test]
+    fn build_ai_pack_rejects_invalid_bundled_template_contract() {
+        let temp = TestDir::new("invalid-template-contract");
+        let repo_root = temp.path.join("repo");
+        let output_dir = temp.path.join("out");
+        create_repo(&repo_root);
+        write_file(
+            &repo_root.join("site_adapters/remilia-wiki/template_contracts/ambox.json"),
+            &VALID_TEMPLATE_CONTRACT.replace(
+                "template_engineering_contract_v1",
+                "template_engineering_contract_v0",
+            ),
+        );
+
+        let error = build_ai_pack(&repo_root, &output_dir, None)
+            .expect_err("invalid bundled template contract must fail closed");
+        let chain = format!("{error:#}");
+        assert!(chain.contains("bundled template contract is invalid"));
+        assert!(chain.contains("unsupported_schema"));
     }
 
     #[test]
@@ -462,12 +661,12 @@ mod tests {
         build_ai_pack(&repo_root, &output_dir, Some(&host_root)).expect("build ai pack");
 
         assert_eq!(
-            fs::read_to_string(output_dir.join("site_adapter/project/editorial.md"))
+            fs::read_to_string(output_dir.join("site_adapters/project/editorial.md"))
                 .expect("read host supplement"),
             "# Host supplement\n"
         );
         assert_eq!(
-            fs::read_to_string(output_dir.join("site_adapter/project/site-adapter.toml"))
+            fs::read_to_string(output_dir.join("site_adapters/project/site-adapter.toml"))
                 .expect("read host policy"),
             VALID_ADAPTER.replace(
                 "guidance_documents = []",
@@ -476,11 +675,23 @@ mod tests {
         );
         assert!(
             !output_dir
-                .join("site_adapter/project/private-notes.md")
+                .join("site_adapters/project/private-notes.md")
                 .exists()
         );
-        assert!(output_dir.join("site_adapter/generic.toml").is_file());
+        assert!(
+            output_dir
+                .join("site_adapters/generic/site-adapter.toml")
+                .is_file()
+        );
+        assert!(
+            output_dir
+                .join("site_adapters/remilia-wiki/site-adapter.toml")
+                .is_file()
+        );
         let manifest = fs::read_to_string(output_dir.join("manifest.json")).expect("read manifest");
+        assert!(manifest.contains("\"schema_version\": 3"));
+        assert!(manifest.contains("\"generic_site_adapter_included\": true"));
+        assert!(manifest.contains("\"remilia_site_adapter_included\": true"));
         assert!(
             manifest.contains("\"host_site_adapter_included\": true"),
             "manifest must record the host site adapter supplement"

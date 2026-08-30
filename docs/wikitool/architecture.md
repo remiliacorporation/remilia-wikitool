@@ -284,13 +284,15 @@ and passes any held-out oracle.
 
 ## Release boundary
 
-Release archives contain a target-neutral AI pack, generic adapter example, and canonical skills.
+Release archives contain a target-neutral AI pack, canonical skills, and a versioned built-in
+adapter catalog with generic and Remilia Wiki templates. Catalog presence is inert: only a
+project-relative `[adapter].path` selects policy, and no bundled adapter supplies an endpoint.
 Receipt inspection replays deterministic observations and capability-to-step bindings. It reports
 the self-contained artifact set as unanchored rather than claiming authenticity; release evidence
 needs an independently published immutable digest or signature.
 
 `--host-project-root` is explicit and accepts only the typed `wikitool_adapter/site-adapter.toml` plus
-the guidance files it declares as a supplement under `site_adapter/project/`; undeclared neighbor
+the guidance files it declares as a supplement under `site_adapters/project/`; undeclared neighbor
 files are not shipped. The supplement never replaces public `CLAUDE.md`, `AGENTS.md`, rules,
 wrappers, or skills. Unknown, malformed, traversing, or incomplete host adapter state fails
 packaging.

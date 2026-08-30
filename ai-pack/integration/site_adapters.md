@@ -1,16 +1,19 @@
 # Site adapters
 
-A site adapter is an explicit project-owned TOML file. Validate and select it during initialization:
+A site adapter is an explicit project-relative TOML file. Release archives include generic and
+Remilia Wiki templates under `site_adapters/`, but catalog presence does not activate one. Copy a
+template into the project, then validate and select it during initialization:
 
 ```bash
-wikitool init --adapter-path wikitool_adapter/site-adapter.toml
+cp -R /path/to/unpacked-wikitool/site_adapters/remilia-wiki site-adapter
+wikitool init --adapter-path site-adapter/site-adapter.toml
 ```
 
 This records the following in `.wikitool/config.toml`:
 
 ```toml
 [adapter]
-path = "wikitool_adapter/site-adapter.toml"
+path = "site-adapter/site-adapter.toml"
 ```
 
 The configured path must be project-relative, and its canonical target must remain under the
@@ -52,10 +55,11 @@ never parses it as executable policy.
 
 Source-review rules are routing signals, not universal bans. Their reasons should tell the review skill what to inspect. Semantic exceptions stay in review findings rather than being hidden in substring logic.
 
-Release packaging places the optional host bundle under `site_adapter/project/`, after validating
-the policy and copying only its declared resources. Presence in a release archive does not activate
-the adapter: the installed project must place it at a project-owned path and select that path in
-`.wikitool/config.toml`.
+Release packaging always places the versioned built-in catalog under `site_adapters/generic/` and
+`site_adapters/remilia-wiki/`. An optional host bundle goes under `site_adapters/project/` after
+validating the policy and copying only its declared resources. Presence in a release archive does
+not activate any adapter: the installed project must place the selected adapter at a
+project-relative path and record that path in `.wikitool/config.toml`.
 
 ## Supplemental guidance
 

@@ -1,0 +1,123 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Preservation image",
+  "description": "Embeds one immutable image object with MediaWiki-native file presentation and archive provenance.",
+  "format": "block",
+  "implementation": {
+    "body_wikitext": "{{#preservationimage:{{{site}}}|{{{sha256}}}|{{{alt|}}}|{{{width|}}}|{{{height|}}}|{{{decorative|no}}}|{{{filename|}}}|{{{frame|none}}}|{{{align|}}}|{{{caption|}}}}}",
+    "template_dependencies": [],
+    "module_dependencies": []
+  },
+  "parameters": [
+    {
+      "name": "site",
+      "label": "Archive site",
+      "description": "Published PreservationArchive site slug.",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "sha256",
+      "label": "Object SHA-256",
+      "description": "Exact lowercase SHA-256 of the archived image object.",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "filename",
+      "label": "Source filename",
+      "description": "Exact source-record filename for this occurrence; verified against the archived object and used for filename-derived alternative text.",
+      "type": "wiki-file-name",
+      "required": true
+    },
+    {
+      "name": "frame",
+      "label": "Frame mode",
+      "description": "MediaWiki file presentation mode.",
+      "type": "string",
+      "default": "none",
+      "suggested_values": ["none", "thumb", "frame", "frameless"]
+    },
+    {
+      "name": "align",
+      "label": "Alignment",
+      "description": "Optional MediaWiki horizontal alignment; any explicit value uses block presentation, none requests an un-floated block, and omission keeps an unframed image inline.",
+      "type": "string",
+      "suggested_values": ["left", "right", "center", "none"]
+    },
+    {
+      "name": "caption",
+      "label": "Caption",
+      "description": "Optional wikitext caption. Block or framed presentation displays it; inline presentation uses its plain text as the file-link title and fallback alternative text.",
+      "type": "content"
+    },
+    {
+      "name": "alt",
+      "label": "Alternative text",
+      "description": "Alternative text; omission or an empty non-decorative value derives accessible text from the filename.",
+      "type": "string",
+      "suggested": false
+    },
+    {
+      "name": "decorative",
+      "label": "Decorative",
+      "description": "Set to yes only for an evidenced decorative image; then leave alt empty.",
+      "type": "boolean",
+      "default": "no",
+      "suggested_values": ["no", "yes"]
+    },
+    {
+      "name": "width",
+      "label": "Width",
+      "description": "Optional displayed width or bounding width in pixels, from 1 to 4096.",
+      "type": "number"
+    },
+    {
+      "name": "height",
+      "label": "Height",
+      "description": "Optional displayed height or bounding height in pixels, from 1 to 4096.",
+      "type": "number"
+    }
+  ],
+  "documentation_wikitext": "{{SHORTDESC:Embed a content-addressed image from PreservationArchive}}\nUse this source-neutral template for an immutable image object already published by PreservationArchive. Preserve source frame, alignment, caption, and dimension semantics. Block or framed captions render visibly; inline captions supply the file-link title and fallback alt text. Omitted alt text otherwise follows MediaWiki's filename-derived fallback; decorative output requires explicit evidence. Display bounds preserve intrinsic aspect ratio, with thumbnail and frameless modes capped at intrinsic size.",
+  "examples": [
+    {
+      "id": "native-thumbnail",
+      "invocation": "{{Preservation image\n| site = example-site\n| sha256 = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n| filename = Diagram sample.png\n| frame = thumb\n| align = left\n| caption = Diagram with an ''emphasized'' caption.\n| width = 320\n}}",
+      "description": "An archived thumbnail with native alignment, parsed caption wikitext, filename-derived alt text, and a bounded display width."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Formatting templates]]",
+  "render_fixtures": [
+    {
+      "id": "native-thumbnail-caption",
+      "invocation": "{{Preservation image|site=wowdev|sha256=5ff8629e1d152716b341822d9f9b1aff98da2dc4c83e476d7701be25039f03d3|filename=WoWEditTextureTools2 VertexColor.jpg|frame=thumb|align=left|caption=VertexColor.|width=150}}",
+      "scope_class": "mw-halign-left",
+      "expected_scope_count": 1,
+      "require_interactive_link": true,
+      "required_href_substrings": ["Special:ArchiveFile/wowdev/5ff8629e1d152716b341822d9f9b1aff98da2dc4c83e476d7701be25039f03d3/WoWEditTextureTools2_VertexColor.jpg"],
+      "required_link_classes": ["mw-file-description", "mw-preservation-archive-image-link"],
+      "forbid_literal_wikilinks": true
+    },
+    {
+      "id": "native-frameless-left",
+      "invocation": "{{Preservation image|site=wowdev|sha256=063996178b0df4e7f9b45a80de032d688daf51620e180f114302523258227f55|filename=AlastorPfp.png|frame=frameless|align=left}}",
+      "scope_class": "mw-halign-left",
+      "expected_scope_count": 1,
+      "require_interactive_link": true,
+      "required_href_substrings": ["Special:ArchiveFile/wowdev/063996178b0df4e7f9b45a80de032d688daf51620e180f114302523258227f55/AlastorPfp.png"],
+      "required_link_classes": ["mw-file-description", "mw-preservation-archive-image-link"],
+      "forbid_literal_wikilinks": true
+    },
+    {
+      "id": "native-inline-file",
+      "invocation": "{{Preservation image|site=wowdev|sha256=aa04f80e07ee1bb98e754fd021fb47058ad5b029e7cdd678207147f034876401|filename=WoWEdit TopToolbar 1.jpg}}",
+      "scope_class": "mw-default-size",
+      "expected_scope_count": 1,
+      "require_interactive_link": true,
+      "required_href_substrings": ["Special:ArchiveFile/wowdev/aa04f80e07ee1bb98e754fd021fb47058ad5b029e7cdd678207147f034876401/WoWEdit_TopToolbar_1.jpg"],
+      "required_link_classes": ["mw-file-description", "mw-preservation-archive-image-link"],
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

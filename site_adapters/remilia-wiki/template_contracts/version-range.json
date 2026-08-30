@@ -1,0 +1,37 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Version range",
+  "description": "Formats source-neutral minimum and maximum software-version bounds.",
+  "format": "inline",
+  "implementation": {
+    "body_wikitext": "<span class=\"version-range\">{{#if:{{{min_name|}}}{{{min_build|}}}|{{#switch:{{lc:{{{min_exclusive|}}}}}|1|yes|true|on=&gt;|#default=&ge;}}&nbsp;{{Version label|name={{{min_name|}}}|build={{{min_build|}}}}}}}{{#if:{{{min_name|}}}{{{min_build|}}}|{{#if:{{{max_name|}}}{{{max_build|}}}|&nbsp;&hellip;&nbsp;}}}}{{#if:{{{max_name|}}}{{{max_build|}}}|{{#switch:{{lc:{{{max_exclusive|}}}}}|1|yes|true|on=&lt;|#default=&le;}}&nbsp;{{Version label|name={{{max_name|}}}|build={{{max_build|}}}}}}}{{#if:{{{min_name|}}}{{{min_build|}}}{{{max_name|}}}{{{max_build|}}}||<span class=\"error\">Error: version range endpoint required</span>}}</span>",
+    "template_dependencies": ["Template:Version label"],
+    "module_dependencies": []
+  },
+  "parameters": [
+    {"name": "min_name", "label": "Minimum version name", "description": "Human-readable lower-bound release name.", "type": "string"},
+    {"name": "min_build", "label": "Minimum build", "description": "Exact lower-bound build identifier.", "type": "string"},
+    {"name": "min_exclusive", "label": "Minimum is exclusive", "description": "Use a strict greater-than bound.", "type": "boolean", "default": "no", "suggested_values": ["no", "yes"]},
+    {"name": "max_name", "label": "Maximum version name", "description": "Human-readable upper-bound release name.", "type": "string"},
+    {"name": "max_build", "label": "Maximum build", "description": "Exact upper-bound build identifier.", "type": "string"},
+    {"name": "max_exclusive", "label": "Maximum is exclusive", "description": "Use a strict less-than bound.", "type": "boolean", "default": "no", "suggested_values": ["no", "yes"]}
+  ],
+  "documentation_wikitext": "{{SHORTDESC:Format an inclusive or exclusive software version range}}\nSupply at least one endpoint name or build. Bounds are inclusive unless the corresponding exclusive parameter is set to yes.",
+  "examples": [
+    {
+      "id": "bounded",
+      "invocation": "{{Version range|min_name=Wrath of the Lich King|min_build=3.3.5.12340|max_name=Cataclysm|max_exclusive=yes}}",
+      "description": "An inclusive minimum and exclusive maximum."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Formatting templates]]",
+  "render_fixtures": [
+    {
+      "id": "bounded",
+      "invocation": "{{Version range|min_name=Wrath of the Lich King|min_build=3.3.5.12340|max_name=Cataclysm|max_exclusive=yes}}",
+      "scope_class": "version-range",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

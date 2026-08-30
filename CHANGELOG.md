@@ -6,6 +6,12 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+### Changed
+
+- Release archives now ship a validated built-in adapter catalog containing the generic template
+  and the Remilia Wiki adapter with its reviewed template contracts. Catalog presence does not
+  select an endpoint or policy; explicit project adapters remain opt-in.
+
 ## [0.8.0] - 2026-08-30
 
 ### Added

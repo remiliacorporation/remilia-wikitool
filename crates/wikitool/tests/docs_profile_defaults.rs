@@ -32,7 +32,7 @@ fn write_site_adapter(project_root: &Path) {
     .expect("config");
     fs::write(
         adapter_dir.join("site-adapter.toml"),
-        include_str!("../../../config/generic-site-adapter.toml").replace(
+        include_str!("../../../site_adapters/generic/site-adapter.toml").replace(
             "docs_profile = \"mw-1.44-authoring\"",
             "docs_profile = \"mw-1.44-site-authoring\"",
         ),

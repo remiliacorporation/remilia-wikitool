@@ -97,27 +97,33 @@ fn public_editorial_skills_are_substantive_and_complete() {
 }
 
 #[test]
-fn generic_ai_pack_contains_no_remilia_policy() {
+fn generic_agent_guidance_contains_no_remilia_policy() {
     let ai_pack = repo_root().join("ai-pack");
-    for path in collect_files(&ai_pack) {
-        let extension = path.extension().and_then(|value| value.to_str());
-        if !matches!(extension, Some("md" | "yaml" | "toml")) {
-            continue;
-        }
-        let body = fs::read_to_string(&path).expect("read AI pack text");
-        let lowered = body.to_ascii_lowercase();
-        for forbidden in [
-            "remilia",
-            "charlotte fang",
-            "milady maker",
-            "wiki.remilia.org",
-            "d3chart",
-        ] {
-            assert!(
-                !lowered.contains(forbidden),
-                "generic AI pack leaked target-specific token {forbidden:?} in {}",
-                path.display()
-            );
+    for root in [
+        ai_pack.join("codex_skills"),
+        ai_pack.join(".claude/rules"),
+        ai_pack.join(".claude/skills"),
+    ] {
+        for path in collect_files(&root) {
+            let extension = path.extension().and_then(|value| value.to_str());
+            if !matches!(extension, Some("md" | "yaml" | "toml")) {
+                continue;
+            }
+            let body = fs::read_to_string(&path).expect("read AI pack text");
+            let lowered = body.to_ascii_lowercase();
+            for forbidden in [
+                "remilia",
+                "charlotte fang",
+                "milady maker",
+                "wiki.remilia.org",
+                "d3chart",
+            ] {
+                assert!(
+                    !lowered.contains(forbidden),
+                    "generic agent guidance leaked target-specific token {forbidden:?} in {}",
+                    path.display()
+                );
+            }
         }
     }
     assert!(

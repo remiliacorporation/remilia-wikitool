@@ -1,0 +1,136 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Preservation audio",
+  "description": "Embeds one immutable audio player with one to four ordered PreservationArchive fallback objects.",
+  "format": "block",
+  "implementation": {
+    "body_wikitext": "{{#preservationaudio:{{{site}}}|{{{label}}}|{{{transcript|}}}|{{{source1_sha256}}}|{{{source1_type}}}|{{{source2_sha256|}}}|{{{source2_type|}}}|{{{source3_sha256|}}}|{{{source3_type|}}}|{{{source4_sha256|}}}|{{{source4_type|}}}|{{{source1_filename|}}}|{{{source2_filename|}}}|{{{source3_filename|}}}|{{{source4_filename|}}}}}",
+    "template_dependencies": [],
+    "module_dependencies": []
+  },
+  "parameters": [
+    {
+      "name": "site",
+      "label": "Archive site",
+      "description": "Published PreservationArchive site slug.",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "label",
+      "label": "Accessible label",
+      "description": "Short, meaningful description exposed to readers and assistive technology.",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "transcript",
+      "label": "Transcript",
+      "description": "Optional plain-text transcript, up to 8192 characters.",
+      "type": "string"
+    },
+    {
+      "name": "source1_sha256",
+      "label": "Source 1 SHA-256",
+      "description": "Exact lowercase SHA-256 of the first archived audio object.",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "source1_type",
+      "label": "Source 1 type",
+      "description": "Media format of source1_sha256: ogg or mp3.",
+      "type": "string",
+      "required": true,
+      "suggested_values": ["ogg", "mp3"]
+    },
+    {
+      "name": "source1_filename",
+      "label": "Source 1 filename",
+      "description": "Exact source-record filename for the first archived object; verified before its provenance link is rendered.",
+      "type": "wiki-file-name",
+      "required": true
+    },
+    {
+      "name": "source2_sha256",
+      "label": "Source 2 SHA-256",
+      "description": "Optional exact lowercase SHA-256 of the second ordered fallback object.",
+      "type": "string"
+    },
+    {
+      "name": "source2_type",
+      "label": "Source 2 type",
+      "description": "Media format of source2_sha256: ogg or mp3; omit when source2_sha256 is omitted.",
+      "type": "string",
+      "suggested_values": ["ogg", "mp3"]
+    },
+    {
+      "name": "source2_filename",
+      "label": "Source 2 filename",
+      "description": "Exact source-record filename for the second archived object; omit with the rest of source slot 2.",
+      "type": "wiki-file-name"
+    },
+    {
+      "name": "source3_sha256",
+      "label": "Source 3 SHA-256",
+      "description": "Optional exact lowercase SHA-256 of the third ordered fallback object; source 2 must be present.",
+      "type": "string"
+    },
+    {
+      "name": "source3_type",
+      "label": "Source 3 type",
+      "description": "Media format of source3_sha256: ogg or mp3; omit when source3_sha256 is omitted.",
+      "type": "string",
+      "suggested_values": ["ogg", "mp3"]
+    },
+    {
+      "name": "source3_filename",
+      "label": "Source 3 filename",
+      "description": "Exact source-record filename for the third archived object; omit with the rest of source slot 3.",
+      "type": "wiki-file-name"
+    },
+    {
+      "name": "source4_sha256",
+      "label": "Source 4 SHA-256",
+      "description": "Optional exact lowercase SHA-256 of the fourth ordered fallback object; sources 2 and 3 must be present.",
+      "type": "string"
+    },
+    {
+      "name": "source4_type",
+      "label": "Source 4 type",
+      "description": "Media format of source4_sha256: ogg or mp3; omit when source4_sha256 is omitted.",
+      "type": "string",
+      "suggested_values": ["ogg", "mp3"]
+    },
+    {
+      "name": "source4_filename",
+      "label": "Source 4 filename",
+      "description": "Exact source-record filename for the fourth archived object; omit with the rest of source slot 4.",
+      "type": "wiki-file-name"
+    }
+  ],
+  "documentation_wikitext": "{{SHORTDESC:Embed content-addressed audio from PreservationArchive}}\nUse this source-neutral template for one to four ordered audio fallback objects already published by PreservationArchive. Source slots must be contiguous and each digest must be paired with its media type and exact source-record filename.",
+  "examples": [
+    {
+      "id": "ogg-with-mp3-fallback",
+      "invocation": "{{Preservation audio\n| site = example-site\n| label = Spoken dialogue sample\n| transcript = Optional plain-text transcript.\n| source1_sha256 = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n| source1_type = ogg\n| source1_filename = Dialogue sample.ogg\n| source2_sha256 = fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\n| source2_type = mp3\n| source2_filename = Dialogue sample.mp3\n}}",
+      "description": "An OGG source followed by an MP3 fallback and a plain-text transcript."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Formatting templates]]",
+  "render_fixtures": [
+    {
+      "id": "two-source-audio",
+      "invocation": "{{Preservation audio|site=tcrf|label=Ikachan Magirete 1.2|source1_sha256=8cd36dbb45a26c04ca3d22166064dfa859c43a51f9229e9f98d23debbe578735|source1_type=mp3|source1_filename=Ikachan_Magirete_1.2.ogg.mp3|source2_sha256=08db277b6714e4dc25bb242476812559965d70955d72b0d9fdf112472fca0b68|source2_type=ogg|source2_filename=Ikachan_Magirete_1.2.ogg}}",
+      "scope_class": "mw-preservation-archive-audio",
+      "expected_scope_count": 1,
+      "require_interactive_link": true,
+      "required_href_substrings": [
+        "Special:ArchiveFile/tcrf/8cd36dbb45a26c04ca3d22166064dfa859c43a51f9229e9f98d23debbe578735/Ikachan_Magirete_1.2.ogg.mp3",
+        "Special:ArchiveFile/tcrf/08db277b6714e4dc25bb242476812559965d70955d72b0d9fdf112472fca0b68/Ikachan_Magirete_1.2.ogg"
+      ],
+      "required_link_classes": ["mw-file-description", "mw-preservation-archive-audio-file-link"],
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

@@ -1,0 +1,206 @@
+schema_version = "site_adapter_v2"
+adapter_id = "remilia-wiki"
+docs_profile = "mw-1.44-site-authoring"
+guidance_documents = ["editorial.md", "extensions.md", "templates.md", "visual_subjects.md"]
+
+[authoring]
+require_short_description = true
+short_description_forms = ["magic_word:SHORTDESC"]
+require_article_quality_banner = true
+article_quality_template = "Template:Article quality"
+article_quality_default_state = "unverified"
+required_appendix_sections = ["References"]
+references_template = "Template:Reflist"
+prefer_sentence_case_headings = true
+prefer_wikitext_only = true
+forbid_markdown = true
+require_straight_quotes = true
+
+[citations]
+use_named_references = true
+leave_archive_fields_blank = true
+
+[[citations.preferred_templates]]
+family = "web"
+template_title = "Template:Cite web"
+
+[[citations.preferred_templates]]
+family = "tweet"
+template_title = "Template:Cite tweet"
+
+[[citations.preferred_templates]]
+family = "news"
+template_title = "Template:Cite news"
+
+[[citations.preferred_templates]]
+family = "post"
+template_title = "Template:Cite post"
+
+[[citations.preferred_templates]]
+family = "video"
+template_title = "Template:Cite video"
+
+[[citations.source_review_rules]]
+label = "Wikipedia"
+host = "wikipedia.org"
+reason = "Tertiary source: inspect and cite the underlying source for article claims; direct use needs an explicit article-specific reason."
+
+[[citations.source_review_rules]]
+label = "IQ.wiki"
+host = "iq.wiki"
+reason = "Community-edited tertiary source with uneven provenance; verify the claim against its underlying evidence."
+
+[[citations.source_review_rules]]
+label = "Know Your Meme"
+host = "knowyourmeme.com"
+reason = "Tertiary chronology and meme database; inspect cited originals and use stronger reporting for consequential claims."
+
+[[citations.source_review_rules]]
+label = "NFT Price Floor"
+host = "nftpricefloor.com"
+reason = "Aggregator data may be volatile or methodology-dependent; verify the exact metric, timestamp, and primary record."
+
+[[citations.source_review_rules]]
+label = "Urban Dictionary"
+host = "urbandictionary.com"
+reason = "User-submitted definitions lack editorial control; use only when the entry itself is the primary artifact under discussion."
+
+[templates]
+
+[[templates.infobox_preferences]]
+subject_type = "Person"
+template_title = "Template:Infobox person"
+
+[[templates.infobox_preferences]]
+subject_type = "Organization/Group"
+template_title = "Template:Infobox organization"
+
+[[templates.infobox_preferences]]
+subject_type = "NFT Collection"
+template_title = "Template:Infobox NFT collection"
+
+[[templates.infobox_preferences]]
+subject_type = "Artwork"
+template_title = "Template:Infobox artwork"
+
+[[templates.infobox_preferences]]
+subject_type = "Website/Platform"
+template_title = "Template:Infobox website"
+
+[[templates.infobox_preferences]]
+subject_type = "Concept/Philosophy"
+template_title = "Template:Infobox concept"
+
+[[templates.infobox_preferences]]
+subject_type = "Exhibition"
+template_title = "Template:Infobox exhibition"
+
+[[templates.infobox_preferences]]
+subject_type = "General/Other"
+template_title = "Template:Infobox subject"
+
+[categories]
+preferred_categories = []
+
+[lint]
+forbid_curly_quotes = true
+citation_needed = "error"
+proper_nouns = ["Webring", "Milady", "Remilia", "Remilio", "Radbro", "Bonkler", "Pixelady", "Schizo"]
+forbid_placeholder_fragments = [
+  "[Author Name]",
+  "INSERT_SOURCE_URL",
+  "2025-XX-XX",
+  "https://www.example.com/source",
+  "citeturn0search0",
+  "contentReference[oaicite:0]",
+  "oai_citation",
+  "attached_file:1",
+  "[cite_start]",
+  "[cite: N]",
+]
+
+[[extension_contracts]]
+kind = "tag"
+name = "math"
+provider = "Math"
+syntax = "paired"
+body_required = true
+
+[[extension_contracts]]
+kind = "tag"
+name = "syntaxhighlight"
+provider = "SyntaxHighlight"
+syntax = "paired"
+body_required = true
+attributes = ["lang"]
+
+[[extension_contracts]]
+kind = "tag"
+name = "poem"
+provider = "Poem"
+syntax = "paired"
+body_required = true
+
+[[extension_contracts]]
+kind = "parser_function"
+name = "preservationimage"
+provider = "PreservationArchive"
+syntax = "parser_function"
+body_required = false
+
+[[extension_contracts]]
+kind = "parser_function"
+name = "preservationaudio"
+provider = "PreservationArchive"
+syntax = "parser_function"
+body_required = false
+
+[[extension_contracts]]
+kind = "parser_function"
+name = "ev"
+provider = "EmbedVideo"
+syntax = "parser_function"
+body_required = false
+
+[[extension_contracts]]
+kind = "tag"
+name = "tabber"
+provider = "TabberNeue"
+syntax = "paired"
+body_required = true
+
+[[extension_contracts]]
+kind = "tag"
+name = "gallery"
+provider = "core"
+syntax = "paired"
+body_required = true
+attributes = ["mode", "widths", "heights", "perrow"]
+
+[[extension_contracts]]
+kind = "tag"
+name = "dpl"
+provider = "DPL4"
+syntax = "paired"
+body_required = true
+
+[[extension_contracts]]
+kind = "tag"
+name = "categorytree"
+provider = "CategoryTree"
+syntax = "paired"
+body_required = true
+
+[[extension_contracts]]
+kind = "template"
+name = "lang"
+provider = "core"
+syntax = "template"
+body_required = false
+
+[[extension_contracts]]
+kind = "module"
+name = "D3Chart"
+provider = "local"
+syntax = "module_invoke"
+body_required = false

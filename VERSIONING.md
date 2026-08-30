@@ -78,9 +78,11 @@ Experimental / top-level steered:
 Packaged / distributable:
 
 1. Stage the pinned upstream Contextmink and Papertiger packs with `bash scripts/fetch_contextmink.sh --all` and `bash scripts/fetch_papertiger.sh --all`, then use `cargo run --package wikitool --features maintainer -- release build-matrix --contextmink-dist dist/contextmink-dist --papertiger-dist dist/papertiger-dist` from a source checkout to emit per-target zip bundles.
-2. Bundles are generic by default, include ai-pack baseline `.claude` + instruction files, and compile the packaged binary without the maintainer surface.
+2. Bundles use the embedded generic adapter by default, include the built-in generic and Remilia
+   Wiki adapter catalog plus ai-pack baseline `.claude` + instruction files, and compile the
+   packaged binary without the maintainer surface. Catalog presence does not select an adapter.
 3. A project adapter supplement is opt-in via `--host-project-root <PATH>`. It is packaged under
-   `site_adapter/project/` and never replaces the target-neutral public guidance or skills.
+   `site_adapters/project/` and never replaces the public guidance, skills, or built-in catalog.
 
 ## Manual release checklist
 
@@ -129,8 +131,9 @@ Packaged / distributable:
    - `.claude/rules/`, `.claude/skills/`
    - `codex_skills/`, including `wiki-writing`, `prose-review`, `wiki-interview`, and `wikitool-operator`
    - `integration/`
-   - `site_adapter/generic.toml`
-   - `site_adapter/project/site-adapter.toml` only when `--host-project-root` was supplied
+   - `site_adapters/generic/site-adapter.toml`
+   - `site_adapters/remilia-wiki/site-adapter.toml` and its declared guidance/template contracts
+   - `site_adapters/project/site-adapter.toml` only when `--host-project-root` was supplied
    - `docs/wikitool/`
    - `contextmink/` with `contextmink` or `contextmink.exe`
    - `contextmink/contextmink-bridge.exe` in the Windows bundle only

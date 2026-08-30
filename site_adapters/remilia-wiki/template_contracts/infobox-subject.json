@@ -1,0 +1,245 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Infobox subject",
+  "description": "Provides a compact fallback infobox for subjects that do not fit a specialized Remilia infobox.",
+  "format": "block",
+  "implementation": {
+    "body_wikitext": "<templatestyles src=\"Module:Infobox/styles.css\" />{{#invoke:Infobox|subject}}",
+    "template_dependencies": [],
+    "module_dependencies": ["Module:Infobox", "Module:Infobox/styles.css"]
+  },
+  "parameters": [
+    {
+      "name": "name",
+      "label": "Name",
+      "description": "Heading displayed at the top of the infobox; defaults to the page title.",
+      "type": "string",
+      "suggested": true
+    },
+    {
+      "name": "image",
+      "label": "Image",
+      "description": "Native wiki file name displayed in the image row; omit the File: prefix.",
+      "type": "wiki-file-name"
+    },
+    {
+      "name": "image_content",
+      "label": "Image content",
+      "description": "Pre-rendered wikitext for the image row, such as Template:Preservation image; takes precedence over image.",
+      "type": "content"
+    },
+    {
+      "name": "image_size",
+      "label": "Image size",
+      "description": "Display size for a native image; ignored when image_content is used.",
+      "type": "string",
+      "default": "250px"
+    },
+    {
+      "name": "caption",
+      "label": "Caption",
+      "description": "Concise caption displayed below the image row.",
+      "type": "string"
+    },
+    {
+      "name": "alt",
+      "label": "Alternative text",
+      "description": "Meaningful alternative text for a native image; ignored when image_content is used.",
+      "type": "string"
+    },
+    {
+      "name": "type",
+      "label": "Type",
+      "description": "Concise noun phrase identifying what kind of subject this is.",
+      "type": "string",
+      "suggested": true
+    },
+    {
+      "name": "date",
+      "label": "Date",
+      "description": "Relevant creation, launch, or occurrence date, with precision no greater than the evidence supports.",
+      "type": "string"
+    },
+    {
+      "name": "location",
+      "label": "Location",
+      "description": "Relevant physical or virtual location.",
+      "type": "string"
+    },
+    {
+      "name": "status",
+      "label": "Status",
+      "description": "Current concise status, such as active, inactive, or completed.",
+      "type": "string"
+    },
+    {
+      "name": "related",
+      "label": "Related",
+      "description": "A small set of directly related wiki subjects, normally expressed as wikilinks.",
+      "type": "string"
+    },
+    {
+      "name": "website",
+      "label": "Website",
+      "description": "Canonical official website, formatted as an external link.",
+      "type": "string"
+    },
+    {
+      "name": "count",
+      "label": "Count",
+      "description": "Number of items or members when a generic count is materially useful.",
+      "type": "number"
+    },
+    {
+      "name": "rarity",
+      "label": "Rarity",
+      "description": "Legacy rarity or edition-class shortcut; prefer a specialized infobox or a clearly labeled custom row.",
+      "type": "string",
+      "deprecated": true
+    },
+    {
+      "name": "below",
+      "label": "Below",
+      "description": "Source-authored or supplemental content spanning the full infobox width.",
+      "type": "content"
+    },
+    {
+      "name": "label1",
+      "label": "Label 1",
+      "description": "Label for custom row 1; the row renders only when data1 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data1",
+      "label": "Data 1",
+      "description": "Wikitext value for custom row 1; the row renders only when label1 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label2",
+      "label": "Label 2",
+      "description": "Label for custom row 2; the row renders only when data2 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data2",
+      "label": "Data 2",
+      "description": "Wikitext value for custom row 2; the row renders only when label2 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label3",
+      "label": "Label 3",
+      "description": "Label for custom row 3; the row renders only when data3 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data3",
+      "label": "Data 3",
+      "description": "Wikitext value for custom row 3; the row renders only when label3 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label4",
+      "label": "Label 4",
+      "description": "Label for custom row 4; the row renders only when data4 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data4",
+      "label": "Data 4",
+      "description": "Wikitext value for custom row 4; the row renders only when label4 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label5",
+      "label": "Label 5",
+      "description": "Label for custom row 5; the row renders only when data5 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data5",
+      "label": "Data 5",
+      "description": "Wikitext value for custom row 5; the row renders only when label5 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label6",
+      "label": "Label 6",
+      "description": "Label for custom row 6; the row renders only when data6 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data6",
+      "label": "Data 6",
+      "description": "Wikitext value for custom row 6; the row renders only when label6 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label7",
+      "label": "Label 7",
+      "description": "Label for custom row 7; the row renders only when data7 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data7",
+      "label": "Data 7",
+      "description": "Wikitext value for custom row 7; the row renders only when label7 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label8",
+      "label": "Label 8",
+      "description": "Label for custom row 8; the row renders only when data8 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data8",
+      "label": "Data 8",
+      "description": "Wikitext value for custom row 8; the row renders only when label8 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label9",
+      "label": "Label 9",
+      "description": "Label for custom row 9; the row renders only when data9 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data9",
+      "label": "Data 9",
+      "description": "Wikitext value for custom row 9; the row renders only when label9 is also supplied.",
+      "type": "content"
+    },
+    {
+      "name": "label10",
+      "label": "Label 10",
+      "description": "Label for custom row 10; the row renders only when data10 is also supplied.",
+      "type": "string"
+    },
+    {
+      "name": "data10",
+      "label": "Data 10",
+      "description": "Wikitext value for custom row 10; the row renders only when label10 is also supplied.",
+      "type": "content"
+    }
+  ],
+  "documentation_wikitext": "{{SHORTDESC:Generic fallback infobox}}\nUse this template only when the subject does not fit a specialized Remilia infobox. Prefer stable named fields; use paired custom rows for additional concise facts instead of creating source-site-specific parameters.",
+  "examples": [
+    {
+      "id": "generic-subject",
+      "invocation": "{{Infobox subject\n| name = Example tool\n| type = Software tool\n| date = 2024\n| status = Active\n| label1 = Platform\n| data1 = Web\n| website = [https://example.org Official website]\n}}",
+      "description": "A miscellaneous subject expressed through stable fields and one labeled custom row."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Infobox templates]]",
+  "render_fixtures": [
+    {
+      "id": "generic-subject",
+      "invocation": "{{Infobox subject|name=Example tool|type=Software tool|date=2024|status=Active|label1=Platform|data1=Web}}",
+      "scope_class": "infobox",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

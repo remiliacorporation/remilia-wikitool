@@ -1,0 +1,45 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Version label",
+  "description": "Formats a source-neutral software release name and build identifier.",
+  "format": "inline",
+  "implementation": {
+    "body_wikitext": "<span class=\"version-label\">{{#if:{{{name|}}}|{{{name}}}{{#if:{{{build|}}}|&#32;({{{build}}})}}|{{#if:{{{build|}}}|{{{build}}}|<span class=\"error\">Error: version name or build required</span>}}}}</span>",
+    "template_dependencies": [],
+    "module_dependencies": []
+  },
+  "parameters": [
+    {
+      "name": "name",
+      "label": "Version name",
+      "description": "Human-readable release or expansion name.",
+      "type": "string",
+      "suggested": true
+    },
+    {
+      "name": "build",
+      "label": "Build",
+      "description": "Exact build or version identifier.",
+      "type": "string",
+      "suggested": true
+    }
+  ],
+  "documentation_wikitext": "{{SHORTDESC:Format a software version name and build}}\nSupply a release name, build identifier, or both. The template does not impose a source wiki's numbering scheme.",
+  "examples": [
+    {
+      "id": "named-build",
+      "invocation": "{{Version label|name=Wrath of the Lich King|build=3.3.5.12340}}",
+      "description": "A named software release with an exact build."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Formatting templates]]",
+  "render_fixtures": [
+    {
+      "id": "named-build",
+      "invocation": "{{Version label|name=Wrath of the Lich King|build=3.3.5.12340}}",
+      "scope_class": "version-label",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

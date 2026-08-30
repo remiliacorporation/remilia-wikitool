@@ -7,7 +7,7 @@ encyclopedic writing and review.
 
 The binary does not contain an LLM and does not decide whether prose is good. Its Rust core owns
 mechanical truth and safe state transitions. Agent skills own research-to-claim reasoning,
-prose authoring, source-fidelity review, and reader judgment. A project-owned site adapter supplies
+prose authoring, source-fidelity review, and reader judgment. A selected site adapter supplies
 target-specific machine policy and supplemental guidance.
 
 ## Install
@@ -21,7 +21,7 @@ CLAUDE.md AGENTS.md   identical agent integration brief
 .claude/              Claude harness adapters
 codex_skills/         canonical substantive agent skills
 integration/          layer and adapter contracts
-site_adapter/         generic adapter and optional project supplement
+site_adapters/        built-in adapter catalog and optional project supplement
 docs/wikitool/        operator guide and generated command reference
 contextmink/          separately versioned transcript guard
 papertiger/           optional separately versioned planning companion
@@ -69,10 +69,13 @@ or a publication-acceptance authorization does not imply bot or non-bot transpor
 
 ## Site adapters
 
-Without an adapter, Wikitool uses a conservative embedded `mediawiki-generic` adapter. A project
-can opt into typed policy:
+Without a selected adapter, Wikitool uses a conservative embedded `mediawiki-generic` adapter.
+Release archives also include reusable generic and Remilia Wiki adapter directories under
+`site_adapters/`; their presence never selects a wiki, endpoint, or policy. Copy the desired
+directory into the project before selecting its typed policy:
 
 ```bash
+cp -R /path/to/unpacked-wikitool/site_adapters/remilia-wiki site-adapter
 wikitool init --adapter-path site-adapter/site-adapter.toml
 ```
 
@@ -84,13 +87,14 @@ configuration is:
 path = "site-adapter/site-adapter.toml"
 ```
 
-Start from the strict `site_adapter_v2` example in `config/generic-site-adapter.toml`. Adapters may declare authoring mechanics, citation
+Start from the strict `site_adapter_v2` template in
+`site_adapters/generic/site-adapter.toml`. Adapters may declare authoring mechanics, citation
 templates and source-review host rules, template preferences, deterministic lint configuration,
 extension contracts, and supplemental Markdown documents. Unknown fields fail closed. A source
 matcher is a review signal, not a universal source ban. Adapter Markdown is hashed and exposed to
-agents but is never interpreted as machine policy. Release packaging strictly parses the adapter
-and ships only `site-adapter.toml` plus guidance files declared there; undeclared neighboring files are
-excluded.
+agents but is never interpreted as machine policy. The built-in catalog is versioned and shipped
+with Wikitool. An optional `--host-project-root` supplement is strictly parsed and ships only its
+`site-adapter.toml` plus declared guidance files; undeclared neighboring files are excluded.
 
 ## Agent workflow
 

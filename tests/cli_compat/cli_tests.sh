@@ -1178,7 +1178,10 @@ if has_maintainer_surface; then
     OUTPUT=$(wt_maintainer "$PROJ" release build-ai-pack --repo-root "$REPO_ROOT" --output-dir "$AI_PACK_OUT" 2>&1 || true)
     if [ -f "$AI_PACK_OUT/manifest.json" ] && [ -f "$AI_PACK_OUT/CLAUDE.md" ] \
         && [ -d "$AI_PACK_OUT/.claude/skills" ] && [ -d "$AI_PACK_OUT/codex_skills" ] \
-        && [ -d "$AI_PACK_OUT/integration" ] && [ -f "$AI_PACK_OUT/site_adapter/generic.toml" ] \
+        && [ -d "$AI_PACK_OUT/integration" ] \
+        && [ -f "$AI_PACK_OUT/site_adapters/generic/site-adapter.toml" ] \
+        && [ -f "$AI_PACK_OUT/site_adapters/remilia-wiki/site-adapter.toml" ] \
+        && [ -f "$AI_PACK_OUT/site_adapters/remilia-wiki/template_contracts/README.md" ] \
         && [ -f "$AI_PACK_OUT/codex_skills/wiki-writing/SKILL.md" ] \
         && [ -f "$AI_PACK_OUT/codex_skills/prose-review/SKILL.md" ] \
         && [ -f "$AI_PACK_OUT/codex_skills/wiki-interview/SKILL.md" ] \
@@ -1208,7 +1211,10 @@ elif [ -n "$LOCAL_BINARY" ]; then
         --papertiger-dist "$PAPERTIGER_FIXTURE_DIST" 2>&1 || true)
     if [ -f "$RELEASE_OUT/CLAUDE.md" ] && [ -f "$RELEASE_OUT/README.md" ] \
         && [ -d "$RELEASE_OUT/codex_skills" ] && [ -d "$RELEASE_OUT/integration" ] \
-        && [ -f "$RELEASE_OUT/site_adapter/generic.toml" ] && [ ! -e "$RELEASE_OUT/SETUP.md" ] \
+        && [ -f "$RELEASE_OUT/site_adapters/generic/site-adapter.toml" ] \
+        && [ -f "$RELEASE_OUT/site_adapters/remilia-wiki/site-adapter.toml" ] \
+        && [ -f "$RELEASE_OUT/site_adapters/remilia-wiki/template_contracts/README.md" ] \
+        && [ ! -e "$RELEASE_OUT/SETUP.md" ] \
         && [ -f "$RELEASE_OUT/codex_skills/wiki-writing/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/codex_skills/prose-review/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/codex_skills/wiki-interview/SKILL.md" ] \

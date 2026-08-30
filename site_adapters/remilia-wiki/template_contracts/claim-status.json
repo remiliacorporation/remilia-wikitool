@@ -1,0 +1,72 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Claim status",
+  "description": "Marks source-authored text as verified or unverified and preserves its stated verification source.",
+  "format": "inline",
+  "implementation": {
+    "body_wikitext": "<templatestyles src=\"Module:Message/styles.css\" /><span class=\"claim-status claim-status-{{#switch:{{lc:{{{status|}}}}}|verified=verified|unverified=unverified|#default=unknown}}\">{{#if:{{{text|}}}|<span class=\"claim-status-text\">{{{text}}}</span>|<span class=\"error\">Error: claim text required</span>}} <sup class=\"claim-status-marker plainlinks\">{{#switch:{{lc:{{{status|}}}}}|verified={{#if:{{{source_url|}}}|[{{{source_url}}} verified]|verified}}{{#if:{{{source_description|}}}|<span class=\"claim-status-source\">; source: {{{source_description}}}</span>}}|unverified=unverified|#default=unknown status}}</sup></span>",
+    "template_dependencies": [],
+    "module_dependencies": ["Module:Message/styles.css"]
+  },
+  "parameters": [
+    {
+      "name": "status",
+      "label": "Status",
+      "description": "Verification state asserted by the archived source.",
+      "type": "string",
+      "required": true,
+      "suggested_values": ["verified", "unverified"]
+    },
+    {
+      "name": "text",
+      "label": "Text",
+      "description": "Source-authored claim text.",
+      "type": "content",
+      "required": true
+    },
+    {
+      "name": "source_url",
+      "label": "Source URL",
+      "description": "Optional source URL supplied by the archived page.",
+      "type": "url"
+    },
+    {
+      "name": "source_description",
+      "label": "Source description",
+      "description": "Optional source description supplied by the archived page.",
+      "type": "string"
+    }
+  ],
+  "documentation_wikitext": "{{SHORTDESC:Mark the verification state of a preserved claim}}\nUse this template only to retain a verification state asserted by the source. Do not infer verification from archive capture success.",
+  "examples": [
+    {
+      "id": "verified-source",
+      "invocation": "{{Claim status|status=verified|text=File format version 1|source_url=https://example.com/specification|source_description=Vendor specification}}",
+      "description": "A verified claim with its source link and description."
+    },
+    {
+      "id": "unverified",
+      "invocation": "{{Claim status|status=unverified|text=Tentative field meaning}}",
+      "description": "An unverified source claim."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Formatting templates]]",
+  "render_fixtures": [
+    {
+      "id": "verified-source",
+      "invocation": "{{Claim status|status=verified|text=File format version 1|source_url=https://example.com/specification|source_description=Vendor specification}}",
+      "scope_class": "claim-status",
+      "expected_scope_count": 1,
+      "require_interactive_link": true,
+      "required_href_substrings": ["example.com/specification"],
+      "forbid_literal_wikilinks": true
+    },
+    {
+      "id": "unverified",
+      "invocation": "{{Claim status|status=unverified|text=Tentative field meaning}}",
+      "scope_class": "claim-status",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

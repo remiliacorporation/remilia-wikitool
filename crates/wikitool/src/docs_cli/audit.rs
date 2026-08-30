@@ -163,7 +163,8 @@ fn audit_ai_pack_layout(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     for relative in [
         "ai-pack/integration/agent_integration.md",
         "ai-pack/integration/site_adapters.md",
-        "config/generic-site-adapter.toml",
+        "site_adapters/generic/site-adapter.toml",
+        "site_adapters/remilia-wiki/site-adapter.toml",
     ] {
         let path = repo_root.join(relative);
         push_check(
@@ -350,30 +351,36 @@ fn valid_skill_frontmatter(body: &str, expected_name: &str) -> bool {
 fn audit_generic_boundary(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     let root = repo_root.join("ai-pack");
     let mut leaks = Vec::new();
-    for path in text_files(&root) {
-        let Ok(body) = read_to_string(&path) else {
-            continue;
-        };
-        let lowered = body.to_ascii_lowercase();
-        for token in [
-            "remilia",
-            "charlotte fang",
-            "milady maker",
-            "wiki.remilia.org",
-            "d3chart",
-        ] {
-            if lowered.contains(token) {
-                leaks.push(format!("{} contains {token:?}", normalize_path(&path)));
+    for guidance_root in [
+        root.join("codex_skills"),
+        root.join(".claude/rules"),
+        root.join(".claude/skills"),
+    ] {
+        for path in text_files(&guidance_root) {
+            let Ok(body) = read_to_string(&path) else {
+                continue;
+            };
+            let lowered = body.to_ascii_lowercase();
+            for token in [
+                "remilia",
+                "charlotte fang",
+                "milady maker",
+                "wiki.remilia.org",
+                "d3chart",
+            ] {
+                if lowered.contains(token) {
+                    leaks.push(format!("{} contains {token:?}", normalize_path(&path)));
+                }
             }
         }
     }
     push_check(
         checks,
-        "ai_pack.target_neutral",
+        "ai_pack.agent_guidance_target_neutral",
         leaks.is_empty(),
         Some(&root),
         if leaks.is_empty() {
-            "generic AI pack contains no target-specific policy".to_string()
+            "generic agent guidance contains no target-specific policy".to_string()
         } else {
             leaks.join("; ")
         },

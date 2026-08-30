@@ -1,0 +1,52 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Table cell status",
+  "description": "Emits one semantic yes, no, or unknown table cell with visible text and subdued MediaWiki colors.",
+  "format": "inline",
+  "implementation": {
+    "body_wikitext": "class=\"table-cell-status table-cell-status-{{#switch:{{lc:{{{status|unknown}}}}}|yes=yes|no=no|unknown=unknown|#default=unknown}}\" style=\"background-color:{{#switch:{{lc:{{{status|unknown}}}}}|yes=var(--background-color-success-subtle, #dff2eb)|no=var(--background-color-error-subtle, #ffe9e5)|unknown=var(--background-color-neutral-subtle, #f8f9fa)|#default=var(--background-color-neutral-subtle, #f8f9fa)}};vertical-align:middle;text-align:center\" | {{{text|{{#switch:{{lc:{{{status|unknown}}}}}|yes=Yes|no=No|unknown=Unknown|#default=Unknown}}}}}",
+    "template_dependencies": [],
+    "module_dependencies": []
+  },
+  "parameters": [
+    {
+      "name": "status",
+      "label": "Status",
+      "description": "Semantic cell state.",
+      "type": "string",
+      "required": true,
+      "suggested_values": ["yes", "no", "unknown"]
+    },
+    {
+      "name": "text",
+      "label": "Text",
+      "description": "Optional cell text; an explicitly empty value produces a blank cell.",
+      "type": "content"
+    }
+  ],
+  "documentation_wikitext": "{{SHORTDESC:Render a semantic yes, no, or unknown table cell}}\nInvoke this template after a table-cell marker. Omitted text selects the visible status word; explicitly empty text preserves a deliberately blank cell.",
+  "examples": [
+    {
+      "id": "status-row",
+      "invocation": "{| class=\"wikitable\"\n|-\n| Feature\n| {{Table cell status|status=yes}}\n| {{Table cell status|status=no|text=Unsupported}}\n|}",
+      "description": "Two status cells in a wikitable row."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Table templates]]",
+  "render_fixtures": [
+    {
+      "id": "yes-cell",
+      "invocation": "{| class=\"wikitable\"\n|-\n| {{Table cell status|status=yes}}\n|}",
+      "scope_class": "table-cell-status",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    },
+    {
+      "id": "blank-no-cell",
+      "invocation": "{| class=\"wikitable\"\n|-\n| {{Table cell status|status=no|text=}}\n|}",
+      "scope_class": "table-cell-status",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

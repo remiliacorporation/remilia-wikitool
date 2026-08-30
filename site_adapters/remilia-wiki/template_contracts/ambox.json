@@ -1,0 +1,81 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Ambox",
+  "description": "Displays a source-neutral article message box without importing a source wiki's template vocabulary.",
+  "format": "block",
+  "implementation": {
+    "body_wikitext": "<templatestyles src=\"Module:Message/styles.css\" />{{#invoke:Message|ambox}}",
+    "template_dependencies": [],
+    "module_dependencies": ["Module:Message", "Module:Message/styles.css"]
+  },
+  "parameters": [
+    {
+      "name": "type",
+      "label": "Type",
+      "description": "Visual message category.",
+      "type": "string",
+      "default": "notice",
+      "suggested_values": ["notice", "warning", "serious", "content", "style", "delete", "protection"]
+    },
+    {
+      "name": "text",
+      "label": "Text",
+      "description": "Source-authored message content.",
+      "type": "content",
+      "required": true
+    },
+    {
+      "name": "image",
+      "label": "Image",
+      "description": "Optional native file name without the File: prefix; set to none to hide.",
+      "type": "wiki-file-name"
+    },
+    {
+      "name": "image_content",
+      "label": "Image content",
+      "description": "Pre-rendered image content such as Template:Preservation image; takes precedence over image.",
+      "type": "content"
+    },
+    {
+      "name": "imagesize",
+      "label": "Image size",
+      "description": "Display size for a native image.",
+      "type": "string",
+      "default": "40px"
+    },
+    {
+      "name": "small",
+      "label": "Small",
+      "description": "Render the compact form when set to yes.",
+      "type": "boolean"
+    },
+    {
+      "name": "plainlinks",
+      "label": "Plain links",
+      "description": "Set to no to preserve ordinary external-link styling.",
+      "type": "boolean",
+      "default": "yes"
+    }
+  ],
+  "documentation_wikitext": "{{SHORTDESC:Article message box template}}\nUse this source-neutral template for article notices, maintenance messages, and preserved source messages. Preserve source-authored text; do not invent a message merely to decorate an article.",
+  "examples": [
+    {
+      "id": "notice",
+      "invocation": "{{Ambox\n| type = notice\n| text = This source-authored notice is preserved.\n}}",
+      "description": "A neutral source-authored notice."
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Message templates]]",
+  "render_fixtures": [
+    {
+      "id": "notice",
+      "invocation": "{{Ambox|type=notice|text=This source-authored notice is preserved.|image_content={{Preservation image|site=example-site|sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef|alt=Preserved notice icon|width=40|height=40}}}}",
+      "scope_class": "mbox",
+      "expected_scope_count": 1,
+      "require_interactive_link": true,
+      "required_href_substrings": ["Special:ArchiveMedia/example-site/"],
+      "required_link_classes": ["mw-preservation-archive-image-link"],
+      "forbid_literal_wikilinks": true
+    }
+  ]
+}

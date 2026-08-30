@@ -132,7 +132,10 @@ jobs:
           test -f "$BUNDLE/codex_skills/wikitool-operator/SKILL.md"
           test -f "$BUNDLE/integration/agent_integration.md"
           test -f "$BUNDLE/integration/site_adapters.md"
-          test -f "$BUNDLE/site_adapter/generic.toml"
+          test -f "$BUNDLE/site_adapters/generic/site-adapter.toml"
+          test -f "$BUNDLE/site_adapters/remilia-wiki/site-adapter.toml"
+          test -f "$BUNDLE/site_adapters/remilia-wiki/editorial.md"
+          test -f "$BUNDLE/site_adapters/remilia-wiki/template_contracts/README.md"
           test ! -e "$BUNDLE/writing_context"
           test -d "$BUNDLE/docs/wikitool"
           test ! -e "$BUNDLE/llm_instructions"
@@ -216,7 +219,10 @@ jobs:
           if (!(Test-Path "$env:BUNDLE/codex_skills/wikitool-operator/SKILL.md")) { throw "wikitool-operator skill missing" }
           if (!(Test-Path "$env:BUNDLE/integration/agent_integration.md")) { throw "agent integration guidance missing" }
           if (!(Test-Path "$env:BUNDLE/integration/site_adapters.md")) { throw "site adapter guidance missing" }
-          if (!(Test-Path "$env:BUNDLE/site_adapter/generic.toml")) { throw "generic site adapter missing" }
+          if (!(Test-Path "$env:BUNDLE/site_adapters/generic/site-adapter.toml")) { throw "generic site adapter missing" }
+          if (!(Test-Path "$env:BUNDLE/site_adapters/remilia-wiki/site-adapter.toml")) { throw "Remilia Wiki site adapter missing" }
+          if (!(Test-Path "$env:BUNDLE/site_adapters/remilia-wiki/editorial.md")) { throw "Remilia Wiki editorial guidance missing" }
+          if (!(Test-Path "$env:BUNDLE/site_adapters/remilia-wiki/template_contracts/README.md")) { throw "Remilia Wiki template contracts missing" }
           if (Test-Path "$env:BUNDLE/writing_context") { throw "retired writing_context directory must not ship" }
           if (!(Test-Path "$env:BUNDLE/docs/wikitool")) { throw "docs/wikitool missing" }
           if (Test-Path "$env:BUNDLE/llm_instructions") { throw "legacy llm_instructions directory must not ship" }
