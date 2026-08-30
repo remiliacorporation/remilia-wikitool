@@ -1247,6 +1247,7 @@ elif [ -n "$LOCAL_BINARY" ]; then
         && [ -f "$RELEASE_OUT/site_adapters/remilia-wiki/template_contracts/README.md" ] \
         && [ ! -e "$RELEASE_OUT/AGENTS.md" ] && [ ! -e "$RELEASE_OUT/CLAUDE.md" ] \
         && [ ! -e "$RELEASE_OUT/.claude" ] && [ ! -e "$RELEASE_OUT/codex_skills" ] \
+        && [ ! -e "$RELEASE_OUT/manifest.json" ] \
         && [ -f "$RELEASE_OUT/skills/wiki-writing/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/skills/prose-review/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/skills/wiki-interview/SKILL.md" ] \

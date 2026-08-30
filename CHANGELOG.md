@@ -30,6 +30,7 @@ The release workflow extracts the section for the requested version and fails if
 
 ### Fixed
 
+- Release verification now enforces `skills/manifest.json` as the unified skill-distribution authority and rejects the retired AI/agent-pack manifest at archive root.
 - Template indexing now distinguishes nested triple-brace parameters from transclusions, preserves complete invocation spans, and omits dynamic parameter expressions from literal example values.
 - Wikitest host-read-only isolation now rejects Windows and POSIX absolute or parent-traversal paths consistently on every host, and retained evidence canonicalizes mixed-separator Windows paths without rewriting unrelated POSIX text.
 - Wikitest host-read-only snapshots now retain only the runtime config, catalog and durable read stores, wiki corpus, templates, and the configured adapter's declared resources. Unrelated `.wikitool` caches no longer make dogfood copy gigabytes before its bounded scenario begins, and snapshot capture plus drift verification now obey the scenario deadline.

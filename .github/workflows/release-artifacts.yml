@@ -139,7 +139,9 @@ jobs:
           test -d "$BUNDLE/docs/wikitool"
           test ! -e "$BUNDLE/llm_instructions"
           test ! -e "$BUNDLE/SETUP.md"
-          test -f "$BUNDLE/manifest.json"
+          # The retired AI/agent pack owned the former root manifest. The
+          # unified distribution owns only skills/manifest.json.
+          test ! -e "$BUNDLE/manifest.json"
           test -f "$BUNDLE/release-companions.json"
           grep -q '"schema": "wikitool.release-companions.v1"' "$BUNDLE/release-companions.json"
           grep -q '"required_for_wikitool": false' "$BUNDLE/release-companions.json"
@@ -233,7 +235,9 @@ jobs:
           if (!(Test-Path "$env:BUNDLE/docs/wikitool")) { throw "docs/wikitool missing" }
           if (Test-Path "$env:BUNDLE/llm_instructions") { throw "legacy llm_instructions directory must not ship" }
           if (Test-Path "$env:BUNDLE/SETUP.md") { throw "SETUP.md must not ship" }
-          if (!(Test-Path "$env:BUNDLE/manifest.json")) { throw "manifest.json missing" }
+          # The retired AI/agent pack owned the former root manifest. The
+          # unified distribution owns only skills/manifest.json.
+          if (Test-Path "$env:BUNDLE/manifest.json") { throw "retired root manifest must not ship" }
           if (!(Test-Path "$env:BUNDLE/release-companions.json")) { throw "release companion manifest missing" }
           $companionManifest = Get-Content "$env:BUNDLE/release-companions.json" -Raw | ConvertFrom-Json
           if ($companionManifest.schema -ne "wikitool.release-companions.v1") { throw "release companion schema mismatch" }
