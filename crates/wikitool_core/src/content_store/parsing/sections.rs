@@ -244,23 +244,8 @@ pub(crate) fn flatten_markup_excerpt(value: &str) -> String {
             continue;
         }
 
-        if cursor + 1 < bytes.len() && bytes[cursor] == b'{' && bytes[cursor + 1] == b'{' {
-            let mut depth = 1usize;
-            let mut end = cursor + 2;
-            while end + 1 < bytes.len() && depth > 0 {
-                if bytes[end] == b'{' && bytes[end + 1] == b'{' {
-                    depth += 1;
-                    end += 2;
-                    continue;
-                }
-                if bytes[end] == b'}' && bytes[end + 1] == b'}' {
-                    depth = depth.saturating_sub(1);
-                    end += 2;
-                    continue;
-                }
-                end += 1;
-            }
-            cursor = end.min(bytes.len());
+        if let Some(end) = skip_balanced_brace_construct(value, cursor) {
+            cursor = end;
             continue;
         }
 

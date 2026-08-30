@@ -1247,6 +1247,93 @@ fn template_catalog_and_reference_include_examples_and_implementation_context() 
 }
 
 #[test]
+fn template_reference_preserves_dynamic_parameter_invocation_examples() {
+    let temp = tempdir().expect("tempdir");
+    let project_root = temp.path().join("project");
+    fs::create_dir_all(&project_root).expect("create project root");
+    let paths = paths(&project_root);
+    let invocation = concat!(
+        "{{Version label|name=",
+        "{{{min_name|}}}",
+        "|build=",
+        "{{{min_build|}}}",
+        "}}",
+    );
+    let range_source = concat!(
+        "{{#if:has minimum|",
+        "{{Version label|name=",
+        "{{{min_name|}}}",
+        "|build=",
+        "{{{min_build|}}}",
+        "}}",
+        "}}",
+    );
+
+    write_file(
+        &paths
+            .templates_dir
+            .join("misc")
+            .join("Template_Version_label.wiki"),
+        "Formats one software version label.",
+    );
+    write_file(
+        &paths
+            .templates_dir
+            .join("misc")
+            .join("Template_Version_range.wiki"),
+        range_source,
+    );
+
+    rebuild_index(&paths, &ScanOptions::default()).expect("rebuild");
+
+    let reference =
+        query_template_reference(&paths, "Version label").expect("template reference query");
+    let reference = match reference {
+        TemplateReferenceLookup::Found(reference) => *reference,
+        other => panic!("expected template reference, got {other:?}"),
+    };
+    assert_eq!(reference.template.usage_count, 1);
+    assert_eq!(reference.template.example_invocations.len(), 1);
+    assert_eq!(
+        reference.template.example_invocations[0].invocation_text,
+        invocation
+    );
+    assert_eq!(
+        reference.template.example_invocations[0].parameter_keys,
+        vec!["build", "name"]
+    );
+    assert!(
+        reference
+            .template
+            .parameter_stats
+            .iter()
+            .filter(|parameter| matches!(parameter.key.as_str(), "build" | "name"))
+            .all(|parameter| parameter.example_values.is_empty())
+    );
+
+    let catalog =
+        sync_template_catalog_with_adapter(&paths, &test_site_adapter()).expect("template catalog");
+    let entry = catalog
+        .entries
+        .iter()
+        .find(|entry| entry.template_title == "Template:Version label")
+        .expect("version label catalog entry");
+    let indexed_example = entry
+        .examples
+        .iter()
+        .find(|example| example.source_kind == "indexed_usage")
+        .expect("indexed version label example");
+    assert_eq!(indexed_example.invocation_text, invocation);
+    assert!(
+        entry
+            .parameters
+            .iter()
+            .filter(|parameter| matches!(parameter.name.as_str(), "build" | "name"))
+            .all(|parameter| parameter.example_values.is_empty())
+    );
+}
+
+#[test]
 fn authoring_contract_plan_uses_indexed_template_module_graph() {
     let temp = tempdir().expect("tempdir");
     let project_root = temp.path().join("project");
