@@ -50,7 +50,12 @@ jobs:
       - name: Resolve release names
         id: names
         shell: bash
+        env:
+          RAW: ${{ inputs.artifact_version }}
+          CREATE_RELEASE: ${{ inputs.create_release }}
+          RELEASE_REF: ${{ github.ref }}
         run: |
+          set -euo pipefail
           # Release versions are bare semver (no leading v); strip one if present.
           re='^v?[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'
           if [[ ! "${RAW}" =~ $re ]]; then
@@ -59,10 +64,10 @@ jobs:
             exit 1
           fi
           version="${RAW#v}"
+          bash scripts/validate_release_dispatch.sh \
+            "$version" "$CREATE_RELEASE" "$RELEASE_REF"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "bundle=wikitool-${version}-${{ matrix.platform }}" >> "$GITHUB_OUTPUT"
-        env:
-          RAW: ${{ inputs.artifact_version }}
 
       - name: Stage pinned Contextmink release pack
         shell: bash

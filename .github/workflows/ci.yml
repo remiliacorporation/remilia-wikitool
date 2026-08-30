@@ -28,6 +28,8 @@ jobs:
           cargo run --quiet --package wikitest -- prose prepare-suite prose-dogfood
       - name: CLI compatibility regressions
         run: bash tests/cli_compat/cli_tests.sh
+      - name: Release dispatch guard
+        run: bash tests/release_dispatch.sh
 
   rust-lint:
     runs-on: ubuntu-latest
