@@ -334,6 +334,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.ver.outputs.version }}" \
+            --target "$GITHUB_SHA" \
             --title "wikitool ${{ steps.ver.outputs.version }}" \
             --notes-file release_body.md \
             release-zips/*.zip \

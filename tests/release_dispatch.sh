@@ -6,6 +6,11 @@ cd "$repo_root"
 
 version="$(awk -F '"' '/^version = "/ { print $2; exit }' Cargo.toml)"
 
+if ! grep -Fq -- '--target "$GITHUB_SHA"' .github/workflows/release-artifacts.yml; then
+  echo "release publication does not bind automatic tag creation to the dispatch commit" >&2
+  exit 1
+fi
+
 bash scripts/validate_release_dispatch.sh \
   "$version" false refs/heads/codex/local-verification
 bash scripts/validate_release_dispatch.sh \
