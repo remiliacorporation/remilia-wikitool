@@ -5,9 +5,21 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 version="$(awk -F '"' '/^version = "/ { print $2; exit }' Cargo.toml)"
+workflow=.github/workflows/release-artifacts.yml
 
-if ! grep -Fq -- '--target "$GITHUB_SHA"' .github/workflows/release-artifacts.yml; then
+if ! grep -Fq -- '--target "$GITHUB_SHA"' "$workflow"; then
   echo "release publication does not bind automatic tag creation to the dispatch commit" >&2
+  exit 1
+fi
+validator_calls="$(grep -Fc 'bash scripts/validate_release_dispatch.sh' "$workflow")"
+if [[ "$validator_calls" -ne 1 ]]; then
+  echo "release dispatch validation must run exactly once before the native build matrix (got ${validator_calls})" >&2
+  exit 1
+fi
+if ! grep -Fq 'needs: preflight' "$workflow" \
+    || ! grep -Fq 'needs: [preflight, build]' "$workflow" \
+    || ! grep -Fq '${{ needs.preflight.outputs.version }}' "$workflow"; then
+  echo "release jobs are not consistently bound to the validated preflight version" >&2
   exit 1
 fi
 

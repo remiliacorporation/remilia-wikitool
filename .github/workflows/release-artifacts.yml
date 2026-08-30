@@ -14,7 +14,35 @@ on:
         default: true
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate release dispatch
+        id: release
+        env:
+          RAW: ${{ inputs.artifact_version }}
+          CREATE_RELEASE: ${{ inputs.create_release }}
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          re='^v?[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'
+          if [[ ! "${RAW}" =~ $re ]]; then
+            echo "Invalid artifact_version: ${RAW}"
+            echo "Expected a bare semver version, e.g. 0.3.1"
+            exit 1
+          fi
+          version="${RAW#v}"
+          bash scripts/validate_release_dispatch.sh \
+            "$version" "$CREATE_RELEASE" "$RELEASE_REF"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: preflight
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -47,28 +75,6 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Resolve release names
-        id: names
-        shell: bash
-        env:
-          RAW: ${{ inputs.artifact_version }}
-          CREATE_RELEASE: ${{ inputs.create_release }}
-          RELEASE_REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          # Release versions are bare semver (no leading v); strip one if present.
-          re='^v?[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'
-          if [[ ! "${RAW}" =~ $re ]]; then
-            echo "Invalid artifact_version: ${RAW}"
-            echo "Expected a bare semver version, e.g. 0.3.1"
-            exit 1
-          fi
-          version="${RAW#v}"
-          bash scripts/validate_release_dispatch.sh \
-            "$version" "$CREATE_RELEASE" "$RELEASE_REF"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "bundle=wikitool-${version}-${{ matrix.platform }}" >> "$GITHUB_OUTPUT"
-
       - name: Stage pinned Contextmink release pack
         shell: bash
         run: >
@@ -88,7 +94,7 @@ jobs:
           cargo run --quiet --package wikitool --features maintainer --
           release build-matrix
           --targets ${{ matrix.target }}
-          --artifact-version ${{ steps.names.outputs.version }}
+          --artifact-version ${{ needs.preflight.outputs.version }}
           --output-dir dist/release-matrix
           --contextmink-dist dist/contextmink-dist
           --papertiger-dist dist/papertiger-dist
@@ -98,7 +104,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bundle="dist/release-matrix/${{ steps.names.outputs.bundle }}"
+          bundle="dist/release-matrix/wikitool-${{ needs.preflight.outputs.version }}-${{ matrix.platform }}"
           bash scripts/declare_unsigned_macos.sh --bundle-dir "$bundle"
           rm -f "${bundle}.zip"
           ditto -c -k --sequesterRsrc --keepParent "$bundle" "${bundle}.zip"
@@ -111,7 +117,7 @@ jobs:
       - name: Verify packaged release (Unix)
         if: runner.os != 'Windows'
         env:
-          BUNDLE: dist/release-matrix/${{ steps.names.outputs.bundle }}
+          BUNDLE: dist/release-matrix/wikitool-${{ needs.preflight.outputs.version }}-${{ matrix.platform }}
         run: |
           test -f "$BUNDLE/${{ matrix.binary_name }}"
           "$BUNDLE/${{ matrix.binary_name }}" --version
@@ -193,7 +199,7 @@ jobs:
       - name: Verify packaged release (Windows)
         if: runner.os == 'Windows'
         env:
-          BUNDLE: dist/release-matrix/${{ steps.names.outputs.bundle }}
+          BUNDLE: dist/release-matrix/wikitool-${{ needs.preflight.outputs.version }}-${{ matrix.platform }}
         run: |
           if (!(Test-Path "$env:BUNDLE/${{ matrix.binary_name }}")) { throw "release binary missing" }
           & "$env:BUNDLE/${{ matrix.binary_name }}" --version
@@ -275,13 +281,13 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: wikitool-release-${{ steps.names.outputs.version }}-${{ matrix.platform }}
-          path: dist/release-matrix/${{ steps.names.outputs.bundle }}.zip
+          name: wikitool-release-${{ needs.preflight.outputs.version }}-${{ matrix.platform }}
+          path: dist/release-matrix/wikitool-${{ needs.preflight.outputs.version }}-${{ matrix.platform }}.zip
           if-no-files-found: error
 
   publish-release:
     if: inputs.create_release
-    needs: build
+    needs: [preflight, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -289,16 +295,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Resolve release version
-        id: ver
-        run: echo "version=${RAW#v}" >> "$GITHUB_OUTPUT"
-        env:
-          RAW: ${{ inputs.artifact_version }}
-
       - uses: actions/download-artifact@v8
         with:
           path: release-zips
-          pattern: wikitool-release-${{ steps.ver.outputs.version }}-*
+          pattern: wikitool-release-${{ needs.preflight.outputs.version }}-*
           merge-multiple: true
 
       - name: List downloaded assets
@@ -327,15 +327,15 @@ jobs:
           fi
           cat release_body.md
         env:
-          VERSION: ${{ steps.ver.outputs.version }}
+          VERSION: ${{ needs.preflight.outputs.version }}
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.ver.outputs.version }}" \
+          gh release create "${{ needs.preflight.outputs.version }}" \
             --target "$GITHUB_SHA" \
-            --title "wikitool ${{ steps.ver.outputs.version }}" \
+            --title "wikitool ${{ needs.preflight.outputs.version }}" \
             --notes-file release_body.md \
             release-zips/*.zip \
             release-zips/SHA256SUMS.txt

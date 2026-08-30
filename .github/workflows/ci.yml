@@ -22,10 +22,21 @@ jobs:
           diff -u docs/wikitool/reference.md /tmp/wikitool-reference.md
       - name: Wikitest evaluation authority
         run: |
+          set -euo pipefail
           cargo build --package wikitool --package wikitest
-          cargo run --quiet --package wikitest -- validate
-          cargo run --quiet --package wikitest -- suite core-dogfood --require-all
-          cargo run --quiet --package wikitest -- prose prepare-suite prose-dogfood
+          ./target/debug/wikitest validate
+          ./target/debug/wikitest suite core-dogfood --require-all &
+          core_pid=$!
+          ./target/debug/wikitest prose prepare-suite prose-dogfood &
+          prose_pid=$!
+          core_status=0
+          prose_status=0
+          wait "$core_pid" || core_status=$?
+          wait "$prose_pid" || prose_status=$?
+          if [[ "$core_status" -ne 0 || "$prose_status" -ne 0 ]]; then
+            echo "Wikitest suites failed: core=${core_status}, prose=${prose_status}" >&2
+            exit 1
+          fi
       - name: CLI compatibility regressions
         run: bash tests/cli_compat/cli_tests.sh
       - name: Release dispatch guard

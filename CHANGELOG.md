@@ -17,6 +17,7 @@ The release workflow extracts the section for the requested version and fails if
 - Media reference inventories are now `mediawiki.media-reference-inventory.v2`: every captured object carries its exact bounded source filename, and generated preservation image/audio invocations retain that readable provenance instead of exposing digest-only file links.
 - Release bundles update their hash-pinned native companions to Contextmink 0.10.0 and Papertiger 0.11.0. Wikitool verifies each platform archive and embedded source commit while each optional companion retains ownership of its own project lifecycle.
 - Project metadata and the default MediaWiki User-Agent identify the canonical `remiliacorporation/wikitool` repository. Wikitool has no default wiki target; projects select MediaWiki endpoints explicitly and keep site-specific behavior in adapters.
+- Release dispatch validates its version, changelog, publication flag, and branch once before allocating the native build matrix, while CI runs the independent Wikitest core and prose suites concurrently after one shared build.
 
 ### Fixed
 
