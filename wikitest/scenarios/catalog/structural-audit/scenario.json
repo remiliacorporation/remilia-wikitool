@@ -1,0 +1,111 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "catalog-structural-audit",
+  "title": "Catalog structural and reference audit",
+  "description": "Builds a varied local wiki corpus and exercises reference identity, duplicate detection, orphan and empty-category analysis, template implementation discovery, and agent-facing contract traversal.",
+  "kind": "catalog",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "reference-index", "steps": ["reference-summary", "reference-list"]},
+    {"capability": "reference-duplicate-detection", "steps": ["reference-duplicates"]},
+    {"capability": "orphan-analysis", "steps": ["inspect-orphans"]},
+    {"capability": "empty-category-analysis", "steps": ["inspect-empty-categories"]},
+    {"capability": "template-usage-catalog", "steps": ["inspect-template-catalog"]},
+    {"capability": "template-implementation-references", "steps": ["inspect-template-detail"]},
+    {"capability": "authoring-contract-search", "steps": ["search-authoring-contracts"]},
+    {"capability": "authoring-contract-plan", "steps": ["plan-authoring-contracts"]}
+  ],
+  "steps": [
+    {"action": "command", "id": "initialize-project", "argv": ["init", "--templates", "--no-network"], "expect": {"exit_code": 0}},
+    {"action": "copy", "id": "install-alpha", "source": "fixtures/Alpha_Archivist.wiki", "target": "wiki_content/Main/Alpha_Archivist.wiki", "sha256": "628c33242d5276a9d607ff386400da4bbd56600b6f28427ca89ac9b73a26bdcc"},
+    {"action": "copy", "id": "install-beta", "source": "fixtures/Beta_Index.wiki", "target": "wiki_content/Main/Beta_Index.wiki", "sha256": "ef58d894c6c8e11779f68abb48b0d83a64fd05787be1ba48e1613c15379b73cf"},
+    {"action": "copy", "id": "install-gamma", "source": "fixtures/Gamma_Orphan.wiki", "target": "wiki_content/Main/Gamma_Orphan.wiki", "sha256": "a0f2baa451942da948387fe980c07e97a13026d1831385e2e918df58f325ad92"},
+    {"action": "copy", "id": "install-archivists-category", "source": "fixtures/Category_Archivists.wiki", "target": "wiki_content/Category/Archivists.wiki", "sha256": "7167ff34182d6da2541605988a4eaddd07608893602ef504086d9e5810b6bcb9"},
+    {"action": "copy", "id": "install-empty-category", "source": "fixtures/Category_Empty_fixture.wiki", "target": "wiki_content/Category/Empty_fixture.wiki", "sha256": "e4384c0110d32336fed6564d4e1b94a770e26670f2a45317192ba9e4a2a343c3"},
+    {"action": "copy", "id": "install-infobox", "source": "fixtures/Template_Infobox_person.wiki", "target": "templates/infobox/Template_Infobox_person.wiki", "sha256": "d2a5864394c7d21aa2d015854e6157668c0dbabd95d40ef4378178b19b4c78ca"},
+    {"action": "copy", "id": "install-infobox-doc", "source": "fixtures/Template_Infobox_person___doc.wiki", "target": "templates/infobox/Template_Infobox_person___doc.wiki", "sha256": "1098298a2a657f2d1af4883ceb1492c2fa662e3dcf8d2760c24cf14b166190a3"},
+    {"action": "copy", "id": "install-infobox-module", "source": "fixtures/Module_Infobox_person.lua", "target": "templates/infobox/Module_Infobox_person.lua", "sha256": "b0ccb1547d8769c2a2856d8d38841228e4b186a50da0f21f956c35cc887ba4d1"},
+    {"action": "copy", "id": "install-infobox-redirect", "source": "fixtures/Template_Infobox_human.wiki", "target": "templates/infobox/_redirects/Template_Infobox_human.wiki", "sha256": "c9b99569cd04e26974e47a56089c673bfc03adc30739655931ddbff4dc06e494"},
+    {"action": "copy", "id": "install-reflist", "source": "fixtures/Template_Reflist.wiki", "target": "templates/misc/Template_Reflist.wiki", "sha256": "2e8820c5d685d401b0c4554cdb5ac1c8093199a7b74f8089b873165ab5c9791d"},
+    {"action": "copy", "id": "install-cite-web", "source": "fixtures/Template_Cite_web.wiki", "target": "templates/cite/Template_Cite_web.wiki", "sha256": "6efc0fe51dbace7eb4ab55df17db6cb02f88f5555d79b26bf0c2af9aaa3e22b9"},
+    {
+      "action": "command",
+      "id": "build-catalog",
+      "argv": ["catalog", "build", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/status/content_index_ready", "value": true},
+          {"kind": "json_pointer_u64_at_least", "pointer": "/rebuild/inserted_rows", "value": 10}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reference-summary",
+      "argv": ["catalog", "inspect", "references", "summary", "--all", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_u64_at_least", "pointer": "/report/reference_count", "value": 3}]}
+    },
+    {
+      "action": "command",
+      "id": "reference-list",
+      "argv": ["catalog", "inspect", "references", "list", "--domain", "sources.invalid", "--all", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "https://sources.invalid/aster-record"}]}
+    },
+    {
+      "action": "command",
+      "id": "reference-duplicates",
+      "argv": ["catalog", "inspect", "references", "duplicates", "--all", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "https://sources.invalid/aster-record"}]}
+    },
+    {
+      "action": "command",
+      "id": "inspect-orphans",
+      "argv": ["catalog", "inspect", "orphans", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_array_contains", "pointer": "/titles", "value": "Gamma Orphan"}]}
+    },
+    {
+      "action": "command",
+      "id": "inspect-empty-categories",
+      "argv": ["catalog", "inspect", "empty-categories", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_array_contains", "pointer": "/titles", "value": "Category:Empty fixture"}]}
+    },
+    {
+      "action": "command",
+      "id": "inspect-template-catalog",
+      "argv": ["catalog", "inspect", "templates", "--all", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Template:Infobox person"}]}
+    },
+    {
+      "action": "command",
+      "id": "inspect-template-detail",
+      "argv": ["catalog", "inspect", "templates", "Infobox person", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "contains", "value": "module"},
+          {"kind": "contains", "value": "documentation"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "search-authoring-contracts",
+      "argv": ["catalog", "contracts", "search", "person occupation", "--profile", "author", "--limit", "5", "--token-budget", "500", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Infobox person"}]}
+    },
+    {
+      "action": "command",
+      "id": "plan-authoring-contracts",
+      "argv": ["catalog", "contracts", "plan", "Alpha Archivist", "--profile", "author", "--limit", "5", "--token-budget", "500", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/query", "value": "Alpha Archivist"},
+          {"kind": "contains", "value": "Infobox person"}
+        ]
+      }
+    }
+  ]
+}

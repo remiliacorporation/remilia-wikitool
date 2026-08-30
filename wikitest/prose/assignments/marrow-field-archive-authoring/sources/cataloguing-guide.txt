@@ -1,0 +1,8 @@
+Marrow Field Archive — description guide, revision 3
+9 May 2024
+
+Catalogue records distinguish the date printed on an object, a date supplied by a donor, and a date inferred by an archivist. Inferred dates must use an approximation marker and explain the basis in a public note. When no responsible creator is printed, the creator field remains unknown; a venue or donor must not be substituted.
+
+Duplicate printings are retained when paper, ink, annotations, or distribution context differ. A folder-level record may summarize several related sheets. Consequently, record totals, object totals, and image totals answer different questions and must not be combined.
+
+The archive accepts material connected to the River Ward but does not claim geographic or social completeness. Descriptions should state gaps when they are known. Donor recollections are leads for investigation, not automatically public facts.

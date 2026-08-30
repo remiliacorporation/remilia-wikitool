@@ -121,17 +121,18 @@ jobs:
         run: |
           test -f "$BUNDLE/${{ matrix.binary_name }}"
           "$BUNDLE/${{ matrix.binary_name }}" --version
-          test -f "$BUNDLE/AGENTS.md"
-          test -f "$BUNDLE/CLAUDE.md"
-          test -d "$BUNDLE/.claude/rules"
-          test -d "$BUNDLE/.claude/skills"
-          cmp -s "$BUNDLE/AGENTS.md" "$BUNDLE/CLAUDE.md"
-          test -f "$BUNDLE/codex_skills/wiki-writing/SKILL.md"
-          test -f "$BUNDLE/codex_skills/prose-review/SKILL.md"
-          test -f "$BUNDLE/codex_skills/wiki-interview/SKILL.md"
-          test -f "$BUNDLE/codex_skills/wikitool-operator/SKILL.md"
-          test -f "$BUNDLE/integration/agent_integration.md"
-          test -f "$BUNDLE/integration/site_adapters.md"
+          "$BUNDLE/${{ matrix.binary_name }}" agent inspect --format json >/dev/null
+          test -f "$BUNDLE/agent/manifest.json"
+          test -f "$BUNDLE/agent/skills/wiki-writing/SKILL.md"
+          test -f "$BUNDLE/agent/skills/prose-review/SKILL.md"
+          test -f "$BUNDLE/agent/skills/wiki-interview/SKILL.md"
+          test -f "$BUNDLE/agent/skills/wikitool-operator/SKILL.md"
+          test -f "$BUNDLE/agent/integration/agent_integration.md"
+          test -f "$BUNDLE/agent/integration/site_adapters.md"
+          test ! -e "$BUNDLE/AGENTS.md"
+          test ! -e "$BUNDLE/CLAUDE.md"
+          test ! -e "$BUNDLE/.claude"
+          test ! -e "$BUNDLE/codex_skills"
           test -f "$BUNDLE/site_adapters/generic/site-adapter.toml"
           test -f "$BUNDLE/site_adapters/remilia-wiki/site-adapter.toml"
           test -f "$BUNDLE/site_adapters/remilia-wiki/editorial.md"
@@ -206,19 +207,18 @@ jobs:
         run: |
           if (!(Test-Path "$env:BUNDLE/${{ matrix.binary_name }}")) { throw "release binary missing" }
           & "$env:BUNDLE/${{ matrix.binary_name }}" --version
-          if (!(Test-Path "$env:BUNDLE/AGENTS.md")) { throw "AGENTS.md missing" }
-          if (!(Test-Path "$env:BUNDLE/CLAUDE.md")) { throw "CLAUDE.md missing" }
-          if (!(Test-Path "$env:BUNDLE/.claude/rules")) { throw ".claude/rules missing" }
-          if (!(Test-Path "$env:BUNDLE/.claude/skills")) { throw ".claude/skills missing" }
-          $agentsHash = (Get-FileHash -Path "$env:BUNDLE/AGENTS.md" -Algorithm SHA256).Hash
-          $claudeHash = (Get-FileHash -Path "$env:BUNDLE/CLAUDE.md" -Algorithm SHA256).Hash
-          if ($agentsHash -ne $claudeHash) { throw "AGENTS.md and CLAUDE.md mismatch" }
-          if (!(Test-Path "$env:BUNDLE/codex_skills/wiki-writing/SKILL.md")) { throw "wiki-writing skill missing" }
-          if (!(Test-Path "$env:BUNDLE/codex_skills/prose-review/SKILL.md")) { throw "prose-review skill missing" }
-          if (!(Test-Path "$env:BUNDLE/codex_skills/wiki-interview/SKILL.md")) { throw "wiki-interview skill missing" }
-          if (!(Test-Path "$env:BUNDLE/codex_skills/wikitool-operator/SKILL.md")) { throw "wikitool-operator skill missing" }
-          if (!(Test-Path "$env:BUNDLE/integration/agent_integration.md")) { throw "agent integration guidance missing" }
-          if (!(Test-Path "$env:BUNDLE/integration/site_adapters.md")) { throw "site adapter guidance missing" }
+          & "$env:BUNDLE/${{ matrix.binary_name }}" agent inspect --format json | Out-Null
+          if (!(Test-Path "$env:BUNDLE/agent/manifest.json")) { throw "agent manifest missing" }
+          if (!(Test-Path "$env:BUNDLE/agent/skills/wiki-writing/SKILL.md")) { throw "wiki-writing skill missing" }
+          if (!(Test-Path "$env:BUNDLE/agent/skills/prose-review/SKILL.md")) { throw "prose-review skill missing" }
+          if (!(Test-Path "$env:BUNDLE/agent/skills/wiki-interview/SKILL.md")) { throw "wiki-interview skill missing" }
+          if (!(Test-Path "$env:BUNDLE/agent/skills/wikitool-operator/SKILL.md")) { throw "wikitool-operator skill missing" }
+          if (!(Test-Path "$env:BUNDLE/agent/integration/agent_integration.md")) { throw "agent integration guidance missing" }
+          if (!(Test-Path "$env:BUNDLE/agent/integration/site_adapters.md")) { throw "site adapter guidance missing" }
+          if (Test-Path "$env:BUNDLE/AGENTS.md") { throw "source-checkout AGENTS.md must not ship" }
+          if (Test-Path "$env:BUNDLE/CLAUDE.md") { throw "source-checkout CLAUDE.md must not ship" }
+          if (Test-Path "$env:BUNDLE/.claude") { throw "legacy Claude wrappers must not ship" }
+          if (Test-Path "$env:BUNDLE/codex_skills") { throw "legacy codex_skills must not ship" }
           if (!(Test-Path "$env:BUNDLE/site_adapters/generic/site-adapter.toml")) { throw "generic site adapter missing" }
           if (!(Test-Path "$env:BUNDLE/site_adapters/remilia-wiki/site-adapter.toml")) { throw "Remilia Wiki site adapter missing" }
           if (!(Test-Path "$env:BUNDLE/site_adapters/remilia-wiki/editorial.md")) { throw "Remilia Wiki editorial guidance missing" }

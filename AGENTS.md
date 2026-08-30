@@ -1,10 +1,8 @@
 # Wikitool Development Guidance
 
 This file is for implementation work in the wikitool source checkout. `CLAUDE.md` at the repo
-root is a byte-identical mirror of this file; edit both together. It is not the packaged
-operator guidance shipped to wiki users. User-facing AI companion guidance lives in
-`ai-pack/CLAUDE.md`, `ai-pack/AGENTS.md`, `ai-pack/.claude/skills/`, and
-`ai-pack/codex_skills/`.
+root is a byte-identical mirror of this file; edit both together. It is not packaged for users.
+User-facing agent procedures live only in the canonical packages under `agent-pack/skills/`.
 
 When changing shipped behavior, update the relevant operator guidance and regenerate
 `docs/wikitool/reference.md`. When changing only internal implementation practice, keep the change

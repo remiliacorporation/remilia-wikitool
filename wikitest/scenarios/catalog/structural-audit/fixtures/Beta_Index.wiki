@@ -1,0 +1,6 @@
+'''Beta Index''' is a finding aid for [[Alpha Archivist]].<ref>{{Cite web|url=https://sources.invalid/aster-record|title=Aster record|website=Fixture Gazette|date=2024-01-03}}</ref>
+
+== References ==
+{{Reflist}}
+
+[[Category:Indexes]]

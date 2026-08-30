@@ -1,0 +1,2 @@
+== Usage ==
+Use on biographies with <code>|name=</code> and <code>|occupation=</code>.

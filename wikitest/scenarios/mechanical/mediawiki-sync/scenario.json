@@ -26,7 +26,7 @@
   ],
   "mediawiki_fixture": {
     "source": "fixtures/mediawiki.json",
-    "sha256": "2c52a768db9b953bc8b1a99f6bbf979d62add1872bf02dead366d14551bd16d0"
+    "sha256": "4a56c04bacfeab9ebb27adaa3a93cf07dce0f515d144c94149adca268dcb902e"
   },
   "steps": [
     {

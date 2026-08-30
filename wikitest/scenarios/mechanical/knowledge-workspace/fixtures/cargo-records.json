@@ -1,0 +1,10 @@
+[
+  {
+    "title": "JSON Fixture Gamma",
+    "content": "'''JSON Fixture Gamma''' is a generated import record."
+  },
+  {
+    "title": "JSON Fixture Delta",
+    "content": "'''JSON Fixture Delta''' is a second generated import record."
+  }
+]

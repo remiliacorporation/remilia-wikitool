@@ -1,0 +1,32 @@
+name: Wikitest capability campaign
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-capabilities:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build evaluated binaries
+        run: cargo build --package wikitool --package wikitest
+      - name: Validate catalogs
+        run: ./target/debug/wikitest validate
+      - name: Run comprehensive capability campaign
+        run: ./target/debug/wikitest suite wikitool-capabilities --require-all
+      - name: Retain receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wikitest-capability-evidence
+          path: |
+            .wikitest/runs
+            target/debug/wikitool
+            target/debug/wikitest
+          if-no-files-found: error

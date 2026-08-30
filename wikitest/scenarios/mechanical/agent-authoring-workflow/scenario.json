@@ -1,0 +1,176 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-agent-authoring-workflow",
+  "title": "Agent-facing interview, review, and changeset workflow",
+  "description": "Exercises explicit adapter inspection, neutral interview ledgers and open items, draft review with brief binding, multi-article acceptance manifests, promotion, and post-promotion validation.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "adapter-inspection", "steps": ["inspect-adapter"]},
+    {"capability": "interview-ledger-init", "steps": ["initialize-interview"]},
+    {"capability": "interview-open-items", "steps": ["add-open-item", "list-open-item", "resolve-open-item", "list-resolved-item"]},
+    {"capability": "interview-validation", "steps": ["validate-interview", "show-interview", "audit-interviews"]},
+    {"capability": "brief-bound-draft-review", "steps": ["review-draft-with-brief"]},
+    {"capability": "article-changeset-prepare", "steps": ["prepare-changeset"]},
+    {"capability": "article-changeset-acceptance", "steps": ["accept-changeset"]},
+    {"capability": "changeset-backed-promotion", "steps": ["promote-draft"]},
+    {"capability": "post-promotion-validation", "steps": ["validate-promoted-article"]}
+  ],
+  "steps": [
+    {"action": "copy", "id": "install-adapter", "source": "fixtures/site-adapter.toml", "target": "site-adapter/site-adapter.toml", "sha256": "5a6d0fde155936750eda31c37c1a8bca4fc8e14aea9b3c2bac9f6325e21e8fa5"},
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": ["init", "--templates", "--no-network", "--api-url", "https://wikitest.invalid/api.php", "--adapter-path", "site-adapter/site-adapter.toml"],
+      "expect": {"exit_code": 0}
+    },
+    {"action": "copy", "id": "install-quality-template", "source": "fixtures/Template_Article_quality.wiki", "target": "templates/misc/Template_Article_quality.wiki", "sha256": "84f476b30356ea388fb23bf5cc1dcf9f14fc46de490ab6b08d5d0086a5c709ce"},
+    {"action": "copy", "id": "install-reflist-template", "source": "fixtures/Template_Reflist.wiki", "target": "templates/misc/Template_Reflist.wiki", "sha256": "2e8820c5d685d401b0c4554cdb5ac1c8093199a7b74f8089b873165ab5c9791d"},
+    {"action": "copy", "id": "install-cite-template", "source": "fixtures/Template_Cite_web.wiki", "target": "templates/cite/Template_Cite_web.wiki", "sha256": "6efc0fe51dbace7eb4ab55df17db6cb02f88f5555d79b26bf0c2af9aaa3e22b9"},
+    {"action": "copy", "id": "install-draft", "source": "fixtures/Complex_Draft.wiki", "target": ".wikitool/drafts/Complex_Draft.wiki", "sha256": "789662a4f9e7b5dc7458b7458e45b5a646b27282060e9773a946aad3b0217a63"},
+    {"action": "command", "id": "build-catalog", "argv": ["catalog", "build", "--format", "json"], "expect": {"exit_code": 0}},
+    {
+      "action": "command",
+      "id": "inspect-adapter",
+      "argv": ["adapter", "inspect", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/adapter/adapter_id", "value": "wikitest-wiki"},
+          {"kind": "json_pointer_non_blank", "pointer": "/publication_identity/policy_sha256"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "initialize-interview",
+      "argv": ["interview", "init", "Complex Draft", "--intent", "new", "--no-scout", "--agent", "Wikitest agent", "--timestamp", "20260829T140000Z", "--format", "json"],
+      "captures": [{"name": "BRIEF_PATH", "pointer": "/brief_path"}],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "wiki_interview_init_v1"},
+          {"kind": "json_pointer_equals", "pointer": "/scout_included", "value": false}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "add-open-item",
+      "argv": ["interview", "open-item", "add", "${BRIEF_PATH}", "--kind", "privacy-exclusion", "--text", "Do not publish the private donor address.", "--item-id", "privacy-1", "--notes", "Fixture exclusion", "--timestamp", "20260829T140100Z", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/item/item_id", "value": "privacy-1"},
+          {"kind": "json_pointer_equals", "pointer": "/item/status", "value": "open"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "list-open-item",
+      "argv": ["interview", "open-item", "list", "${BRIEF_PATH}", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Do not publish the private donor address."}]}
+    },
+    {
+      "action": "command",
+      "id": "resolve-open-item",
+      "argv": ["interview", "open-item", "update", "${BRIEF_PATH}", "--item-id", "privacy-1", "--status", "resolved", "--notes", "Excluded from the article brief", "--timestamp", "20260829T140200Z", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/item/status", "value": "resolved"}]}
+    },
+    {
+      "action": "command",
+      "id": "list-resolved-item",
+      "argv": ["interview", "open-item", "list", "${BRIEF_PATH}", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "resolved"}]}
+    },
+    {
+      "action": "command",
+      "id": "validate-interview",
+      "argv": ["interview", "validate", "${BRIEF_PATH}", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "warning"},
+          {"kind": "json_array_contains", "pointer": "/summary/sections_unfilled", "value": "Article Object"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "show-interview",
+      "argv": ["interview", "show", "${BRIEF_PATH}", "--format", "json", "--view", "full"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/summary/open_item_counts/resolved", "value": 1}]}
+    },
+    {
+      "action": "command",
+      "id": "audit-interviews",
+      "argv": ["interview", "audit", "--format", "json", "--view", "brief"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/total_briefs", "value": 1}]}
+    },
+    {
+      "action": "command",
+      "id": "review-draft-with-brief",
+      "argv": ["review", "--draft-path", ".wikitool/drafts/Complex_Draft.wiki", "--title", "Complex Draft", "--brief-path", "${BRIEF_PATH}", "--summary", "Wikitest draft review", "--format", "json", "--view", "full"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/filters/mode", "value": "draft"},
+          {"kind": "json_pointer_exists", "pointer": "/interview_brief"},
+          {"kind": "contains", "value": "promote_draft"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "prepare-changeset",
+      "argv": ["article", "changeset", "prepare", ".wikitool/drafts/Complex_Draft.wiki", "--title", "Complex Draft", "--output", ".wikitool/review/complex-draft.json", "--prose-origin", "collaborative-draft", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/item_count", "value": 1},
+          {"kind": "json_pointer_equals", "pointer": "/manifest/items/0/prose_origin", "value": "collaborative_draft"}
+        ],
+        "files": [{"kind": "exists", "path": ".wikitool/review/complex-draft.json"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "accept-changeset",
+      "argv": ["article", "changeset", "accept", ".wikitool/review/complex-draft.json", "--human-editor", "Wikitest fixture editor", "--warnings", "accept", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/item_count", "value": 1},
+          {"kind": "json_pointer_equals", "pointer": "/editor_identity_assurance", "value": "self_reported_unverified"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "promote-draft",
+      "argv": ["article", "promote", ".wikitool/drafts/Complex_Draft.wiki", "--title", "Complex Draft", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/prose_origin", "value": "collaborative_draft"},
+          {"kind": "json_pointer_equals", "pointer": "/source_preserved", "value": true}
+        ],
+        "files": [{"kind": "contains", "path": "wiki_content/Main/Complex_Draft.wiki", "value": "fictional archive used to test"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "validate-promoted-article",
+      "argv": ["validate", "--title", "Complex Draft", "--summary", "--advisory", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_exists", "pointer": "/status"},
+          {"kind": "not_contains", "value": "private donor address"}
+        ]
+      }
+    }
+  ]
+}

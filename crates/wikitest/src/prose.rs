@@ -957,9 +957,22 @@ fn write_author_templates(
             "id": "replace-with-stable-participant-id",
             "display_name": "Replace with author name",
             "kind": "agent",
-            "provider": "Replace or remove",
-            "model": "Replace or remove",
-            "invocation_id": "Replace or remove"
+            "execution": {
+                "provider": "Replace with provider",
+                "model": "Replace with exact model",
+                "harness": "Replace with harness name",
+                "harness_version": "Replace with harness version",
+                "invocation_id": "Replace with invocation identifier",
+                "reasoning_effort": "Replace or remove when unavailable",
+                "access": {
+                    "network": false,
+                    "ambient_repository": false,
+                    "tools": []
+                },
+                "metrics": {
+                    "duration_ms": 1
+                }
+            }
         },
         "decision": decision,
         "notes": "Describe the source work and drafting decision.",
@@ -1034,9 +1047,22 @@ fn write_review_template(
             "id": "replace-with-stable-participant-id",
             "display_name": "Replace with reviewer name",
             "kind": "agent",
-            "provider": "Replace or remove",
-            "model": "Replace or remove",
-            "invocation_id": "Replace or remove"
+            "execution": {
+                "provider": "Replace with provider",
+                "model": "Replace with exact model",
+                "harness": "Replace with harness name",
+                "harness_version": "Replace with harness version",
+                "invocation_id": "Replace with invocation identifier",
+                "reasoning_effort": "Replace or remove when unavailable",
+                "access": {
+                    "network": false,
+                    "ambient_repository": false,
+                    "tools": []
+                },
+                "metrics": {
+                    "duration_ms": 1
+                }
+            }
         },
         "scope": "complete",
         "reader_verdict": "Would the intended reader want to read this article, and why?",
@@ -1245,14 +1271,14 @@ fn retained_bound_input_locator(prefix: &str, input: &BoundInput) -> String {
         .filter_map(|component| component.as_os_str().to_str())
         .collect::<Vec<_>>();
     if let Some(index) = components
-        .iter()
-        .position(|component| *component == "codex_skills")
-        && components.len() > index + 2
+        .windows(2)
+        .position(|pair| pair == ["agent-pack", "skills"])
+        && components.len() > index + 3
     {
         return format!(
             "{}/{}",
             prefix.trim_end_matches('/'),
-            components[index + 1..].join("/")
+            components[index + 2..].join("/")
         );
     }
     retained_input_locator(prefix, &input.id, &input.locator)
@@ -2437,9 +2463,7 @@ mod tests {
                 id: "reviewer".to_owned(),
                 display_name: "Reviewer".to_owned(),
                 kind: ParticipantKind::Human,
-                provider: None,
-                model: None,
-                invocation_id: None,
+                execution: None,
             },
             scope: ReviewScope::Complete,
             reader_verdict: "No.".to_owned(),
@@ -2511,6 +2535,7 @@ mod tests {
             "title": "Oracle commitment",
             "description": "Regression fixture",
             "mode": "review",
+            "complexity": "focused",
             "coverage": ["review"],
             "article": {
                 "title": "Example",
@@ -2625,6 +2650,7 @@ mod tests {
             "title": "Expected host framing failure",
             "description": "Internal operator description",
             "mode": "review",
+            "complexity": "focused",
             "coverage": ["host-framing-review"],
             "article": {
                 "title": "Example",
@@ -2760,7 +2786,7 @@ mod tests {
     fn canonical_skill_snapshots_preserve_relative_reference_links() {
         let repository = tempfile::tempdir().expect("repository");
         let run = tempfile::tempdir().expect("run");
-        let skill_root = repository.path().join("ai-pack/codex_skills/wiki-writing");
+        let skill_root = repository.path().join("agent-pack/skills/wiki-writing");
         fs::create_dir_all(skill_root.join("references")).expect("references");
         let skill_bytes = b"Read [evidence](references/evidence.md).\n";
         let reference_bytes = b"Evidence procedure.\n";
@@ -2771,13 +2797,13 @@ mod tests {
             BoundInput {
                 id: "wiki-writing".to_owned(),
                 root: crate::prose_model::InputRoot::Repository,
-                locator: "ai-pack/codex_skills/wiki-writing/SKILL.md".to_owned(),
+                locator: "agent-pack/skills/wiki-writing/SKILL.md".to_owned(),
                 sha256: sha256_bytes(skill_bytes),
             },
             BoundInput {
                 id: "evidence".to_owned(),
                 root: crate::prose_model::InputRoot::Repository,
-                locator: "ai-pack/codex_skills/wiki-writing/references/evidence.md".to_owned(),
+                locator: "agent-pack/skills/wiki-writing/references/evidence.md".to_owned(),
                 sha256: sha256_bytes(reference_bytes),
             },
         ];
@@ -2945,9 +2971,20 @@ mod tests {
             id: "same-agent".to_owned(),
             display_name: "Same agent".to_owned(),
             kind: ParticipantKind::Agent,
-            provider: None,
-            model: None,
-            invocation_id: None,
+            execution: Some(crate::prose_model::AgentExecution {
+                provider: "fixture-provider".to_owned(),
+                model: "fixture-model".to_owned(),
+                harness: "fixture-harness".to_owned(),
+                harness_version: "1.0.0".to_owned(),
+                invocation_id: "fixture-invocation".to_owned(),
+                reasoning_effort: None,
+                access: crate::prose_model::AgentAccess {
+                    network: false,
+                    ambient_repository: false,
+                    tools: Vec::new(),
+                },
+                metrics: None,
+            }),
         };
         let error = ensure_independent_reviewer(Some(&participant), &participant)
             .expect_err("self-review must be refused");

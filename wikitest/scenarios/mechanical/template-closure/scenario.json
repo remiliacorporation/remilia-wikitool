@@ -13,7 +13,7 @@
   ],
   "mediawiki_fixture": {
     "source": "fixtures/mediawiki.json",
-    "sha256": "2ca254c40ba83197c7bf5c67797b2e444b6e731d5c74ba32f98ec0abd79d3ac0"
+    "sha256": "d170c4835ac7fddb980e8b7b24d4303d6477362fc2270d55c3fa691697122769"
   },
   "steps": [
     {

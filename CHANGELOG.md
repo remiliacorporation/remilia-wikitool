@@ -6,33 +6,39 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
-### Changed
-
-- Release archives now ship a validated built-in adapter catalog containing the generic template
-  and the Remilia Wiki adapter with its reviewed template contracts. Catalog presence does not
-  select an endpoint or policy; explicit project adapters remain opt-in.
-
 ## [0.8.0] - 2026-08-30
 
 ### Added
 
+- `agent inspect`, `agent setup-project`, and `agent uninstall-project` validate and install the four public Wikitool skill packages for `.agents`, Claude, or both. Setup records exact file identities in `.wikitool-agent/project-install.json`; upgrade and uninstall refuse modified, foreign, symlinked, or downgraded state instead of overwriting user work.
 - `mediawiki_wikitext` exposes revision-bound source parsing through strict `mediawiki.wikitext-source-profile.v1` and `mediawiki.wikitext-source-document.v1` contracts, verifies exact source bytes before parsing, and returns bounded templates, parameters, classified links, redirects, and protected literal regions for explicit non-overlapping rewrites; corpus acquisition, template expansion, site mappings, and transformation receipts remain caller-owned.
+- `wikitest suite wikitool-capabilities --require-all` runs an opt-in deterministic campaign spanning 75 declared capabilities across article state, catalog retrieval and audits, MediaWiki read/sync/mutation behavior, template engineering, knowledge workspaces, imports, companions, and the agent-facing authoring workflow; the manually dispatched `Wikitest capability campaign` retains its receipts with the exact evaluated binaries without making the campaign a release gate.
+- `wikitest prose prepare-suite complex-prose-stress` prepares two source-rich long-form authoring assignments for institutional chronology and governance and for a sensitive living-artist biography. Preparation records no demonstrated coverage; both assignments require external authors, claim maps, differently identified reviewers, and held-out evaluation.
 
 ### Changed
 
+- Release archives replace the root `AGENTS.md`, `CLAUDE.md`, `.claude/`, `codex_skills/`, `integration/`, and v3 AI-pack manifest with a self-contained `agent/` directory. `agent/manifest.json` uses `wikitool.agent-pack.v1` and binds the complete deterministic file inventory; automation that read the old root paths must use `agent/skills/` or `wikitool agent setup-project`.
+- The maintainer-only `release build-ai-pack` command is now `release build-agent-pack` and builds only the agent artifact. Release documentation and site-adapter data are staged separately, so agent installation cannot copy unrelated release files into a project.
+- Release archives ship a validated built-in adapter catalog containing the generic template and the Remilia Wiki adapter with its reviewed template contracts. Catalog presence does not select an endpoint or policy; explicit project adapters remain opt-in.
 - Media reference inventories are now `mediawiki.media-reference-inventory.v2`: every captured object carries its exact bounded source filename, and generated preservation image/audio invocations retain that readable provenance instead of exposing digest-only file links.
 - Release bundles update their hash-pinned native companions to Contextmink 0.10.0 and Papertiger 0.11.0. Wikitool verifies each platform archive and embedded source commit while each optional companion retains ownership of its own project lifecycle.
 - Project metadata and the default MediaWiki User-Agent identify the canonical `remiliacorporation/wikitool` repository. Wikitool has no default wiki target; projects select MediaWiki endpoints explicitly and keep site-specific behavior in adapters.
 - Release dispatch validates its version, changelog, publication flag, and branch once before allocating the native build matrix, while CI runs the independent Wikitest core and prose suites concurrently after one shared build.
+- Prose assignments use `wikitest.prose-assignment.v3` with an explicit `focused` or `complex` classification, and prose suites use `wikitest.prose-suite.v2` with an explicit `calibration` or `stress` campaign type. The experimental v2/v1 manifests are no longer accepted.
+- Agent author and reviewer submissions use `wikitest.author-submission.v2` and `wikitest.review-submission.v2` and require exact provider, model, harness/version, invocation, access-envelope, and available run-metric metadata under `execution`; prose receipts advance to v7. Human participants must not provide agent execution metadata.
+- The shell regression surface is named `tests/cli_integration/` and remains a conventional integration check; Wikitest campaigns are explicitly selected development evaluations and are absent from normal CI and the per-release checklist.
 
 ### Fixed
 
 - Template indexing now distinguishes nested triple-brace parameters from transclusions, preserves complete invocation spans, and omits dynamic parameter expressions from literal example values.
 - Wikitest host-read-only isolation now rejects Windows and POSIX absolute or parent-traversal paths consistently on every host, and retained evidence canonicalizes mixed-separator Windows paths without rewriting unrelated POSIX text.
+- Wikitest host-read-only snapshots now retain only the runtime config, catalog and durable read stores, wiki corpus, templates, and the configured adapter's declared resources. Unrelated `.wikitool` caches no longer make dogfood copy gigabytes before its bounded scenario begins, and snapshot capture plus drift verification now obey the scenario deadline.
 - Prose dogfood assignments now bind the exact packaged `wiki-writing` skill bytes, restoring deterministic packet preparation.
 - Web-archive attribute scanning now uses expression-scoped value bounds accepted by current stable Rust without changing quoted or bare attribute extraction.
 - Docs imported from schema-v1 precomposed bundles remain searchable as a generic layer under any configured docs profile, while corpora assigned to different non-empty profiles remain isolated.
 - The offline CLI compatibility gate now supplies a loopback MediaWiki authority and repository-pin-bound companion fixtures, so sync, capability, and release-package coverage stays network-independent and cannot accidentally validate stale locally staged packs.
+- `import cargo --format json` emits one valid JSON document without appending the text-mode policy footer, so machine consumers can parse successful preview and apply results directly.
+- Wikitest's local MediaWiki authority supports deterministic `action=parse` and `list=search` requests, and captured canonical workspace paths expand back to the active isolated project when a later command consumes them.
 
 ## [0.7.1] - 2026-08-29
 

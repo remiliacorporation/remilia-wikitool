@@ -1,0 +1,1 @@
+<includeonly>{{#invoke:Infobox person|render}}<table class="infobox"><tr><th>{{{name|}}}</th></tr><tr><td>{{{occupation|}}}</td></tr></table></includeonly><noinclude>{{Documentation}}</noinclude>

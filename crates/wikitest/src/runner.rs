@@ -33,8 +33,15 @@ const WORKSPACE_DATA_TOKEN: &str = "<WIKITEST_WORKSPACE_DATA>";
 const WORKSPACE_CONFIG_TOKEN: &str = "<WIKITEST_WORKSPACE_CONFIG>";
 const EXECUTION_WORKSPACES_TOKEN: &str = "<WIKITEST_EXECUTION_WORKSPACES>";
 const TOOL_BINARY_TOKEN: &str = "<WIKITEST_TOOL_BINARY>";
-const HOST_SNAPSHOT_PATHS: &[&str] =
-    &[".wikitool", "wiki_content", "templates", "wikitool_adapter"];
+const HOST_SNAPSHOT_PATHS: &[&str] = &[
+    ".wikitool/config.toml",
+    ".wikitool/parser-config.json",
+    ".wikitool/data",
+    ".wikitool/sync",
+    ".wikitool/acceptance",
+    "wiki_content",
+    "templates",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -245,6 +252,8 @@ fn run_loaded_scenario(
             run_directory,
         });
     }
+    let scenario_timeout = Duration::from_millis(scenario.timeout_ms);
+    let deadline = started + scenario_timeout;
     let host_snapshot = host_root
         .as_deref()
         .map(|root| {
@@ -254,12 +263,12 @@ fn run_loaded_scenario(
                 &inputs_directory,
                 &run_directory,
                 &mut receipt.inputs,
+                deadline,
             )
         })
         .transpose()?;
     atomic_write_json(&receipt_path, &receipt)?;
 
-    let scenario_timeout = Duration::from_millis(scenario.timeout_ms);
     let mut failed = false;
     let mut execution_error = false;
     for (index, step) in scenario.steps.iter().enumerate() {
@@ -395,7 +404,7 @@ fn run_loaded_scenario(
     }
 
     if let Some(snapshot) = &host_snapshot
-        && let Err(error) = verify_host_unchanged(snapshot)
+        && let Err(error) = verify_host_unchanged(snapshot, deadline)
     {
         receipt.failure = Some(format!("{error:#}"));
         failed = true;
@@ -637,12 +646,14 @@ fn snapshot_host_root(
     inputs_directory: &Path,
     run_directory: &Path,
     inputs: &mut Vec<ArtifactIdentity>,
+    deadline: Instant,
 ) -> Result<HostSnapshot> {
-    let entries = capture_host_entries(host_root)?;
+    let entries = capture_host_entries(host_root, deadline)?;
     if entries.is_empty() {
         bail!("host_read_only root has no recognized Wikitool runtime surfaces");
     }
     for entry in &entries {
+        ensure_host_snapshot_within_deadline(deadline)?;
         let source = resolve_existing_plain_file(host_root, &entry.locator)?;
         let bytes = fs::read(&source)?;
         let digest = sha256_bytes(&bytes);
@@ -655,7 +666,7 @@ fn snapshot_host_root(
         let destination = resolve_output_path(workspace, &entry.locator)?;
         atomic_write(&destination, &bytes)?;
     }
-    if capture_host_entries(host_root)? != entries {
+    if capture_host_entries(host_root, deadline)? != entries {
         bail!("host source changed while the isolated snapshot was being created");
     }
     verify_snapshot_adapter_is_contained(workspace, &entries)?;
@@ -719,43 +730,115 @@ fn verify_snapshot_adapter_is_contained(
     Ok(())
 }
 
-fn capture_host_entries(host_root: &Path) -> Result<Vec<HostSnapshotEntry>> {
-    let mut entries = Vec::new();
+fn capture_host_entries(host_root: &Path, deadline: Instant) -> Result<Vec<HostSnapshotEntry>> {
+    let mut entries = BTreeMap::new();
     for relative in HOST_SNAPSHOT_PATHS {
-        let path = host_root.join(relative);
-        let metadata = match fs::symlink_metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error.into()),
-        };
-        if metadata.file_type().is_symlink() {
-            bail!("host snapshot surface is a symlink: {}", path.display());
-        }
-        if metadata.is_file() {
-            entries.push(host_snapshot_entry(host_root, &path)?);
-            continue;
-        }
-        if !metadata.is_dir() {
-            bail!(
-                "host snapshot surface is not a file or directory: {}",
-                path.display()
+        capture_host_surface(host_root, &host_root.join(relative), deadline, &mut entries)?;
+    }
+    for adapter_file in configured_host_adapter_files(host_root)? {
+        capture_host_surface(host_root, &adapter_file, deadline, &mut entries)?;
+    }
+    Ok(entries.into_values().collect())
+}
+
+fn configured_host_adapter_files(host_root: &Path) -> Result<Vec<PathBuf>> {
+    let config_path = host_root.join(".wikitool/config.toml");
+    let bytes = match fs::read(&config_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error).context("failed to read host Wikitool config"),
+    };
+    let config = std::str::from_utf8(&bytes)
+        .context("host Wikitool config is not UTF-8")?
+        .parse::<toml::Value>()
+        .context("host Wikitool config is invalid TOML")?;
+    let Some(adapter_path) = config
+        .get("adapter")
+        .and_then(toml::Value::as_table)
+        .and_then(|adapter| adapter.get("path"))
+    else {
+        return Ok(Vec::new());
+    };
+    let adapter_path = adapter_path
+        .as_str()
+        .context("host [adapter].path must be a string")?;
+    let adapter = resolve_existing_plain_file(host_root, adapter_path)
+        .context("failed to resolve host adapter.path")?;
+    let adapter_directory = adapter
+        .parent()
+        .map(Path::to_path_buf)
+        .context("host adapter.path has no parent directory")?;
+    let adapter_bytes = fs::read(&adapter).context("failed to read configured host adapter")?;
+    let adapter_document = std::str::from_utf8(&adapter_bytes)
+        .context("configured host adapter is not UTF-8")?
+        .parse::<toml::Value>()
+        .context("configured host adapter is invalid TOML")?;
+    let mut files = vec![adapter];
+    if let Some(guidance) = adapter_document.get("guidance_documents") {
+        let guidance = guidance
+            .as_array()
+            .context("host adapter guidance_documents must be an array")?;
+        for (index, path) in guidance.iter().enumerate() {
+            let path = path.as_str().with_context(|| {
+                format!("host adapter guidance_documents[{index}] must be a string")
+            })?;
+            files.push(
+                resolve_existing_plain_file(&adapter_directory, path)
+                    .with_context(|| format!("failed to resolve host adapter guidance {path}"))?,
             );
         }
-        for entry in WalkDir::new(&path).follow_links(false) {
-            let entry = entry?;
-            if entry.file_type().is_symlink() {
-                bail!(
-                    "host snapshot contains a symlink: {}",
-                    entry.path().display()
-                );
-            }
-            if entry.file_type().is_file() {
-                entries.push(host_snapshot_entry(host_root, entry.path())?);
-            }
+    }
+    Ok(files)
+}
+
+fn capture_host_surface(
+    host_root: &Path,
+    path: &Path,
+    deadline: Instant,
+    entries: &mut BTreeMap<String, HostSnapshotEntry>,
+) -> Result<()> {
+    ensure_host_snapshot_within_deadline(deadline)?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.file_type().is_symlink() {
+        bail!("host snapshot surface is a symlink: {}", path.display());
+    }
+    if metadata.is_file() {
+        let entry = host_snapshot_entry(host_root, path)?;
+        entries.insert(entry.locator.clone(), entry);
+        return Ok(());
+    }
+    if !metadata.is_dir() {
+        bail!(
+            "host snapshot surface is not a file or directory: {}",
+            path.display()
+        );
+    }
+    for entry in WalkDir::new(path).follow_links(false) {
+        ensure_host_snapshot_within_deadline(deadline)?;
+        let entry = entry?;
+        if entry.file_type().is_symlink() {
+            bail!(
+                "host snapshot contains a symlink: {}",
+                entry.path().display()
+            );
+        }
+        if entry.file_type().is_file() {
+            let entry = host_snapshot_entry(host_root, entry.path())?;
+            entries.insert(entry.locator.clone(), entry);
         }
     }
-    entries.sort_by(|left, right| left.locator.cmp(&right.locator));
-    Ok(entries)
+    Ok(())
+}
+
+fn ensure_host_snapshot_within_deadline(deadline: Instant) -> Result<()> {
+    if Instant::now() >= deadline {
+        bail!("host snapshot exceeded the scenario execution budget");
+    }
+    Ok(())
 }
 
 fn host_snapshot_entry(host_root: &Path, path: &Path) -> Result<HostSnapshotEntry> {
@@ -767,8 +850,8 @@ fn host_snapshot_entry(host_root: &Path, path: &Path) -> Result<HostSnapshotEntr
     })
 }
 
-fn verify_host_unchanged(snapshot: &HostSnapshot) -> Result<()> {
-    let observed = capture_host_entries(&snapshot.root)?;
+fn verify_host_unchanged(snapshot: &HostSnapshot, deadline: Instant) -> Result<()> {
+    let observed = capture_host_entries(&snapshot.root, deadline)?;
     if observed != snapshot.entries {
         bail!("host_read_only source changed during isolated scenario execution");
     }
@@ -1722,7 +1805,7 @@ impl Variables<'_> {
                     .captures
                     .get(name)
                     .with_context(|| format!("capture '{name}' is unavailable in this run"))?;
-                output.push_str(replacement);
+                output.push_str(&self.expand_canonical_capture(replacement));
                 remaining = &after_start[end + 1..];
             } else if let Some(after_start) = remaining.strip_prefix('{') {
                 let end = after_start
@@ -1742,6 +1825,12 @@ impl Variables<'_> {
                         self.mediawiki_api_url
                             .context("{MEDIAWIKI_API_URL} is unavailable in this run")?,
                     ),
+                    "MEDIAWIKI_ORIGIN_URL" => output.push_str(
+                        self.mediawiki_api_url
+                            .context("{MEDIAWIKI_ORIGIN_URL} is unavailable in this run")?
+                            .strip_suffix("/api.php")
+                            .context("MediaWiki fixture endpoint does not end in /api.php")?,
+                    ),
                     _ => bail!("unknown interpolation token '{{{name}}}' in {value:?}"),
                 }
                 remaining = &after_start[end + 1..];
@@ -1757,6 +1846,19 @@ impl Variables<'_> {
             }
         }
         Ok(output)
+    }
+
+    fn expand_canonical_capture(&self, value: &str) -> String {
+        value
+            .replace(
+                WORKSPACE_CONFIG_TOKEN,
+                &portable(&self.workspace.join(".wikitool/config.toml")),
+            )
+            .replace(
+                WORKSPACE_DATA_TOKEN,
+                &portable(&self.workspace.join(".wikitool/data")),
+            )
+            .replace(WORKSPACE_ROOT_TOKEN, &portable(self.workspace))
     }
 
     fn bind_captures(&mut self, captures: &[JsonScalarCaptureReceipt]) -> Result<()> {
@@ -1829,6 +1931,28 @@ mod tests {
         };
         assert!(variables.expand("{UNKNOWN}").is_err());
         assert!(variables.expand("${UNKNOWN}").is_err());
+    }
+
+    #[test]
+    fn captured_canonical_workspace_paths_expand_for_follow_up_commands() {
+        let root = Path::new("workspace-root");
+        let variables = Variables {
+            repository: Path::new("repository"),
+            scenario_directory: Path::new("scenario"),
+            run_directory: Path::new("run"),
+            workspace: root,
+            host_root: None,
+            mediawiki_api_url: None,
+            captures: BTreeMap::from([(
+                "BRIEF_PATH".to_owned(),
+                format!("{WORKSPACE_ROOT_TOKEN}/.wikitool/interviews/brief.md"),
+            )]),
+        };
+
+        assert_eq!(
+            variables.expand("${BRIEF_PATH}").expect("captured path"),
+            "workspace-root/.wikitool/interviews/brief.md"
+        );
     }
 
     #[cfg(windows)]
@@ -1970,22 +2094,120 @@ mod tests {
         fs::create_dir_all(&inputs_directory).expect("inputs");
         fs::write(host.join(".wikitool/data/wikitool.db"), b"host-db").expect("host db");
         let mut inputs = Vec::new();
-        let snapshot = snapshot_host_root(&host, &workspace, &inputs_directory, &run, &mut inputs)
-            .expect("snapshot");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let snapshot = snapshot_host_root(
+            &host,
+            &workspace,
+            &inputs_directory,
+            &run,
+            &mut inputs,
+            deadline,
+        )
+        .expect("snapshot");
 
         fs::write(
             workspace.join(".wikitool/data/wikitool.db"),
             b"snapshot mutation",
         )
         .expect("mutate snapshot");
-        verify_host_unchanged(&snapshot).expect("host remains unchanged");
+        verify_host_unchanged(&snapshot, deadline).expect("host remains unchanged");
         assert_eq!(
             fs::read(host.join(".wikitool/data/wikitool.db")).expect("host bytes"),
             b"host-db"
         );
 
         fs::write(host.join(".wikitool/data/wikitool.db"), b"host mutation").expect("mutate host");
-        assert!(verify_host_unchanged(&snapshot).is_err());
+        assert!(verify_host_unchanged(&snapshot, deadline).is_err());
+    }
+
+    #[test]
+    fn host_snapshot_excludes_unrelated_runtime_caches_and_retains_selected_adapter() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let host = directory.path().join("host");
+        let workspace = directory.path().join("workspace");
+        let run = directory.path().join("run");
+        let adapter = host.join("tools/wikitool/site_adapters/example");
+        fs::create_dir_all(host.join(".wikitool/data")).expect("host data");
+        fs::create_dir_all(host.join(".wikitool/cache/source")).expect("host cache");
+        fs::create_dir_all(&adapter).expect("adapter");
+        fs::create_dir_all(&workspace).expect("workspace");
+        fs::create_dir_all(run.join("inputs")).expect("inputs");
+        fs::write(host.join(".wikitool/data/wikitool.db"), b"host-db").expect("host db");
+        fs::write(host.join(".wikitool/cache/source/unrelated.bin"), b"cache").expect("cache");
+        fs::write(
+            adapter.join("site-adapter.toml"),
+            b"guidance_documents = [\"guidance.md\"]\n",
+        )
+        .expect("adapter policy");
+        fs::write(adapter.join("guidance.md"), b"guidance").expect("guidance");
+        fs::write(adapter.join("undeclared.bin"), b"neighbor").expect("undeclared neighbor");
+        fs::write(
+            host.join(".wikitool/config.toml"),
+            "[adapter]\npath = \"tools/wikitool/site_adapters/example/site-adapter.toml\"\n",
+        )
+        .expect("host config");
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let snapshot = snapshot_host_root(
+            &host,
+            &workspace,
+            &run.join("inputs"),
+            &run,
+            &mut Vec::new(),
+            deadline,
+        )
+        .expect("snapshot");
+
+        assert!(workspace.join(".wikitool/data/wikitool.db").is_file());
+        assert!(
+            workspace
+                .join("tools/wikitool/site_adapters/example/site-adapter.toml")
+                .is_file()
+        );
+        assert!(
+            workspace
+                .join("tools/wikitool/site_adapters/example/guidance.md")
+                .is_file()
+        );
+        assert!(
+            !workspace
+                .join("tools/wikitool/site_adapters/example/undeclared.bin")
+                .exists()
+        );
+        assert!(!workspace.join(".wikitool/cache").exists());
+        fs::write(
+            host.join(".wikitool/cache/source/unrelated.bin"),
+            b"changed",
+        )
+        .expect("mutate excluded cache");
+        verify_host_unchanged(&snapshot, deadline).expect("excluded cache is outside snapshot");
+    }
+
+    #[test]
+    fn host_snapshot_obeys_the_scenario_deadline_during_preflight() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let host = directory.path().join("host");
+        let workspace = directory.path().join("workspace");
+        let run = directory.path().join("run");
+        fs::create_dir_all(host.join(".wikitool/data")).expect("host data");
+        fs::create_dir_all(&workspace).expect("workspace");
+        fs::create_dir_all(run.join("inputs")).expect("inputs");
+        fs::write(host.join(".wikitool/data/wikitool.db"), b"host-db").expect("host db");
+
+        let error = snapshot_host_root(
+            &host,
+            &workspace,
+            &run.join("inputs"),
+            &run,
+            &mut Vec::new(),
+            Instant::now(),
+        )
+        .expect_err("expired preflight deadline must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("host snapshot exceeded the scenario execution budget")
+        );
     }
 
     #[test]
@@ -2013,6 +2235,7 @@ mod tests {
             &run.join("inputs"),
             &run,
             &mut Vec::new(),
+            Instant::now() + Duration::from_secs(10),
         )
         .expect_err("external adapter must be refused");
         assert!(error.to_string().contains("adapter.path"));

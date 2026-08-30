@@ -1,0 +1,1 @@
+<includeonly><span class="card">{{{text|}}}</span></includeonly>

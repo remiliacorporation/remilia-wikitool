@@ -1,0 +1,76 @@
+{
+  "schema": "wikitest.prose-assignment.v3",
+  "id": "mara-vale-biography-authoring",
+  "title": "Mara Vale complex biography authoring",
+  "description": "A source-rich living-person benchmark requiring disciplined biography, primary-versus-independent attribution, correction handling, work chronology, critical reception, and complete exclusion of unsupported personal rumors.",
+  "mode": "authoring",
+  "complexity": "complex",
+  "coverage": [
+    "complex-longform-authoring",
+    "closed-world-authoring",
+    "claim-source-map",
+    "blp-sensitive",
+    "chronology-uncertainty",
+    "attribution-boundaries",
+    "critical-reception",
+    "human-context-discipline",
+    "reader-value",
+    "independent-review"
+  ],
+  "article": {
+    "title": "Mara Vale",
+    "namespace": "Main",
+    "article_object": "A substantial encyclopedia biography of a fictional living software artist, centered on documented practice, selected works, exhibitions, award, and attributed critical reception.",
+    "reader_need": "Understand Vale's artistic practice and development while clearly distinguishing artist statements, institutional facts, and critical interpretations and excluding unsupported personal material.",
+    "sensitive": true
+  },
+  "author_instructions": [
+    {"id": "wiki-writing", "root": "repository", "locator": "agent-pack/skills/wiki-writing/SKILL.md", "sha256": "92556bf31cffa13eca76cfdcfe29cbae9d082f541f02eb4a47375886c9fe6d7d"},
+    {"id": "evidence-to-prose", "root": "repository", "locator": "agent-pack/skills/wiki-writing/references/evidence-to-prose.md", "sha256": "2106c5cb8c6503460fc94aea54c94466ddac422d4826f17a7d7bcc37cc017085"},
+    {"id": "mediawiki-structure", "root": "repository", "locator": "agent-pack/skills/wiki-writing/references/mediawiki-structure.md", "sha256": "54e1bdb0215c725688e41ed31270da7c5dfa89807ca4a5676aed22beca9c1653"},
+    {"id": "human-notes", "root": "repository", "locator": "agent-pack/skills/wiki-writing/references/human-notes.md", "sha256": "2a3f6eefda623710b9b18e5aee711e665ed62239ca084bc3361573a33f8b0ca6"}
+  ],
+  "review_instructions": [
+    {"id": "prose-review", "root": "repository", "locator": "agent-pack/skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
+    {"id": "source-fidelity", "root": "repository", "locator": "agent-pack/skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
+    {"id": "reader-value", "root": "repository", "locator": "agent-pack/skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"},
+    {"id": "blp-sensitive", "root": "repository", "locator": "agent-pack/skills/prose-review/references/blp-sensitive.md", "sha256": "bad7f47c24897ef9e17c91987332ef56c4feda8a0ed07e1aaf3717beccae15c8"}
+  ],
+  "context": [
+    {"id": "interview-ledger", "root": "assignment", "locator": "context/interview-ledger.txt", "sha256": "7bda3597691effa8028d2c49f3b5022dfaa1cde29c5f7a87b2a5fd2133dff468"}
+  ],
+  "sources": [
+    {"id": "s1", "title": "Systems that refuse to settle", "locator": "sources/profile-2021.txt", "sha256": "1df1d7dbf155abe77fdf38638ea2d1b2bfc03837f8b77423e57273fca7a12080", "role": "independent_secondary", "citation": "Niko Ames, Systems that refuse to settle: a studio visit with Mara Vale, Software Arts Quarterly, 14 September 2021, https://fixtures.invalid/software-arts-quarterly/mara-vale"},
+    {"id": "s2", "title": "Selected curriculum vitae", "locator": "sources/gallery-cv.txt", "sha256": "3ca159f17e05e051449302647f83c0d154b5107879c9cf32e2fcff3e2a7ac9a5", "role": "primary", "citation": "Rill Gallery, Mara Vale — selected curriculum vitae, updated 2 February 2025, https://fixtures.invalid/rill-gallery/mara-vale-cv"},
+    {"id": "s3", "title": "Inexact Measures exhibition catalogue", "locator": "sources/calder-catalogue.txt", "sha256": "d42e05fc4fe5f8184cf69bd0fc6d80a17a03d7d643757bd6f17c7de746f1d6af", "role": "authoritative", "citation": "Calder Museum, Inexact Measures: Mara Vale, exhibition catalogue, 2024, https://fixtures.invalid/calder/inexact-measures"},
+    {"id": "s4", "title": "Lumen Festival 2018 program", "locator": "sources/lumen-program.txt", "sha256": "38430622a95b63bc9b4f5554dc999e1eb82f184487c2912f9bdb504126d84350", "role": "authoritative", "citation": "Lumen Festival, 2018 program, 30 August 2018, https://fixtures.invalid/lumen/2018-program"},
+    {"id": "s5", "title": "Fenwick Digital Art Prize 2020 award record", "locator": "sources/prize-record.txt", "sha256": "5d61429b4eda3551c25298388c0530dd4ad2237bd976442c173fd05f596b8d2b", "role": "authoritative", "citation": "Fenwick Digital Art Prize, 2020 award record, 19 November 2020, https://fixtures.invalid/fenwick/2020-vale"},
+    {"id": "s6", "title": "Waiting rooms for machines", "locator": "sources/critical-essay.txt", "sha256": "759554851bc390c733550c78c9861dc64749a549e0c0fa75a902574b28087376", "role": "independent_secondary", "citation": "Imani Sol, Waiting rooms for machines, Circuit Review, 8 May 2023, https://fixtures.invalid/circuit-review/waiting-rooms"},
+    {"id": "s7", "title": "Mara Vale in conversation with Esi Ward", "locator": "sources/interview-2022.txt", "sha256": "d30e3c7c2de2dfd876ffb7a45393e9139c5173662d5fb3649deecae3aa5406d7", "role": "primary", "citation": "Esi Ward, Mara Vale in conversation, Signal Practice, 11 July 2022, https://fixtures.invalid/signal-practice/mara-vale"},
+    {"id": "s8", "title": "Correction: Common Signal artist list and dates", "locator": "sources/correction-notice.txt", "sha256": "4c187f578bf1cff606a87047f9b49fa321bc37c0d332b384c35f54413ebd031d", "role": "authoritative", "citation": "Eastborough Media Biennial, Correction: Common Signal artist list and dates, 6 June 2023, https://fixtures.invalid/eastborough/common-signal-correction"}
+  ],
+  "do_not_assert": [
+    "A birth year, exact age, diagnosis, rehabilitation, arrest, substance use, or reason for the cancelled 2020 talk.",
+    "Rill Gallery's selective CV is a complete record of every presentation.",
+    "Interval Engine was a solo exhibition or launched Vale's career.",
+    "Rate Limit was completed or publicly exhibited in 2022.",
+    "Curator Jana Rook's administrative-time interpretation is Vale's own stated explanation.",
+    "Parn Systems co-authored Rate Limit or is a permanent studio collective."
+  ],
+  "allowed_decisions": ["article", "hold"],
+  "finding_tag_vocabulary": ["attribution-collapse", "chronology-uncertainty", "citation-integrity", "due-weight", "human-context-leak", "sensitive-claim", "source-entailment"],
+  "review_axes": ["article-object", "source-fidelity", "citation-integrity", "due-weight", "subject-control", "reader-value", "structure", "prose-specificity", "sensitive-claims", "mechanical-validity", "residual-risk"],
+  "oracle": {
+    "forbidden_finding_tags": ["attribution-collapse", "human-context-leak", "sensitive-claim"],
+    "axis_expectations": [
+      {"axis": "article-object", "allowed_verdicts": ["pass"]},
+      {"axis": "source-fidelity", "allowed_verdicts": ["pass"]},
+      {"axis": "citation-integrity", "allowed_verdicts": ["pass"]},
+      {"axis": "due-weight", "allowed_verdicts": ["pass"]},
+      {"axis": "reader-value", "allowed_verdicts": ["pass"]},
+      {"axis": "sensitive-claims", "allowed_verdicts": ["pass"]},
+      {"axis": "mechanical-validity", "allowed_verdicts": ["pass"]}
+    ],
+    "allowed_dispositions": ["accept"]
+  }
+}

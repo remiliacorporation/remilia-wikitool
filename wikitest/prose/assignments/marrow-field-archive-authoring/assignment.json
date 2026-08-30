@@ -1,0 +1,73 @@
+{
+  "schema": "wikitest.prose-assignment.v3",
+  "id": "marrow-field-archive-authoring",
+  "title": "Marrow Field Archive complex authoring",
+  "description": "A source-rich institutional article benchmark with a split founding chronology, non-comparable collection measures, incomplete coverage, governance boundaries, a minor partnership, access restrictions, and contaminated human context.",
+  "mode": "authoring",
+  "complexity": "complex",
+  "coverage": [
+    "complex-longform-authoring",
+    "closed-world-authoring",
+    "claim-source-map",
+    "chronology-uncertainty",
+    "quantitative-precision",
+    "governance-boundaries",
+    "due-weight",
+    "human-context-discipline",
+    "reader-value",
+    "independent-review"
+  ],
+  "article": {
+    "title": "Marrow Field Archive",
+    "namespace": "Main",
+    "article_object": "A substantial encyclopedia article about the fictional archive's development, collection and cataloguing method, governance, public use, partnerships, and access limits.",
+    "reader_need": "Understand what the archive is, when its volunteer and public phases began, what its changing counts measure, how it is governed, and how people can use it.",
+    "sensitive": false
+  },
+  "author_instructions": [
+    {"id": "wiki-writing", "root": "repository", "locator": "agent-pack/skills/wiki-writing/SKILL.md", "sha256": "92556bf31cffa13eca76cfdcfe29cbae9d082f541f02eb4a47375886c9fe6d7d"},
+    {"id": "evidence-to-prose", "root": "repository", "locator": "agent-pack/skills/wiki-writing/references/evidence-to-prose.md", "sha256": "2106c5cb8c6503460fc94aea54c94466ddac422d4826f17a7d7bcc37cc017085"},
+    {"id": "mediawiki-structure", "root": "repository", "locator": "agent-pack/skills/wiki-writing/references/mediawiki-structure.md", "sha256": "54e1bdb0215c725688e41ed31270da7c5dfa89807ca4a5676aed22beca9c1653"},
+    {"id": "human-notes", "root": "repository", "locator": "agent-pack/skills/wiki-writing/references/human-notes.md", "sha256": "2a3f6eefda623710b9b18e5aee711e665ed62239ca084bc3361573a33f8b0ca6"}
+  ],
+  "review_instructions": [
+    {"id": "prose-review", "root": "repository", "locator": "agent-pack/skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
+    {"id": "source-fidelity", "root": "repository", "locator": "agent-pack/skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
+    {"id": "reader-value", "root": "repository", "locator": "agent-pack/skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"}
+  ],
+  "context": [
+    {"id": "interview-ledger", "root": "assignment", "locator": "context/interview-ledger.txt", "sha256": "41eb8c17bc290b3eee3cd30928da7012423a432ba44fdce4c1ab24c7a1235f46"}
+  ],
+  "sources": [
+    {"id": "s1", "title": "Public opening notice", "locator": "sources/founding-notice.txt", "sha256": "91c2c05523fd298cd97005fbe8093e3d19a98b38ab966a949ecd4a335e7c119b", "role": "primary", "citation": "Marrow Field Archive, Public opening notice, 4 November 2018, https://fixtures.invalid/marrow-field/opening"},
+    {"id": "s2", "title": "Annual report for 2021", "locator": "sources/annual-report-2021.txt", "sha256": "9173580b219f21d70c1cddde28c0dbbb87b8f4484b86474dd8ba06d64a6a76b3", "role": "primary", "citation": "Marrow Field Trust, Annual report for 2021, 18 March 2022, https://fixtures.invalid/marrow-field/report-2021"},
+    {"id": "s3", "title": "Annual report for 2024", "locator": "sources/annual-report-2024.txt", "sha256": "a1d51576a7b323e38ebef43140fc1db51caf2931e776a939daffa05de6358cef", "role": "primary", "citation": "Marrow Field Trust, Annual report for 2024, 27 February 2025, https://fixtures.invalid/marrow-field/report-2024"},
+    {"id": "s4", "title": "The patient catalogue of a neighborhood's paper life", "locator": "sources/independent-profile.txt", "sha256": "8ad57f08e5a5284411c89325d2624f4d1bcca75cd498116c5a013d92c599db44", "role": "independent_secondary", "citation": "Orla Dane, The patient catalogue of a neighborhood's paper life, Journal of Small Archives, 12 July 2022, https://fixtures.invalid/journal-small-archives/marrow-field"},
+    {"id": "s5", "title": "Description guide, revision 3", "locator": "sources/cataloguing-guide.txt", "sha256": "b1e2d63dce9362f6e17baee3da9bd1acad2bcaa6b53c3c8ab81005cd8c255123", "role": "primary", "citation": "Marrow Field Archive, Description guide, revision 3, 9 May 2024, https://fixtures.invalid/marrow-field/description-guide"},
+    {"id": "s6", "title": "Digitization partnership announcement", "locator": "sources/museum-partnership.txt", "sha256": "0737190c108256ed14cfa9871924f35a5a13e62cdb99a264c6ec0ed087630eb3", "role": "primary", "citation": "North Quay Museum, North Quay Museum and Marrow Field Trust announce digitization partnership, 16 August 2023, https://fixtures.invalid/north-quay/marrow-field-grant"},
+    {"id": "s7", "title": "Charity register summary", "locator": "sources/governance-register.txt", "sha256": "e383c7f483896bea9585edb08d5ba1fd1ac87d2bc2cee1e5917adbb40bba32ec", "role": "authoritative", "citation": "Charity Register, Marrow Field Trust record, updated 6 January 2025, https://fixtures.invalid/register/marrow-field-trust"},
+    {"id": "s8", "title": "Access and reproduction policy", "locator": "sources/access-policy.txt", "sha256": "7ddc426db436a0d72951fd8179d0c510572da69835c4cb163180d5f82c9a71ca", "role": "primary", "citation": "Marrow Field Archive, Access and reproduction policy, effective 1 October 2024, https://fixtures.invalid/marrow-field/access"}
+  ],
+  "do_not_assert": [
+    "The archive, its public reading room, and its 2017 volunteer working group all began on the same date.",
+    "Catalogue records, physical objects, and digital images are interchangeable measures.",
+    "The archive is a comprehensive census of River Ward cultural activity.",
+    "North Quay Museum owns, governs, or jointly operates the archive.",
+    "Any private donor address or unsupported 2016 origin date from the interview ledger."
+  ],
+  "allowed_decisions": ["article", "hold"],
+  "finding_tag_vocabulary": ["chronology-uncertainty", "citation-integrity", "due-weight", "gratuitous-framing", "human-context-leak", "quantitative-conflation", "source-entailment"],
+  "review_axes": ["article-object", "source-fidelity", "citation-integrity", "due-weight", "subject-control", "reader-value", "structure", "prose-specificity", "sensitive-claims", "mechanical-validity", "residual-risk"],
+  "oracle": {
+    "forbidden_finding_tags": ["human-context-leak", "quantitative-conflation"],
+    "axis_expectations": [
+      {"axis": "article-object", "allowed_verdicts": ["pass"]},
+      {"axis": "source-fidelity", "allowed_verdicts": ["pass"]},
+      {"axis": "citation-integrity", "allowed_verdicts": ["pass"]},
+      {"axis": "due-weight", "allowed_verdicts": ["pass"]},
+      {"axis": "reader-value", "allowed_verdicts": ["pass"]},
+      {"axis": "mechanical-validity", "allowed_verdicts": ["pass"]}
+    ],
+    "allowed_dispositions": ["accept"]
+  }
+}

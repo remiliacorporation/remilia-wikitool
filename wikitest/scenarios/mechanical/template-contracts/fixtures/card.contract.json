@@ -1,0 +1,33 @@
+{
+  "schema_version": "template_engineering_contract_v1",
+  "template_title": "Template:Card",
+  "description": "Displays a compact, text-only card.",
+  "format": "block",
+  "implementation": {
+    "body_wikitext": "{{Helper|text={{{text|}}}}}",
+    "template_dependencies": ["Template:Helper"],
+    "module_dependencies": []
+  },
+  "parameters": [
+    {
+      "name": "text",
+      "description": "Card body.",
+      "type": "content"
+    }
+  ],
+  "examples": [
+    {
+      "id": "basic",
+      "invocation": "{{Card|text=Example}}"
+    }
+  ],
+  "documentation_footer_wikitext": "[[Category:Card templates]]",
+  "render_fixtures": [
+    {
+      "id": "basic",
+      "invocation": "{{Card|text=Example}}",
+      "scope_class": "card",
+      "expected_scope_count": 1
+    }
+  ]
+}

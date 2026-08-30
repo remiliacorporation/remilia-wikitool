@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
-mod ai_pack;
+mod agent_pack;
 mod bundle;
+mod release_payload;
 
 #[derive(Debug, Args)]
 pub(crate) struct ReleaseArgs {
@@ -15,11 +16,11 @@ pub(crate) struct ReleaseArgs {
 #[derive(Debug, Subcommand)]
 enum ReleaseSubcommand {
     #[command(
-        name = "build-ai-pack",
-        about = "Stage the AI companion pack into a distributable folder"
+        name = "build-agent-pack",
+        about = "Build the deterministic Wikitool agent pack"
     )]
-    BuildAiPack(ReleaseBuildAiPackArgs),
-    #[command(about = "Stage one local binary together with the AI companion files")]
+    BuildAgentPack(ReleaseBuildAgentPackArgs),
+    #[command(about = "Stage one local binary and its release payload")]
     Package(ReleasePackageArgs),
     #[command(name = "build-matrix")]
     #[command(about = "Build and package release bundles for one or more targets")]
@@ -27,7 +28,7 @@ enum ReleaseSubcommand {
 }
 
 #[derive(Debug, Args)]
-struct ReleaseBuildAiPackArgs {
+struct ReleaseBuildAgentPackArgs {
     #[arg(
         long,
         value_name = "PATH",
@@ -37,15 +38,9 @@ struct ReleaseBuildAiPackArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Output directory (default: <repo>/dist/ai-pack)"
+        help = "Output directory (default: <repo>/dist/agent)"
     )]
     output_dir: Option<PathBuf>,
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Optional host project root containing a wikitool_adapter/ supplement"
-    )]
-    host_project_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -154,7 +149,9 @@ struct ReleaseBuildMatrixArgs {
 
 pub(crate) fn run_release(args: ReleaseArgs) -> Result<()> {
     match args.command {
-        ReleaseSubcommand::BuildAiPack(options) => ai_pack::run_release_build_ai_pack(options),
+        ReleaseSubcommand::BuildAgentPack(options) => {
+            agent_pack::run_release_build_agent_pack(options)
+        }
         ReleaseSubcommand::Package(options) => bundle::run_release_package(options),
         ReleaseSubcommand::BuildMatrix(options) => bundle::run_release_build_matrix(options),
     }

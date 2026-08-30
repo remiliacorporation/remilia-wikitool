@@ -476,12 +476,13 @@ cargo run --package wikitool --features maintainer -- release build-matrix --tar
 cargo run --package wikitool --features maintainer -- release build-matrix --targets x86_64-unknown-linux-gnu --host-project-root <PATH>
 ```
 
-The public guidance and canonical skills always remain target-neutral. Release archives include
+The canonical skills under `agent/skills/` always remain target-neutral and are validated by a
+complete hash manifest. Use `wikitool agent inspect` and `wikitool agent setup-project` from the
+unpacked release to install them safely for the project harness. Release archives also include
 the versioned generic and Remilia Wiki adapter catalog under `site_adapters/`; neither entry is
 activated automatically. With `--host-project-root`, packaging accepts only the host's
 `wikitool_adapter/` and places its declared resources under `site_adapters/project/`; it never
-replaces the built-in catalog, `CLAUDE.md`, `AGENTS.md`, `.claude/`, or `codex_skills/`. A missing
-typed `site-adapter.toml` fails the build.
+replaces the built-in catalog or agent pack. A missing typed `site-adapter.toml` fails the build.
 
 ## Troubleshooting
 

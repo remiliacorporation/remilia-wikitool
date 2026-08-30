@@ -1,0 +1,26 @@
+{
+  "schema": "wikitest.prose-suite.v2",
+  "id": "complex-prose-stress",
+  "title": "Complex encyclopedic authoring stress campaign",
+  "description": "An opt-in, externally executed campaign for source-rich long-form authoring, claim mapping, human-context discipline, sensitive biography, and independent review. Preparation is not a pass and this campaign is not a release gate.",
+  "campaign": "stress",
+  "required_coverage": [
+    "complex-longform-authoring",
+    "closed-world-authoring",
+    "claim-source-map",
+    "chronology-uncertainty",
+    "quantitative-precision",
+    "governance-boundaries",
+    "attribution-boundaries",
+    "critical-reception",
+    "blp-sensitive",
+    "due-weight",
+    "human-context-discipline",
+    "reader-value",
+    "independent-review"
+  ],
+  "assignments": [
+    "marrow-field-archive-authoring",
+    "mara-vale-biography-authoring"
+  ]
+}

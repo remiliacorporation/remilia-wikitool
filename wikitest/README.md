@@ -20,7 +20,15 @@ Wikitest has three lanes:
 
 Lint success is never prose approval. A review receipt is never human publication acceptance.
 Participant identities are self-reported; Wikitest proves what identity string was recorded and
-that author and reviewer IDs differ, not who controlled either account.
+that author and reviewer IDs differ, not who controlled either account. Agent participants must
+also record an exact provider, model, harness and version, invocation ID, network/repository/tool
+access envelope, and any available duration or token metrics. These remain participant claims, but
+an anonymous or model-only agent run is not valid frontier evidence.
+
+Wikitest is deliberately not a release gate. Ordinary CI owns compilation, unit/integration tests,
+generated-reference drift, lint, and release-dispatch safety. Wikitest owns opt-in capability
+campaigns whose receipts are useful when a change or investigation warrants their cost. See
+[`CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md) for the tested surfaces and evidence limits.
 
 ## Commands
 
@@ -37,11 +45,16 @@ target/debug/wikitest list
 target/debug/wikitest validate
 ```
 
-Run the deterministic reusable suite:
+Run the comprehensive deterministic capability campaign explicitly:
 
 ```text
-target/debug/wikitest suite core-dogfood --require-all
+target/debug/wikitest suite wikitool-capabilities --require-all
 ```
+
+This runs eleven isolated scenarios covering 75 declared capability slices. It is also available
+through the manually dispatched `Wikitest capability campaign` workflow, which retains the receipts
+and their exact evaluated binaries together. It is not invoked by normal CI or by the release
+workflow.
 
 Every command that creates or advances a run re-opens the resulting receipt and replays all
 retained data evidence, then verifies the SHA-256 identities of the Wikitest driver and evaluated
@@ -72,8 +85,16 @@ Prepare the prose campaign or one assignment:
 
 ```text
 target/debug/wikitest prose prepare-suite prose-dogfood
+target/debug/wikitest prose prepare-suite complex-prose-stress
 target/debug/wikitest prose prepare aster-index-authoring
 ```
+
+`prose-dogfood` is a compact calibration campaign. `complex-prose-stress` contains two source-rich
+long-form assignments: an institutional archive with split chronology, non-comparable quantities,
+and governance boundaries; and a living-artist biography with correction handling, attributed
+criticism, and contaminated human notes. Preparing either campaign proves only packet integrity.
+Capability is demonstrated only after external author and independent reviewer submissions pass
+the full evaluated protocol.
 
 The request names generated strict templates. Each prepare/submit command prints a participant
 request path and a sibling `output/` directory. An external author supplies an article, a
@@ -207,6 +228,6 @@ model, or article type. Rebuilding either binary intentionally makes the corresp
 identity stale; retain that run as historical evidence and create a new run for the new binary
 instead of waiving the mismatch.
 
-Wikitest is source-resident evaluation infrastructure. Release archives ship the end-user
-Wikitool binary and agent pack, not this binary or its scenario catalogs; a standalone Wikitest
+Wikitest is source-resident development and evaluation infrastructure, not a release gate. Release
+archives ship the end-user Wikitool binary and agent pack, not this binary or its scenario catalogs; a standalone Wikitest
 binary without the source catalog and skill inputs would be an incomplete evaluator.

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "generated_at_unix": 1788100000,
+  "source": "wikitest_closed_fixture",
+  "extensions": [
+    {
+      "extension_name": "FixtureExtension",
+      "source_wiki": "https://mediawiki.invalid",
+      "version": "1.2.3",
+      "pages": [
+        {
+          "page_title": "Extension:FixtureExtension",
+          "local_path": "extensions/FixtureExtension.md",
+          "content": "FixtureExtension is a closed Wikitest document. AlphaBetaToken identifies its searchable body. Configuration: $wgFixtureExtensionEnable = true;"
+        },
+        {
+          "page_title": "Extension:FixtureExtension/Configuration",
+          "local_path": "extensions/FixtureExtension/Configuration.md",
+          "content": "Set $wgFixtureExtensionMode to strict for deterministic validation."
+        }
+      ]
+    }
+  ],
+  "technical": [
+    {
+      "doc_type": "hooks",
+      "pages": [
+        {
+          "page_title": "Manual:Hooks/FixtureHook",
+          "local_path": "hooks/FixtureHook.md",
+          "content": "FixtureHook receives $parser and $text parameters."
+        }
+      ]
+    }
+  ]
+}

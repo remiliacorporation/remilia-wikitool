@@ -1,7 +1,9 @@
 {
-  "schema": "wikitest.prose-suite.v1",
+  "schema": "wikitest.prose-suite.v2",
   "id": "prose-dogfood",
   "title": "Evidence-bound encyclopedic prose dogfood",
+  "description": "A compact calibration campaign for the authoring and review protocols; it is not a release gate or a substitute for the complex stress campaign.",
+  "campaign": "calibration",
   "required_coverage": [
     "closed-world-authoring",
     "claim-source-map",

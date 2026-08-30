@@ -1,0 +1,36 @@
+schema_version = "site_adapter_v2"
+adapter_id = "wikitest-wiki"
+docs_profile = "mw-1.44-authoring"
+guidance_documents = []
+
+[authoring]
+require_short_description = true
+short_description_forms = ["magic_word:SHORTDESC"]
+require_article_quality_banner = true
+article_quality_template = "Template:Article quality"
+article_quality_default_state = "unverified"
+required_appendix_sections = ["References"]
+references_template = "Template:Reflist"
+prefer_sentence_case_headings = true
+prefer_wikitext_only = true
+forbid_markdown = true
+require_straight_quotes = true
+
+[citations]
+use_named_references = true
+leave_archive_fields_blank = true
+
+[[citations.preferred_templates]]
+family = "web"
+template_title = "Template:Cite web"
+
+[templates]
+infobox_preferences = []
+
+[categories]
+preferred_categories = []
+
+[lint]
+forbid_curly_quotes = true
+proper_nouns = ["Wikitest"]
+forbid_placeholder_fragments = ["INSERT_SOURCE_URL"]

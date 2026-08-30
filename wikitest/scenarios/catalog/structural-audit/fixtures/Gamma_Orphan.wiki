@@ -1,0 +1,6 @@
+'''Gamma Orphan''' is a deliberately unlinked fixture page.<ref>{{Cite book|title=Gamma handbook|publisher=Fixture Press|year=2022}}</ref>
+
+== References ==
+{{Reflist}}
+
+[[Category:Indexes]]

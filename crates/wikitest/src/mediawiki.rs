@@ -17,7 +17,7 @@ use crate::model::{
     AssertionReceipt, MediaWikiExpectation, MediaWikiPage, MediaWikiRequestExpectation,
 };
 
-pub const MEDIAWIKI_FIXTURE_SCHEMA: &str = "wikitest.mediawiki-fixture.v3";
+pub const MEDIAWIKI_FIXTURE_SCHEMA: &str = "wikitest.mediawiki-fixture.v4";
 const MEDIAWIKI_OBSERVATION_SCHEMA: &str = "wikitest.mediawiki-observation.v2";
 const LOGIN_TOKEN: &str = "WIKITEST-LOGIN-TOKEN";
 const SESSION_COOKIE_NAME: &str = "wikitest_session";
@@ -30,6 +30,8 @@ pub struct MediaWikiFixture {
     pub password: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub siteinfo_query: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parse_html: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ambiguous_edit_failure: Option<AmbiguousEditFailure>,
     #[serde(default)]
@@ -94,6 +96,7 @@ struct FixtureState {
     pages: BTreeMap<String, MediaWikiPage>,
     requests: Vec<MediaWikiRequest>,
     siteinfo_query: Option<Value>,
+    parse_html: Option<String>,
     ambiguous_edit_failure: Option<AmbiguousEditFailure>,
     ambiguous_edit_failure_used: bool,
     ambiguous_delete_failures: BTreeMap<String, bool>,
@@ -235,6 +238,7 @@ impl MediaWikiService {
                 .collect(),
             requests: Vec::new(),
             siteinfo_query: fixture.siteinfo_query,
+            parse_html: fixture.parse_html,
             ambiguous_edit_failure: fixture.ambiguous_edit_failure,
             ambiguous_edit_failure_used: false,
             ambiguous_delete_failures: fixture
@@ -534,6 +538,7 @@ fn handle_request(
 ) -> Result<FixtureResponse> {
     match params.get("action").map(String::as_str) {
         Some("query") => handle_query(state, params, cookie),
+        Some("parse") => handle_parse(state, params),
         Some("login") => handle_login(state, params),
         Some("edit") => handle_edit(state, params, cookie),
         Some("delete") => handle_delete(state, params, cookie),
@@ -589,6 +594,9 @@ fn handle_query(
             json!({"batchcomplete": true, "query": {"allpages": pages}}),
         ));
     }
+    if params.get("list").is_some_and(|value| value == "search") {
+        return handle_search_query(state, params);
+    }
     if params
         .get("list")
         .is_some_and(|value| value == "categorymembers")
@@ -636,6 +644,93 @@ fn handle_query(
         ));
     }
     bail!("unsupported MediaWiki fixture query")
+}
+
+fn handle_search_query(
+    state: &FixtureState,
+    params: &BTreeMap<String, String>,
+) -> Result<FixtureResponse> {
+    let query = params
+        .get("srsearch")
+        .context("search request omitted srsearch")?
+        .trim()
+        .to_lowercase();
+    if query.is_empty() {
+        bail!("search request used a blank srsearch");
+    }
+    let namespaces = params
+        .get("srnamespace")
+        .map(|value| {
+            value
+                .split('|')
+                .map(|part| part.parse::<i32>().context("invalid srnamespace"))
+                .collect::<Result<BTreeSet<_>>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let limit = params
+        .get("srlimit")
+        .map(|value| value.parse::<usize>().context("invalid srlimit"))
+        .transpose()?
+        .unwrap_or(10);
+    let title_only = params.get("srwhat").is_some_and(|value| value == "title");
+    let mut matches = state
+        .pages
+        .values()
+        .filter(|page| namespaces.is_empty() || namespaces.contains(&page.namespace))
+        .filter(|page| {
+            page.title.to_lowercase().contains(&query)
+                || (!title_only && page.content.to_lowercase().contains(&query))
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| left.title.cmp(&right.title));
+    let total_hits = matches.len();
+    let search = matches
+        .into_iter()
+        .take(limit)
+        .map(|page| {
+            json!({
+                "title": page.title,
+                "ns": page.namespace,
+                "pageid": page.page_id,
+                "size": page.content.len(),
+                "wordcount": page.content.split_whitespace().count(),
+                "snippet": page.content.chars().take(180).collect::<String>(),
+                "timestamp": page.timestamp,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(FixtureResponse::Json(json!({
+        "batchcomplete": true,
+        "query": {
+            "searchinfo": {"totalhits": total_hits},
+            "search": search,
+        }
+    })))
+}
+
+fn handle_parse(
+    state: &FixtureState,
+    params: &BTreeMap<String, String>,
+) -> Result<FixtureResponse> {
+    let html = state
+        .parse_html
+        .as_ref()
+        .context("MediaWiki fixture has no parse_html response")?;
+    let requested_title = params
+        .get("page")
+        .or_else(|| params.get("title"))
+        .map(String::as_str)
+        .unwrap_or("Wikitest parse fixture");
+    let page = state.pages.get(requested_title);
+    Ok(FixtureResponse::Json(json!({
+        "parse": {
+            "title": requested_title,
+            "displaytitle": requested_title,
+            "revid": page.map(|page| page.revision_id),
+            "text": html,
+        }
+    })))
 }
 
 fn handle_delete_log_query(
@@ -1006,6 +1101,7 @@ mod tests {
             pages: BTreeMap::new(),
             requests: Vec::new(),
             siteinfo_query: None,
+            parse_html: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
             ambiguous_delete_failures: BTreeMap::new(),
@@ -1088,6 +1184,7 @@ mod tests {
             ]),
             requests: Vec::new(),
             siteinfo_query: None,
+            parse_html: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
             ambiguous_delete_failures: BTreeMap::from([("Template:Ambiguous".to_owned(), false)]),
@@ -1190,6 +1287,7 @@ mod tests {
             )]),
             requests: Vec::new(),
             siteinfo_query: None,
+            parse_html: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
             ambiguous_delete_failures: BTreeMap::new(),
@@ -1222,6 +1320,70 @@ mod tests {
         assert_eq!(
             response.pointer("/query/pages/0/revisions/0/slots/main/content"),
             Some(&json!("updated"))
+        );
+    }
+
+    #[test]
+    fn search_and_parse_exercise_read_only_mediawiki_surfaces() {
+        let page = MediaWikiPage {
+            title: "Aster Archive".to_owned(),
+            namespace: 0,
+            page_id: 8,
+            revision_id: 88,
+            timestamp: "2026-08-29T10:00:00Z".to_owned(),
+            content: "Aster Archive catalogs fictional print ephemera.".to_owned(),
+        };
+        let mut state = FixtureState {
+            username: "bot".to_owned(),
+            password: "secret".to_owned(),
+            pages: BTreeMap::from([(page.title.clone(), page)]),
+            requests: Vec::new(),
+            siteinfo_query: None,
+            parse_html: Some("<div class=\"archive-card\">Aster</div>".to_owned()),
+            ambiguous_edit_failure: None,
+            ambiguous_edit_failure_used: false,
+            ambiguous_delete_failures: BTreeMap::new(),
+            ambiguous_delete_failures_used: BTreeSet::new(),
+            missingtitle_delete_failures: BTreeSet::new(),
+            missingtitle_delete_failures_used: BTreeSet::new(),
+            delete_log_page_size: 1,
+            delete_logs: Vec::new(),
+            login_token_issued: false,
+            authenticated: false,
+            csrf_token_issued: false,
+            session_cookie: "session-value".to_owned(),
+        };
+        let search = BTreeMap::from([
+            ("action".to_owned(), "query".to_owned()),
+            ("list".to_owned(), "search".to_owned()),
+            ("srsearch".to_owned(), "ephemera".to_owned()),
+            ("srnamespace".to_owned(), "0".to_owned()),
+            ("srlimit".to_owned(), "5".to_owned()),
+            ("srwhat".to_owned(), "text".to_owned()),
+        ]);
+        let FixtureResponse::Json(search_response) =
+            handle_query(&mut state, &search, None).expect("search query")
+        else {
+            panic!("JSON search response");
+        };
+        assert_eq!(
+            search_response.pointer("/query/search/0/title"),
+            Some(&json!("Aster Archive"))
+        );
+
+        let parse = BTreeMap::from([
+            ("action".to_owned(), "parse".to_owned()),
+            ("page".to_owned(), "Aster Archive".to_owned()),
+        ]);
+        let FixtureResponse::Json(parse_response) =
+            handle_parse(&state, &parse).expect("parse request")
+        else {
+            panic!("JSON parse response");
+        };
+        assert_eq!(parse_response.pointer("/parse/revid"), Some(&json!(88)));
+        assert_eq!(
+            parse_response.pointer("/parse/text"),
+            Some(&json!("<div class=\"archive-card\">Aster</div>"))
         );
     }
 }

@@ -175,6 +175,77 @@ pub(crate) fn reset_directory(path: &Path) -> Result<()> {
 }
 
 #[cfg(feature = "maintainer")]
+pub(crate) fn validate_release_output(repo_root: &Path, output: &Path, label: &str) -> Result<()> {
+    let repo_root = fs::canonicalize(repo_root).with_context(|| {
+        format!(
+            "failed to resolve repository root {}",
+            normalize_path(repo_root)
+        )
+    })?;
+    let output = resolve_path_through_existing_ancestor(output)?;
+    if output.parent().is_none() || repo_root.starts_with(&output) {
+        bail!(
+            "{label} must not replace the repository, an ancestor, or a filesystem root: {}",
+            normalize_path(&output)
+        );
+    }
+    if output.starts_with(&repo_root) && !output.starts_with(repo_root.join("dist")) {
+        bail!(
+            "{label} inside the repository must remain under dist/: {}",
+            normalize_path(&output)
+        );
+    }
+    Ok(())
+}
+
+#[cfg(feature = "maintainer")]
+fn resolve_path_through_existing_ancestor(path: &Path) -> Result<PathBuf> {
+    let absolute = std::path::absolute(path)
+        .with_context(|| format!("failed to resolve output path {}", normalize_path(path)))?;
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    bail!(
+                        "output path escapes its filesystem root: {}",
+                        normalize_path(path)
+                    );
+                }
+            }
+            std::path::Component::CurDir => {}
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+
+    let mut cursor = normalized;
+    let mut missing = Vec::new();
+    while !cursor.exists() {
+        let name = cursor.file_name().with_context(|| {
+            format!(
+                "output path has no existing ancestor: {}",
+                normalize_path(path)
+            )
+        })?;
+        missing.push(name.to_os_string());
+        cursor = cursor
+            .parent()
+            .context("output path has no parent directory")?
+            .to_path_buf();
+    }
+    let mut resolved = fs::canonicalize(&cursor).with_context(|| {
+        format!(
+            "failed to resolve output ancestor {}",
+            normalize_path(&cursor)
+        )
+    })?;
+    for name in missing.into_iter().rev() {
+        resolved.push(name);
+    }
+    Ok(resolved)
+}
+
+#[cfg(feature = "maintainer")]
 pub(crate) fn copy_file(source: &Path, destination: &Path) -> Result<()> {
     if !source.is_file() {
         bail!("file not found: {}", normalize_path(source));
@@ -243,14 +314,6 @@ pub(crate) fn copy_dir_contents(source: &Path, destination: &Path) -> Result<()>
         }
     }
     Ok(())
-}
-
-#[cfg(feature = "maintainer")]
-pub(crate) fn is_markdown_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("md"))
-        .unwrap_or(false)
 }
 
 #[cfg(feature = "maintainer")]
@@ -456,4 +519,22 @@ pub(crate) fn path_is_under_directory(candidate: &Path, directory: &Path) -> boo
 
 pub(crate) fn format_flag(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
+}
+
+#[cfg(all(test, feature = "maintainer"))]
+mod maintainer_tests {
+    use super::*;
+
+    #[test]
+    fn release_outputs_cannot_replace_source_or_ancestor_directories() {
+        let sandbox = tempfile::tempdir().expect("sandbox");
+        let repo = sandbox.path().join("checkout");
+        fs::create_dir_all(repo.join("dist")).expect("repository");
+
+        assert!(validate_release_output(&repo, &repo, "output").is_err());
+        assert!(validate_release_output(&repo, sandbox.path(), "output").is_err());
+        assert!(validate_release_output(&repo, &repo.join("agent-pack"), "output").is_err());
+        assert!(validate_release_output(&repo, &repo.join("dist/agent"), "output").is_ok());
+        assert!(validate_release_output(&repo, &sandbox.path().join("external"), "output").is_ok());
+    }
 }

@@ -107,7 +107,7 @@ list.
 
 ### Agent skills
 
-Canonical procedures live under `ai-pack/codex_skills/`:
+Canonical procedures live under `agent-pack/skills/`:
 
 - `wikitool-operator` operates the mechanical surface and preserves mutation boundaries.
 - `wiki-interview` asks from supplied material and the conversation rather than a canned
@@ -116,8 +116,10 @@ Canonical procedures live under `ai-pack/codex_skills/`:
 - `prose-review` reconstructs claims independently, opens the exact sources, tests weight and BLP
   concerns, and answers whether a reader would want the article.
 
-Claude files are harness adapters to those same packages. Packaging never replaces the public
-skills with host-project skills. An explicit host can contribute only a site-adapter supplement.
+`wikitool agent setup-project` installs identical copies of those packages into supported harness
+directories and records their exact identities. It does not generate wrappers or edit root
+instruction files. Packaging never replaces public skills with host-project skills; an explicit
+host can contribute only a site-adapter supplement.
 
 ## Authoring flow
 
@@ -284,7 +286,7 @@ and passes any held-out oracle.
 
 ## Release boundary
 
-Release archives contain a target-neutral AI pack, canonical skills, and a versioned built-in
+Release archives contain a deterministic target-neutral `agent/` pack and a versioned built-in
 adapter catalog with generic and Remilia Wiki templates. Catalog presence is inert: only a
 project-relative `[adapter].path` selects policy, and no bundled adapter supplies an endpoint.
 Receipt inspection replays deterministic observations and capability-to-step bindings. It reports
@@ -293,9 +295,8 @@ needs an independently published immutable digest or signature.
 
 `--host-project-root` is explicit and accepts only the typed `wikitool_adapter/site-adapter.toml` plus
 the guidance files it declares as a supplement under `site_adapters/project/`; undeclared neighbor
-files are not shipped. The supplement never replaces public `CLAUDE.md`, `AGENTS.md`, rules,
-wrappers, or skills. Unknown, malformed, traversing, or incomplete host adapter state fails
-packaging.
+files are not shipped. The supplement never replaces public skills. Unknown, malformed,
+traversing, or incomplete host adapter state fails packaging.
 
 Wikitest is intentionally not packaged in end-user release archives. Its authority depends on the
 source catalog, controlled inputs, and public skill tree that accompany a source checkout; the
@@ -331,5 +332,5 @@ When behavior changes:
 4. run `docs audit` to verify target neutrality, skill package shape, adapter routing, and generated
    reference freshness;
 5. run the relevant Wikitest suites, replay their receipts, and externally anchor release evidence;
-6. package both the generic AI pack and an explicit host-adapter supplement;
+6. build and inspect the deterministic agent pack, then package any explicit host-adapter supplement;
 7. keep live writes out of tests unless the test is explicitly authorized and revision-bound.

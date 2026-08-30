@@ -7,22 +7,36 @@ use serde::{Deserialize, Serialize};
 use crate::artifact::join_relative;
 use crate::model::{ArtifactIdentity, OutputArtifact, ToolIdentity};
 
-pub const PROSE_ASSIGNMENT_SCHEMA: &str = "wikitest.prose-assignment.v2";
-pub const PROSE_SUITE_SCHEMA: &str = "wikitest.prose-suite.v1";
+pub const PROSE_ASSIGNMENT_SCHEMA: &str = "wikitest.prose-assignment.v3";
+pub const PROSE_SUITE_SCHEMA: &str = "wikitest.prose-suite.v2";
 pub const PROSE_PACKET_SCHEMA: &str = "wikitest.prose-packet.v4";
 pub const AUTHOR_REQUEST_SCHEMA: &str = "wikitest.author-request.v1";
-pub const AUTHOR_SUBMISSION_SCHEMA: &str = "wikitest.author-submission.v1";
+pub const AUTHOR_SUBMISSION_SCHEMA: &str = "wikitest.author-submission.v2";
 pub const CLAIM_MAP_SCHEMA: &str = "wikitest.claim-map.v1";
 pub const REVIEW_REQUEST_SCHEMA: &str = "wikitest.review-request.v2";
-pub const REVIEW_SUBMISSION_SCHEMA: &str = "wikitest.review-submission.v1";
-pub const PROSE_RECEIPT_SCHEMA: &str = "wikitest.prose-receipt.v6";
-pub const PROSE_SUITE_RECEIPT_SCHEMA: &str = "wikitest.prose-suite-receipt.v6";
+pub const REVIEW_SUBMISSION_SCHEMA: &str = "wikitest.review-submission.v2";
+pub const PROSE_RECEIPT_SCHEMA: &str = "wikitest.prose-receipt.v7";
+pub const PROSE_SUITE_RECEIPT_SCHEMA: &str = "wikitest.prose-suite-receipt.v7";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProseMode {
     Authoring,
     Review,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProseComplexity {
+    Focused,
+    Complex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProseCampaign {
+    Calibration,
+    Stress,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -154,6 +168,7 @@ pub struct ProseAssignment {
     pub title: String,
     pub description: String,
     pub mode: ProseMode,
+    pub complexity: ProseComplexity,
     pub coverage: Vec<String>,
     pub article: ArticleBrief,
     #[serde(default)]
@@ -182,6 +197,8 @@ pub struct ProseSuite {
     pub schema: String,
     pub id: String,
     pub title: String,
+    pub description: String,
+    pub campaign: ProseCampaign,
     pub required_coverage: Vec<String>,
     pub assignments: Vec<String>,
 }
@@ -235,11 +252,42 @@ pub struct Participant {
     pub display_name: String,
     pub kind: ParticipantKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
+    pub execution: Option<AgentExecution>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentExecution {
+    pub provider: String,
+    pub model: String,
+    pub harness: String,
+    pub harness_version: String,
+    pub invocation_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub access: AgentAccess,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub invocation_id: Option<String>,
+    pub metrics: Option<AgentMetrics>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentAccess {
+    pub network: bool,
+    pub ambient_repository: bool,
+    #[serde(default)]
+    pub tools: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentMetrics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -658,6 +706,7 @@ impl ProseSuite {
         }
         validate_key(&self.id, "prose_suite.id")?;
         non_blank(&self.title, "prose_suite.title")?;
+        non_blank(&self.description, "prose_suite.description")?;
         validate_keys(
             &self.required_coverage,
             "prose_suite.required_coverage",
@@ -789,13 +838,61 @@ impl Participant {
     pub fn validate(&self, source: &str) -> Result<()> {
         validate_key(&self.id, &format!("{source}.id"))?;
         non_blank(&self.display_name, &format!("{source}.display_name"))?;
+        match (self.kind, &self.execution) {
+            (ParticipantKind::Agent, Some(execution)) => execution.validate(source),
+            (ParticipantKind::Agent, None) => {
+                bail!("{source}.execution is required for an agent participant")
+            }
+            (ParticipantKind::Human, Some(_)) => {
+                bail!("{source}.execution is only valid for an agent participant")
+            }
+            (ParticipantKind::Human, None) => Ok(()),
+        }
+    }
+}
+
+impl AgentExecution {
+    fn validate(&self, source: &str) -> Result<()> {
         for (field, value) in [
-            ("provider", self.provider.as_deref()),
-            ("model", self.model.as_deref()),
-            ("invocation_id", self.invocation_id.as_deref()),
+            ("provider", self.provider.as_str()),
+            ("model", self.model.as_str()),
+            ("harness", self.harness.as_str()),
+            ("harness_version", self.harness_version.as_str()),
+            ("invocation_id", self.invocation_id.as_str()),
         ] {
-            if let Some(value) = value {
-                non_blank(value, &format!("{source}.{field}"))?;
+            non_blank(value, &format!("{source}.execution.{field}"))?;
+        }
+        if let Some(value) = &self.reasoning_effort {
+            non_blank(value, &format!("{source}.execution.reasoning_effort"))?;
+        }
+        validate_texts(
+            &self.access.tools,
+            &format!("{source}.execution.access.tools"),
+        )?;
+        let distinct_tools = self.access.tools.iter().collect::<BTreeSet<_>>();
+        if distinct_tools.len() != self.access.tools.len() {
+            bail!("{source}.execution.access.tools contains duplicates");
+        }
+        if let Some(metrics) = &self.metrics {
+            metrics.validate(source)?;
+        }
+        Ok(())
+    }
+}
+
+impl AgentMetrics {
+    fn validate(&self, source: &str) -> Result<()> {
+        if self.duration_ms.is_none() && self.input_tokens.is_none() && self.output_tokens.is_none()
+        {
+            bail!("{source}.execution.metrics must record at least one available metric");
+        }
+        for (field, value) in [
+            ("duration_ms", self.duration_ms),
+            ("input_tokens", self.input_tokens),
+            ("output_tokens", self.output_tokens),
+        ] {
+            if value == Some(0) {
+                bail!("{source}.execution.metrics.{field} must be positive when recorded");
             }
         }
         Ok(())
@@ -1112,6 +1209,7 @@ mod tests {
             "title": "Aster authoring",
             "description": "Closed-world prose authoring.",
             "mode": "authoring",
+            "complexity": "focused",
             "coverage": ["source-fidelity"],
             "article": {
                 "title": "Aster Index",
@@ -1133,6 +1231,65 @@ mod tests {
     #[test]
     fn strict_authoring_assignment_validates() {
         assignment().validate().expect("valid assignment");
+    }
+
+    #[test]
+    fn agent_participant_requires_exact_execution_identity() {
+        let participant: Participant = serde_json::from_value(json!({
+            "id": "author-agent",
+            "display_name": "Author agent",
+            "kind": "agent"
+        }))
+        .expect("participant JSON");
+        let error = participant
+            .validate("participant")
+            .expect_err("unidentified agent execution must fail");
+        assert!(error.to_string().contains("execution is required"));
+
+        let participant: Participant = serde_json::from_value(json!({
+            "id": "author-agent",
+            "display_name": "Author agent",
+            "kind": "agent",
+            "execution": {
+                "provider": "fixture-provider",
+                "model": "fixture-model",
+                "harness": "fixture-harness",
+                "harness_version": "1.2.3",
+                "invocation_id": "invocation-1",
+                "access": {
+                    "network": false,
+                    "ambient_repository": false,
+                    "tools": ["read", "write"]
+                },
+                "metrics": {"duration_ms": 10, "input_tokens": 20, "output_tokens": 30}
+            }
+        }))
+        .expect("participant JSON");
+        participant
+            .validate("participant")
+            .expect("identified agent execution");
+    }
+
+    #[test]
+    fn human_participant_cannot_claim_agent_execution() {
+        let participant: Participant = serde_json::from_value(json!({
+            "id": "human-editor",
+            "display_name": "Human editor",
+            "kind": "human",
+            "execution": {
+                "provider": "fixture-provider",
+                "model": "fixture-model",
+                "harness": "fixture-harness",
+                "harness_version": "1.2.3",
+                "invocation_id": "invocation-1",
+                "access": {"network": false, "ambient_repository": false, "tools": []}
+            }
+        }))
+        .expect("participant JSON");
+        let error = participant
+            .validate("participant")
+            .expect_err("human execution metadata must fail");
+        assert!(error.to_string().contains("only valid for an agent"));
     }
 
     #[test]

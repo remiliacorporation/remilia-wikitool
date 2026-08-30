@@ -1,0 +1,10 @@
+{{Infobox person|name=Alpha Archivist|occupation=Archivist}}
+'''Alpha Archivist''' catalogs community print records and maintains the [[Beta Index]].<ref>{{Cite web|url=https://sources.invalid/aster-record|title=Aster record|website=Fixture Gazette|date=2024-01-03}}</ref>
+
+== Work ==
+The catalog groups records by format and year.
+
+== References ==
+{{Reflist}}
+
+[[Category:Archivists]]

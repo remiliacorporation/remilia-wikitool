@@ -10,10 +10,11 @@ use zip::{CompressionMethod, ZipWriter};
 
 use crate::cli_support::{
     copy_dir_contents, copy_file, normalize_path, reset_directory, resolve_default_true_flag,
-    resolve_repo_root,
+    resolve_repo_root, validate_release_output,
 };
 
-use super::ai_pack::{build_ai_pack, print_ai_pack_build_flags};
+use super::agent_pack::{build_agent_pack, print_agent_pack_build};
+use super::release_payload::stage_release_payload;
 use super::{ReleaseBuildMatrixArgs, ReleasePackageArgs};
 
 pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
@@ -30,15 +31,16 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
         bail!("missing release binary: {}", normalize_path(&binary_path));
     }
 
-    let staging_dir = repo_root.join("dist/release-ai-pack-staging");
-    let ai_pack_result =
-        build_ai_pack(&repo_root, &staging_dir, args.host_project_root.as_deref())?;
+    let staging_dir = repo_root.join("dist/release-agent-pack-staging");
+    let agent_pack_result = build_agent_pack(&repo_root, &staging_dir)?;
 
     stage_release_bundle(
         &output_dir,
         &binary_path,
         default_release_binary_name(),
         &staging_dir,
+        &repo_root,
+        args.host_project_root.as_deref(),
     )?;
     stage_contextmink_pack(
         &repo_root,
@@ -62,7 +64,7 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
     println!("repo_root: {}", normalize_path(&repo_root));
     println!("binary_path: {}", normalize_path(&binary_path));
     println!("output_dir: {}", normalize_path(&output_dir));
-    print_ai_pack_build_flags(&ai_pack_result);
+    print_agent_pack_build(&agent_pack_result);
     Ok(())
 }
 
@@ -92,9 +94,8 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
     let artifact_version =
         resolve_release_artifact_version(args.artifact_version.as_deref(), args.unversioned_names)?;
 
-    let ai_pack_dir = output_dir.join("_ai-pack-staging");
-    let ai_pack_result =
-        build_ai_pack(&repo_root, &ai_pack_dir, args.host_project_root.as_deref())?;
+    let agent_pack_dir = output_dir.join("_agent-pack-staging");
+    let agent_pack_result = build_agent_pack(&repo_root, &agent_pack_dir)?;
 
     let mut artifacts = Vec::new();
     for target in &targets {
@@ -116,7 +117,9 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
             &bundle_dir,
             &binary_path,
             release_binary_name_for_target(target),
-            &ai_pack_dir,
+            &agent_pack_dir,
+            &repo_root,
+            args.host_project_root.as_deref(),
         )?;
         stage_contextmink_pack(
             &repo_root,
@@ -146,9 +149,9 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
     let checksums_path = output_dir.join("SHA256SUMS.txt");
     write_release_checksums(&artifacts, &checksums_path)?;
 
-    if ai_pack_dir.exists() {
-        fs::remove_dir_all(&ai_pack_dir)
-            .with_context(|| format!("failed to remove {}", normalize_path(&ai_pack_dir)))?;
+    if agent_pack_dir.exists() {
+        fs::remove_dir_all(&agent_pack_dir)
+            .with_context(|| format!("failed to remove {}", normalize_path(&agent_pack_dir)))?;
     }
 
     println!("release build-matrix");
@@ -160,7 +163,7 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
     );
     println!("target_count: {}", artifacts.len());
     println!("checksums_path: {}", normalize_path(&checksums_path));
-    print_ai_pack_build_flags(&ai_pack_result);
+    print_agent_pack_build(&agent_pack_result);
     for artifact in &artifacts {
         println!("artifact.target: {}", artifact.target);
         println!(
@@ -188,11 +191,15 @@ fn stage_release_bundle(
     output_dir: &Path,
     binary_path: &Path,
     bundle_binary_name: &str,
-    ai_pack_dir: &Path,
+    agent_pack_dir: &Path,
+    repo_root: &Path,
+    host_project_root: Option<&Path>,
 ) -> Result<()> {
+    validate_release_output(repo_root, output_dir, "release bundle output")?;
     reset_directory(output_dir)?;
     copy_file(binary_path, &output_dir.join(bundle_binary_name))?;
-    copy_dir_contents(ai_pack_dir, output_dir)?;
+    copy_dir_contents(agent_pack_dir, &output_dir.join("agent"))?;
+    stage_release_payload(repo_root, output_dir, host_project_root)?;
     Ok(())
 }
 

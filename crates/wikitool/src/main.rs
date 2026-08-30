@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
@@ -6,6 +6,8 @@ use clap::{CommandFactory, Parser, Subcommand};
 pub(crate) use wikitool_core::schema::LOCAL_DB_POLICY_MESSAGE;
 
 mod adapter_cli;
+mod agent_cli;
+mod agent_pack;
 mod article_cli;
 mod briefs;
 mod catalog_cli;
@@ -72,6 +74,10 @@ impl RuntimeOptions {
             diagnostics: cli.diagnostics,
         }
     }
+
+    pub(crate) fn project_root(&self) -> Option<&Path> {
+        self.project_root.as_deref()
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -126,8 +132,10 @@ enum Commands {
     Lsp(lsp_cli::LspArgs),
     #[command(about = "Inspect optional release companions without changing their lifecycle state")]
     Companions(companions_cli::CompanionsArgs),
+    #[command(about = "Inspect and install the Wikitool agent pack")]
+    Agent(agent_cli::AgentArgs),
     #[cfg(feature = "maintainer")]
-    #[command(about = "Build AI companion packs and release bundles", hide = true)]
+    #[command(about = "Build agent packs and release bundles", hide = true)]
     Release(release::ReleaseArgs),
     #[cfg(feature = "maintainer")]
     #[command(about = "Install local development helpers", hide = true)]
@@ -175,6 +183,7 @@ fn main() -> Result<()> {
         Some(Commands::Article(args)) => article_cli::run_article(&runtime, args),
         Some(Commands::Lsp(args)) => lsp_cli::run_lsp(&runtime, args),
         Some(Commands::Companions(args)) => companions_cli::run_companions(args),
+        Some(Commands::Agent(args)) => agent_cli::run_agent(&runtime, args),
         #[cfg(feature = "maintainer")]
         Some(Commands::Release(args)) => release::run_release(args),
         #[cfg(feature = "maintainer")]
@@ -350,6 +359,41 @@ mod tests {
             let error = Cli::try_parse_from(["wikitool", "wiki", retired])
                 .expect_err("aggregate wiki command should be retired");
             assert!(error.to_string().contains("unrecognized subcommand"));
+        }
+    }
+
+    #[test]
+    fn agent_project_lifecycle_accepts_global_or_positional_project_roots() {
+        for args in [
+            vec![
+                "wikitool",
+                "--project-root",
+                "project",
+                "agent",
+                "setup-project",
+                "--pack-root",
+                "agent",
+                "--target",
+                "both",
+                "--dry-run",
+            ],
+            vec![
+                "wikitool",
+                "agent",
+                "uninstall-project",
+                "project",
+                "--dry-run",
+            ],
+            vec![
+                "wikitool",
+                "agent",
+                "inspect",
+                "project",
+                "--pack-root",
+                "agent",
+            ],
+        ] {
+            Cli::try_parse_from(args).expect("agent lifecycle command should parse");
         }
     }
 

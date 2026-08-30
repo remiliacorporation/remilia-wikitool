@@ -1,0 +1,11 @@
+Systems that refuse to settle: a studio visit with Mara Vale
+By Niko Ames, Software Arts Quarterly
+14 September 2021
+
+Mara Vale is a British software artist whose installations use clocks, queues, and repeated calculations to make computer time physically perceptible. Vale studied graphic design at North Fen School of Art from 2008 to 2011 before moving into browser-based work.
+
+Ames discusses three works. Queue Weather (2016) turned delayed network responses into a changing wall of color. Folded Clock (2019) paired twelve small displays whose seconds drifted apart and periodically synchronized. Borrowed Noon (2021) generated a daily text from sunrise tables without presenting the result as a forecast.
+
+Vale says that the work is less about “technology in general” than about rules that people notice only when a system stops behaving smoothly. The profile reports that Vale works with fabricators and programmers but does not name a permanent studio collective.
+
+The article gives no birth date, medical history, legal dispute, or account of substance use.

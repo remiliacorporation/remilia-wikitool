@@ -537,11 +537,10 @@ fn run_import_cargo(
         if !write {
             println!("warning: dry-run only. Use --write to apply changes.");
         }
-    }
-
-    println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
-    if runtime.diagnostics {
-        println!("\n[diagnostics]\n{}", paths.diagnostics());
+        println!("policy: {LOCAL_DB_POLICY_MESSAGE}");
+        if runtime.diagnostics {
+            println!("\n[diagnostics]\n{}", paths.diagnostics());
+        }
     }
     Ok(())
 }

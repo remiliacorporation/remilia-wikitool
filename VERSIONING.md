@@ -48,7 +48,7 @@ When CLI and bundle contracts stabilize, cut `1.0.0` and enforce strict SemVer f
 
 Schema versions are independent from SemVer and must be bumped only when their specific contract changes. The versioned families include:
 
-1. `manifest.schema_version`
+1. `wikitool.agent-pack.vN` and `wikitool.agent-install.vN`
 2. `ai/docs-bundle-vN.json`
 3. `site_adapter_vN`
 4. catalog, template-catalog, capability, and authoring-surface artifacts
@@ -79,8 +79,8 @@ Packaged / distributable:
 
 1. Stage the pinned upstream Contextmink and Papertiger packs with `bash scripts/fetch_contextmink.sh --all` and `bash scripts/fetch_papertiger.sh --all`, then use `cargo run --package wikitool --features maintainer -- release build-matrix --contextmink-dist dist/contextmink-dist --papertiger-dist dist/papertiger-dist` from a source checkout to emit per-target zip bundles.
 2. Bundles use the embedded generic adapter by default, include the built-in generic and Remilia
-   Wiki adapter catalog plus ai-pack baseline `.claude` + instruction files, and compile the
-   packaged binary without the maintainer surface. Catalog presence does not select an adapter.
+   Wiki adapter catalog plus the deterministic `agent/` pack, and compile the packaged binary
+   without the maintainer surface. Catalog presence does not select an adapter.
 3. A project adapter supplement is opt-in via `--host-project-root <PATH>`. It is packaged under
    `site_adapters/project/` and never replaces the public guidance, skills, or built-in catalog.
 
@@ -94,10 +94,13 @@ Packaged / distributable:
    - `cargo fmt --all -- --check`
    - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
    - `cargo test --workspace --all-targets`
-   - `cargo run --quiet --package wikitest -- validate`
-   - `cargo run --quiet --package wikitest -- suite core-dogfood --require-all`
-   - `cargo run --quiet --package wikitest -- prose prepare-suite prose-dogfood`
-   - `bash tests/cli_compat/cli_tests.sh`
+   - `bash tests/cli_integration/cli_tests.sh`
+
+Wikitest campaigns are not release gates. Run `wikitest suite wikitool-capabilities --require-all`
+when a capability change warrants the full deterministic campaign, and schedule an external
+`complex-prose-stress` campaign for substantive authoring/evaluator changes. Packet preparation by
+itself is not a pass and must never be used to bless a release.
+
 5. Validate the catalog and authoring-support cutover from a fresh runtime:
    - `cargo run --package wikitool -- db reset --yes`
    - `cargo run --package wikitool -- catalog warm --docs-profile mw-1.44-authoring --docs-mode missing`
@@ -111,26 +114,20 @@ Packaged / distributable:
    - `cargo run --package wikitool -- status --conflicts --title "Example Topic"`
    - `cargo run --package wikitool -- module lint --format text`
    - `cargo run --package wikitool --features maintainer -- docs generate-reference`
-6. If the release changes an editorial skill, prose schema, or packet construction, complete one
-   real authoring assignment and its blinded review:
-   - `target/debug/wikitest prose prepare aster-index-authoring`
-   - have one external author follow the generated request, then use `prose submit-author`
-   - have a differently identified reviewer work only from `review/export/`, then use
-     `prose submit-review`
-   - re-run `wikitest inspect <run>/receipt.json` and retain the verified receipt
-7. Build release bundles:
+6. Build release bundles:
    - `bash scripts/fetch_contextmink.sh --platform <platform> --dest dist/contextmink-dist`
    - `bash scripts/fetch_papertiger.sh --platform <platform> --dest dist/papertiger-dist`
    - `cargo run --package wikitool --features maintainer -- release build-matrix --targets <triple> --contextmink-dist dist/contextmink-dist --papertiger-dist dist/papertiger-dist`
    - or run GitHub workflow `.github/workflows/release-artifacts.yml` with `artifact_version=X.Y.Z` for per-platform artifacts
    - every GitHub macOS artifact is explicitly marked unsigned and carries the bounded,
      checksum-first Gatekeeper procedure
-8. Verify each zip contains:
+7. Verify each zip contains:
    - `wikitool` or `wikitool.exe`
-   - `AGENTS.md`, `CLAUDE.md`, `README.md`
-   - `.claude/rules/`, `.claude/skills/`
-   - `codex_skills/`, including `wiki-writing`, `prose-review`, `wiki-interview`, and `wikitool-operator`
-   - `integration/`
+   - `README.md`
+   - `agent/manifest.json`, whose complete file inventory validates with `wikitool agent inspect`
+   - `agent/skills/`, including `wiki-writing`, `prose-review`, `wiki-interview`, and `wikitool-operator`
+   - `agent/integration/`
+   - no source-checkout `AGENTS.md`/`CLAUDE.md`, generated `.claude/` wrappers, or legacy `codex_skills/`
    - `site_adapters/generic/site-adapter.toml`
    - `site_adapters/remilia-wiki/site-adapter.toml` and its declared guidance/template contracts
    - `site_adapters/project/site-adapter.toml` only when `--host-project-root` was supplied
@@ -142,6 +139,7 @@ Packaged / distributable:
      agent contract, release manifest, licenses, and repository-pinned `archive.sha256` receipt
    - `release-companions.json`, identifying both external packs as optional and preserving their
      independent lifecycle ownership
-   - `manifest.json`
-9. Verify `SHA256SUMS.txt` matches the uploaded zip assets.
-10. Create tag `X.Y.Z`.
+   - no project install receipt; `.wikitool-agent/project-install.json` is created only by an
+     explicit `wikitool agent setup-project`
+8. Verify `SHA256SUMS.txt` matches the uploaded zip assets.
+9. Create tag `X.Y.Z`.

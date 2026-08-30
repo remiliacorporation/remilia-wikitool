@@ -1,0 +1,133 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-mediawiki-reading",
+  "title": "Read-only MediaWiki discovery and rendering",
+  "description": "Exercises configured wiki search, remote and stored capability discovery, rendered semantic checks, and page export against a deterministic read-only MediaWiki service.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "wiki-search-text", "steps": ["search-page-content"]},
+    {"capability": "wiki-search-title-scope", "steps": ["search-page-title"]},
+    {"capability": "remote-capability-probe", "steps": ["probe-remote-capabilities"]},
+    {"capability": "stored-capability-manifest", "steps": ["show-absent-capabilities", "sync-capabilities", "show-capabilities"]},
+    {"capability": "rendered-scope-validation", "steps": ["render-check-page", "assert-read-wire-contract"]},
+    {"capability": "mediawiki-export-ssrf-guard", "steps": ["reject-private-export"]}
+  ],
+  "mediawiki_fixture": {
+    "source": "fixtures/mediawiki.json",
+    "sha256": "19c120afb813440b5175070437f3a3dc37c3dc1bf815608e642c071db76b746f"
+  },
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": ["init", "--templates", "--no-network", "--wiki-url", "{MEDIAWIKI_ORIGIN_URL}", "--api-url", "{MEDIAWIKI_API_URL}"],
+      "expect": {"exit_code": 0}
+    },
+    {
+      "action": "command",
+      "id": "search-page-content",
+      "argv": ["source", "wiki-search", "ephemera", "--limit", "5", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/query", "value": "ephemera"},
+          {"kind": "json_pointer_equals", "pointer": "/total_hits", "value": 1},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/hits", "item_pointer": "/title", "value": "Aster Archive"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "search-page-title",
+      "argv": ["source", "wiki-search", "Aster Item", "--what", "title", "--limit", "5", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/what", "value": "title"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/hits", "item_pointer": "/title", "value": "Aster Item"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "probe-remote-capabilities",
+      "argv": ["wiki", "capabilities", "remote", "{MEDIAWIKI_API_URL}", "--format", "json", "--view", "summary"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "remote_wiki_capabilities_v1"},
+          {"kind": "json_pointer_equals", "pointer": "/storage", "value": "not_stored"},
+          {"kind": "json_pointer_equals", "pointer": "/capabilities/mediawiki_version", "value": "1.44.6"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "show-absent-capabilities",
+      "argv": ["wiki", "capabilities", "show", "--format", "json", "--view", "summary"],
+      "expect": {
+        "exit_code": 1,
+        "stderr": [{"kind": "contains", "value": "wiki capability manifest is missing"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "sync-capabilities",
+      "argv": ["wiki", "capabilities", "sync", "--format", "json", "--view", "full"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "wiki_capabilities_v2"},
+          {"kind": "json_pointer_equals", "pointer": "/has_scribunto", "value": true}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "show-capabilities",
+      "argv": ["wiki", "capabilities", "show", "--format", "json", "--view", "summary"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/mediawiki_version", "value": "1.44.6"},
+          {"kind": "json_pointer_equals", "pointer": "/has_scribunto", "value": true}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "render-check-page",
+      "argv": ["wiki", "render-check", "Aster Archive", "--scope-class", "archive-card", "--expect-scopes", "1", "--require-interactive-link", "--require-href-contains", "Aster_Item", "--require-link-class", "archive-link", "--format", "json", "--view", "full"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "clean"},
+          {"kind": "json_pointer_equals", "pointer": "/scope_count", "value": 1}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reject-private-export",
+      "argv": ["export", "{MEDIAWIKI_ORIGIN_URL}/wiki/Aster_Archive", "--output", "exports/Aster_Archive.wiki", "--format", "wikitext", "--no-frontmatter"],
+      "expect": {
+        "exit_code": 1,
+        "stderr": [{"kind": "contains", "value": "source URL host resolves to a non-public address"}],
+        "files": [{"kind": "missing", "path": "exports/Aster_Archive.wiki"}]
+      }
+    },
+    {
+      "action": "mediawiki_assert",
+      "id": "assert-read-wire-contract",
+      "expect": {
+        "requests": [
+          {"method": "GET", "params": {"action": "query", "list": "search", "srsearch": "ephemera", "srwhat": "text"}, "count": 1},
+          {"method": "GET", "params": {"action": "query", "list": "search", "srsearch": "Aster Item", "srwhat": "title"}, "count": 1},
+          {"method": "GET", "params": {"action": "parse", "page": "Aster Archive", "prop": "text|displaytitle|revid"}, "count": 1}
+        ]
+      }
+    }
+  ]
+}

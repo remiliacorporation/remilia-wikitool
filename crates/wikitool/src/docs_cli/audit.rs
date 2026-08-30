@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use serde::Serialize;
+use wikitool_core::{config::load_config, site::site_adapter_resource_paths};
 
 use crate::cli_support::{OutputFormat, normalize_path};
 
@@ -13,7 +14,7 @@ pub(crate) struct DocsAuditArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Optional host project root whose redirects and site adapter should be audited"
+        help = "Optional host project root whose skill routes and site-adapter selection should be audited"
     )]
     pub(crate) host_project_root: Option<PathBuf>,
     #[arg(
@@ -66,7 +67,7 @@ pub(crate) fn run_docs_audit(args: DocsAuditArgs) -> Result<()> {
     let mut checks = Vec::new();
     audit_reference(&repo_root, &mut checks);
     audit_default_features(&repo_root, &mut checks);
-    audit_ai_pack_layout(&repo_root, &mut checks);
+    audit_agent_pack_layout(&repo_root, &mut checks);
     audit_canonical_skills(&repo_root, &mut checks);
     audit_source_root_skill_routes(&repo_root, &mut checks);
     audit_generic_boundary(&repo_root, &mut checks);
@@ -142,56 +143,49 @@ fn audit_default_features(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     }
 }
 
-fn audit_ai_pack_layout(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    let claude_path = repo_root.join("ai-pack/CLAUDE.md");
-    let agents_path = repo_root.join("ai-pack/AGENTS.md");
-    let mirrored = read_to_string(&claude_path)
-        .and_then(|claude| read_to_string(&agents_path).map(|agents| claude == agents))
-        .unwrap_or(false);
-    push_check(
-        checks,
-        "ai_pack.agent_guidance_mirror",
-        mirrored,
-        Some(&agents_path),
-        if mirrored {
-            "packaged CLAUDE.md and AGENTS.md are identical".to_string()
-        } else {
-            "packaged CLAUDE.md and AGENTS.md must remain identical".to_string()
-        },
-    );
-
+fn audit_agent_pack_layout(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     for relative in [
-        "ai-pack/integration/agent_integration.md",
-        "ai-pack/integration/site_adapters.md",
+        "agent-pack/README.md",
+        "agent-pack/integration/agent_integration.md",
+        "agent-pack/integration/site_adapters.md",
         "site_adapters/generic/site-adapter.toml",
         "site_adapters/remilia-wiki/site-adapter.toml",
     ] {
         let path = repo_root.join(relative);
         push_check(
             checks,
-            "ai_pack.layered_layout",
+            "agent_pack.layered_layout",
             path.is_file(),
             Some(&path),
             if path.is_file() {
                 format!("{relative} is present")
             } else {
-                format!("required layered AI-pack resource is missing: {relative}")
+                format!("required layered agent-pack resource is missing: {relative}")
             },
         );
     }
 
-    let retired = repo_root.join("ai-pack/writing_context");
-    push_check(
-        checks,
-        "ai_pack.no_retired_writing_context",
-        !retired.exists(),
-        Some(&retired),
-        if retired.exists() {
-            "retired writing_context directory must stay removed".to_string()
-        } else {
-            "prose procedures live in agent skills, not writing_context".to_string()
-        },
-    );
+    let root = repo_root.join("agent-pack");
+    for retired in [
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".claude",
+        "codex_skills",
+        "writing_context",
+    ] {
+        let path = root.join(retired);
+        push_check(
+            checks,
+            "agent_pack.no_parallel_authority",
+            !path.exists(),
+            Some(&path),
+            if path.exists() {
+                format!("retired parallel agent surface must stay removed: {retired}")
+            } else {
+                format!("agent pack has no parallel {retired} authority")
+            },
+        );
+    }
 }
 
 fn audit_canonical_skills(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
@@ -211,7 +205,7 @@ fn audit_canonical_skills(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
         ("wiki-interview", &["interview-ledger.md"][..]),
         ("wikitool-operator", &[][..]),
     ] {
-        let root = repo_root.join("ai-pack/codex_skills").join(name);
+        let root = repo_root.join("agent-pack/skills").join(name);
         let skill_path = root.join("SKILL.md");
         let mut failures = Vec::new();
         match read_to_string(&skill_path) {
@@ -253,7 +247,7 @@ fn audit_source_root_skill_routes(repo_root: &Path, checks: &mut Vec<DocsAuditCh
     let directory = repo_root.join(".claude/skills/wikitool");
     let path = directory.join("SKILL.md");
     let directory = path.parent().expect("source-root skill directory");
-    let canonical = "ai-pack/codex_skills/wikitool-operator/SKILL.md";
+    let canonical = "agent-pack/skills/wikitool-operator/SKILL.md";
     match read_to_string(&path) {
         Ok(body) => {
             let line_count = body.lines().count();
@@ -349,34 +343,28 @@ fn valid_skill_frontmatter(body: &str, expected_name: &str) -> bool {
 }
 
 fn audit_generic_boundary(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    let root = repo_root.join("ai-pack");
+    let root = repo_root.join("agent-pack");
     let mut leaks = Vec::new();
-    for guidance_root in [
-        root.join("codex_skills"),
-        root.join(".claude/rules"),
-        root.join(".claude/skills"),
-    ] {
-        for path in text_files(&guidance_root) {
-            let Ok(body) = read_to_string(&path) else {
-                continue;
-            };
-            let lowered = body.to_ascii_lowercase();
-            for token in [
-                "remilia",
-                "charlotte fang",
-                "milady maker",
-                "wiki.remilia.org",
-                "d3chart",
-            ] {
-                if lowered.contains(token) {
-                    leaks.push(format!("{} contains {token:?}", normalize_path(&path)));
-                }
+    for path in text_files(&root.join("skills")) {
+        let Ok(body) = read_to_string(&path) else {
+            continue;
+        };
+        let lowered = body.to_ascii_lowercase();
+        for token in [
+            "remilia",
+            "charlotte fang",
+            "milady maker",
+            "wiki.remilia.org",
+            "d3chart",
+        ] {
+            if lowered.contains(token) {
+                leaks.push(format!("{} contains {token:?}", normalize_path(&path)));
             }
         }
     }
     push_check(
         checks,
-        "ai_pack.agent_guidance_target_neutral",
+        "agent_pack.skills_target_neutral",
         leaks.is_empty(),
         Some(&root),
         if leaks.is_empty() {
@@ -426,30 +414,28 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
 }
 
 fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    let adapter = host_root.join("wikitool_adapter/site-adapter.toml");
-    let adapter_ok = read_to_string(&adapter)
-        .is_ok_and(|body| body.contains("schema_version = \"site_adapter_v2\""));
+    let (adapter_ok, adapter, adapter_message) = inspect_host_site_adapter(host_root);
     push_check(
         checks,
         "host.site_adapter",
         adapter_ok,
         Some(&adapter),
-        if adapter_ok {
-            "host owns an explicit typed site adapter".to_string()
-        } else {
-            "host must own wikitool_adapter/site-adapter.toml with site_adapter_v2".to_string()
-        },
+        adapter_message,
     );
 
     for relative in [
-        ".claude/skills/wikitool.md",
-        ".claude/skills/wiki-writing.md",
-        ".claude/skills/prose-review.md",
-        ".claude/skills/wiki-interview.md",
+        ".agents/skills/wikitool/SKILL.md",
+        ".agents/skills/wiki-writing/SKILL.md",
+        ".agents/skills/prose-review/SKILL.md",
+        ".agents/skills/wiki-interview/SKILL.md",
+        ".claude/skills/wikitool/SKILL.md",
+        ".claude/skills/wiki-writing/SKILL.md",
+        ".claude/skills/prose-review/SKILL.md",
+        ".claude/skills/wiki-interview/SKILL.md",
     ] {
         let path = host_root.join(relative);
         let ok = read_to_string(&path).is_ok_and(|body| {
-            body.contains("tools/wikitool/ai-pack/") && !body.contains("wikitool search")
+            body.contains("tools/wikitool/agent-pack/") && !body.contains("wikitool search")
         });
         push_check(
             checks,
@@ -457,9 +443,9 @@ fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
             ok,
             Some(&path),
             if ok {
-                format!("{relative} routes to the public AI pack")
+                format!("{relative} routes to the public agent pack")
             } else {
-                format!("{relative} must route to the public AI pack")
+                format!("{relative} must route to the public agent pack")
             },
         );
     }
@@ -480,6 +466,128 @@ fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
                 format!("retired skill alias {relative} is absent")
             },
         );
+    }
+
+    for relative in [
+        ".claude/skills/wikitool.md",
+        ".claude/skills/wiki-writing.md",
+        ".claude/skills/prose-review.md",
+        ".claude/skills/wiki-interview.md",
+    ] {
+        let path = host_root.join(relative);
+        push_check(
+            checks,
+            "host.no_legacy_flat_skill_wrappers",
+            !path.exists(),
+            Some(&path),
+            if path.exists() {
+                format!("legacy flat Claude skill wrapper must be migrated: {relative}")
+            } else {
+                format!("legacy flat Claude skill wrapper is absent: {relative}")
+            },
+        );
+    }
+}
+
+fn inspect_host_site_adapter(host_root: &Path) -> (bool, PathBuf, String) {
+    let config_path = host_root.join(".wikitool/config.toml");
+    let conventional_adapter = host_root.join("wikitool_adapter/site-adapter.toml");
+    let config = match load_config(&config_path) {
+        Ok(config) => config,
+        Err(error) => {
+            return (
+                false,
+                config_path,
+                format!("failed to load host runtime configuration: {error:#}"),
+            );
+        }
+    };
+
+    let Some(configured) = config.adapter.path.as_deref() else {
+        if conventional_adapter.exists() {
+            return validate_host_adapter(
+                host_root,
+                conventional_adapter,
+                "host release supplement",
+            );
+        }
+        return (
+            true,
+            config_path,
+            "host uses Wikitool's embedded generic adapter and owns no private release supplement"
+                .to_string(),
+        );
+    };
+
+    let configured = configured.trim();
+    if configured.is_empty() {
+        return (
+            false,
+            config_path,
+            "host adapter.path must not be empty".to_string(),
+        );
+    }
+    let configured_path = Path::new(configured);
+    if configured_path.is_absolute() {
+        return (
+            false,
+            configured_path.to_path_buf(),
+            "host adapter.path must be project-relative".to_string(),
+        );
+    }
+    validate_host_adapter(
+        host_root,
+        host_root.join(configured_path),
+        "configured host adapter",
+    )
+}
+
+fn validate_host_adapter(
+    host_root: &Path,
+    adapter: PathBuf,
+    label: &str,
+) -> (bool, PathBuf, String) {
+    let canonical_host = match std::fs::canonicalize(host_root) {
+        Ok(path) => path,
+        Err(error) => {
+            return (
+                false,
+                host_root.to_path_buf(),
+                format!("failed to resolve host project root: {error}"),
+            );
+        }
+    };
+    let canonical_adapter = match std::fs::canonicalize(&adapter) {
+        Ok(path) => path,
+        Err(error) => {
+            return (
+                false,
+                adapter,
+                format!("failed to resolve {label}: {error}"),
+            );
+        }
+    };
+    if !canonical_adapter.starts_with(&canonical_host) {
+        return (
+            false,
+            canonical_adapter,
+            format!("{label} resolves outside the host project root"),
+        );
+    }
+    match site_adapter_resource_paths(&canonical_adapter) {
+        Ok(resources) => (
+            true,
+            canonical_adapter,
+            format!(
+                "{label} is valid and declares {} resource(s)",
+                resources.len()
+            ),
+        ),
+        Err(error) => (
+            false,
+            canonical_adapter,
+            format!("{label} is invalid: {error:#}"),
+        ),
     }
 }
 
@@ -565,7 +673,10 @@ fn print_docs_audit_report(report: &DocsAuditReport) {
 
 #[cfg(test)]
 mod tests {
-    use super::valid_skill_frontmatter;
+    use std::fs;
+    use std::path::Path;
+
+    use super::{inspect_host_site_adapter, valid_skill_frontmatter};
 
     #[test]
     fn skill_frontmatter_rejects_extra_policy_keys() {
@@ -577,5 +688,65 @@ mod tests {
             "---\nname: demo\ndescription: A useful demo skill.\nallowed-tools: Bash\n---\n",
             "demo"
         ));
+    }
+
+    #[test]
+    fn host_adapter_audit_accepts_embedded_generic_default() {
+        let host = tempfile::tempdir().expect("host");
+        let (ok, _, message) = inspect_host_site_adapter(host.path());
+        assert!(ok);
+        assert!(message.contains("embedded generic adapter"));
+    }
+
+    #[test]
+    fn host_adapter_audit_validates_configured_bundled_adapter() {
+        let host = tempfile::tempdir().expect("host");
+        let state = host.path().join(".wikitool");
+        let adapter = host
+            .path()
+            .join("tools/wikitool/site_adapters/remilia-wiki");
+        fs::create_dir_all(&state).expect("state directory");
+        fs::create_dir_all(&adapter).expect("adapter directory");
+        fs::write(
+            state.join("config.toml"),
+            "[adapter]\npath = \"tools/wikitool/site_adapters/remilia-wiki/site-adapter.toml\"\n",
+        )
+        .expect("config");
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../site_adapters/generic/site-adapter.toml"),
+            adapter.join("site-adapter.toml"),
+        )
+        .expect("adapter");
+
+        let (ok, path, message) = inspect_host_site_adapter(host.path());
+        assert!(ok, "{message}");
+        assert_eq!(
+            path,
+            adapter
+                .join("site-adapter.toml")
+                .canonicalize()
+                .expect("canonical adapter")
+        );
+        assert!(message.contains("configured host adapter is valid"));
+    }
+
+    #[test]
+    fn host_adapter_audit_rejects_invalid_selected_adapter() {
+        let host = tempfile::tempdir().expect("host");
+        let state = host.path().join(".wikitool");
+        let adapter = host.path().join("site-adapter");
+        fs::create_dir_all(&state).expect("state directory");
+        fs::create_dir_all(&adapter).expect("adapter directory");
+        fs::write(
+            state.join("config.toml"),
+            "[adapter]\npath = \"site-adapter/site-adapter.toml\"\n",
+        )
+        .expect("config");
+        fs::write(adapter.join("site-adapter.toml"), "not valid toml = [").expect("adapter");
+
+        let (ok, _, message) = inspect_host_site_adapter(host.path());
+        assert!(!ok);
+        assert!(message.contains("configured host adapter is invalid"));
     }
 }

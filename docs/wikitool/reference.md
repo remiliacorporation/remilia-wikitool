@@ -42,6 +42,7 @@ Commands:
   article     Lint and mechanically remediate article drafts
   lsp         Generate parser config and editor integration settings
   companions  Inspect optional release companions without changing their lifecycle state
+  agent       Inspect and install the Wikitool agent pack
   help        Print this message or the help of the given subcommand(s)
 
 Options:
@@ -2531,4 +2532,84 @@ Options:
       --config <PATH>
       --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
+```
+
+## agent
+
+```text
+Inspect and install the Wikitool agent pack
+
+Usage: wikitool agent [OPTIONS] <COMMAND>
+
+Commands:
+  inspect            Validate and describe a Wikitool agent pack
+  setup-project      Install Wikitool skills into an agent project
+  uninstall-project  Remove an unchanged receipt-owned Wikitool skill installation
+  help               Print this message or the help of the given subcommand(s)
+
+Options:
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
+  -h, --help                 Print help
+```
+
+## agent inspect
+
+```text
+Validate and describe a Wikitool agent pack
+
+Usage: wikitool agent inspect [OPTIONS] [PROJECT]
+
+Arguments:
+  [PROJECT]  Also inspect this project's install receipt
+
+Options:
+      --pack-root <PATH>  Agent pack root (default: agent/ beside the executable)
+      --data-dir <PATH>
+      --format <FORMAT>   [default: json] [possible values: text, json]
+      --config <PATH>
+      --diagnostics       Print resolved runtime diagnostics
+  -h, --help              Print help
+```
+
+## agent setup-project
+
+```text
+Install Wikitool skills into an agent project
+
+Usage: wikitool agent setup-project [OPTIONS] [PROJECT]
+
+Arguments:
+  [PROJECT]
+
+Options:
+      --pack-root <PATH>  Agent pack root (default: agent/ beside the executable)
+      --data-dir <PATH>
+      --target <TARGET>   [default: auto] [possible values: auto, agents, claude, both]
+      --config <PATH>
+      --dry-run           Validate and print the exact plan without changing files
+      --diagnostics       Print resolved runtime diagnostics
+      --format <FORMAT>   [default: text] [possible values: text, json]
+  -h, --help              Print help
+```
+
+## agent uninstall-project
+
+```text
+Remove an unchanged receipt-owned Wikitool skill installation
+
+Usage: wikitool agent uninstall-project [OPTIONS] [PROJECT]
+
+Arguments:
+  [PROJECT]
+
+Options:
+      --dry-run          Validate and print the exact plan without changing files
+      --data-dir <PATH>
+      --format <FORMAT>  [default: text] [possible values: text, json]
+      --config <PATH>
+      --diagnostics      Print resolved runtime diagnostics
+  -h, --help             Print help
 ```

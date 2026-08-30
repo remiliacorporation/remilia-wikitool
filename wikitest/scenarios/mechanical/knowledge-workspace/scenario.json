@@ -1,0 +1,157 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-knowledge-workspace",
+  "title": "Local docs, import, parser, and database workspace",
+  "description": "Exercises the local knowledge database, documentation retrieval, Cargo-shaped imports, parser/LSP configuration, module linting, and disposable database reset without network access.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "resolved-config-inspection", "steps": ["show-config"]},
+    {"capability": "docs-bundle-import", "steps": ["import-docs", "reimport-docs-after-reset"]},
+    {"capability": "docs-search", "steps": ["search-docs", "search-docs-after-reset"]},
+    {"capability": "docs-context-retrieval", "steps": ["retrieve-docs-context"]},
+    {"capability": "docs-symbol-retrieval", "steps": ["retrieve-docs-symbol"]},
+    {"capability": "disposable-db-reset", "steps": ["inspect-db", "reset-db", "reimport-docs-after-reset"]},
+    {"capability": "cargo-csv-import", "steps": ["preview-csv-import", "apply-csv-import"]},
+    {"capability": "cargo-json-import", "steps": ["apply-json-import"]},
+    {"capability": "parser-lsp-config", "steps": ["generate-lsp-config", "inspect-lsp-status"]},
+    {"capability": "scribunto-module-lint", "steps": ["lint-module"]}
+  ],
+  "steps": [
+    {"action": "command", "id": "initialize-project", "argv": ["init", "--templates", "--no-network"], "expect": {"exit_code": 0}},
+    {"action": "copy", "id": "install-docs-bundle", "source": "fixtures/docs-bundle.json", "target": "inputs/docs-bundle.json", "sha256": "17a1c036cad5f3e787456f4eed0124f9c65314fc7c059aa14ca8d69967b8fd07"},
+    {"action": "copy", "id": "install-csv", "source": "fixtures/cargo-records.csv", "target": "inputs/cargo-records.csv", "sha256": "1bb7b8d4cca172533877d9755f32c4e89dfa17cb391e30a76de7bd3cbf59607d"},
+    {"action": "copy", "id": "install-json", "source": "fixtures/cargo-records.json", "target": "inputs/cargo-records.json", "sha256": "f2c87f943aa42811d013b5932a5eb231816d9ef7c0c6581999d62b5fa12b7817"},
+    {"action": "copy", "id": "install-module", "source": "fixtures/Module_Fixture.lua", "target": "templates/misc/Module_Fixture.lua", "sha256": "ec4c1f2d2be51c9992632e88339cc2a5d450c1f8efccaaccf0599fd66d4ab7da"},
+    {
+      "action": "command",
+      "id": "show-config",
+      "argv": ["config", "show", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema_version", "value": "wikitool_config_v2"},
+          {"kind": "json_pointer_equals", "pointer": "/wiki/api_url/source", "value": "none"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "import-docs",
+      "argv": ["docs", "import", "--bundle", "inputs/docs-bundle.json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "imported_extensions: 1"}]}
+    },
+    {
+      "action": "command",
+      "id": "list-docs",
+      "argv": ["docs", "list", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "FixtureExtension"}]}
+    },
+    {
+      "action": "command",
+      "id": "search-docs",
+      "argv": ["docs", "search", "AlphaBetaToken", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Extension:FixtureExtension"}]}
+    },
+    {
+      "action": "command",
+      "id": "retrieve-docs-context",
+      "argv": ["docs", "context", "AlphaBetaToken", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "AlphaBetaToken"}]}
+    },
+    {
+      "action": "command",
+      "id": "retrieve-docs-symbol",
+      "argv": ["docs", "symbols", "$wgFixtureExtensionEnable", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "$wgFixtureExtensionEnable"}]}
+    },
+    {
+      "action": "command",
+      "id": "inspect-db",
+      "argv": ["db", "stats", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/db_exists", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/database_schema/status", "value": "ready"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reset-db",
+      "argv": ["db", "reset", "--yes"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "deleted: yes"}]}
+    },
+    {
+      "action": "command",
+      "id": "reimport-docs-after-reset",
+      "argv": ["docs", "import", "--bundle", "inputs/docs-bundle.json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "imported_extensions: 1"}]}
+    },
+    {
+      "action": "command",
+      "id": "search-docs-after-reset",
+      "argv": ["docs", "search", "BetaToken", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Extension:FixtureExtension"}]}
+    },
+    {
+      "action": "command",
+      "id": "preview-csv-import",
+      "argv": ["import", "cargo", "inputs/cargo-records.csv", "--table", "fixture_csv", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [{"kind": "json_array_contains", "pointer": "/pages_created", "value": "CSV Fixture Alpha"}],
+        "files": [{"kind": "missing", "path": "wiki_content/Main/CSV_Fixture_Alpha.wiki"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-csv-import",
+      "argv": ["import", "cargo", "inputs/cargo-records.csv", "--table", "fixture_csv", "--write", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [{"kind": "json_array_contains", "pointer": "/pages_created", "value": "CSV Fixture Alpha"}],
+        "files": [{"kind": "contains", "path": "wiki_content/Main/CSV_Fixture_Alpha.wiki", "value": "generated import record"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-json-import",
+      "argv": ["import", "cargo", "inputs/cargo-records.json", "--table", "fixture_json", "--write", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [{"kind": "json_array_contains", "pointer": "/pages_created", "value": "JSON Fixture Gamma"}],
+        "files": [{"kind": "contains", "path": "wiki_content/Main/JSON_Fixture_Gamma.wiki", "value": "generated import record"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "generate-lsp-config",
+      "argv": ["lsp", "generate-config", "--force"],
+      "expect": {
+        "exit_code": 0,
+        "files": [{"kind": "exists", "path": ".wikitool/parser-config.json"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "inspect-lsp-status",
+      "argv": ["lsp", "status", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/parser_config_exists", "value": true},
+          {"kind": "json_pointer_equals", "pointer": "/runtime_config_exists", "value": true}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "lint-module",
+      "argv": ["module", "lint", "Module:Fixture", "--format", "json", "--no-meta"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Module:Fixture"}]}
+    }
+  ]
+}

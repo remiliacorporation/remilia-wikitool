@@ -17,19 +17,28 @@ Download a release archive for your platform, verify it against `SHA256SUMS.txt`
 ```text
 wikitool(.exe)        end-user binary
 README.md             this file
-CLAUDE.md AGENTS.md   identical agent integration brief
-.claude/              Claude harness adapters
-codex_skills/         canonical substantive agent skills
-integration/          layer and adapter contracts
+agent/                 deterministic agent pack, manifest, skills, and contracts
 site_adapters/        built-in adapter catalog and optional project supplement
 docs/wikitool/        operator guide and generated command reference
 contextmink/          separately versioned transcript guard
 papertiger/           optional separately versioned planning companion
 release-companions.json  machine-readable optional-companion capabilities
-manifest.json LICENSE*
+LICENSE*
 ```
 
 Put `wikitool` on `PATH`, or run it from the unpacked directory.
+
+Validate and install the skills into an agent project from the unpacked release:
+
+```bash
+wikitool agent inspect
+wikitool agent setup-project /path/to/project --target auto
+```
+
+`auto` follows existing `.agents` and `.claude` project markers and defaults to
+`.agents/skills/` for an unmarked project. Setup installs exact, receipt-owned copies without
+editing root instruction files. See `wikitool agent --help` for explicit targets, dry-run,
+inspection, and safe uninstall.
 
 macOS GitHub archives are explicitly unsigned. They cannot make Gatekeeper trust themselves; the
 packaged agent procedure verifies the published checksum before removing quarantine from only the
@@ -221,18 +230,26 @@ prose assignments:
 ```bash
 cargo build -p wikitool -p wikitest
 target/debug/wikitest validate
-target/debug/wikitest suite core-dogfood --require-all
+target/debug/wikitest suite wikitool-capabilities --require-all
 target/debug/wikitest prose prepare-suite prose-dogfood
+target/debug/wikitest prose prepare-suite complex-prose-stress
 # after every author and reviewer submission:
 target/debug/wikitest prose evaluate-suite RUN
 ```
+
+Wikitest campaigns are explicit development evaluations, not per-release gates. The deterministic
+campaign covers 75 declared capability slices across 11 isolated scenarios; the complex prose
+campaign prepares two source-rich long-form assignments and records no demonstrated coverage until
+external authors and differently identified reviewers complete them. Agent submissions must record
+their exact execution identity and access envelope. See `wikitest/CAPABILITY_MATRIX.md` for the
+coverage and evidence limits.
 
 Run-producing commands re-open and replay their hash-bound evidence—including the exact Wikitest
 driver and evaluated Wikitool binaries—before returning success. Inspection labels the resulting
 self-contained artifact set `unanchored`: an external immutable digest or signed build record is
 still required for authenticity. A host wiki can add a read-only
 supplemental catalog for its real local database without moving site doctrine into Wikitest or
-Wikitool. Wikitest and its catalogs are development/release-evaluation substrate and are
+Wikitool. Wikitest and its catalogs are opt-in development-evaluation substrate and are
 intentionally absent from end-user release archives; see `wikitest/README.md`.
 
 ## Build from source
@@ -256,8 +273,8 @@ cargo run --package wikitool --features maintainer -- docs audit
 | `docs/wikitool/guide.md` | Operator manual |
 | `docs/wikitool/reference.md` | Generated command reference |
 | `docs/wikitool/architecture.md` | Layering and authority boundaries |
-| `ai-pack/integration/` | Generic agent and site-adapter contracts |
-| `ai-pack/codex_skills/` | Canonical editorial and operator skills |
+| `agent-pack/integration/` | Generic agent and site-adapter contracts |
+| `agent-pack/skills/` | Canonical editorial and operator skills |
 | `wikitest/README.md` | Executable mechanical, catalog, and prose evaluation laboratory |
 | `VERSIONING.md` / `CHANGELOG.md` | Release policy and history |
 

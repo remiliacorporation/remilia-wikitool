@@ -1,0 +1,139 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-template-contracts",
+  "title": "Template contract plan, scaffold, and render lifecycle",
+  "description": "Exercises contract validation, exact-state scaffold planning and application, replay refusal, observed-contract capture, and semantic action=parse render assertions through public Wikitool commands.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 120000,
+  "coverage": [
+    {"capability": "template-contract-validation", "steps": ["check-contract"]},
+    {"capability": "template-scaffold-plan-binding", "steps": ["plan-scaffold", "apply-scaffold", "reject-scaffold-replay"]},
+    {"capability": "template-contract-capture", "steps": ["capture-generated-template", "reject-capture-overwrite"]},
+    {"capability": "template-render-semantics", "steps": ["render-check-contract", "assert-parse-wire-contract"]}
+  ],
+  "mediawiki_fixture": {
+    "source": "fixtures/mediawiki.json",
+    "sha256": "d53c02599c9ac402b529ab2b6ea3ef2901830b02d7c088b57a3e858e4c8d1827"
+  },
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": ["init", "--templates", "--no-network", "--wiki-url", "http://127.0.0.1", "--api-url", "{MEDIAWIKI_API_URL}"],
+      "expect": {"exit_code": 0}
+    },
+    {
+      "action": "copy",
+      "id": "install-helper-template",
+      "source": "fixtures/Template_Helper.wiki",
+      "target": "templates/core/Template_Helper.wiki",
+      "sha256": "182b946f4b30f4b506258acef9ba5a16fd64087bd6096db7685a3b881e900b0a"
+    },
+    {
+      "action": "copy",
+      "id": "install-contract",
+      "source": "fixtures/card.contract.json",
+      "target": "contracts/card.contract.json",
+      "sha256": "364c1ab15b7bd0c5331618a398ad94672173ff4fa8a695d893a68733862d5f57"
+    },
+    {
+      "action": "command",
+      "id": "check-contract",
+      "argv": ["templates", "contract", "check", "contracts/card.contract.json", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "clean"},
+          {"kind": "json_pointer_equals", "pointer": "/compatibility", "value": "new_template"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "plan-scaffold",
+      "argv": ["templates", "scaffold", "contracts/card.contract.json", "--output", "templates/core/Template_Card.wiki", "--format", "json"],
+      "captures": [{"name": "SCAFFOLD_PLAN_ID", "pointer": "/plan_id"}],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [{"kind": "json_pointer_equals", "pointer": "/mode", "value": "plan"}],
+        "files": [{"kind": "missing", "path": "templates/core/Template_Card.wiki"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "apply-scaffold",
+      "argv": ["templates", "scaffold", "contracts/card.contract.json", "--output", "templates/core/Template_Card.wiki", "--apply", "${SCAFFOLD_PLAN_ID}", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [{"kind": "json_pointer_equals", "pointer": "/mode", "value": "applied"}],
+        "files": [
+          {"kind": "contains", "path": "templates/core/Template_Card.wiki", "value": "<templatedata>"},
+          {"kind": "contains", "path": "templates/core/Template_Card.wiki", "value": "[[Category:Card templates]]"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reject-scaffold-replay",
+      "argv": ["templates", "scaffold", "contracts/card.contract.json", "--output", "templates/core/Template_Card.wiki", "--apply", "${SCAFFOLD_PLAN_ID}", "--overwrite", "--format", "json"],
+      "expect": {
+        "exit_code": 1,
+        "stderr": [{"kind": "contains", "value": "plan_id mismatch"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "build-template-catalog",
+      "argv": ["templates", "catalog", "build", "--format", "json"],
+      "expect": {"exit_code": 0}
+    },
+    {
+      "action": "command",
+      "id": "capture-generated-template",
+      "argv": ["templates", "contract", "capture", "Template:Card", "--output", "contracts/card.capture.json", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/schema", "value": "template_contract_capture_v1"},
+          {"kind": "json_pointer_equals", "pointer": "/authority", "value": "observed_starter_not_target_design"}
+        ],
+        "files": [{"kind": "contains", "path": "contracts/card.capture.json", "value": "\"schema_version\": \"template_engineering_contract_v1\""}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reject-capture-overwrite",
+      "argv": ["templates", "contract", "capture", "Template:Card", "--output", "contracts/card.capture.json", "--format", "json"],
+      "expect": {
+        "exit_code": 1,
+        "stderr": [{"kind": "contains", "value": "refuses existing output"}]
+      }
+    },
+    {
+      "action": "command",
+      "id": "render-check-contract",
+      "argv": ["templates", "contract", "render-check", "contracts/card.contract.json", "--format", "json"],
+      "expect": {
+        "exit_code": 0,
+        "stdout": [
+          {"kind": "json_pointer_equals", "pointer": "/status", "value": "clean"},
+          {"kind": "json_pointer_equals", "pointer": "/fixture_count", "value": 1}
+        ]
+      }
+    },
+    {
+      "action": "mediawiki_assert",
+      "id": "assert-parse-wire-contract",
+      "expect": {
+        "requests": [
+          {
+            "method": "POST",
+            "params": {"action": "parse", "contentmodel": "wikitext", "disableeditsection": "1", "disablelimitreport": "1", "prop": "text|displaytitle", "title": "Wikitool template fixture"},
+            "count": 1
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "wikitest.mediawiki-fixture.v4",
+  "username": "wikitest-bot",
+  "password": "wikitest-secret",
+  "parse_html": "<div class=\"card\">Example</div>",
+  "pages": [
+    {
+      "title": "Template:Card",
+      "namespace": 10,
+      "page_id": 40,
+      "revision_id": 400,
+      "timestamp": "2026-08-29T12:00:00Z",
+      "content": "<includeonly>{{Helper|text={{{text|}}}}}</includeonly>"
+    }
+  ]
+}

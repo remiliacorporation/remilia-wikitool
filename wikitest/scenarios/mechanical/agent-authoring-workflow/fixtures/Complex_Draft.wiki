@@ -1,0 +1,12 @@
+{{SHORTDESC:Fictional archive used for workflow testing}}
+{{Article quality|unverified}}
+
+'''Complex Draft''' is a fictional archive used to test an exact, agent-facing editorial workflow.<ref name="overview">{{Cite web|url=https://sources.invalid/complex-draft|title=Complex Draft overview|website=Fixture Gazette|date=2025-02-04}}</ref>
+
+== Collection ==
+The archive groups community bulletins by year and physical format.<ref name="overview" />
+
+== References ==
+{{Reflist}}
+
+[[Category:Fixture archives]]

@@ -33,7 +33,7 @@ fn collect_files(root: &Path) -> Vec<PathBuf> {
 }
 
 fn assert_skill_shape(name: &str, required_references: &[&str]) {
-    let root = repo_root().join("ai-pack/codex_skills").join(name);
+    let root = repo_root().join("agent-pack/skills").join(name);
     let skill = fs::read_to_string(root.join("SKILL.md")).expect("read skill");
     let lines = skill.lines().collect::<Vec<_>>();
     assert_eq!(lines.first(), Some(&"---"), "{name} needs frontmatter");
@@ -98,56 +98,46 @@ fn public_editorial_skills_are_substantive_and_complete() {
 
 #[test]
 fn generic_agent_guidance_contains_no_remilia_policy() {
-    let ai_pack = repo_root().join("ai-pack");
-    for root in [
-        ai_pack.join("codex_skills"),
-        ai_pack.join(".claude/rules"),
-        ai_pack.join(".claude/skills"),
-    ] {
-        for path in collect_files(&root) {
-            let extension = path.extension().and_then(|value| value.to_str());
-            if !matches!(extension, Some("md" | "yaml" | "toml")) {
-                continue;
-            }
-            let body = fs::read_to_string(&path).expect("read AI pack text");
-            let lowered = body.to_ascii_lowercase();
-            for forbidden in [
-                "remilia",
-                "charlotte fang",
-                "milady maker",
-                "wiki.remilia.org",
-                "d3chart",
-            ] {
-                assert!(
-                    !lowered.contains(forbidden),
-                    "generic agent guidance leaked target-specific token {forbidden:?} in {}",
-                    path.display()
-                );
-            }
+    let agent_pack = repo_root().join("agent-pack");
+    for path in collect_files(&agent_pack.join("skills")) {
+        let extension = path.extension().and_then(|value| value.to_str());
+        if !matches!(extension, Some("md" | "yaml" | "toml")) {
+            continue;
+        }
+        let body = fs::read_to_string(&path).expect("read agent pack text");
+        let lowered = body.to_ascii_lowercase();
+        for forbidden in [
+            "remilia",
+            "charlotte fang",
+            "milady maker",
+            "wiki.remilia.org",
+            "d3chart",
+        ] {
+            assert!(
+                !lowered.contains(forbidden),
+                "generic agent guidance leaked target-specific token {forbidden:?} in {}",
+                path.display()
+            );
         }
     }
     assert!(
-        !ai_pack.join("writing_context").exists(),
+        !agent_pack.join("writing_context").exists(),
         "retired binary-adjacent writing_context must stay removed"
     );
 }
 
 #[test]
-fn claude_entrypoints_route_to_canonical_skills() {
-    for (wrapper, canonical) in [
-        ("wikitool.md", "codex_skills/wikitool-operator/SKILL.md"),
-        ("wiki-writing.md", "codex_skills/wiki-writing/SKILL.md"),
-        ("prose-review.md", "codex_skills/prose-review/SKILL.md"),
-        ("wiki-interview.md", "codex_skills/wiki-interview/SKILL.md"),
-    ] {
-        let body = read_repo_file(&format!("ai-pack/.claude/skills/{wrapper}"));
+fn agent_pack_has_one_harness_neutral_skill_authority() {
+    let root = repo_root().join("agent-pack");
+    for retired in ["AGENTS.md", "CLAUDE.md", ".claude", "codex_skills"] {
         assert!(
-            body.contains(canonical),
-            "Claude wrapper {wrapper} must route to {canonical}"
+            !root.join(retired).exists(),
+            "retired parallel agent-pack surface must stay absent: {retired}"
         );
     }
+
     let source_root = read_repo_file(".claude/skills/wikitool/SKILL.md");
-    assert!(source_root.contains("ai-pack/codex_skills/wikitool-operator/SKILL.md"));
+    assert!(source_root.contains("agent-pack/skills/wikitool-operator/SKILL.md"));
     assert!(
         source_root.lines().count() <= 16,
         "source-root Claude entrypoint must stay a thin canonical route"
