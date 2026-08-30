@@ -14,6 +14,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "AGPL-3.0-only"
+repository = "https://github.com/remiliacorporation/wikitool"
 version = "0.8.0"
 
 [workspace.dependencies]

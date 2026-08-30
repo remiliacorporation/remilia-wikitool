@@ -14,7 +14,7 @@ use crate::support::atomic_write;
 pub const DEFAULT_USER_AGENT: &str = concat!(
     "wikitool/",
     env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/remiliacorporation/remilia-wikitool)"
+    " (+https://github.com/remiliacorporation/wikitool)"
 );
 pub const DEFAULT_ARTICLE_PATH: &str = "/$1";
 pub const ENV_WIKITOOL_WIKI_URL: &str = "WIKITOOL_WIKI_URL";
@@ -541,6 +541,12 @@ folder = "Custom"
     fn default_user_agent() {
         let config = WikiConfig::default();
         assert_eq!(config.user_agent(), DEFAULT_USER_AGENT);
+        assert!(
+            config
+                .user_agent()
+                .contains("github.com/remiliacorporation/wikitool")
+        );
+        assert!(!config.user_agent().contains("remilia-wikitool"));
     }
 
     #[test]
