@@ -70,6 +70,13 @@ profiled compiler. It does not decode an acquisition bundle, choose a site polic
 preservation receipt, or write to MediaWiki. Producer adapters and site-specific projection
 companions remain outside the core.
 
+`crates/mediawiki_wikitext` is the corresponding boundary for exact revision-bound MediaWiki
+source. It verifies a producer-neutral page receipt, applies source-reported namespace and redirect
+syntax, and returns bounded span-addressed templates, parameters, links, redirects, and protected
+literal regions. Rewrites are caller-selected node replacements and overlapping authority is an
+error. The crate does not enumerate a corpus, decode a private producer manifest, expand source
+templates, choose destination semantics, or emit a preservation transform receipt.
+
 Mechanical checks include wikitext structure, citation placement, required templates, configured
 placeholder fragments, extension availability, link/index integrity, and revision-bound sync.
 They deliberately exclude reader interest, prose specificity, due weight, source entailment,

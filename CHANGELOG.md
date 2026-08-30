@@ -6,6 +6,16 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-30
+
+### Added
+
+- `mediawiki_wikitext` exposes revision-bound source parsing through strict `mediawiki.wikitext-source-profile.v1` and `mediawiki.wikitext-source-document.v1` contracts, verifies exact source bytes before parsing, and returns bounded templates, parameters, classified links, redirects, and protected literal regions for explicit non-overlapping rewrites; corpus acquisition, template expansion, site mappings, and transformation receipts remain caller-owned.
+
+### Fixed
+
+- Template indexing now distinguishes nested triple-brace parameters from transclusions, preserves complete invocation spans, and omits dynamic parameter expressions from literal example values.
+
 ## [0.7.1] - 2026-08-29
 
 ### Fixed
