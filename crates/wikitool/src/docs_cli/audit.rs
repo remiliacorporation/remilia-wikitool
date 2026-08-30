@@ -67,7 +67,7 @@ pub(crate) fn run_docs_audit(args: DocsAuditArgs) -> Result<()> {
     let mut checks = Vec::new();
     audit_reference(&repo_root, &mut checks);
     audit_default_features(&repo_root, &mut checks);
-    audit_agent_pack_layout(&repo_root, &mut checks);
+    audit_skills_layout(&repo_root, &mut checks);
     audit_canonical_skills(&repo_root, &mut checks);
     audit_source_root_skill_routes(&repo_root, &mut checks);
     audit_generic_boundary(&repo_root, &mut checks);
@@ -143,49 +143,39 @@ fn audit_default_features(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     }
 }
 
-fn audit_agent_pack_layout(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
+fn audit_skills_layout(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     for relative in [
-        "agent-pack/README.md",
-        "agent-pack/integration/agent_integration.md",
-        "agent-pack/integration/site_adapters.md",
+        "docs/wikitool/skill-integration.md",
+        "docs/wikitool/site-adapters.md",
         "site_adapters/generic/site-adapter.toml",
         "site_adapters/remilia-wiki/site-adapter.toml",
     ] {
         let path = repo_root.join(relative);
         push_check(
             checks,
-            "agent_pack.layered_layout",
+            "skills.layered_layout",
             path.is_file(),
             Some(&path),
             if path.is_file() {
                 format!("{relative} is present")
             } else {
-                format!("required layered agent-pack resource is missing: {relative}")
+                format!("required skills or adapter resource is missing: {relative}")
             },
         );
     }
 
-    let root = repo_root.join("agent-pack");
-    for retired in [
-        "AGENTS.md",
-        "CLAUDE.md",
-        ".claude",
-        "codex_skills",
-        "writing_context",
-    ] {
-        let path = root.join(retired);
-        push_check(
-            checks,
-            "agent_pack.no_parallel_authority",
-            !path.exists(),
-            Some(&path),
-            if path.exists() {
-                format!("retired parallel agent surface must stay removed: {retired}")
-            } else {
-                format!("agent pack has no parallel {retired} authority")
-            },
-        );
-    }
+    let retired = repo_root.join("agent-pack");
+    push_check(
+        checks,
+        "skills.no_legacy_pack",
+        !retired.exists(),
+        Some(&retired),
+        if retired.exists() {
+            "retired agent-pack source must stay removed".to_string()
+        } else {
+            "canonical skills have no legacy agent-pack authority".to_string()
+        },
+    );
 }
 
 fn audit_canonical_skills(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
@@ -203,9 +193,9 @@ fn audit_canonical_skills(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
             &["source-fidelity.md", "reader-value.md", "blp-sensitive.md"][..],
         ),
         ("wiki-interview", &["interview-ledger.md"][..]),
-        ("wikitool-operator", &[][..]),
+        ("wikitool", &[][..]),
     ] {
-        let root = repo_root.join("agent-pack/skills").join(name);
+        let root = repo_root.join(".agents/skills").join(name);
         let skill_path = root.join("SKILL.md");
         let mut failures = Vec::new();
         match read_to_string(&skill_path) {
@@ -247,7 +237,7 @@ fn audit_source_root_skill_routes(repo_root: &Path, checks: &mut Vec<DocsAuditCh
     let directory = repo_root.join(".claude/skills/wikitool");
     let path = directory.join("SKILL.md");
     let directory = path.parent().expect("source-root skill directory");
-    let canonical = "agent-pack/skills/wikitool-operator/SKILL.md";
+    let canonical = ".agents/skills/wikitool/SKILL.md";
     match read_to_string(&path) {
         Ok(body) => {
             let line_count = body.lines().count();
@@ -343,9 +333,9 @@ fn valid_skill_frontmatter(body: &str, expected_name: &str) -> bool {
 }
 
 fn audit_generic_boundary(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
-    let root = repo_root.join("agent-pack");
+    let root = repo_root.join(".agents/skills");
     let mut leaks = Vec::new();
-    for path in text_files(&root.join("skills")) {
+    for path in text_files(&root) {
         let Ok(body) = read_to_string(&path) else {
             continue;
         };
@@ -364,11 +354,11 @@ fn audit_generic_boundary(repo_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     }
     push_check(
         checks,
-        "agent_pack.skills_target_neutral",
+        "skills.target_neutral",
         leaks.is_empty(),
         Some(&root),
         if leaks.is_empty() {
-            "generic agent guidance contains no target-specific policy".to_string()
+            "generic skill guidance contains no target-specific policy".to_string()
         } else {
             leaks.join("; ")
         },
@@ -394,6 +384,11 @@ fn audit_no_retired_public_terms(repo_root: &Path, checks: &mut Vec<DocsAuditChe
             "function-card",
             "function-context",
             "minibeast",
+            "agent-pack",
+            "agent pack",
+            "wikitool agent",
+            "wikitool-operator",
+            ".wikitool-agent",
         ] {
             if lowered.contains(term) {
                 failures.push(format!("{} contains `{term}`", normalize_path(&path)));
@@ -435,7 +430,7 @@ fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
     ] {
         let path = host_root.join(relative);
         let ok = read_to_string(&path).is_ok_and(|body| {
-            body.contains("tools/wikitool/agent-pack/") && !body.contains("wikitool search")
+            body.contains("tools/wikitool/.agents/skills/") && !body.contains("wikitool search")
         });
         push_check(
             checks,
@@ -443,9 +438,9 @@ fn audit_host_project(host_root: &Path, checks: &mut Vec<DocsAuditCheck>) {
             ok,
             Some(&path),
             if ok {
-                format!("{relative} routes to the public agent pack")
+                format!("{relative} routes to the public Wikitool skills")
             } else {
-                format!("{relative} must route to the public agent pack")
+                format!("{relative} must route to the public Wikitool skills")
             },
         );
     }
@@ -614,7 +609,7 @@ fn collect_files(path: &Path, out: &mut Vec<PathBuf>, extensions: &[&str]) {
             .and_then(|value| value.to_str())
             .unwrap_or("");
         if path.is_dir() {
-            if !matches!(name, ".git" | "target" | ".wikitool" | "dist") {
+            if !matches!(name, ".git" | "target" | ".wikitool" | ".wikitest" | "dist") {
                 collect_files(&path, out, extensions);
             }
         } else if path

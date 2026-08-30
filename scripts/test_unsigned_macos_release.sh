@@ -10,14 +10,14 @@ mkdir -p \
   "$bundle/contextmink" \
   "$bundle/papertiger" \
   "$bundle/docs/wikitool" \
-  "$bundle/agent/skills/wikitool-operator"
+  "$bundle/skills/wikitool"
 printf 'fixture\n' > "$bundle/wikitool"
 printf 'fixture\n' > "$bundle/contextmink/contextmink"
 printf 'fixture\n' > "$bundle/papertiger/papertiger"
 printf 'fixture\n' > "$bundle/papertiger/papertiger-mise"
 cp "$repo_root/docs/wikitool/macos-gatekeeper.md" "$bundle/docs/wikitool/macos-gatekeeper.md"
-cp "$repo_root/agent-pack/skills/wikitool-operator/SKILL.md" \
-  "$bundle/agent/skills/wikitool-operator/SKILL.md"
+cp "$repo_root/.agents/skills/wikitool/SKILL.md" \
+  "$bundle/skills/wikitool/SKILL.md"
 
 bash "$repo_root/scripts/declare_unsigned_macos.sh" --bundle-dir "$bundle" >/dev/null
 

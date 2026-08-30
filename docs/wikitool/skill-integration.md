@@ -1,4 +1,4 @@
-# Agent integration
+# Skill integration
 
 Wikitool follows a four-layer model:
 

@@ -229,5 +229,5 @@ identity stale; retain that run as historical evidence and create a new run for 
 instead of waiving the mismatch.
 
 Wikitest is source-resident development and evaluation infrastructure, not a release gate. Release
-archives ship the end-user Wikitool binary and agent pack, not this binary or its scenario catalogs; a standalone Wikitest
+archives ship the end-user Wikitool binary and skills distribution, not this binary or its scenario catalogs; a standalone Wikitest
 binary without the source catalog and skill inputs would be an incomplete evaluator.

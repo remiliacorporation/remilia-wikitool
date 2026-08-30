@@ -107,16 +107,16 @@ list.
 
 ### Agent skills
 
-Canonical procedures live under `agent-pack/skills/`:
+Canonical procedures live under `.agents/skills/`:
 
-- `wikitool-operator` operates the mechanical surface and preserves mutation boundaries.
+- `wikitool` operates the mechanical surface and preserves mutation boundaries.
 - `wiki-interview` asks from supplied material and the conversation rather than a canned
   questionnaire, then stores a neutral ledger.
 - `wiki-writing` requires inspected source documents and a claim-source map before prose.
 - `prose-review` reconstructs claims independently, opens the exact sources, tests weight and BLP
   concerns, and answers whether a reader would want the article.
 
-`wikitool agent setup-project` installs identical copies of those packages into supported harness
+`wikitool skills setup-project` installs identical copies of those packages into supported harness
 directories and records their exact identities. It does not generate wrappers or edit root
 instruction files. Packaging never replaces public skills with host-project skills; an explicit
 host can contribute only a site-adapter supplement.
@@ -286,7 +286,7 @@ and passes any held-out oracle.
 
 ## Release boundary
 
-Release archives contain a deterministic target-neutral `agent/` pack and a versioned built-in
+Release archives contain a deterministic target-neutral `skills/` distribution and a versioned built-in
 adapter catalog with generic and Remilia Wiki templates. Catalog presence is inert: only a
 project-relative `[adapter].path` selects policy, and no bundled adapter supplies an endpoint.
 Receipt inspection replays deterministic observations and capability-to-step bindings. It reports
@@ -300,7 +300,7 @@ traversing, or incomplete host adapter state fails packaging.
 
 Wikitest is intentionally not packaged in end-user release archives. Its authority depends on the
 source catalog, controlled inputs, and public skill tree that accompany a source checkout; the
-shipped runtime remains the Wikitool binary and agent pack being evaluated.
+shipped runtime remains the Wikitool binary and skills distribution being evaluated.
 
 Contextmink remains a separately versioned, hash-pinned upstream release pack. Wikitool contains no
 Contextmink source fork and no duplicate installer.
@@ -332,5 +332,5 @@ When behavior changes:
 4. run `docs audit` to verify target neutrality, skill package shape, adapter routing, and generated
    reference freshness;
 5. run the relevant Wikitest suites, replay their receipts, and externally anchor release evidence;
-6. build and inspect the deterministic agent pack, then package any explicit host-adapter supplement;
+6. build and inspect the deterministic skills distribution, then package any explicit host-adapter supplement;
 7. keep live writes out of tests unless the test is explicitly authorized and revision-bound.

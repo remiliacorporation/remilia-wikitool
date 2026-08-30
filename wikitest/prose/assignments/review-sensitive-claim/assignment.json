@@ -14,10 +14,10 @@
     "sensitive": true
   },
   "review_instructions": [
-    {"id": "prose-review", "root": "repository", "locator": "agent-pack/skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
-    {"id": "source-fidelity", "root": "repository", "locator": "agent-pack/skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
-    {"id": "reader-value", "root": "repository", "locator": "agent-pack/skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"},
-    {"id": "blp-sensitive", "root": "repository", "locator": "agent-pack/skills/prose-review/references/blp-sensitive.md", "sha256": "bad7f47c24897ef9e17c91987332ef56c4feda8a0ed07e1aaf3717beccae15c8"}
+    {"id": "prose-review", "root": "repository", "locator": ".agents/skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
+    {"id": "source-fidelity", "root": "repository", "locator": ".agents/skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
+    {"id": "reader-value", "root": "repository", "locator": ".agents/skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"},
+    {"id": "blp-sensitive", "root": "repository", "locator": ".agents/skills/prose-review/references/blp-sensitive.md", "sha256": "bad7f47c24897ef9e17c91987332ef56c4feda8a0ed07e1aaf3717beccae15c8"}
   ],
   "sources": [
     {"id": "s1", "title": "Studio visit: Mara Vale", "locator": "sources/profile.txt", "sha256": "9a6b1850a730b1ef9d6c9d2806a6324d9aa74b35a4ef1d569b9a712d4fe52a1d", "role": "independent_secondary", "citation": "Niko Ames, Studio visit: Mara Vale, Software Arts Quarterly, 2 August 2023, https://fixtures.invalid/mara-vale/profile"},

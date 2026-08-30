@@ -13,8 +13,8 @@ use crate::cli_support::{
     resolve_repo_root, validate_release_output,
 };
 
-use super::agent_pack::{build_agent_pack, print_agent_pack_build};
 use super::release_payload::stage_release_payload;
+use super::skills::{build_skills, print_skills_build};
 use super::{ReleaseBuildMatrixArgs, ReleasePackageArgs};
 
 pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
@@ -31,8 +31,8 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
         bail!("missing release binary: {}", normalize_path(&binary_path));
     }
 
-    let staging_dir = repo_root.join("dist/release-agent-pack-staging");
-    let agent_pack_result = build_agent_pack(&repo_root, &staging_dir)?;
+    let staging_dir = repo_root.join("dist/release-skills-staging");
+    let skills_result = build_skills(&repo_root, &staging_dir)?;
 
     stage_release_bundle(
         &output_dir,
@@ -64,7 +64,7 @@ pub(super) fn run_release_package(args: ReleasePackageArgs) -> Result<()> {
     println!("repo_root: {}", normalize_path(&repo_root));
     println!("binary_path: {}", normalize_path(&binary_path));
     println!("output_dir: {}", normalize_path(&output_dir));
-    print_agent_pack_build(&agent_pack_result);
+    print_skills_build(&skills_result);
     Ok(())
 }
 
@@ -94,8 +94,8 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
     let artifact_version =
         resolve_release_artifact_version(args.artifact_version.as_deref(), args.unversioned_names)?;
 
-    let agent_pack_dir = output_dir.join("_agent-pack-staging");
-    let agent_pack_result = build_agent_pack(&repo_root, &agent_pack_dir)?;
+    let skills_dir = output_dir.join("_skills-staging");
+    let skills_result = build_skills(&repo_root, &skills_dir)?;
 
     let mut artifacts = Vec::new();
     for target in &targets {
@@ -117,7 +117,7 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
             &bundle_dir,
             &binary_path,
             release_binary_name_for_target(target),
-            &agent_pack_dir,
+            &skills_dir,
             &repo_root,
             args.host_project_root.as_deref(),
         )?;
@@ -149,9 +149,9 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
     let checksums_path = output_dir.join("SHA256SUMS.txt");
     write_release_checksums(&artifacts, &checksums_path)?;
 
-    if agent_pack_dir.exists() {
-        fs::remove_dir_all(&agent_pack_dir)
-            .with_context(|| format!("failed to remove {}", normalize_path(&agent_pack_dir)))?;
+    if skills_dir.exists() {
+        fs::remove_dir_all(&skills_dir)
+            .with_context(|| format!("failed to remove {}", normalize_path(&skills_dir)))?;
     }
 
     println!("release build-matrix");
@@ -163,7 +163,7 @@ pub(super) fn run_release_build_matrix(args: ReleaseBuildMatrixArgs) -> Result<(
     );
     println!("target_count: {}", artifacts.len());
     println!("checksums_path: {}", normalize_path(&checksums_path));
-    print_agent_pack_build(&agent_pack_result);
+    print_skills_build(&skills_result);
     for artifact in &artifacts {
         println!("artifact.target: {}", artifact.target);
         println!(
@@ -191,14 +191,14 @@ fn stage_release_bundle(
     output_dir: &Path,
     binary_path: &Path,
     bundle_binary_name: &str,
-    agent_pack_dir: &Path,
+    skills_dir: &Path,
     repo_root: &Path,
     host_project_root: Option<&Path>,
 ) -> Result<()> {
     validate_release_output(repo_root, output_dir, "release bundle output")?;
     reset_directory(output_dir)?;
     copy_file(binary_path, &output_dir.join(bundle_binary_name))?;
-    copy_dir_contents(agent_pack_dir, &output_dir.join("agent"))?;
+    copy_dir_contents(skills_dir, &output_dir.join("skills"))?;
     stage_release_payload(repo_root, output_dir, host_project_root)?;
     Ok(())
 }

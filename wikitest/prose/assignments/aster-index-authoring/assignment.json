@@ -21,14 +21,14 @@
     "sensitive": false
   },
   "author_instructions": [
-    {"id": "wiki-writing", "root": "repository", "locator": "agent-pack/skills/wiki-writing/SKILL.md", "sha256": "92556bf31cffa13eca76cfdcfe29cbae9d082f541f02eb4a47375886c9fe6d7d"},
-    {"id": "evidence-to-prose", "root": "repository", "locator": "agent-pack/skills/wiki-writing/references/evidence-to-prose.md", "sha256": "2106c5cb8c6503460fc94aea54c94466ddac422d4826f17a7d7bcc37cc017085"},
-    {"id": "mediawiki-structure", "root": "repository", "locator": "agent-pack/skills/wiki-writing/references/mediawiki-structure.md", "sha256": "54e1bdb0215c725688e41ed31270da7c5dfa89807ca4a5676aed22beca9c1653"}
+    {"id": "wiki-writing", "root": "repository", "locator": ".agents/skills/wiki-writing/SKILL.md", "sha256": "92556bf31cffa13eca76cfdcfe29cbae9d082f541f02eb4a47375886c9fe6d7d"},
+    {"id": "evidence-to-prose", "root": "repository", "locator": ".agents/skills/wiki-writing/references/evidence-to-prose.md", "sha256": "2106c5cb8c6503460fc94aea54c94466ddac422d4826f17a7d7bcc37cc017085"},
+    {"id": "mediawiki-structure", "root": "repository", "locator": ".agents/skills/wiki-writing/references/mediawiki-structure.md", "sha256": "54e1bdb0215c725688e41ed31270da7c5dfa89807ca4a5676aed22beca9c1653"}
   ],
   "review_instructions": [
-    {"id": "prose-review", "root": "repository", "locator": "agent-pack/skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
-    {"id": "source-fidelity", "root": "repository", "locator": "agent-pack/skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
-    {"id": "reader-value", "root": "repository", "locator": "agent-pack/skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"}
+    {"id": "prose-review", "root": "repository", "locator": ".agents/skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
+    {"id": "source-fidelity", "root": "repository", "locator": ".agents/skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
+    {"id": "reader-value", "root": "repository", "locator": ".agents/skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"}
   ],
   "sources": [
     {"id": "s1", "title": "About Aster Index", "locator": "sources/about.txt", "sha256": "32e3fd6b1a5bb318379318b5bc8299d84df9fb74b8aa837acf94707264419478", "role": "primary", "citation": "Aster Index, About Aster Index, 12 February 2024, https://fixtures.invalid/aster-index/about"},

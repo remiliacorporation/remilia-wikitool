@@ -17,7 +17,7 @@ Download a release archive for your platform, verify it against `SHA256SUMS.txt`
 ```text
 wikitool(.exe)        end-user binary
 README.md             this file
-agent/                 deterministic agent pack, manifest, skills, and contracts
+skills/                deterministic skills distribution and manifest
 site_adapters/        built-in adapter catalog and optional project supplement
 docs/wikitool/        operator guide and generated command reference
 contextmink/          separately versioned transcript guard
@@ -28,16 +28,17 @@ LICENSE*
 
 Put `wikitool` on `PATH`, or run it from the unpacked directory.
 
-Validate and install the skills into an agent project from the unpacked release:
+Validate and install the skills into a project from the unpacked release:
 
 ```bash
-wikitool agent inspect
-wikitool agent setup-project /path/to/project --target auto
+wikitool skills inspect
+wikitool skills setup-project /path/to/project --skill-target auto
 ```
 
-`auto` follows existing `.agents` and `.claude` project markers and defaults to
-`.agents/skills/` for an unmarked project. Setup installs exact, receipt-owned copies without
-editing root instruction files. See `wikitool agent --help` for explicit targets, dry-run,
+`auto` detects shared Agent Skills markers (`.agents`, `.codex`, `.pi`, `.omp`, `.opencode`,
+`AGENTS.md`, or OpenCode configuration) and Claude markers (`.claude` or `CLAUDE.md`), then
+defaults to `.agents/skills/` for an unmarked project. Setup installs exact, receipt-owned copies without
+editing root instruction files. See `wikitool skills --help` for explicit targets, dry-run,
 inspection, and safe uninstall.
 
 macOS GitHub archives are explicitly unsigned. They cannot make Gatekeeper trust themselves; the
@@ -109,7 +110,7 @@ with Wikitool. An optional `--host-project-root` supplement is strictly parsed a
 
 The packaged skills divide responsibility deliberately:
 
-- `wikitool-operator` — retrieval, templates, lint/fix, ledgers, sync, and diagnostics.
+- `wikitool` — retrieval, templates, lint/fix, ledgers, sync, and diagnostics.
 - `wiki-writing` — source inspection, claim-source maps, human-notes handling, and real
   encyclopedic drafting.
 - `prose-review` — independent source-fidelity, due-weight, BLP, structure, and reader-value review.
@@ -273,8 +274,9 @@ cargo run --package wikitool --features maintainer -- docs audit
 | `docs/wikitool/guide.md` | Operator manual |
 | `docs/wikitool/reference.md` | Generated command reference |
 | `docs/wikitool/architecture.md` | Layering and authority boundaries |
-| `agent-pack/integration/` | Generic agent and site-adapter contracts |
-| `agent-pack/skills/` | Canonical editorial and operator skills |
+| `docs/wikitool/skill-integration.md` | Skill and runtime authority boundaries |
+| `docs/wikitool/site-adapters.md` | Site-adapter contract and packaging model |
+| `.agents/skills/` | Canonical editorial and operator skills |
 | `wikitest/README.md` | Executable mechanical, catalog, and prose evaluation laboratory |
 | `VERSIONING.md` / `CHANGELOG.md` | Release policy and history |
 

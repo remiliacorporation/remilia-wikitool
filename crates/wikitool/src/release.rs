@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
-mod agent_pack;
 mod bundle;
 mod release_payload;
+mod skills;
 
 #[derive(Debug, Args)]
 pub(crate) struct ReleaseArgs {
@@ -16,10 +16,10 @@ pub(crate) struct ReleaseArgs {
 #[derive(Debug, Subcommand)]
 enum ReleaseSubcommand {
     #[command(
-        name = "build-agent-pack",
-        about = "Build the deterministic Wikitool agent pack"
+        name = "build-skills",
+        about = "Build the deterministic Wikitool skills distribution"
     )]
-    BuildAgentPack(ReleaseBuildAgentPackArgs),
+    BuildSkills(ReleaseBuildSkillsArgs),
     #[command(about = "Stage one local binary and its release payload")]
     Package(ReleasePackageArgs),
     #[command(name = "build-matrix")]
@@ -28,7 +28,7 @@ enum ReleaseSubcommand {
 }
 
 #[derive(Debug, Args)]
-struct ReleaseBuildAgentPackArgs {
+struct ReleaseBuildSkillsArgs {
     #[arg(
         long,
         value_name = "PATH",
@@ -38,7 +38,7 @@ struct ReleaseBuildAgentPackArgs {
     #[arg(
         long,
         value_name = "PATH",
-        help = "Output directory (default: <repo>/dist/agent)"
+        help = "Output directory (default: <repo>/dist/skills)"
     )]
     output_dir: Option<PathBuf>,
 }
@@ -149,9 +149,7 @@ struct ReleaseBuildMatrixArgs {
 
 pub(crate) fn run_release(args: ReleaseArgs) -> Result<()> {
     match args.command {
-        ReleaseSubcommand::BuildAgentPack(options) => {
-            agent_pack::run_release_build_agent_pack(options)
-        }
+        ReleaseSubcommand::BuildSkills(options) => skills::run_release_build_skills(options),
         ReleaseSubcommand::Package(options) => bundle::run_release_package(options),
         ReleaseSubcommand::BuildMatrix(options) => bundle::run_release_build_matrix(options),
     }

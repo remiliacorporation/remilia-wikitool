@@ -156,7 +156,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn release_payload_keeps_agent_files_in_their_own_stage() {
+    fn release_payload_keeps_skills_in_their_own_stage() {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let output = tempfile::tempdir().expect("output");
         stage_release_payload(&repo_root, output.path(), None).expect("stage payload");
@@ -173,7 +173,7 @@ mod tests {
                 .join("site_adapters/remilia-wiki/site-adapter.toml")
                 .is_file()
         );
-        assert!(!output.path().join("agent").exists());
+        assert!(!output.path().join("skills").exists());
         assert!(!output.path().join("AGENTS.md").exists());
         assert!(!output.path().join("CLAUDE.md").exists());
         assert!(!output.path().join(".claude").exists());

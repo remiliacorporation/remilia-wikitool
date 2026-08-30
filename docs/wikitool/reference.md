@@ -42,7 +42,7 @@ Commands:
   article     Lint and mechanically remediate article drafts
   lsp         Generate parser config and editor integration settings
   companions  Inspect optional release companions without changing their lifecycle state
-  agent       Inspect and install the Wikitool agent pack
+  skills      Inspect and install Wikitool skills
   help        Print this message or the help of the given subcommand(s)
 
 Options:
@@ -2534,16 +2534,16 @@ Options:
   -h, --help                 Print help
 ```
 
-## agent
+## skills
 
 ```text
-Inspect and install the Wikitool agent pack
+Inspect and install Wikitool skills
 
-Usage: wikitool agent [OPTIONS] <COMMAND>
+Usage: wikitool skills [OPTIONS] <COMMAND>
 
 Commands:
-  inspect            Validate and describe a Wikitool agent pack
-  setup-project      Install Wikitool skills into an agent project
+  inspect            Validate and describe a Wikitool skills distribution
+  setup-project      Install Wikitool skills into a project
   uninstall-project  Remove an unchanged receipt-owned Wikitool skill installation
   help               Print this message or the help of the given subcommand(s)
 
@@ -2555,52 +2555,52 @@ Options:
   -h, --help                 Print help
 ```
 
-## agent inspect
+## skills inspect
 
 ```text
-Validate and describe a Wikitool agent pack
+Validate and describe a Wikitool skills distribution
 
-Usage: wikitool agent inspect [OPTIONS] [PROJECT]
+Usage: wikitool skills inspect [OPTIONS] [PROJECT]
 
 Arguments:
   [PROJECT]  Also inspect this project's install receipt
 
 Options:
-      --pack-root <PATH>  Agent pack root (default: agent/ beside the executable)
+      --skills-root <PATH>  Skills root (default: skills/ beside the executable)
       --data-dir <PATH>
-      --format <FORMAT>   [default: json] [possible values: text, json]
+      --format <FORMAT>     [default: json] [possible values: text, json]
       --config <PATH>
-      --diagnostics       Print resolved runtime diagnostics
-  -h, --help              Print help
+      --diagnostics         Print resolved runtime diagnostics
+  -h, --help                Print help
 ```
 
-## agent setup-project
+## skills setup-project
 
 ```text
-Install Wikitool skills into an agent project
+Install Wikitool skills into a project
 
-Usage: wikitool agent setup-project [OPTIONS] [PROJECT]
+Usage: wikitool skills setup-project [OPTIONS] [PROJECT]
 
 Arguments:
   [PROJECT]
 
 Options:
-      --pack-root <PATH>  Agent pack root (default: agent/ beside the executable)
+      --skills-root <PATH>           Skills root (default: skills/ beside the executable)
       --data-dir <PATH>
-      --target <TARGET>   [default: auto] [possible values: auto, agents, claude, both]
+      --skill-target <SKILL_TARGET>  [default: auto] [possible values: auto, agents, claude, both]
       --config <PATH>
-      --dry-run           Validate and print the exact plan without changing files
-      --diagnostics       Print resolved runtime diagnostics
-      --format <FORMAT>   [default: text] [possible values: text, json]
-  -h, --help              Print help
+      --dry-run                      Validate and print the exact plan without changing files
+      --diagnostics                  Print resolved runtime diagnostics
+      --format <FORMAT>              [default: text] [possible values: text, json]
+  -h, --help                         Print help
 ```
 
-## agent uninstall-project
+## skills uninstall-project
 
 ```text
 Remove an unchanged receipt-owned Wikitool skill installation
 
-Usage: wikitool agent uninstall-project [OPTIONS] [PROJECT]
+Usage: wikitool skills uninstall-project [OPTIONS] [PROJECT]
 
 Arguments:
   [PROJECT]

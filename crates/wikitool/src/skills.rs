@@ -9,95 +9,88 @@ use sha2::{Digest, Sha256};
 
 use crate::cli_support::normalize_path;
 
-pub(crate) const AGENT_PACK_SCHEMA: &str = "wikitool.agent-pack.v1";
-pub(crate) const AGENT_INSTALL_SCHEMA: &str = "wikitool.agent-install.v1";
-pub(crate) const AGENT_INSTALL_RECEIPT: &str = ".wikitool-agent/project-install.json";
-pub(crate) const PUBLIC_SKILL_IDS: [&str; 4] = [
-    "prose-review",
-    "wiki-interview",
-    "wiki-writing",
-    "wikitool-operator",
-];
+pub(crate) const SKILLS_MANIFEST_SCHEMA: &str = "wikitool.skills-manifest.v1";
+pub(crate) const SKILLS_INSTALL_SCHEMA: &str = "wikitool.skills-install.v1";
+pub(crate) const SKILLS_INSTALL_RECEIPT: &str = ".wikitool-skills/project-install.json";
+pub(crate) const PUBLIC_SKILL_IDS: [&str; 4] =
+    ["prose-review", "wiki-interview", "wiki-writing", "wikitool"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct AgentPackManifest {
+pub(crate) struct SkillsManifest {
     pub(crate) schema: String,
     pub(crate) wikitool_version: String,
-    pub(crate) skills: Vec<AgentPackSkill>,
-    pub(crate) files: Vec<AgentPackFile>,
+    pub(crate) skills: Vec<SkillManifestEntry>,
+    pub(crate) files: Vec<SkillManifestFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct AgentPackSkill {
+pub(crate) struct SkillManifestEntry {
     pub(crate) id: String,
     pub(crate) description: String,
     pub(crate) path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct AgentPackFile {
+pub(crate) struct SkillManifestFile {
     pub(crate) path: String,
     pub(crate) bytes: u64,
     pub(crate) sha256: String,
 }
 
 #[derive(Debug)]
-pub(crate) struct ValidatedAgentPack {
+pub(crate) struct ValidatedSkills {
     pub(crate) root: PathBuf,
-    pub(crate) manifest: AgentPackManifest,
+    pub(crate) manifest: SkillsManifest,
     pub(crate) manifest_sha256: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct AgentInstallReceipt {
+pub(crate) struct SkillsInstallReceipt {
     pub(crate) schema: String,
     pub(crate) wikitool_version: String,
-    pub(crate) pack_manifest_sha256: String,
+    pub(crate) skills_manifest_sha256: String,
     pub(crate) skill_targets: Vec<String>,
-    pub(crate) managed_files: Vec<ManagedAgentFile>,
+    pub(crate) managed_files: Vec<ManagedSkillFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct ManagedAgentFile {
+pub(crate) struct ManagedSkillFile {
     pub(crate) path: String,
     pub(crate) bytes: u64,
     pub(crate) sha256: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub(crate) struct AgentInstallAction {
+pub(crate) struct SkillInstallAction {
     pub(crate) action: &'static str,
     pub(crate) path: String,
 }
 
 #[derive(Debug)]
-pub(crate) struct DesiredAgentInstall {
-    pub(crate) receipt: AgentInstallReceipt,
+pub(crate) struct DesiredSkillsInstall {
+    pub(crate) receipt: SkillsInstallReceipt,
     pub(crate) writes: Vec<(PathBuf, Vec<u8>)>,
     pub(crate) removals: Vec<PathBuf>,
-    pub(crate) actions: Vec<AgentInstallAction>,
+    pub(crate) actions: Vec<SkillInstallAction>,
 }
 
 pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-pub(crate) fn load_agent_pack(root: &Path) -> Result<ValidatedAgentPack> {
+pub(crate) fn load_skills(root: &Path) -> Result<ValidatedSkills> {
     let root = fs::canonicalize(root)
-        .with_context(|| format!("failed to resolve agent pack {}", normalize_path(root)))?;
+        .with_context(|| format!("failed to resolve skills root {}", normalize_path(root)))?;
     if !root.is_dir() {
-        bail!(
-            "agent pack root is not a directory: {}",
-            normalize_path(&root)
-        );
+        bail!("skills root is not a directory: {}", normalize_path(&root));
     }
     let manifest_path = root.join("manifest.json");
-    require_regular_file(&manifest_path, "agent pack manifest")?;
+    require_regular_file(&manifest_path, "skills manifest")?;
     let manifest_bytes = fs::read(&manifest_path)
         .with_context(|| format!("failed to read {}", normalize_path(&manifest_path)))?;
-    let manifest: AgentPackManifest = serde_json::from_slice(&manifest_bytes)
+    let manifest: SkillsManifest = serde_json::from_slice(&manifest_bytes)
         .with_context(|| format!("invalid JSON in {}", normalize_path(&manifest_path)))?;
-    validate_agent_pack_manifest(&manifest)?;
+    validate_skills_manifest(&manifest)?;
 
     let declared = manifest
         .files
@@ -112,16 +105,16 @@ pub(crate) fn load_agent_pack(root: &Path) -> Result<ValidatedAgentPack> {
     if actual != declared {
         let missing = declared.difference(&actual).cloned().collect::<Vec<_>>();
         let extra = actual.difference(&declared).cloned().collect::<Vec<_>>();
-        bail!("agent pack file inventory mismatch; missing={missing:?}; extra={extra:?}");
+        bail!("skills file inventory mismatch; missing={missing:?}; extra={extra:?}");
     }
 
     for file in &manifest.files {
         let path = root.join(&file.path);
-        require_regular_file(&path, "agent pack file")?;
+        require_regular_file(&path, "skill file")?;
         let bytes =
             fs::read(&path).with_context(|| format!("failed to read {}", normalize_path(&path)))?;
         if bytes.len() as u64 != file.bytes || sha256_bytes(&bytes) != file.sha256 {
-            bail!("agent pack file identity mismatch: {}", file.path);
+            bail!("skill file identity mismatch: {}", file.path);
         }
     }
     for skill in &manifest.skills {
@@ -130,43 +123,43 @@ pub(crate) fn load_agent_pack(root: &Path) -> Result<ValidatedAgentPack> {
             .with_context(|| format!("failed to read {} as UTF-8", normalize_path(&entrypoint)))?;
         let (name, description) = parse_skill_identity(&source, &entrypoint)?;
         if name != skill.id || description != skill.description {
-            bail!("agent pack skill metadata does not match {}", skill.path);
+            bail!("skill metadata does not match {}", skill.path);
         }
     }
 
-    Ok(ValidatedAgentPack {
+    Ok(ValidatedSkills {
         root,
         manifest,
         manifest_sha256: sha256_bytes(&manifest_bytes),
     })
 }
 
-pub(crate) fn validate_agent_pack_manifest(manifest: &AgentPackManifest) -> Result<()> {
-    if manifest.schema != AGENT_PACK_SCHEMA {
+pub(crate) fn validate_skills_manifest(manifest: &SkillsManifest) -> Result<()> {
+    if manifest.schema != SKILLS_MANIFEST_SCHEMA {
         bail!(
-            "agent pack schema is {:?}, expected {:?}",
+            "skills manifest schema is {:?}, expected {:?}",
             manifest.schema,
-            AGENT_PACK_SCHEMA
+            SKILLS_MANIFEST_SCHEMA
         );
     }
     Version::parse(&manifest.wikitool_version)
-        .context("agent pack wikitool_version is not valid semver")?;
+        .context("skills manifest wikitool_version is not valid semver")?;
 
     let mut skill_ids = BTreeSet::new();
     for skill in &manifest.skills {
         if !skill_ids.insert(skill.id.clone()) {
-            bail!("duplicate agent pack skill id {:?}", skill.id);
+            bail!("duplicate skill id {:?}", skill.id);
         }
         if !PUBLIC_SKILL_IDS.contains(&skill.id.as_str()) {
-            bail!("unsupported agent pack skill id {:?}", skill.id);
+            bail!("unsupported public skill id {:?}", skill.id);
         }
         if skill.description.trim().is_empty() {
-            bail!("agent pack skill {:?} has an empty description", skill.id);
+            bail!("skill {:?} has an empty description", skill.id);
         }
-        let expected_path = format!("skills/{}", skill.id);
+        let expected_path = skill.id.clone();
         if skill.path != expected_path {
             bail!(
-                "agent pack skill {:?} path is {:?}, expected {:?}",
+                "skill {:?} path is {:?}, expected {:?}",
                 skill.id,
                 skill.path,
                 expected_path
@@ -178,48 +171,38 @@ pub(crate) fn validate_agent_pack_manifest(manifest: &AgentPackManifest) -> Resu
         .map(|value| (*value).to_string())
         .collect::<BTreeSet<_>>();
     if skill_ids != expected {
-        bail!("agent pack must contain exactly the four public Wikitool skills");
+        bail!("skills manifest must contain exactly the four public Wikitool skills");
     }
 
     let mut paths = BTreeSet::new();
     for file in &manifest.files {
-        validate_relative_path(Path::new(&file.path), "agent pack file")?;
+        validate_relative_path(Path::new(&file.path), "skill file")?;
         if !paths.insert(file.path.clone()) {
-            bail!("duplicate agent pack file path {:?}", file.path);
+            bail!("duplicate skill file path {:?}", file.path);
         }
-        validate_sha256(&file.sha256, "agent pack file")?;
+        validate_sha256(&file.sha256, "skill file")?;
         let in_public_skill = PUBLIC_SKILL_IDS
             .iter()
-            .any(|skill| file.path.starts_with(&format!("skills/{skill}/")));
-        let in_integration = file.path.starts_with("integration/") && file.path.ends_with(".md");
-        if file.path != "README.md" && !in_public_skill && !in_integration {
+            .any(|skill| file.path.starts_with(&format!("{skill}/")));
+        if !in_public_skill {
             bail!(
-                "agent pack file is outside the public pack boundary: {:?}",
+                "file is outside the public skills boundary: {:?}",
                 file.path
             );
-        }
-    }
-    for required in [
-        "README.md",
-        "integration/agent_integration.md",
-        "integration/site_adapters.md",
-    ] {
-        if !paths.contains(required) {
-            bail!("agent pack is missing required file {required:?}");
         }
     }
     for skill in &manifest.skills {
         let entrypoint = format!("{}/SKILL.md", skill.path);
         let metadata = format!("{}/agents/openai.yaml", skill.path);
         if !paths.contains(&entrypoint) || !paths.contains(&metadata) {
-            bail!("agent pack skill {:?} is incomplete", skill.id);
+            bail!("skill {:?} is incomplete", skill.id);
         }
     }
     Ok(())
 }
 
-pub(crate) fn load_install_receipt(project_root: &Path) -> Result<Option<AgentInstallReceipt>> {
-    let path = project_root.join(AGENT_INSTALL_RECEIPT);
+pub(crate) fn load_install_receipt(project_root: &Path) -> Result<Option<SkillsInstallReceipt>> {
+    let path = project_root.join(SKILLS_INSTALL_RECEIPT);
     let metadata = match fs::symlink_metadata(&path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -230,19 +213,19 @@ pub(crate) fn load_install_receipt(project_root: &Path) -> Result<Option<AgentIn
     };
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         bail!(
-            "agent install receipt must be a regular file: {}",
+            "skills install receipt must be a regular file: {}",
             normalize_path(&path)
         );
     }
     let bytes =
         fs::read(&path).with_context(|| format!("failed to read {}", normalize_path(&path)))?;
-    let receipt: AgentInstallReceipt = serde_json::from_slice(&bytes)
+    let receipt: SkillsInstallReceipt = serde_json::from_slice(&bytes)
         .with_context(|| format!("invalid JSON in {}", normalize_path(&path)))?;
     validate_install_receipt(&receipt)?;
     Ok(Some(receipt))
 }
 
-pub(crate) fn verify_agent_install(project_root: &Path) -> Result<Option<AgentInstallReceipt>> {
+pub(crate) fn verify_skills_install(project_root: &Path) -> Result<Option<SkillsInstallReceipt>> {
     let Some(receipt) = load_install_receipt(project_root)? else {
         return Ok(None);
     };
@@ -256,23 +239,23 @@ pub(crate) fn verify_agent_install(project_root: &Path) -> Result<Option<AgentIn
     Ok(Some(receipt))
 }
 
-pub(crate) fn plan_agent_install(
+pub(crate) fn plan_skills_install(
     project_root: &Path,
-    pack: &ValidatedAgentPack,
+    skills: &ValidatedSkills,
     targets: &[&str],
-) -> Result<DesiredAgentInstall> {
+) -> Result<DesiredSkillsInstall> {
     if targets.is_empty() {
-        bail!("agent setup requires at least one resolved skill target");
+        bail!("skills setup requires at least one resolved skill target");
     }
     let previous = load_install_receipt(project_root)?;
     if let Some(receipt) = &previous {
         let installed = Version::parse(&receipt.wikitool_version)
-            .context("installed agent receipt has invalid wikitool_version")?;
-        let incoming = Version::parse(&pack.manifest.wikitool_version)
-            .context("agent pack has invalid wikitool_version")?;
+            .context("installed skills receipt has invalid wikitool_version")?;
+        let incoming = Version::parse(&skills.manifest.wikitool_version)
+            .context("skills manifest has invalid wikitool_version")?;
         if incoming < installed {
             bail!(
-                "agent setup refuses downgrade from {} to {}",
+                "skills setup refuses downgrade from {} to {}",
                 installed,
                 incoming
             );
@@ -292,7 +275,7 @@ pub(crate) fn plan_agent_install(
     verify_previous_files(project_root, &previous_files)?;
     verify_owned_skill_directories(project_root, &previous_files)?;
 
-    let mut desired_files = BTreeMap::<String, (ManagedAgentFile, Vec<u8>)>::new();
+    let mut desired_files = BTreeMap::<String, (ManagedSkillFile, Vec<u8>)>::new();
     for target in targets {
         if !matches!(*target, "agents" | "claude") {
             bail!("unsupported resolved skill target {target:?}");
@@ -302,9 +285,9 @@ pub(crate) fn plan_agent_install(
         } else {
             ".claude/skills"
         };
-        for skill in &pack.manifest.skills {
+        for skill in &skills.manifest.skills {
             let source_prefix = format!("{}/", skill.path);
-            for file in pack
+            for file in skills
                 .manifest
                 .files
                 .iter()
@@ -316,9 +299,9 @@ pub(crate) fn plan_agent_install(
                     .expect("checked prefix");
                 let destination = format!("{harness_root}/{}/{suffix}", skill.id);
                 validate_managed_skill_path(Path::new(&destination))?;
-                let bytes = fs::read(pack.root.join(&file.path))
-                    .with_context(|| format!("failed to read agent pack file {}", file.path))?;
-                let managed = ManagedAgentFile {
+                let bytes = fs::read(skills.root.join(&file.path))
+                    .with_context(|| format!("failed to read skill file {}", file.path))?;
+                let managed = ManagedSkillFile {
                     path: destination.clone(),
                     bytes: file.bytes,
                     sha256: file.sha256.clone(),
@@ -327,7 +310,7 @@ pub(crate) fn plan_agent_install(
                     .insert(destination.clone(), (managed, bytes))
                     .is_some()
                 {
-                    bail!("duplicate desired agent install path {destination:?}");
+                    bail!("duplicate desired skills install path {destination:?}");
                 }
             }
         }
@@ -340,13 +323,13 @@ pub(crate) fn plan_agent_install(
         let destination = project_root.join(path);
         match previous_files.get(path) {
             Some(old) if old.sha256 == managed.sha256 && old.bytes == managed.bytes => {
-                actions.push(AgentInstallAction {
+                actions.push(SkillInstallAction {
                     action: "unchanged",
                     path: path.clone(),
                 });
             }
             Some(_) => {
-                actions.push(AgentInstallAction {
+                actions.push(SkillInstallAction {
                     action: "replace",
                     path: path.clone(),
                 });
@@ -354,7 +337,7 @@ pub(crate) fn plan_agent_install(
             }
             None => {
                 match fs::symlink_metadata(&destination) {
-                    Ok(_) => bail!("agent setup refuses unowned existing path {path:?}"),
+                    Ok(_) => bail!("skills setup refuses unowned existing path {path:?}"),
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(error) => {
                         return Err(error).with_context(|| {
@@ -362,7 +345,7 @@ pub(crate) fn plan_agent_install(
                         });
                     }
                 }
-                actions.push(AgentInstallAction {
+                actions.push(SkillInstallAction {
                     action: "create",
                     path: path.clone(),
                 });
@@ -374,7 +357,7 @@ pub(crate) fn plan_agent_install(
     let mut removals = Vec::new();
     for path in previous_files.keys() {
         if !desired_files.contains_key(path) {
-            actions.push(AgentInstallAction {
+            actions.push(SkillInstallAction {
                 action: "remove",
                 path: path.clone(),
             });
@@ -385,10 +368,10 @@ pub(crate) fn plan_agent_install(
     writes.sort_by(|left, right| left.0.cmp(&right.0));
     removals.sort();
 
-    let receipt = AgentInstallReceipt {
-        schema: AGENT_INSTALL_SCHEMA.to_string(),
-        wikitool_version: pack.manifest.wikitool_version.clone(),
-        pack_manifest_sha256: pack.manifest_sha256.clone(),
+    let receipt = SkillsInstallReceipt {
+        schema: SKILLS_INSTALL_SCHEMA.to_string(),
+        wikitool_version: skills.manifest.wikitool_version.clone(),
+        skills_manifest_sha256: skills.manifest_sha256.clone(),
         skill_targets: targets.iter().map(|target| (*target).to_string()).collect(),
         managed_files: desired_files
             .into_values()
@@ -396,7 +379,7 @@ pub(crate) fn plan_agent_install(
             .collect(),
     };
     validate_install_receipt(&receipt)?;
-    Ok(DesiredAgentInstall {
+    Ok(DesiredSkillsInstall {
         receipt,
         writes,
         removals,
@@ -404,7 +387,7 @@ pub(crate) fn plan_agent_install(
     })
 }
 
-pub(crate) fn apply_agent_install(project_root: &Path, plan: DesiredAgentInstall) -> Result<()> {
+pub(crate) fn apply_skills_install(project_root: &Path, plan: DesiredSkillsInstall) -> Result<()> {
     for (path, bytes) in &plan.writes {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -417,7 +400,7 @@ pub(crate) fn apply_agent_install(project_root: &Path, plan: DesiredAgentInstall
         fs::remove_file(path)
             .with_context(|| format!("failed to remove {}", normalize_path(path)))?;
     }
-    let receipt_path = project_root.join(AGENT_INSTALL_RECEIPT);
+    let receipt_path = project_root.join(SKILLS_INSTALL_RECEIPT);
     let receipt_bytes = serde_json::to_vec_pretty(&plan.receipt)?;
     if let Some(parent) = receipt_path.parent() {
         fs::create_dir_all(parent)
@@ -429,9 +412,9 @@ pub(crate) fn apply_agent_install(project_root: &Path, plan: DesiredAgentInstall
     Ok(())
 }
 
-pub(crate) fn plan_agent_uninstall(
+pub(crate) fn plan_skills_uninstall(
     project_root: &Path,
-) -> Result<Option<(AgentInstallReceipt, Vec<AgentInstallAction>)>> {
+) -> Result<Option<(SkillsInstallReceipt, Vec<SkillInstallAction>)>> {
     let Some(receipt) = load_install_receipt(project_root)? else {
         return Ok(None);
     };
@@ -445,7 +428,7 @@ pub(crate) fn plan_agent_uninstall(
     let mut actions = receipt
         .managed_files
         .iter()
-        .map(|file| AgentInstallAction {
+        .map(|file| SkillInstallAction {
             action: "remove",
             path: file.path.clone(),
         })
@@ -454,16 +437,16 @@ pub(crate) fn plan_agent_uninstall(
     Ok(Some((receipt, actions)))
 }
 
-pub(crate) fn apply_agent_uninstall(
+pub(crate) fn apply_skills_uninstall(
     project_root: &Path,
-    receipt: &AgentInstallReceipt,
+    receipt: &SkillsInstallReceipt,
 ) -> Result<()> {
     for file in &receipt.managed_files {
         let path = project_root.join(&file.path);
         fs::remove_file(&path)
             .with_context(|| format!("failed to remove {}", normalize_path(&path)))?;
     }
-    let receipt_path = project_root.join(AGENT_INSTALL_RECEIPT);
+    let receipt_path = project_root.join(SKILLS_INSTALL_RECEIPT);
     fs::remove_file(&receipt_path)
         .with_context(|| format!("failed to remove {}", normalize_path(&receipt_path)))?;
     remove_empty_skill_directories(project_root)?;
@@ -482,32 +465,32 @@ pub(crate) fn resolve_project_root(path: &Path) -> Result<PathBuf> {
     Ok(root)
 }
 
-fn validate_install_receipt(receipt: &AgentInstallReceipt) -> Result<()> {
-    if receipt.schema != AGENT_INSTALL_SCHEMA {
+fn validate_install_receipt(receipt: &SkillsInstallReceipt) -> Result<()> {
+    if receipt.schema != SKILLS_INSTALL_SCHEMA {
         bail!(
-            "agent install receipt schema is {:?}, expected {:?}",
+            "skills install receipt schema is {:?}, expected {:?}",
             receipt.schema,
-            AGENT_INSTALL_SCHEMA
+            SKILLS_INSTALL_SCHEMA
         );
     }
     Version::parse(&receipt.wikitool_version)
-        .context("agent install receipt wikitool_version is not valid semver")?;
-    validate_sha256(&receipt.pack_manifest_sha256, "agent install receipt")?;
+        .context("skills install receipt wikitool_version is not valid semver")?;
+    validate_sha256(&receipt.skills_manifest_sha256, "skills install receipt")?;
     let mut targets = BTreeSet::<String>::new();
     for target in &receipt.skill_targets {
         if !matches!(target.as_str(), "agents" | "claude") || !targets.insert(target.clone()) {
-            bail!("invalid agent install receipt skill target {target:?}");
+            bail!("invalid skills install receipt target {target:?}");
         }
     }
     if targets.is_empty() {
-        bail!("agent install receipt must contain at least one skill target");
+        bail!("skills install receipt must contain at least one skill target");
     }
     let mut paths = BTreeSet::new();
     for file in &receipt.managed_files {
         validate_managed_skill_path(Path::new(&file.path))?;
-        validate_sha256(&file.sha256, "managed agent file")?;
+        validate_sha256(&file.sha256, "managed skill file")?;
         if !paths.insert(&file.path) {
-            bail!("duplicate managed agent path {:?}", file.path);
+            bail!("duplicate managed skill path {:?}", file.path);
         }
     }
     for target in &targets {
@@ -515,7 +498,7 @@ fn validate_install_receipt(receipt: &AgentInstallReceipt) -> Result<()> {
             for required in ["SKILL.md", "agents/openai.yaml"] {
                 let path = format!(".{target}/skills/{skill}/{required}");
                 if !paths.contains(&path) {
-                    bail!("agent install receipt is missing required managed file {path:?}");
+                    bail!("skills install receipt is missing required managed file {path:?}");
                 }
             }
         }
@@ -527,7 +510,7 @@ fn validate_install_receipt(receipt: &AgentInstallReceipt) -> Result<()> {
             "claude"
         };
         if !targets.contains(declared_target) {
-            bail!("managed agent path has no declared skill target: {path:?}");
+            bail!("managed skill path has no declared target: {path:?}");
         }
     }
     Ok(())
@@ -535,16 +518,16 @@ fn validate_install_receipt(receipt: &AgentInstallReceipt) -> Result<()> {
 
 fn verify_previous_files(
     project_root: &Path,
-    files: &BTreeMap<String, ManagedAgentFile>,
+    files: &BTreeMap<String, ManagedSkillFile>,
 ) -> Result<()> {
     for (relative, expected) in files {
         validate_destination(project_root, Path::new(relative))?;
         let path = project_root.join(relative);
-        require_regular_file(&path, "receipt-owned agent file")?;
+        require_regular_file(&path, "receipt-owned skill file")?;
         let bytes =
             fs::read(&path).with_context(|| format!("failed to read {}", normalize_path(&path)))?;
         if bytes.len() as u64 != expected.bytes || sha256_bytes(&bytes) != expected.sha256 {
-            bail!("receipt-owned agent file was modified: {relative}");
+            bail!("receipt-owned skill file was modified: {relative}");
         }
     }
     Ok(())
@@ -552,7 +535,7 @@ fn verify_previous_files(
 
 fn verify_owned_skill_directories(
     project_root: &Path,
-    files: &BTreeMap<String, ManagedAgentFile>,
+    files: &BTreeMap<String, ManagedSkillFile>,
 ) -> Result<()> {
     let owned = files.keys().cloned().collect::<BTreeSet<_>>();
     for target_root in [".agents/skills", ".claude/skills"] {
@@ -566,7 +549,7 @@ fn verify_owned_skill_directories(
                 let project_relative = Path::new(target_root).join(skill).join(relative);
                 let normalized = normalize_path(&project_relative);
                 if !owned.contains(&normalized) {
-                    bail!("agent setup refuses unowned file inside managed skill: {normalized}");
+                    bail!("skills setup refuses unowned file inside managed skill: {normalized}");
                 }
             }
         }
@@ -575,7 +558,7 @@ fn verify_owned_skill_directories(
 }
 
 fn validate_managed_skill_path(path: &Path) -> Result<()> {
-    validate_relative_path(path, "managed agent file")?;
+    validate_relative_path(path, "managed skill file")?;
     let components = path
         .components()
         .map(|component| component.as_os_str().to_string_lossy().into_owned())
@@ -586,7 +569,7 @@ fn validate_managed_skill_path(path: &Path) -> Result<()> {
         || !PUBLIC_SKILL_IDS.contains(&components[2].as_str())
     {
         bail!(
-            "managed agent path is outside the Wikitool skill boundary: {:?}",
+            "managed skill path is outside the Wikitool skill boundary: {:?}",
             path
         );
     }
@@ -594,14 +577,14 @@ fn validate_managed_skill_path(path: &Path) -> Result<()> {
 }
 
 fn validate_destination(root: &Path, relative: &Path) -> Result<()> {
-    validate_relative_path(relative, "agent install destination")?;
+    validate_relative_path(relative, "skills install destination")?;
     let mut current = root.to_path_buf();
     for component in relative.components() {
         current.push(component.as_os_str());
         match fs::symlink_metadata(&current) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 bail!(
-                    "agent install destination crosses a symlink: {}",
+                    "skills install destination crosses a symlink: {}",
                     normalize_path(&current)
                 );
             }
@@ -720,7 +703,7 @@ fn collect_regular_files(root: &Path) -> Result<Vec<PathBuf>> {
                 .with_context(|| format!("failed to inspect {}", normalize_path(&path)))?;
             if metadata.file_type().is_symlink() {
                 bail!(
-                    "agent pack or managed skill contains a symlink: {}",
+                    "skills distribution or managed skill contains a symlink: {}",
                     normalize_path(&path)
                 );
             }
@@ -729,7 +712,10 @@ fn collect_regular_files(root: &Path) -> Result<Vec<PathBuf>> {
             } else if metadata.is_file() {
                 files.push(path.strip_prefix(root).expect("root prefix").to_path_buf());
             } else {
-                bail!("unsupported agent pack entry: {}", normalize_path(&path));
+                bail!(
+                    "unsupported skills distribution entry: {}",
+                    normalize_path(&path)
+                );
             }
         }
     }
@@ -789,30 +775,10 @@ fn remove_dir_if_empty(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn write_test_pack(root: &Path, version: &str) {
+    fn write_test_skills(root: &Path, version: &str) {
         let mut files = Vec::new();
-        for (relative, bytes) in [
-            ("README.md", b"# Test agent pack\n".as_slice()),
-            (
-                "integration/agent_integration.md",
-                b"# Test agent integration\n".as_slice(),
-            ),
-            (
-                "integration/site_adapters.md",
-                b"# Test site adapters\n".as_slice(),
-            ),
-        ] {
-            let path = root.join(relative);
-            fs::create_dir_all(path.parent().expect("file parent")).expect("pack directories");
-            fs::write(&path, bytes).expect("pack file");
-            files.push(AgentPackFile {
-                path: relative.to_string(),
-                bytes: bytes.len() as u64,
-                sha256: sha256_bytes(bytes),
-            });
-        }
         for skill in PUBLIC_SKILL_IDS {
-            let skill_root = root.join("skills").join(skill);
+            let skill_root = root.join(skill);
             fs::create_dir_all(skill_root.join("agents")).expect("skill directories");
             for (relative, bytes) in [
                 (
@@ -826,8 +792,8 @@ mod tests {
                 ),
             ] {
                 fs::write(skill_root.join(relative), &bytes).expect("skill file");
-                files.push(AgentPackFile {
-                    path: format!("skills/{skill}/{relative}"),
+                files.push(SkillManifestFile {
+                    path: format!("{skill}/{relative}"),
                     bytes: bytes.len() as u64,
                     sha256: sha256_bytes(&bytes),
                 });
@@ -836,15 +802,15 @@ mod tests {
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let mut skills = PUBLIC_SKILL_IDS
             .iter()
-            .map(|skill| AgentPackSkill {
+            .map(|skill| SkillManifestEntry {
                 id: (*skill).to_string(),
                 description: format!("Test {skill}."),
-                path: format!("skills/{skill}"),
+                path: (*skill).to_string(),
             })
             .collect::<Vec<_>>();
         skills.sort_by(|left, right| left.id.cmp(&right.id));
-        let manifest = AgentPackManifest {
-            schema: AGENT_PACK_SCHEMA.to_string(),
+        let manifest = SkillsManifest {
+            schema: SKILLS_MANIFEST_SCHEMA.to_string(),
             wikitool_version: version.to_string(),
             skills,
             files,
@@ -869,34 +835,34 @@ mod tests {
 
     #[test]
     fn manifest_requires_the_complete_public_skill_set() {
-        let manifest = AgentPackManifest {
-            schema: AGENT_PACK_SCHEMA.to_string(),
+        let manifest = SkillsManifest {
+            schema: SKILLS_MANIFEST_SCHEMA.to_string(),
             wikitool_version: "0.8.0".to_string(),
             skills: Vec::new(),
             files: Vec::new(),
         };
-        assert!(validate_agent_pack_manifest(&manifest).is_err());
+        assert!(validate_skills_manifest(&manifest).is_err());
     }
 
     #[test]
     fn install_is_idempotent_and_uninstall_removes_only_owned_trees() {
-        let pack_root = tempfile::tempdir().expect("pack");
+        let skills_root = tempfile::tempdir().expect("skills root");
         let project = tempfile::tempdir().expect("project");
-        write_test_pack(pack_root.path(), "0.8.0");
-        let pack = load_agent_pack(pack_root.path()).expect("valid pack");
+        write_test_skills(skills_root.path(), "0.8.0");
+        let skills = load_skills(skills_root.path()).expect("valid skills");
 
-        let plan =
-            plan_agent_install(project.path(), &pack, &["agents", "claude"]).expect("install plan");
+        let plan = plan_skills_install(project.path(), &skills, &["agents", "claude"])
+            .expect("install plan");
         assert!(plan.actions.iter().all(|action| action.action == "create"));
-        apply_agent_install(project.path(), plan).expect("install");
+        apply_skills_install(project.path(), plan).expect("install");
 
-        let receipt = verify_agent_install(project.path())
+        let receipt = verify_skills_install(project.path())
             .expect("verify install")
             .expect("receipt");
         assert_eq!(receipt.skill_targets, ["agents", "claude"]);
         assert_eq!(receipt.managed_files.len(), PUBLIC_SKILL_IDS.len() * 4);
 
-        let second = plan_agent_install(project.path(), &pack, &["agents", "claude"])
+        let second = plan_skills_install(project.path(), &skills, &["agents", "claude"])
             .expect("idempotent plan");
         assert!(second.writes.is_empty());
         assert!(second.removals.is_empty());
@@ -907,47 +873,47 @@ mod tests {
                 .all(|action| action.action == "unchanged")
         );
 
-        let (receipt, _) = plan_agent_uninstall(project.path())
+        let (receipt, _) = plan_skills_uninstall(project.path())
             .expect("uninstall plan")
             .expect("installed");
-        apply_agent_uninstall(project.path(), &receipt).expect("uninstall");
+        apply_skills_uninstall(project.path(), &receipt).expect("uninstall");
         assert!(!project.path().join(".agents").exists());
         assert!(!project.path().join(".claude").exists());
-        assert!(!project.path().join(".wikitool-agent").exists());
+        assert!(!project.path().join(".wikitool-skills").exists());
     }
 
     #[test]
     fn install_and_uninstall_refuse_modified_or_foreign_skill_files() {
-        let pack_root = tempfile::tempdir().expect("pack");
+        let skills_root = tempfile::tempdir().expect("skills root");
         let project = tempfile::tempdir().expect("project");
-        write_test_pack(pack_root.path(), "0.8.0");
-        let pack = load_agent_pack(pack_root.path()).expect("valid pack");
-        let plan = plan_agent_install(project.path(), &pack, &["agents"]).expect("install plan");
-        apply_agent_install(project.path(), plan).expect("install");
+        write_test_skills(skills_root.path(), "0.8.0");
+        let skills = load_skills(skills_root.path()).expect("valid skills");
+        let plan = plan_skills_install(project.path(), &skills, &["agents"]).expect("install plan");
+        apply_skills_install(project.path(), plan).expect("install");
 
         let managed = project.path().join(".agents/skills/wiki-writing/SKILL.md");
         fs::write(&managed, "modified\n").expect("modify managed file");
         assert!(
-            plan_agent_install(project.path(), &pack, &["agents"])
+            plan_skills_install(project.path(), &skills, &["agents"])
                 .expect_err("modified setup must fail")
                 .to_string()
                 .contains("was modified")
         );
         assert!(
-            plan_agent_uninstall(project.path())
+            plan_skills_uninstall(project.path())
                 .expect_err("modified uninstall must fail")
                 .to_string()
                 .contains("was modified")
         );
 
-        let source = pack.root.join("skills/wiki-writing/SKILL.md");
+        let source = skills.root.join("wiki-writing/SKILL.md");
         fs::copy(source, &managed).expect("restore managed file");
         let foreign = project
             .path()
             .join(".agents/skills/wiki-writing/foreign.md");
         fs::write(&foreign, "foreign\n").expect("foreign file");
         assert!(
-            plan_agent_install(project.path(), &pack, &["agents"])
+            plan_skills_install(project.path(), &skills, &["agents"])
                 .expect_err("foreign setup must fail")
                 .to_string()
                 .contains("unowned file")
@@ -955,31 +921,31 @@ mod tests {
     }
 
     #[test]
-    fn pack_tampering_and_downgrades_fail_closed() {
-        let first_root = tempfile::tempdir().expect("first pack");
-        let older_root = tempfile::tempdir().expect("older pack");
+    fn skill_tampering_and_downgrades_fail_closed() {
+        let first_root = tempfile::tempdir().expect("first skills root");
+        let older_root = tempfile::tempdir().expect("older skills root");
         let project = tempfile::tempdir().expect("project");
-        write_test_pack(first_root.path(), "0.8.0");
-        write_test_pack(older_root.path(), "0.7.0");
-        let first = load_agent_pack(first_root.path()).expect("valid first pack");
-        let plan = plan_agent_install(project.path(), &first, &["agents"]).expect("install plan");
-        apply_agent_install(project.path(), plan).expect("install");
-        let older = load_agent_pack(older_root.path()).expect("valid older pack");
+        write_test_skills(first_root.path(), "0.8.0");
+        write_test_skills(older_root.path(), "0.7.0");
+        let first = load_skills(first_root.path()).expect("valid first skills");
+        let plan = plan_skills_install(project.path(), &first, &["agents"]).expect("install plan");
+        apply_skills_install(project.path(), plan).expect("install");
+        let older = load_skills(older_root.path()).expect("valid older skills");
         assert!(
-            plan_agent_install(project.path(), &older, &["agents"])
+            plan_skills_install(project.path(), &older, &["agents"])
                 .expect_err("downgrade must fail")
                 .to_string()
                 .contains("refuses downgrade")
         );
 
         fs::write(
-            first_root.path().join("skills/wiki-writing/SKILL.md"),
+            first_root.path().join("wiki-writing/SKILL.md"),
             "tampered\n",
         )
-        .expect("tamper pack");
+        .expect("tamper skill");
         assert!(
-            load_agent_pack(first_root.path())
-                .expect_err("tampered pack must fail")
+            load_skills(first_root.path())
+                .expect_err("tampered skill must fail")
                 .to_string()
                 .contains("identity mismatch")
         );

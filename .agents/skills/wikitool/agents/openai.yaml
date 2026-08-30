@@ -1,4 +1,4 @@
 interface:
-  display_name: "Wikitool Operator"
+  display_name: "Wikitool"
   short_description: "Operate Wikitool's mechanical MediaWiki workflows"
   default_prompt: "Operate Wikitool for this MediaWiki task, preserving the boundary between deterministic tooling and editorial judgment."

@@ -1182,25 +1182,48 @@ else
     fi
 fi
 
-# --- release build-agent-pack ---
-section "release build-agent-pack"
-AGENT_PACK_OUT="$TMPDIR_ROOT/release-agent-pack"
+# --- release build-skills ---
+section "release build-skills"
+SKILLS_OUT="$TMPDIR_ROOT/release-skills"
 if has_maintainer_surface; then
-    OUTPUT=$(wt_maintainer "$PROJ" release build-agent-pack --repo-root "$REPO_ROOT" --output-dir "$AGENT_PACK_OUT" 2>&1 || true)
-    if [ -f "$AGENT_PACK_OUT/manifest.json" ] && [ -f "$AGENT_PACK_OUT/README.md" ] \
-        && [ -d "$AGENT_PACK_OUT/integration" ] && [ -d "$AGENT_PACK_OUT/skills" ] \
-        && [ -f "$AGENT_PACK_OUT/skills/wiki-writing/SKILL.md" ] \
-        && [ -f "$AGENT_PACK_OUT/skills/prose-review/SKILL.md" ] \
-        && [ -f "$AGENT_PACK_OUT/skills/wiki-interview/SKILL.md" ] \
-        && [ -f "$AGENT_PACK_OUT/skills/wikitool-operator/SKILL.md" ] \
-        && [ ! -e "$AGENT_PACK_OUT/AGENTS.md" ] && [ ! -e "$AGENT_PACK_OUT/CLAUDE.md" ] \
-        && [ ! -e "$AGENT_PACK_OUT/.claude" ] && [ ! -e "$AGENT_PACK_OUT/codex_skills" ]; then
-        pass "release build-agent-pack stages the deterministic agent pack"
+    OUTPUT=$(wt_maintainer "$PROJ" release build-skills --repo-root "$REPO_ROOT" --output-dir "$SKILLS_OUT" 2>&1 || true)
+    if [ -f "$SKILLS_OUT/manifest.json" ] \
+        && [ -f "$SKILLS_OUT/wiki-writing/SKILL.md" ] \
+        && [ -f "$SKILLS_OUT/prose-review/SKILL.md" ] \
+        && [ -f "$SKILLS_OUT/wiki-interview/SKILL.md" ] \
+        && [ -f "$SKILLS_OUT/wikitool/SKILL.md" ] \
+        && [ ! -e "$SKILLS_OUT/README.md" ] && [ ! -e "$SKILLS_OUT/integration" ] \
+        && [ ! -e "$SKILLS_OUT/.claude" ] && [ ! -e "$SKILLS_OUT/codex_skills" ]; then
+        pass "release build-skills stages the deterministic skills distribution"
     else
-        fail "release build-agent-pack stages the deterministic agent pack (got: ${OUTPUT:0:300})"
+        fail "release build-skills stages the deterministic skills distribution (got: ${OUTPUT:0:300})"
+    fi
+
+    SKILLS_PROJECT=$(setup_project skills-install)
+    OUTPUT=$(wt "$PROJ" skills inspect --skills-root "$SKILLS_OUT" --format json 2>&1 || true)
+    if echo "$OUTPUT" | grep -q '"schema": "wikitool.skills-inspect.v1"'; then
+        pass "skills inspect validates the release distribution"
+    else
+        fail "skills inspect validates the release distribution (got: ${OUTPUT:0:300})"
+    fi
+    OUTPUT=$(wt "$PROJ" skills setup-project "$SKILLS_PROJECT" --skills-root "$SKILLS_OUT" --skill-target both --format json 2>&1 || true)
+    if [ -f "$SKILLS_PROJECT/.wikitool-skills/project-install.json" ] \
+        && [ -f "$SKILLS_PROJECT/.agents/skills/wikitool/SKILL.md" ] \
+        && [ -f "$SKILLS_PROJECT/.claude/skills/wikitool/SKILL.md" ]; then
+        pass "skills setup-project installs both harness targets"
+    else
+        fail "skills setup-project installs both harness targets (got: ${OUTPUT:0:300})"
+    fi
+    OUTPUT=$(wt "$PROJ" skills uninstall-project "$SKILLS_PROJECT" --format json 2>&1 || true)
+    if [ ! -e "$SKILLS_PROJECT/.wikitool-skills/project-install.json" ] \
+        && [ ! -e "$SKILLS_PROJECT/.agents/skills/wikitool/SKILL.md" ] \
+        && [ ! -e "$SKILLS_PROJECT/.claude/skills/wikitool/SKILL.md" ]; then
+        pass "skills uninstall-project removes only its receipt-owned files"
+    else
+        fail "skills uninstall-project removes only its receipt-owned files (got: ${OUTPUT:0:300})"
     fi
 else
-    skip "release build-agent-pack stages the deterministic agent pack (no maintainer command configured)"
+    skip "release build-skills stages the deterministic skills distribution (no maintainer command configured)"
 fi
 
 # --- release package ---
@@ -1217,17 +1240,17 @@ elif [ -n "$LOCAL_BINARY" ]; then
         --output-dir "$RELEASE_OUT" \
         --contextmink-dist "$CONTEXTMINK_FIXTURE_DIST" \
         --papertiger-dist "$PAPERTIGER_FIXTURE_DIST" 2>&1 || true)
-    if [ -f "$RELEASE_OUT/README.md" ] && [ -f "$RELEASE_OUT/agent/manifest.json" ] \
-        && [ -d "$RELEASE_OUT/agent/skills" ] && [ -d "$RELEASE_OUT/agent/integration" ] \
+    if [ -f "$RELEASE_OUT/README.md" ] && [ -f "$RELEASE_OUT/skills/manifest.json" ] \
+        && [ -d "$RELEASE_OUT/skills" ] \
         && [ -f "$RELEASE_OUT/site_adapters/generic/site-adapter.toml" ] \
         && [ -f "$RELEASE_OUT/site_adapters/remilia-wiki/site-adapter.toml" ] \
         && [ -f "$RELEASE_OUT/site_adapters/remilia-wiki/template_contracts/README.md" ] \
         && [ ! -e "$RELEASE_OUT/AGENTS.md" ] && [ ! -e "$RELEASE_OUT/CLAUDE.md" ] \
         && [ ! -e "$RELEASE_OUT/.claude" ] && [ ! -e "$RELEASE_OUT/codex_skills" ] \
-        && [ -f "$RELEASE_OUT/agent/skills/wiki-writing/SKILL.md" ] \
-        && [ -f "$RELEASE_OUT/agent/skills/prose-review/SKILL.md" ] \
-        && [ -f "$RELEASE_OUT/agent/skills/wiki-interview/SKILL.md" ] \
-        && [ -f "$RELEASE_OUT/agent/skills/wikitool-operator/SKILL.md" ] \
+        && [ -f "$RELEASE_OUT/skills/wiki-writing/SKILL.md" ] \
+        && [ -f "$RELEASE_OUT/skills/prose-review/SKILL.md" ] \
+        && [ -f "$RELEASE_OUT/skills/wiki-interview/SKILL.md" ] \
+        && [ -f "$RELEASE_OUT/skills/wikitool/SKILL.md" ] \
         && [ -f "$RELEASE_OUT/release-companions.json" ] \
         && grep -q '"schema": "contextmink.release-manifest.v1"' "$RELEASE_OUT/contextmink/manifest.json" \
         && grep -q '"source_commit":' "$RELEASE_OUT/contextmink/manifest.json" \

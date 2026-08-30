@@ -6,8 +6,6 @@ use clap::{CommandFactory, Parser, Subcommand};
 pub(crate) use wikitool_core::schema::LOCAL_DB_POLICY_MESSAGE;
 
 mod adapter_cli;
-mod agent_cli;
-mod agent_pack;
 mod article_cli;
 mod briefs;
 mod catalog_cli;
@@ -31,6 +29,8 @@ mod query_cli;
 #[cfg(feature = "maintainer")]
 mod release;
 mod review_cli;
+mod skills;
+mod skills_cli;
 mod source_cli;
 mod sync_cli;
 mod templates_cli;
@@ -132,10 +132,10 @@ enum Commands {
     Lsp(lsp_cli::LspArgs),
     #[command(about = "Inspect optional release companions without changing their lifecycle state")]
     Companions(companions_cli::CompanionsArgs),
-    #[command(about = "Inspect and install the Wikitool agent pack")]
-    Agent(agent_cli::AgentArgs),
+    #[command(about = "Inspect and install Wikitool skills")]
+    Skills(skills_cli::SkillsArgs),
     #[cfg(feature = "maintainer")]
-    #[command(about = "Build agent packs and release bundles", hide = true)]
+    #[command(about = "Build skills and release bundles", hide = true)]
     Release(release::ReleaseArgs),
     #[cfg(feature = "maintainer")]
     #[command(about = "Install local development helpers", hide = true)]
@@ -183,7 +183,7 @@ fn main() -> Result<()> {
         Some(Commands::Article(args)) => article_cli::run_article(&runtime, args),
         Some(Commands::Lsp(args)) => lsp_cli::run_lsp(&runtime, args),
         Some(Commands::Companions(args)) => companions_cli::run_companions(args),
-        Some(Commands::Agent(args)) => agent_cli::run_agent(&runtime, args),
+        Some(Commands::Skills(args)) => skills_cli::run_skills(&runtime, args),
         #[cfg(feature = "maintainer")]
         Some(Commands::Release(args)) => release::run_release(args),
         #[cfg(feature = "maintainer")]
@@ -363,38 +363,42 @@ mod tests {
     }
 
     #[test]
-    fn agent_project_lifecycle_accepts_global_or_positional_project_roots() {
+    fn skills_project_lifecycle_accepts_global_or_positional_project_roots() {
         for args in [
             vec![
                 "wikitool",
                 "--project-root",
                 "project",
-                "agent",
+                "skills",
                 "setup-project",
-                "--pack-root",
-                "agent",
-                "--target",
+                "--skills-root",
+                "skills",
+                "--skill-target",
                 "both",
                 "--dry-run",
             ],
             vec![
                 "wikitool",
-                "agent",
+                "skills",
                 "uninstall-project",
                 "project",
                 "--dry-run",
             ],
             vec![
                 "wikitool",
-                "agent",
+                "skills",
                 "inspect",
                 "project",
-                "--pack-root",
-                "agent",
+                "--skills-root",
+                "skills",
             ],
         ] {
-            Cli::try_parse_from(args).expect("agent lifecycle command should parse");
+            Cli::try_parse_from(args).expect("skills lifecycle command should parse");
         }
+
+        let error = Cli::try_parse_from(["wikitool", "agent", "inspect"])
+            .expect_err("legacy agent command must remain retired");
+        assert!(error.to_string().contains("unrecognized subcommand"));
     }
 
     #[test]

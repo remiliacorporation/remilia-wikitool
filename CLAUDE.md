@@ -2,7 +2,7 @@
 
 This file is for implementation work in the wikitool source checkout. `CLAUDE.md` at the repo
 root is a byte-identical mirror of this file; edit both together. It is not packaged for users.
-User-facing agent procedures live only in the canonical packages under `agent-pack/skills/`.
+User-facing agent procedures live only in the canonical packages under `.agents/skills/`.
 
 When changing shipped behavior, update the relevant operator guidance and regenerate
 `docs/wikitool/reference.md`. When changing only internal implementation practice, keep the change

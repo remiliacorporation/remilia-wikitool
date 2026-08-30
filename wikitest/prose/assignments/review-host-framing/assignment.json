@@ -14,9 +14,9 @@
     "sensitive": false
   },
   "review_instructions": [
-    {"id": "prose-review", "root": "repository", "locator": "agent-pack/skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
-    {"id": "source-fidelity", "root": "repository", "locator": "agent-pack/skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
-    {"id": "reader-value", "root": "repository", "locator": "agent-pack/skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"}
+    {"id": "prose-review", "root": "repository", "locator": ".agents/skills/prose-review/SKILL.md", "sha256": "1ce793c4828c28d23fbcf7a1df7d65e5dceb1796bb2efc3b0f01323ed820401a"},
+    {"id": "source-fidelity", "root": "repository", "locator": ".agents/skills/prose-review/references/source-fidelity.md", "sha256": "2e9abe460a79bedaa85232822175f26f275baad79307981a51ebd1dba269beda"},
+    {"id": "reader-value", "root": "repository", "locator": ".agents/skills/prose-review/references/reader-value.md", "sha256": "04bcfb437070a0baafefc0428c73683d8190153a145073a082333aeb81105a58"}
   ],
   "sources": [
     {"id": "s1", "title": "About Aster Index", "locator": "sources/about.txt", "sha256": "fa2e081a8fe393796ffc558de7bd9d6d48161fe8e062bfc33fc88435478a8615", "role": "primary", "citation": "Aster Index, About Aster Index, 12 February 2024, https://fixtures.invalid/aster-index/about"},

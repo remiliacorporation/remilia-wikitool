@@ -121,14 +121,12 @@ jobs:
         run: |
           test -f "$BUNDLE/${{ matrix.binary_name }}"
           "$BUNDLE/${{ matrix.binary_name }}" --version
-          "$BUNDLE/${{ matrix.binary_name }}" agent inspect --format json >/dev/null
-          test -f "$BUNDLE/agent/manifest.json"
-          test -f "$BUNDLE/agent/skills/wiki-writing/SKILL.md"
-          test -f "$BUNDLE/agent/skills/prose-review/SKILL.md"
-          test -f "$BUNDLE/agent/skills/wiki-interview/SKILL.md"
-          test -f "$BUNDLE/agent/skills/wikitool-operator/SKILL.md"
-          test -f "$BUNDLE/agent/integration/agent_integration.md"
-          test -f "$BUNDLE/agent/integration/site_adapters.md"
+          "$BUNDLE/${{ matrix.binary_name }}" skills inspect --format json >/dev/null
+          test -f "$BUNDLE/skills/manifest.json"
+          test -f "$BUNDLE/skills/wiki-writing/SKILL.md"
+          test -f "$BUNDLE/skills/prose-review/SKILL.md"
+          test -f "$BUNDLE/skills/wiki-interview/SKILL.md"
+          test -f "$BUNDLE/skills/wikitool/SKILL.md"
           test ! -e "$BUNDLE/AGENTS.md"
           test ! -e "$BUNDLE/CLAUDE.md"
           test ! -e "$BUNDLE/.claude"
@@ -163,6 +161,16 @@ jobs:
           "$BUNDLE/papertiger/papertiger" --version
           "$BUNDLE/papertiger/papertiger-mise" --version
           runner_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          skills_smoke="$runner_temp/wikitool-skills-install"
+          case "$skills_smoke" in "$runner_temp"/*) ;; *) echo "unsafe skills smoke path: $skills_smoke" >&2; exit 1 ;; esac
+          rm -rf "$skills_smoke"
+          mkdir -p "$skills_smoke"
+          "$BUNDLE/${{ matrix.binary_name }}" skills setup-project "$skills_smoke" --skill-target both --format json
+          test -f "$skills_smoke/.wikitool-skills/project-install.json"
+          test -f "$skills_smoke/.agents/skills/wikitool/SKILL.md"
+          test -f "$skills_smoke/.claude/skills/wikitool/SKILL.md"
+          "$BUNDLE/${{ matrix.binary_name }}" skills uninstall-project "$skills_smoke" --format json
+          test ! -e "$skills_smoke/.wikitool-skills/project-install.json"
           smoke="$runner_temp/wikitool-contextmink-install"
           case "$smoke" in "$runner_temp"/*) ;; *) echo "unsafe smoke path: $smoke" >&2; exit 1 ;; esac
           rm -rf "$smoke"
@@ -207,14 +215,12 @@ jobs:
         run: |
           if (!(Test-Path "$env:BUNDLE/${{ matrix.binary_name }}")) { throw "release binary missing" }
           & "$env:BUNDLE/${{ matrix.binary_name }}" --version
-          & "$env:BUNDLE/${{ matrix.binary_name }}" agent inspect --format json | Out-Null
-          if (!(Test-Path "$env:BUNDLE/agent/manifest.json")) { throw "agent manifest missing" }
-          if (!(Test-Path "$env:BUNDLE/agent/skills/wiki-writing/SKILL.md")) { throw "wiki-writing skill missing" }
-          if (!(Test-Path "$env:BUNDLE/agent/skills/prose-review/SKILL.md")) { throw "prose-review skill missing" }
-          if (!(Test-Path "$env:BUNDLE/agent/skills/wiki-interview/SKILL.md")) { throw "wiki-interview skill missing" }
-          if (!(Test-Path "$env:BUNDLE/agent/skills/wikitool-operator/SKILL.md")) { throw "wikitool-operator skill missing" }
-          if (!(Test-Path "$env:BUNDLE/agent/integration/agent_integration.md")) { throw "agent integration guidance missing" }
-          if (!(Test-Path "$env:BUNDLE/agent/integration/site_adapters.md")) { throw "site adapter guidance missing" }
+          & "$env:BUNDLE/${{ matrix.binary_name }}" skills inspect --format json | Out-Null
+          if (!(Test-Path "$env:BUNDLE/skills/manifest.json")) { throw "skills manifest missing" }
+          if (!(Test-Path "$env:BUNDLE/skills/wiki-writing/SKILL.md")) { throw "wiki-writing skill missing" }
+          if (!(Test-Path "$env:BUNDLE/skills/prose-review/SKILL.md")) { throw "prose-review skill missing" }
+          if (!(Test-Path "$env:BUNDLE/skills/wiki-interview/SKILL.md")) { throw "wiki-interview skill missing" }
+          if (!(Test-Path "$env:BUNDLE/skills/wikitool/SKILL.md")) { throw "wikitool skill missing" }
           if (Test-Path "$env:BUNDLE/AGENTS.md") { throw "source-checkout AGENTS.md must not ship" }
           if (Test-Path "$env:BUNDLE/CLAUDE.md") { throw "source-checkout CLAUDE.md must not ship" }
           if (Test-Path "$env:BUNDLE/.claude") { throw "legacy Claude wrappers must not ship" }
@@ -246,6 +252,16 @@ jobs:
           & "$env:BUNDLE/papertiger/papertiger.exe" --version
           & "$env:BUNDLE/papertiger/papertiger-mise.exe" --version
           $runnerTemp = [System.IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+          $skillsSmoke = [System.IO.Path]::GetFullPath((Join-Path $runnerTemp "wikitool-skills-install"))
+          if ([System.IO.Path]::GetDirectoryName($skillsSmoke) -ne $runnerTemp) { throw "unsafe skills smoke path: $skillsSmoke" }
+          if (Test-Path $skillsSmoke) { Remove-Item -LiteralPath $skillsSmoke -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $skillsSmoke | Out-Null
+          & "$env:BUNDLE/${{ matrix.binary_name }}" skills setup-project $skillsSmoke --skill-target both --format json
+          if (!(Test-Path "$skillsSmoke/.wikitool-skills/project-install.json")) { throw "Wikitool skills setup receipt missing" }
+          if (!(Test-Path "$skillsSmoke/.agents/skills/wikitool/SKILL.md")) { throw "shared Wikitool skill missing" }
+          if (!(Test-Path "$skillsSmoke/.claude/skills/wikitool/SKILL.md")) { throw "Claude Wikitool skill missing" }
+          & "$env:BUNDLE/${{ matrix.binary_name }}" skills uninstall-project $skillsSmoke --format json
+          if (Test-Path "$skillsSmoke/.wikitool-skills/project-install.json") { throw "Wikitool skills uninstall retained receipt" }
           $smoke = [System.IO.Path]::GetFullPath((Join-Path $runnerTemp "wikitool-contextmink-install"))
           if ([System.IO.Path]::GetDirectoryName($smoke) -ne $runnerTemp) { throw "unsafe Contextmink smoke path: $smoke" }
           if (Test-Path $smoke) { Remove-Item -LiteralPath $smoke -Recurse -Force }

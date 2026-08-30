@@ -41,7 +41,7 @@ for required in \
   "$bundle_dir/papertiger/papertiger" \
   "$bundle_dir/papertiger/papertiger-mise" \
   "$bundle_dir/docs/wikitool/macos-gatekeeper.md" \
-  "$bundle_dir/agent/skills/wikitool-operator/SKILL.md"
+  "$bundle_dir/skills/wikitool/SKILL.md"
 do
   if [[ ! -f "$required" || -L "$required" ]]; then
     echo "unsigned macOS release prerequisite is missing or a symlink: $required" >&2

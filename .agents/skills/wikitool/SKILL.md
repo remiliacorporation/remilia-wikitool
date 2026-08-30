@@ -1,9 +1,9 @@
 ---
-name: wikitool-operator
+name: wikitool
 description: Operate Wikitool for MediaWiki target configuration, capability and template discovery, local indexing, source capture, deterministic article checks and fixes, validation, revision-bound sync, diagnostics, and guarded writes. Use for mechanical or mixed wiki work; route prose judgment to the dedicated skills.
 ---
 
-# Wikitool operator
+# Use Wikitool
 
 Use Wikitool as the mechanical and evidence substrate for a configured MediaWiki project. Do not let convenience commands absorb editorial judgment that belongs in `wiki-writing`, `prose-review`, or `wiki-interview`.
 

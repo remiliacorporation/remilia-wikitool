@@ -533,8 +533,8 @@ mod maintainer_tests {
 
         assert!(validate_release_output(&repo, &repo, "output").is_err());
         assert!(validate_release_output(&repo, sandbox.path(), "output").is_err());
-        assert!(validate_release_output(&repo, &repo.join("agent-pack"), "output").is_err());
-        assert!(validate_release_output(&repo, &repo.join("dist/agent"), "output").is_ok());
+        assert!(validate_release_output(&repo, &repo.join(".agents/skills"), "output").is_err());
+        assert!(validate_release_output(&repo, &repo.join("dist/skills"), "output").is_ok());
         assert!(validate_release_output(&repo, &sandbox.path().join("external"), "output").is_ok());
     }
 }

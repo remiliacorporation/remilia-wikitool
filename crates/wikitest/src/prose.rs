@@ -1272,7 +1272,7 @@ fn retained_bound_input_locator(prefix: &str, input: &BoundInput) -> String {
         .collect::<Vec<_>>();
     if let Some(index) = components
         .windows(2)
-        .position(|pair| pair == ["agent-pack", "skills"])
+        .position(|pair| pair == [".agents", "skills"])
         && components.len() > index + 3
     {
         return format!(
@@ -2786,7 +2786,7 @@ mod tests {
     fn canonical_skill_snapshots_preserve_relative_reference_links() {
         let repository = tempfile::tempdir().expect("repository");
         let run = tempfile::tempdir().expect("run");
-        let skill_root = repository.path().join("agent-pack/skills/wiki-writing");
+        let skill_root = repository.path().join(".agents/skills/wiki-writing");
         fs::create_dir_all(skill_root.join("references")).expect("references");
         let skill_bytes = b"Read [evidence](references/evidence.md).\n";
         let reference_bytes = b"Evidence procedure.\n";
@@ -2797,13 +2797,13 @@ mod tests {
             BoundInput {
                 id: "wiki-writing".to_owned(),
                 root: crate::prose_model::InputRoot::Repository,
-                locator: "agent-pack/skills/wiki-writing/SKILL.md".to_owned(),
+                locator: ".agents/skills/wiki-writing/SKILL.md".to_owned(),
                 sha256: sha256_bytes(skill_bytes),
             },
             BoundInput {
                 id: "evidence".to_owned(),
                 root: crate::prose_model::InputRoot::Repository,
-                locator: "agent-pack/skills/wiki-writing/references/evidence.md".to_owned(),
+                locator: ".agents/skills/wiki-writing/references/evidence.md".to_owned(),
                 sha256: sha256_bytes(reference_bytes),
             },
         ];

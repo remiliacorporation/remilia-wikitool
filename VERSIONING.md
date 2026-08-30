@@ -48,7 +48,7 @@ When CLI and bundle contracts stabilize, cut `1.0.0` and enforce strict SemVer f
 
 Schema versions are independent from SemVer and must be bumped only when their specific contract changes. The versioned families include:
 
-1. `wikitool.agent-pack.vN` and `wikitool.agent-install.vN`
+1. `wikitool.skills-manifest.vN` and `wikitool.skills-install.vN`
 2. `ai/docs-bundle-vN.json`
 3. `site_adapter_vN`
 4. catalog, template-catalog, capability, and authoring-surface artifacts
@@ -79,7 +79,7 @@ Packaged / distributable:
 
 1. Stage the pinned upstream Contextmink and Papertiger packs with `bash scripts/fetch_contextmink.sh --all` and `bash scripts/fetch_papertiger.sh --all`, then use `cargo run --package wikitool --features maintainer -- release build-matrix --contextmink-dist dist/contextmink-dist --papertiger-dist dist/papertiger-dist` from a source checkout to emit per-target zip bundles.
 2. Bundles use the embedded generic adapter by default, include the built-in generic and Remilia
-   Wiki adapter catalog plus the deterministic `agent/` pack, and compile the packaged binary
+   Wiki adapter catalog plus the deterministic `skills/` distribution, and compile the packaged binary
    without the maintainer surface. Catalog presence does not select an adapter.
 3. A project adapter supplement is opt-in via `--host-project-root <PATH>`. It is packaged under
    `site_adapters/project/` and never replaces the public guidance, skills, or built-in catalog.
@@ -124,9 +124,8 @@ itself is not a pass and must never be used to bless a release.
 7. Verify each zip contains:
    - `wikitool` or `wikitool.exe`
    - `README.md`
-   - `agent/manifest.json`, whose complete file inventory validates with `wikitool agent inspect`
-   - `agent/skills/`, including `wiki-writing`, `prose-review`, `wiki-interview`, and `wikitool-operator`
-   - `agent/integration/`
+   - `skills/manifest.json`, whose complete file inventory validates with `wikitool skills inspect`
+   - `skills/`, including `wiki-writing`, `prose-review`, `wiki-interview`, and `wikitool`
    - no source-checkout `AGENTS.md`/`CLAUDE.md`, generated `.claude/` wrappers, or legacy `codex_skills/`
    - `site_adapters/generic/site-adapter.toml`
    - `site_adapters/remilia-wiki/site-adapter.toml` and its declared guidance/template contracts
@@ -139,7 +138,7 @@ itself is not a pass and must never be used to bless a release.
      agent contract, release manifest, licenses, and repository-pinned `archive.sha256` receipt
    - `release-companions.json`, identifying both external packs as optional and preserving their
      independent lifecycle ownership
-   - no project install receipt; `.wikitool-agent/project-install.json` is created only by an
-     explicit `wikitool agent setup-project`
+   - no project install receipt; `.wikitool-skills/project-install.json` is created only by an
+     explicit `wikitool skills setup-project`
 8. Verify `SHA256SUMS.txt` matches the uploaded zip assets.
 9. Create tag `X.Y.Z`.
