@@ -15,6 +15,7 @@ The release workflow extracts the section for the requested version and fails if
 ### Changed
 
 - Media reference inventories are now `mediawiki.media-reference-inventory.v2`: every captured object carries its exact bounded source filename, and generated preservation image/audio invocations retain that readable provenance instead of exposing digest-only file links.
+- Release bundles update their hash-pinned native companions to Contextmink 0.10.0 and Papertiger 0.11.0. Wikitool verifies each platform archive and embedded source commit while each optional companion retains ownership of its own project lifecycle.
 
 ### Fixed
 

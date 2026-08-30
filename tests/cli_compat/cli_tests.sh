@@ -1112,18 +1112,26 @@ else
     PAPERTIGER_PROJECT="$PROJ_TIGER"
     if [ "$PAPERTIGER_PROJECT_PATH_MODE" = "windows" ]; then
         PAPERTIGER_PROJECT="$(to_wikitool_path "$PROJ_TIGER")"
+        PAPERTIGER_INSTALLED_BINARY="$PROJ_TIGER/tools/papertiger/bin/papertiger.exe"
+    else
+        PAPERTIGER_INSTALLED_BINARY="$PROJ_TIGER/tools/papertiger/bin/papertiger"
     fi
+    PAPERTIGER_RUNTIME_RECEIPT="${PAPERTIGER_INSTALLED_BINARY}.runtime-install.json"
     DRY_OUTPUT=$("$PAPERTIGER_BINARY" setup-project "$PAPERTIGER_PROJECT" --skill-target both --dry-run --json 2>&1 || true)
     PAPERTIGER_DRY_WROTE=0
-    if [ -e "$PROJ_TIGER/tools/papertiger/project-install.json" ]; then
+    if [ -e "$PROJ_TIGER/tools/papertiger" ] \
+        || [ -e "$PROJ_TIGER/.agents/skills/papertiger" ] \
+        || [ -e "$PROJ_TIGER/.claude/skills/papertiger" ]; then
         PAPERTIGER_DRY_WROTE=1
     fi
     SETUP_OUTPUT=$("$PAPERTIGER_BINARY" setup-project "$PAPERTIGER_PROJECT" --skill-target both --json 2>&1 || true)
     UPGRADE_OUTPUT=$("$PAPERTIGER_BINARY" setup-project "$PAPERTIGER_PROJECT" --json 2>&1 || true)
-    if echo "$DRY_OUTPUT" | grep -q '"schema": "papertiger.project_setup.v3"' \
+    if echo "$DRY_OUTPUT" | grep -q '"schema": "papertiger.project_setup.v5"' \
         && [ "$PAPERTIGER_DRY_WROTE" -eq 0 ] \
         && echo "$SETUP_OUTPUT" | grep -q '"operation": "install"' \
         && echo "$UPGRADE_OUTPUT" | grep -q '"operation": "unchanged"' \
+        && [ -f "$PAPERTIGER_INSTALLED_BINARY" ] \
+        && [ -f "$PAPERTIGER_RUNTIME_RECEIPT" ] \
         && [ -f "$PROJ_TIGER/tools/papertiger/project-install.json" ] \
         && [ -f "$PROJ_TIGER/tools/papertiger/agent_integration.md" ] \
         && [ -f "$PROJ_TIGER/.agents/skills/papertiger/SKILL.md" ] \
@@ -1131,18 +1139,20 @@ else
         && [ ! -e "$PROJ_TIGER/state/papertiger.sqlite" ]; then
         pass "Papertiger owns setup and upgrade without creating task authority"
     else
-        fail "Papertiger owns setup and upgrade without creating task authority"
+        fail "Papertiger owns setup and upgrade without creating task authority (dry: ${DRY_OUTPUT:0:160}; setup: ${SETUP_OUTPUT:0:160}; upgrade: ${UPGRADE_OUTPUT:0:160})"
     fi
     UNINSTALL_OUTPUT=$("$PAPERTIGER_BINARY" uninstall-project "$PAPERTIGER_PROJECT" --json 2>&1 || true)
-    if echo "$UNINSTALL_OUTPUT" | grep -q '"schema": "papertiger.project_uninstall.v1"' \
+    if echo "$UNINSTALL_OUTPUT" | grep -q '"schema": "papertiger.project_uninstall.v2"' \
         && echo "$UNINSTALL_OUTPUT" | grep -q '"operation": "remove"' \
+        && [ ! -e "$PAPERTIGER_INSTALLED_BINARY" ] \
+        && [ ! -e "$PAPERTIGER_RUNTIME_RECEIPT" ] \
         && [ ! -e "$PROJ_TIGER/tools/papertiger/project-install.json" ] \
         && [ ! -e "$PROJ_TIGER/.agents/skills/papertiger/SKILL.md" ] \
         && [ ! -e "$PROJ_TIGER/.claude/skills/papertiger/SKILL.md" ] \
         && [ ! -e "$PROJ_TIGER/state/papertiger.sqlite" ]; then
         pass "Papertiger uninstall removes managed integration and preserves absent authority"
     else
-        fail "Papertiger uninstall removes managed integration and preserves absent authority"
+        fail "Papertiger uninstall removes managed integration and preserves absent authority (got: ${UNINSTALL_OUTPUT:0:300})"
     fi
 fi
 
