@@ -746,79 +746,208 @@ fn relative_path_to_path(project_root: &Path, relative_path: &str) -> PathBuf {
 }
 
 pub(super) fn transcluded_template_source(content: &str) -> String {
-    let onlyinclude = collect_tag_bodies(content, "onlyinclude");
+    let onlyinclude = collect_onlyinclude_bodies(content);
     if !onlyinclude.is_empty() {
-        return onlyinclude.join("\n");
+        return strip_template_nontranscluded_regions(&onlyinclude.join("\n"));
     }
     strip_template_nontranscluded_regions(content)
 }
 
-fn collect_tag_bodies(content: &str, tag_name: &str) -> Vec<String> {
-    let lower = content.to_ascii_lowercase();
-    let open_prefix = format!("<{}", tag_name.to_ascii_lowercase());
-    let close = format!("</{}>", tag_name.to_ascii_lowercase());
+#[derive(Debug, Clone, Copy)]
+struct TemplateTagHead {
+    name_start: usize,
+    name_end: usize,
+    end: usize,
+    closing: bool,
+    self_closing: bool,
+}
+
+fn collect_onlyinclude_bodies(content: &str) -> Vec<String> {
+    // MediaWiki activates onlyinclude with an exact, case-sensitive bare-tag scan before
+    // XML-like tag and literal-region processing. Keep this deliberately separate from the
+    // noinclude/includeonly scanner below.
+    const OPEN: &str = "<onlyinclude>";
+    const CLOSE: &str = "</onlyinclude>";
+    if !content.contains(OPEN) || !content.contains(CLOSE) {
+        return Vec::new();
+    }
     let mut bodies = Vec::new();
     let mut cursor = 0usize;
-    while let Some(open_relative) = lower[cursor..].find(&open_prefix) {
-        let open_start = cursor + open_relative;
-        let Some(open_end_relative) = lower[open_start..].find('>') else {
-            break;
-        };
-        let body_start = open_start + open_end_relative + 1;
-        let Some(close_relative) = lower[body_start..].find(&close) else {
+    while let Some(open_relative) = content[cursor..].find(OPEN) {
+        let body_start = cursor + open_relative + OPEN.len();
+        let Some(close_relative) = content[body_start..].find(CLOSE) else {
             break;
         };
         let body_end = body_start + close_relative;
         bodies.push(content[body_start..body_end].to_string());
-        cursor = body_end + close.len();
+        cursor = body_end + CLOSE.len();
     }
     bodies
 }
 
 fn strip_template_nontranscluded_regions(content: &str) -> String {
-    let lower = content.to_ascii_lowercase();
     let mut out = String::with_capacity(content.len());
     let mut cursor = 0usize;
     while cursor < content.len() {
-        if lower[cursor..].starts_with("<!--") {
-            cursor = lower[cursor + 4..]
-                .find("-->")
-                .map(|offset| cursor + 4 + offset + 3)
-                .unwrap_or(content.len());
+        if let Some(end) = comment_end(content, cursor) {
+            cursor = end;
             continue;
         }
-        if lower[cursor..].starts_with("<noinclude") {
-            let Some(open_end_relative) = lower[cursor..].find('>') else {
-                break;
-            };
-            let open_end = cursor + open_end_relative + 1;
-            if lower[cursor..open_end].trim_end().ends_with("/>") {
-                cursor = open_end;
+        if let Some(tag) = template_tag_head(content, cursor) {
+            let name = &content[tag.name_start..tag.name_end];
+            if !tag.closing && !tag.self_closing && template_literal_tag(name) {
+                let Some((_, end)) = first_exact_closing_tag(content, tag.end, name) else {
+                    out.push_str(&content[cursor..]);
+                    break;
+                };
+                out.push_str(&content[cursor..end]);
+                cursor = end;
                 continue;
             }
-            cursor = lower[open_end..]
-                .find("</noinclude>")
-                .map(|offset| open_end + offset + "</noinclude>".len())
-                .unwrap_or(content.len());
+            if name.eq_ignore_ascii_case("noinclude") {
+                if tag.closing || tag.self_closing {
+                    cursor = tag.end;
+                } else {
+                    cursor = matching_transclusion_tag_close(content, tag.end, "noinclude")
+                        .map(|(_, end)| end)
+                        .unwrap_or(content.len());
+                }
+                continue;
+            }
+            if name.eq_ignore_ascii_case("includeonly") || name.eq_ignore_ascii_case("onlyinclude")
+            {
+                cursor = tag.end;
+                continue;
+            }
+            out.push_str(&content[cursor..tag.end]);
+            cursor = tag.end;
             continue;
         }
-        if lower[cursor..].starts_with("<includeonly")
-            || lower[cursor..].starts_with("</includeonly")
-        {
-            cursor = lower[cursor..]
-                .find('>')
-                .map(|offset| cursor + offset + 1)
-                .unwrap_or(content.len());
-            continue;
-        }
-        let ch = content[cursor..]
-            .chars()
-            .next()
-            .expect("cursor is inside content");
-        out.push(ch);
-        cursor += ch.len_utf8();
+        let next = next_utf8_offset(content, cursor);
+        out.push_str(&content[cursor..next]);
+        cursor = next;
     }
     out
+}
+
+fn matching_transclusion_tag_close(
+    content: &str,
+    start: usize,
+    tag_name: &str,
+) -> Option<(usize, usize)> {
+    let mut depth = 1usize;
+    let mut cursor = start;
+    while cursor < content.len() {
+        if let Some(end) = comment_end(content, cursor) {
+            cursor = end;
+            continue;
+        }
+        let Some(tag) = template_tag_head(content, cursor) else {
+            cursor = next_utf8_offset(content, cursor);
+            continue;
+        };
+        let name = &content[tag.name_start..tag.name_end];
+        if !tag.closing && !tag.self_closing && template_literal_tag(name) {
+            let (_, end) = first_exact_closing_tag(content, tag.end, name)?;
+            cursor = end;
+            continue;
+        }
+        if name.eq_ignore_ascii_case(tag_name) {
+            if tag.closing {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((cursor, tag.end));
+                }
+            } else if !tag.self_closing {
+                depth += 1;
+            }
+        }
+        cursor = tag.end;
+    }
+    None
+}
+
+fn first_exact_closing_tag(content: &str, start: usize, tag_name: &str) -> Option<(usize, usize)> {
+    let mut cursor = start;
+    while cursor < content.len() {
+        let Some(tag) = template_tag_head(content, cursor) else {
+            cursor = next_utf8_offset(content, cursor);
+            continue;
+        };
+        if tag.closing && content[tag.name_start..tag.name_end].eq_ignore_ascii_case(tag_name) {
+            return Some((cursor, tag.end));
+        }
+        cursor = tag.end;
+    }
+    None
+}
+
+fn template_tag_head(content: &str, start: usize) -> Option<TemplateTagHead> {
+    let bytes = content.as_bytes();
+    if bytes.get(start) != Some(&b'<') || bytes.get(start + 1) == Some(&b'!') {
+        return None;
+    }
+    let closing = bytes.get(start + 1) == Some(&b'/');
+    let name_start = start + if closing { 2 } else { 1 };
+    let mut name_end = name_start;
+    while bytes
+        .get(name_end)
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+    {
+        name_end += 1;
+    }
+    if name_end == name_start
+        || !bytes
+            .get(name_end)
+            .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(*byte, b'/' | b'>'))
+    {
+        return None;
+    }
+    let mut cursor = name_end;
+    let mut quote = None;
+    while cursor < bytes.len() {
+        match (quote, bytes[cursor]) {
+            (None, b'\'' | b'"') => quote = Some(bytes[cursor]),
+            (Some(open), close) if open == close => quote = None,
+            (None, b'>') => {
+                let head = content[start..cursor].trim_end();
+                return Some(TemplateTagHead {
+                    name_start,
+                    name_end,
+                    end: cursor + 1,
+                    closing,
+                    self_closing: head.ends_with('/'),
+                });
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn comment_end(content: &str, start: usize) -> Option<usize> {
+    content[start..].starts_with("<!--").then(|| {
+        content[start + 4..]
+            .find("-->")
+            .map(|offset| start + 4 + offset + 3)
+            .unwrap_or(content.len())
+    })
+}
+
+fn template_literal_tag(name: &str) -> bool {
+    ["nowiki", "pre", "source", "syntaxhighlight"]
+        .iter()
+        .any(|literal| name.eq_ignore_ascii_case(literal))
+}
+
+fn next_utf8_offset(content: &str, cursor: usize) -> usize {
+    cursor
+        + content[cursor..]
+            .chars()
+            .next()
+            .expect("cursor is inside content")
+            .len_utf8()
 }
 
 fn extract_lua_module_references(content: &str) -> LuaModuleReferences {
@@ -826,6 +955,7 @@ fn extract_lua_module_references(content: &str) -> LuaModuleReferences {
     let mut seen = BTreeSet::new();
     let bytes = content.as_bytes();
     let mut cursor = 0usize;
+    let mut previous_significant = None;
     while cursor < bytes.len() {
         if bytes[cursor..].starts_with(b"--") {
             if let Some(end) = skip_lua_long_bracket(bytes, cursor + 2) {
@@ -841,41 +971,55 @@ fn extract_lua_module_references(content: &str) -> LuaModuleReferences {
         }
         if matches!(bytes[cursor], b'\'' | b'"') {
             cursor = skip_lua_string(bytes, cursor).unwrap_or(bytes.len());
+            previous_significant = Some(b'"');
             continue;
         }
         if bytes[cursor] == b'['
             && let Some(end) = skip_lua_long_bracket(bytes, cursor)
         {
             cursor = end;
+            previous_significant = Some(b']');
             continue;
         }
-        let (token, relation) = if token_at(bytes, cursor, b"require") {
-            (b"require".as_slice(), "requires")
-        } else if token_at(bytes, cursor, b"mw.loadData") {
-            (b"mw.loadData".as_slice(), "loads_data")
-        } else {
-            cursor += 1;
-            continue;
-        };
-        let mut argument = cursor + token.len();
-        while argument < bytes.len() && bytes[argument].is_ascii_whitespace() {
-            argument += 1;
-        }
+        let (token_end, relation) =
+            if lua_global_token_end(bytes, cursor, b"require", previous_significant).is_some() {
+                (cursor + b"require".len(), "requires")
+            } else if let Some(end) = lua_mw_load_data_end(bytes, cursor, previous_significant) {
+                (end, "loads_data")
+            } else {
+                if !bytes[cursor].is_ascii_whitespace() {
+                    previous_significant = Some(bytes[cursor]);
+                }
+                cursor += 1;
+                continue;
+            };
+        let mut argument = skip_lua_trivia(bytes, token_end);
         let parenthesized = argument < bytes.len() && bytes[argument] == b'(';
         if parenthesized {
-            argument += 1;
-            while argument < bytes.len() && bytes[argument].is_ascii_whitespace() {
-                argument += 1;
-            }
+            argument = skip_lua_trivia(bytes, argument + 1);
         }
-        let Some((value_start, value_end, call_end)) = parse_lua_string_literal(bytes, argument)
+        let Some((value_start, value_end, string_end)) = parse_lua_string_literal(bytes, argument)
         else {
             if parenthesized {
                 out.unresolved_calls
                     .push(format!("{relation}_argument_is_not_a_string_literal"));
             }
             cursor = argument.saturating_add(1);
+            previous_significant = Some(b')');
             continue;
+        };
+        let call_end = if parenthesized {
+            let Some(end) = parenthesized_lua_string_call_end(bytes, string_end) else {
+                out.unresolved_calls.push(format!(
+                    "{relation}_argument_is_not_a_static_string_literal"
+                ));
+                cursor = string_end;
+                previous_significant = Some(b')');
+                continue;
+            };
+            end
+        } else {
+            string_end
         };
         let raw = &content[value_start..value_end];
         let normalized = normalize_module_lookup_title(raw);
@@ -898,6 +1042,7 @@ fn extract_lua_module_references(content: &str) -> LuaModuleReferences {
                 .push(format!("{relation}_literal_is_not_a_module_title:{raw}"));
         }
         cursor = call_end;
+        previous_significant = Some(b')');
     }
     out.resolved.sort_by(|left, right| {
         left.title
@@ -921,6 +1066,31 @@ fn token_at(content: &[u8], cursor: usize, token: &[u8]) -> bool {
     !before_is_identifier && !after_is_identifier
 }
 
+fn lua_global_token_end(
+    content: &[u8],
+    cursor: usize,
+    token: &[u8],
+    previous_significant: Option<u8>,
+) -> Option<usize> {
+    (token_at(content, cursor, token)
+        && !previous_significant.is_some_and(|byte| matches!(byte, b'.' | b':')))
+    .then_some(cursor + token.len())
+}
+
+fn lua_mw_load_data_end(
+    content: &[u8],
+    cursor: usize,
+    previous_significant: Option<u8>,
+) -> Option<usize> {
+    let mw_end = lua_global_token_end(content, cursor, b"mw", previous_significant)?;
+    let dot = skip_lua_trivia(content, mw_end);
+    if content.get(dot) != Some(&b'.') {
+        return None;
+    }
+    let load_data = skip_lua_trivia(content, dot + 1);
+    token_at(content, load_data, b"loadData").then_some(load_data + b"loadData".len())
+}
+
 fn is_lua_identifier_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
@@ -940,6 +1110,34 @@ fn parse_lua_string_literal(content: &[u8], start: usize) -> Option<(usize, usiz
     let (value_start, equals_count) = lua_long_bracket_open(content, start)?;
     let (value_end, call_end) = find_lua_long_bracket_end(content, value_start, equals_count)?;
     Some((value_start, value_end, call_end))
+}
+
+fn parenthesized_lua_string_call_end(content: &[u8], start: usize) -> Option<usize> {
+    let cursor = skip_lua_trivia(content, start);
+    (content.get(cursor) == Some(&b')')).then_some(cursor + 1)
+}
+
+fn skip_lua_trivia(content: &[u8], mut cursor: usize) -> usize {
+    loop {
+        while content.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+            cursor += 1;
+        }
+        if !content
+            .get(cursor..)
+            .is_some_and(|remaining| remaining.starts_with(b"--"))
+        {
+            return cursor;
+        }
+        if let Some(end) = skip_lua_long_bracket(content, cursor + 2) {
+            cursor = end;
+        } else {
+            cursor = content[cursor..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map(|offset| cursor + offset + 1)
+                .unwrap_or(content.len());
+        }
+    }
 }
 
 fn skip_lua_long_bracket(content: &[u8], start: usize) -> Option<usize> {
@@ -1133,6 +1331,28 @@ mod tests {
             "{{Outside}}<onlyinclude>{{Inside one}}</onlyinclude><onlyinclude>{{Inside two}}</onlyinclude>",
         );
         assert_eq!(onlyinclude, "{{Inside one}}\n{{Inside two}}");
+
+        let protected_onlyinclude = transcluded_template_source(
+            r#"<!-- <onlyinclude>{{Comment}}</onlyinclude> -->
+<nowiki><onlyinclude>{{Literal}}</onlyinclude></nowiki>
+<onlyincludex>{{Not a control tag}}</onlyincludex>
+<ONLYINCLUDE data-note="a > b">{{Exact runtime}}</ONLYINCLUDE>
+<noinclude>{{Documentation}}</noinclude>"#,
+        );
+        assert_eq!(protected_onlyinclude, "{{Comment}}\n{{Literal}}");
+
+        let attributed_onlyinclude = transcluded_template_source(
+            r#"{{Outside}}<onlyinclude data-note="not activation">{{Still ordinary}}</onlyinclude>"#,
+        );
+        assert_eq!(attributed_onlyinclude, "{{Outside}}{{Still ordinary}}");
+
+        let exact_controls = transcluded_template_source(
+            r#"{{Before}}<includeonly data-note="a > b">{{Runtime}}</includeonly><noincludex>{{Kept}}</noincludex><noinclude>{{Docs}}</noinclude><nowiki><noinclude>{{Literal}}</noinclude></nowiki>"#,
+        );
+        assert_eq!(
+            exact_controls,
+            "{{Before}}{{Runtime}}<noincludex>{{Kept}}</noincludex><nowiki><noinclude>{{Literal}}</noinclude></nowiki>"
+        );
     }
 
     #[test]
@@ -1143,18 +1363,34 @@ local args = require('Module:Arguments')
 local data = mw.loadData("Module:Infobox/data")
 local direct = require 'Module:Direct'
 local long_data = mw.loadData [=[Module:Long data]=]
+local commented_require = require -- dependency follows
+    ('Module:Commented require')
+local spaced_data = mw -- Scribunto global
+    . -- member access
+    loadData( -- static data dependency
+        "Module:Spaced data" -- end dependency
+    )
 -- require('Module:Comment')
 --[=[ require('Module:Long comment') ]=]
 local text = "require('Module:String')"
 local long_text = [=[require('Module:Long string')]=]
 local dynamic = require(module_name)
+local dynamic_literal = require('Module:' .. module_name)
+local dynamic_data_literal = mw.loadData("Module:" .. data_name)
 local builtin = require('strict')
 local utility = require('libraryUtil')
 local unknown = require('notBundled')
+local member = loader.require('Module:Member')
+local spaced_member = loader . require('Module:Spaced member')
+local member_data = loader.mw.loadData('Module:Member data')
+local commented_member = loader . -- not the global function
+    require('Module:Commented member')
+local commented_member_data = loader . -- not the Scribunto global
+    mw . loadData('Module:Commented member data')
 local function_reference = require
 "#,
         );
-        assert_eq!(references.resolved.len(), 4);
+        assert_eq!(references.resolved.len(), 6);
         assert_eq!(references.resolved[0].title, "Module:Arguments");
         assert_eq!(references.resolved[0].relation, "requires");
         assert!(references.resolved.iter().any(
@@ -1167,6 +1403,12 @@ local function_reference = require
                 .any(|reference| reference.title == "Module:Infobox/data"
                     && reference.relation == "loads_data")
         );
+        assert!(references.resolved.iter().any(|reference| {
+            reference.title == "Module:Commented require" && reference.relation == "requires"
+        }));
+        assert!(references.resolved.iter().any(|reference| {
+            reference.title == "Module:Spaced data" && reference.relation == "loads_data"
+        }));
         assert!(
             references
                 .resolved
@@ -1181,6 +1423,8 @@ local function_reference = require
         assert_eq!(
             references.unresolved_calls,
             vec![
+                "loads_data_argument_is_not_a_static_string_literal".to_string(),
+                "requires_argument_is_not_a_static_string_literal".to_string(),
                 "requires_argument_is_not_a_string_literal".to_string(),
                 "requires_literal_is_not_a_module_title:notBundled".to_string(),
             ]
