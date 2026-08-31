@@ -8,7 +8,7 @@ use url::Url;
 pub const HTML_CAPTURE_RECEIPT_SCHEMA: &str = "mediawiki.html-capture-receipt.v1";
 
 const MAX_CAPTURE_HTML_BYTES: u64 = 32 * 1024 * 1024;
-const MAX_CAPTURE_TIMEOUT_MS: u64 = 10 * 60 * 1_000;
+const MAX_CAPTURE_TIMEOUT_MS: u64 = 20 * 60 * 1_000;
 const MAX_CAPTURE_URL_BYTES: usize = 8 * 1024;
 const MAX_RESOURCE_OBSERVATIONS: usize = 1_024;
 const MAX_INLINE_RESOURCE_BYTES: u64 = 8 * 1024 * 1024;
@@ -501,6 +501,7 @@ mod tests {
     fn validates_exact_static_and_rendered_capture_receipts() {
         let html = "<p>Captured</p>";
         let mut rendered = receipt(html);
+        rendered.capture_timeout_ms = MAX_CAPTURE_TIMEOUT_MS;
         rendered.final_url = "https://source.example/article#rendered-tab".to_string();
         validate_capture_receipt(&rendered, html, "fixture", "https://source.example/article")
             .expect("validate rendered receipt");
@@ -516,6 +517,20 @@ mod tests {
             "https://source.example/article",
         )
         .expect("validate static receipt");
+
+        let mut over_budget = static_receipt;
+        over_budget.capture_timeout_ms = MAX_CAPTURE_TIMEOUT_MS + 1;
+        assert!(
+            validate_capture_receipt(
+                &over_budget,
+                html,
+                "fixture",
+                "https://source.example/article",
+            )
+            .expect_err("over-budget receipt must fail")
+            .to_string()
+            .contains("capture timeout")
+        );
     }
 
     #[test]
