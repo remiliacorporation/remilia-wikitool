@@ -240,6 +240,13 @@
       "scope_class": "infobox",
       "expected_scope_count": 1,
       "forbid_literal_wikilinks": true
+    },
+    {
+      "id": "source-authored-below",
+      "invocation": "{{Infobox subject|name=Example tool|below=Source-authored supplemental note.}}",
+      "scope_class": "infobox-below",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
     }
   ]
 }
