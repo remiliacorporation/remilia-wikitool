@@ -1,10 +1,10 @@
 {
   "schema_version": "template_engineering_contract_v1",
   "template_title": "Template:Version label",
-  "description": "Formats a source-neutral software release name and build identifier.",
+  "description": "Formats a source-neutral software release name, build identifier, and optional pre-rendered icon.",
   "format": "inline",
   "implementation": {
-    "body_wikitext": "<span class=\"version-label\">{{#if:{{{name|}}}|{{{name}}}{{#if:{{{build|}}}|&#32;({{{build}}})}}|{{#if:{{{build|}}}|{{{build}}}|<span class=\"error\">Error: version name or build required</span>}}}}</span>",
+    "body_wikitext": "<span class=\"version-label\">{{#if:{{{icon_content|}}}|<span class=\"version-label-icon\">{{{icon_content}}}</span>&nbsp;}}{{#if:{{{name|}}}|{{{name}}}{{#if:{{{build|}}}|&#32;({{{build}}})}}|{{#if:{{{build|}}}|{{{build}}}|<span class=\"error\">Error: version name or build required</span>}}}}</span>",
     "template_dependencies": [],
     "module_dependencies": []
   },
@@ -22,9 +22,15 @@
       "description": "Exact build or version identifier.",
       "type": "string",
       "suggested": true
+    },
+    {
+      "name": "icon_content",
+      "label": "Icon content",
+      "description": "Optional pre-rendered icon content, such as Template:Preservation image.",
+      "type": "content"
     }
   ],
-  "documentation_wikitext": "{{SHORTDESC:Format a software version name and build}}\nSupply a release name, build identifier, or both. The template does not impose a source wiki's numbering scheme.",
+  "documentation_wikitext": "{{SHORTDESC:Format a software version name, build, and optional preserved icon}}\nSupply a release name, build identifier, or both. The optional icon_content parameter accepts pre-rendered content such as Template:Preservation image without depending on a source wiki's native files, templates, or CSS.",
   "examples": [
     {
       "id": "named-build",
@@ -39,6 +45,16 @@
       "invocation": "{{Version label|name=Wrath of the Lich King|build=3.3.5.12340}}",
       "scope_class": "version-label",
       "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    },
+    {
+      "id": "preserved-icon",
+      "invocation": "{{Version label|name=Wrath of the Lich King|icon_content={{Preservation image|site=wowdev|sha256=4c970718a44a639fe191f486a21f432a335cc9906f817ddc211847336c84d5b1|filename=Wrath-Logo-Small.png|alt=Wrath}}}}",
+      "scope_class": "version-label",
+      "expected_scope_count": 1,
+      "require_interactive_link": true,
+      "required_href_substrings": ["Special:Archive/wowdev/File:Wrath-Logo-Small.png"],
+      "required_link_classes": ["mw-preservation-archive-image-link"],
       "forbid_literal_wikilinks": true
     }
   ]

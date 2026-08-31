@@ -95,7 +95,7 @@
       "scope_class": "mw-halign-left",
       "expected_scope_count": 1,
       "require_interactive_link": true,
-      "required_href_substrings": ["Special:ArchiveFile/wowdev/5ff8629e1d152716b341822d9f9b1aff98da2dc4c83e476d7701be25039f03d3/WoWEditTextureTools2_VertexColor.jpg"],
+      "required_href_substrings": ["Special:Archive/wowdev/File:WoWEditTextureTools2_VertexColor.jpg"],
       "required_link_classes": ["mw-file-description", "mw-preservation-archive-image-link"],
       "forbid_literal_wikilinks": true
     },
@@ -105,7 +105,7 @@
       "scope_class": "mw-halign-left",
       "expected_scope_count": 1,
       "require_interactive_link": true,
-      "required_href_substrings": ["Special:ArchiveFile/wowdev/063996178b0df4e7f9b45a80de032d688daf51620e180f114302523258227f55/AlastorPfp.png"],
+      "required_href_substrings": ["Special:Archive/wowdev/File:AlastorPfp.png"],
       "required_link_classes": ["mw-file-description", "mw-preservation-archive-image-link"],
       "forbid_literal_wikilinks": true
     },
@@ -115,7 +115,7 @@
       "scope_class": "mw-default-size",
       "expected_scope_count": 1,
       "require_interactive_link": true,
-      "required_href_substrings": ["Special:ArchiveFile/wowdev/aa04f80e07ee1bb98e754fd021fb47058ad5b029e7cdd678207147f034876401/WoWEdit_TopToolbar_1.jpg"],
+      "required_href_substrings": ["Special:Archive/wowdev/File:WoWEdit_TopToolbar_1.jpg"],
       "required_link_classes": ["mw-file-description", "mw-preservation-archive-image-link"],
       "forbid_literal_wikilinks": true
     }

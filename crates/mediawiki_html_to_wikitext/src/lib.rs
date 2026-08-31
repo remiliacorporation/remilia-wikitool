@@ -18,7 +18,11 @@ pub use evidence::{
 };
 
 pub const SOURCE_PROFILE_SCHEMA: &str = "mediawiki.html-source-profile.v1";
+pub const SOURCE_PROFILE_V2_SCHEMA: &str = "mediawiki.html-source-profile.v2";
 pub const TARGET_PROFILE_SCHEMA: &str = "mediawiki.wikitext-target-profile.v1";
+pub const TARGET_PROFILE_V2_SCHEMA: &str = "mediawiki.wikitext-target-profile.v2";
+
+const MAX_PORTABLE_INFOBOX_FIELDS: usize = 64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -58,12 +62,79 @@ pub struct SourceInfoboxPolicy {
     pub table_class: String,
     pub title_row_class: String,
     pub field_layout: SourceInfoboxFieldLayout,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub portable_layout: Option<SourcePortableInfoboxLayout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_appearance: Option<ObservedInfoboxAppearance>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceInfoboxFieldLayout {
     SingleCellBoldLabel,
+    PortableInfobox,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SourcePortableInfoboxLayout {
+    pub image_class: String,
+    pub item_class: String,
+    pub label_class: String,
+    pub value_class: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservedInfoboxAppearance {
+    OrnateWarm,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TargetInfoboxPresentation {
+    pub presentation: TargetInfoboxPresentationToken,
+    pub accent: TargetInfoboxAccentToken,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetInfoboxPresentationToken {
+    Standard,
+    Storybook,
+}
+
+impl TargetInfoboxPresentationToken {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Storybook => "storybook",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetInfoboxAccentToken {
+    Neutral,
+    Amber,
+    Blue,
+    Green,
+    Rose,
+    Violet,
+}
+
+impl TargetInfoboxAccentToken {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Neutral => "neutral",
+            Self::Amber => "amber",
+            Self::Blue => "blue",
+            Self::Green => "green",
+            Self::Rose => "rose",
+            Self::Violet => "violet",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -88,6 +159,8 @@ pub struct TargetInfoboxPolicy {
     #[serde(default)]
     pub unlabeled_content_parameter: Option<String>,
     pub max_custom_fields: usize,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub appearance_mappings: BTreeMap<ObservedInfoboxAppearance, TargetInfoboxPresentation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -157,6 +230,10 @@ pub struct InfoboxPolicy {
     pub source_table_class: String,
     pub source_title_row_class: String,
     pub source_field_layout: SourceInfoboxFieldLayout,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_portable_layout: Option<SourcePortableInfoboxLayout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_presentation: Option<TargetInfoboxPresentation>,
     pub template: String,
     pub unlabeled_content_parameter: Option<String>,
     pub max_custom_fields: usize,
@@ -304,6 +381,10 @@ pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompi
             source_table_class: source.table_class.clone(),
             source_title_row_class: source.title_row_class.clone(),
             source_field_layout: source.field_layout,
+            source_portable_layout: source.portable_layout.clone(),
+            target_presentation: source
+                .observed_appearance
+                .and_then(|appearance| target.appearance_mappings.get(&appearance).cloned()),
             template: target.template.clone(),
             unlabeled_content_parameter: target.unlabeled_content_parameter.clone(),
             max_custom_fields: target.max_custom_fields,
@@ -363,6 +444,28 @@ pub fn validate_profiles(source: &SourceProfile, target: &TargetProfile) -> Resu
     if let (Some(_), None) = (&source.infobox, &target.infobox) {
         bail!("source infobox mapping has no target implementation");
     }
+    if let Some(source_infobox) = &source.infobox
+        && let Some(observed) = source_infobox.observed_appearance
+    {
+        let target_infobox = target
+            .infobox
+            .as_ref()
+            .context("observed source infobox appearance has no target implementation")?;
+        target_infobox
+            .appearance_mappings
+            .get(&observed)
+            .with_context(|| {
+                format!("target infobox has no mapping for observed appearance {observed:?}")
+            })?;
+        let allowed = allowed_template(target, &target_infobox.template)
+            .context("infobox template is absent from allowed_templates")?;
+        for parameter in ["presentation", "accent"] {
+            ensure!(
+                allowed.parameters.contains(parameter),
+                "target infobox appearance mapping requires target parameter {parameter}"
+            );
+        }
+    }
     if !source.message_box_classes.is_empty() && target.message_box.is_none() {
         bail!("source message-box mapping has no target implementation");
     }
@@ -371,8 +474,11 @@ pub fn validate_profiles(source: &SourceProfile, target: &TargetProfile) -> Resu
 
 pub fn validate_source_profile(source: &SourceProfile) -> Result<()> {
     ensure!(
-        source.schema == SOURCE_PROFILE_SCHEMA,
-        "source profile schema must be {SOURCE_PROFILE_SCHEMA}"
+        matches!(
+            source.schema.as_str(),
+            SOURCE_PROFILE_SCHEMA | SOURCE_PROFILE_V2_SCHEMA
+        ),
+        "source profile schema must be {SOURCE_PROFILE_SCHEMA} or {SOURCE_PROFILE_V2_SCHEMA}"
     );
     if let Some(selector) = &source.content.root_selector {
         validate_source_selector(selector, "content root selector")?;
@@ -419,6 +525,14 @@ pub fn validate_source_profile(source: &SourceProfile) -> Result<()> {
         );
     }
     if let Some(infobox) = &source.infobox {
+        if source.schema == SOURCE_PROFILE_SCHEMA {
+            ensure!(
+                infobox.field_layout == SourceInfoboxFieldLayout::SingleCellBoldLabel
+                    && infobox.portable_layout.is_none()
+                    && infobox.observed_appearance.is_none(),
+                "source profile v1 cannot declare portable layout or observed appearance"
+            );
+        }
         validate_class_token(&infobox.table_class, "source infobox table class")?;
         validate_class_token(&infobox.title_row_class, "source infobox title-row class")?;
         ensure!(
@@ -429,6 +543,38 @@ pub fn validate_source_profile(source: &SourceProfile) -> Result<()> {
             !source.message_box_classes.contains(&infobox.table_class),
             "source infobox class is also admitted as a message-box class"
         );
+        match infobox.field_layout {
+            SourceInfoboxFieldLayout::SingleCellBoldLabel => ensure!(
+                infobox.portable_layout.is_none(),
+                "single-cell infobox layout cannot declare portable_layout"
+            ),
+            SourceInfoboxFieldLayout::PortableInfobox => {
+                let portable = infobox
+                    .portable_layout
+                    .as_ref()
+                    .context("portable infobox layout omitted portable_layout")?;
+                for (class, label) in [
+                    (&portable.image_class, "source portable-infobox image class"),
+                    (&portable.item_class, "source portable-infobox item class"),
+                    (&portable.label_class, "source portable-infobox label class"),
+                    (&portable.value_class, "source portable-infobox value class"),
+                ] {
+                    validate_class_token(class, label)?;
+                }
+                let distinct = BTreeSet::from([
+                    infobox.table_class.as_str(),
+                    infobox.title_row_class.as_str(),
+                    portable.image_class.as_str(),
+                    portable.item_class.as_str(),
+                    portable.label_class.as_str(),
+                    portable.value_class.as_str(),
+                ]);
+                ensure!(
+                    distinct.len() == 6,
+                    "portable infobox layout classes must be distinct"
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -444,8 +590,11 @@ fn validate_source_selector(value: &str, label: &str) -> Result<()> {
 
 pub fn validate_target_profile(target: &TargetProfile) -> Result<()> {
     ensure!(
-        target.schema == TARGET_PROFILE_SCHEMA,
-        "target profile schema must be {TARGET_PROFILE_SCHEMA}"
+        matches!(
+            target.schema.as_str(),
+            TARGET_PROFILE_SCHEMA | TARGET_PROFILE_V2_SCHEMA
+        ),
+        "target profile schema must be {TARGET_PROFILE_SCHEMA} or {TARGET_PROFILE_V2_SCHEMA}"
     );
     validate_identifier(&target.profile_id, "target profile_id")?;
     ensure!(
@@ -472,6 +621,12 @@ pub fn validate_target_profile(target: &TargetProfile) -> Result<()> {
     );
     validate_target_template_contract(target)?;
     if let Some(infobox) = &target.infobox {
+        if target.schema == TARGET_PROFILE_SCHEMA {
+            ensure!(
+                infobox.appearance_mappings.is_empty(),
+                "target profile v1 cannot declare infobox appearance mappings"
+            );
+        }
         validate_template_name(&infobox.template)?;
         if let Some(parameter) = &infobox.unlabeled_content_parameter {
             validate_identifier(parameter, "target infobox unlabeled_content_parameter")?;
@@ -573,6 +728,14 @@ fn validate_target_template_contract(target: &TargetProfile) -> Result<()> {
                 ensure!(
                     allowed.parameters.contains(&parameter),
                     "allowed infobox template is missing parameter {parameter}"
+                );
+            }
+        }
+        if !infobox.appearance_mappings.is_empty() {
+            for parameter in ["presentation", "accent"] {
+                ensure!(
+                    allowed.parameters.contains(parameter),
+                    "target infobox appearance mapping requires parameter {parameter}"
                 );
             }
         }
@@ -951,6 +1114,7 @@ impl Renderer<'_> {
             "html" | "body" | "main" | "article" | "section" | "div" | "span" | "figure"
             | "figcaption" | "details" | "summary" | "time" | "small" | "sub" | "sup" | "abbr"
             | "dfn" | "bdi" | "bdo" | "ruby" | "rt" | "rp" => self.render_children(element),
+            "aside" => self.render_aside(element),
             "head" | "noscript" | "template" => Ok(String::new()),
             "script" => {
                 self.coverage.discarded_script_elements += 1;
@@ -1166,7 +1330,7 @@ impl Renderer<'_> {
         self.coverage.image_elements += 1;
         let mut locators = Vec::new();
         if let Some(src) = element.value().attr("src") {
-            locators.push((normalized_http_url(src)?, None, None, 0_u64));
+            locators.push((normalized_http_url(&self.base_url, src)?, None, None, 0_u64));
         }
         if let Some(srcset) = element.value().attr("srcset") {
             for (index, candidate) in srcset.split(',').enumerate() {
@@ -1181,7 +1345,7 @@ impl Renderer<'_> {
                     .transpose()?
                     .unwrap_or((index + 1) as u64);
                 locators.push((
-                    normalized_http_url(fields[0])?,
+                    normalized_http_url(&self.base_url, fields[0])?,
                     Some(index),
                     fields.get(1).map(|value| (*value).to_string()),
                     score,
@@ -1271,7 +1435,7 @@ impl Renderer<'_> {
                 fallback_image = Some(child);
             }
             if let Some(src) = child.value().attr("src") {
-                let locator = normalized_http_url(src)?;
+                let locator = normalized_http_url(&self.base_url, src)?;
                 let media = if self.input.media_occurrences.is_some() {
                     self.consume_v3_media(
                         "image",
@@ -1305,7 +1469,7 @@ impl Renderer<'_> {
                         (1..=2).contains(&fields.len()),
                         "picture srcset candidate has an unsupported shape"
                     );
-                    let locator = normalized_http_url(fields[0])?;
+                    let locator = normalized_http_url(&self.base_url, fields[0])?;
                     let descriptor = fields.get(1).copied();
                     let score = descriptor
                         .map(|value| descriptor_score(value, index))
@@ -1417,7 +1581,7 @@ impl Renderer<'_> {
     ) -> Result<String> {
         let mut sources = Vec::new();
         if let Some(src) = element.value().attr("src") {
-            let locator = normalized_http_url(src)?;
+            let locator = normalized_http_url(&self.base_url, src)?;
             let descriptor = media_type_descriptor(element.value().attr("type"));
             let media = self.consume_v3_media(
                 "audio",
@@ -1437,7 +1601,7 @@ impl Renderer<'_> {
                 .value()
                 .attr("src")
                 .context("retained audio source omitted src")?;
-            let locator = normalized_http_url(src)?;
+            let locator = normalized_http_url(&self.base_url, src)?;
             let descriptor = media_type_descriptor(source.value().attr("type"));
             let media = self.consume_v3_media(
                 "audio",
@@ -1568,7 +1732,7 @@ impl Renderer<'_> {
         let mut unique = BTreeSet::new();
         let mut output = String::new();
         for (src, content_type) in locators {
-            let locator = normalized_http_url(src)?;
+            let locator = normalized_http_url(&self.base_url, src)?;
             if !unique.insert(locator.clone()) {
                 continue;
             }
@@ -1650,6 +1814,17 @@ impl Renderer<'_> {
         Ok(block(&output))
     }
 
+    fn render_aside(&mut self, element: ElementRef<'_>) -> Result<String> {
+        if let Some(policy) = self.input.infobox_policy
+            && policy.source_field_layout == SourceInfoboxFieldLayout::PortableInfobox
+            && element_has_class(element, &policy.source_table_class)
+            && self.portable_infobox_is_admissible(element, policy)
+        {
+            return self.render_portable_infobox(element, policy);
+        }
+        self.render_children(element)
+    }
+
     fn render_table(&mut self, element: ElementRef<'_>) -> Result<String> {
         self.coverage.tables += 1;
         if let Some(policy) = self.input.message_box_policy
@@ -1666,6 +1841,7 @@ impl Renderer<'_> {
             return self.render_message_box(element, policy);
         }
         if let Some(policy) = self.input.infobox_policy
+            && policy.source_field_layout == SourceInfoboxFieldLayout::SingleCellBoldLabel
             && element
                 .value()
                 .attr("class")
@@ -1806,11 +1982,128 @@ impl Renderer<'_> {
         Ok(output)
     }
 
+    fn portable_infobox_is_admissible(
+        &self,
+        element: ElementRef<'_>,
+        policy: &InfoboxPolicy,
+    ) -> bool {
+        let Some(layout) = policy.source_portable_layout.as_ref() else {
+            return false;
+        };
+        let container_selector = class_selector(&policy.source_table_class);
+        if element.select(&container_selector).next().is_some() {
+            return false;
+        }
+        let title_selector = class_selector(&policy.source_title_row_class);
+        let titles = element.select(&title_selector).collect::<Vec<_>>();
+        if titles.len() != 1 || !element_has_class(titles[0], &layout.item_class) {
+            return false;
+        }
+        let image_selector = class_selector(&layout.image_class);
+        let images = element.select(&image_selector).collect::<Vec<_>>();
+        if images.len() > 1 {
+            return false;
+        }
+        let media_selector = Selector::parse("img, picture").expect("static media selector");
+        if images
+            .first()
+            .map(|image| image.select(&media_selector).count() != 1)
+            .unwrap_or(false)
+        {
+            return false;
+        }
+
+        let item_selector = class_selector(&layout.item_class);
+        let label_selector = class_selector(&layout.label_class);
+        let value_selector = class_selector(&layout.value_class);
+        let mut fields = 0_usize;
+        for item in element.select(&item_selector) {
+            let labels = direct_profiled_descendants(item, &label_selector, &layout.item_class);
+            let values = direct_profiled_descendants(item, &value_selector, &layout.item_class);
+            if labels.is_empty() && values.is_empty() {
+                continue;
+            }
+            if labels.len() != 1 || values.len() != 1 {
+                return false;
+            }
+            fields += 1;
+        }
+        fields <= MAX_PORTABLE_INFOBOX_FIELDS
+    }
+
+    fn render_portable_infobox(
+        &mut self,
+        element: ElementRef<'_>,
+        policy: &InfoboxPolicy,
+    ) -> Result<String> {
+        let layout = policy
+            .source_portable_layout
+            .as_ref()
+            .context("admitted portable infobox omitted its layout")?;
+        let title_selector = class_selector(&policy.source_title_row_class);
+        let title = element
+            .select(&title_selector)
+            .next()
+            .context("admitted portable infobox omitted its title")?;
+        let name = one_line(&self.render_children(title)?);
+        ensure!(!name.is_empty(), "admitted portable infobox title is empty");
+
+        let image_selector = class_selector(&layout.image_class);
+        let image_content = element
+            .select(&image_selector)
+            .next()
+            .map(|image| self.render_children(image))
+            .transpose()?
+            .map(|rendered| one_line(&rendered));
+        if let Some(rendered) = &image_content {
+            ensure!(
+                rendered.starts_with("{{") && rendered.ends_with("}}"),
+                "admitted portable infobox image produced non-template content"
+            );
+        }
+
+        let item_selector = class_selector(&layout.item_class);
+        let label_selector = class_selector(&layout.label_class);
+        let value_selector = class_selector(&layout.value_class);
+        let mut fields = Vec::new();
+        for item in element.select(&item_selector) {
+            let labels = direct_profiled_descendants(item, &label_selector, &layout.item_class);
+            let values = direct_profiled_descendants(item, &value_selector, &layout.item_class);
+            if labels.is_empty() && values.is_empty() {
+                continue;
+            }
+            ensure!(
+                labels.len() == 1 && values.len() == 1,
+                "admitted portable infobox item has an ambiguous label/value shape"
+            );
+            let label = one_line(&self.render_children(labels[0])?);
+            let data = one_line(&self.render_children(values[0])?);
+            ensure!(
+                !label.is_empty() && !data.is_empty(),
+                "admitted portable infobox item has an empty label or value"
+            );
+            fields.push((label, data));
+        }
+        let overflow = if fields.len() > policy.max_custom_fields {
+            fields.split_off(policy.max_custom_fields)
+        } else {
+            Vec::new()
+        };
+        let overflow = overflow
+            .into_iter()
+            .map(|(label, data)| format!("'''{label}''': {data}"))
+            .collect();
+        self.render_canonical_infobox(policy, name, image_content, fields, overflow)
+    }
+
     fn profiled_infobox_is_admissible(
         &self,
         element: ElementRef<'_>,
         policy: &InfoboxPolicy,
     ) -> bool {
+        if policy.source_field_layout != SourceInfoboxFieldLayout::SingleCellBoldLabel {
+            return false;
+        }
         let row_selector = Selector::parse("tr").expect("static tr selector");
         let cell_selector = Selector::parse("th, td").expect("static table-cell selector");
         let nested_table_selector = Selector::parse("table table").expect("static table selector");
@@ -1945,8 +2238,28 @@ impl Renderer<'_> {
                         }
                     }
                 }
+                SourceInfoboxFieldLayout::PortableInfobox => {
+                    bail!("portable infobox layout reached the table renderer")
+                }
             }
         }
+        self.render_canonical_infobox(
+            policy,
+            name.context("admitted profiled infobox omitted its title")?,
+            image_content,
+            fields,
+            unlabeled_fields,
+        )
+    }
+
+    fn render_canonical_infobox(
+        &mut self,
+        policy: &InfoboxPolicy,
+        name: String,
+        image_content: Option<String>,
+        fields: Vec<(String, String)>,
+        unlabeled_fields: Vec<String>,
+    ) -> Result<String> {
         ensure!(
             fields.len() <= policy.max_custom_fields,
             "admitted profiled infobox produced too many custom fields"
@@ -1955,13 +2268,18 @@ impl Renderer<'_> {
             .template
             .strip_prefix("Template:")
             .unwrap_or(&policy.template);
-        let mut output = format!(
-            "\n{{{{{template}\n| name = {}\n",
-            name.context("admitted profiled infobox omitted its title")?
-        );
+        let mut output = format!("\n{{{{{template}\n| name = {name}\n");
         if let Some(image_content) = image_content {
             output.push_str("| image_content = ");
             output.push_str(&image_content);
+            output.push('\n');
+        }
+        if let Some(presentation) = &policy.target_presentation {
+            output.push_str("| presentation = ");
+            output.push_str(presentation.presentation.as_str());
+            output.push('\n');
+            output.push_str("| accent = ");
+            output.push_str(presentation.accent.as_str());
             output.push('\n');
         }
         for (index, (label, data)) in fields.into_iter().enumerate() {
@@ -1988,6 +2306,38 @@ impl Renderer<'_> {
         self.coverage.native_infoboxes += 1;
         Ok(output)
     }
+}
+
+fn class_selector(class: &str) -> Selector {
+    Selector::parse(&format!(".{class}")).expect("validated source class selector")
+}
+
+fn element_has_class(element: ElementRef<'_>, expected: &str) -> bool {
+    element
+        .value()
+        .attr("class")
+        .map(|classes| {
+            classes
+                .split_ascii_whitespace()
+                .any(|class| class == expected)
+        })
+        .unwrap_or(false)
+}
+
+fn direct_profiled_descendants<'a>(
+    item: ElementRef<'a>,
+    selector: &Selector,
+    item_class: &str,
+) -> Vec<ElementRef<'a>> {
+    item.select(selector)
+        .filter(|descendant| {
+            descendant
+                .ancestors()
+                .filter_map(ElementRef::wrap)
+                .find(|ancestor| element_has_class(*ancestor, item_class))
+                == Some(item)
+        })
+        .collect()
 }
 
 fn should_drop(element: ElementRef<'_>) -> bool {
@@ -2278,8 +2628,10 @@ fn normalize_document(value: &str) -> String {
     output
 }
 
-fn normalized_http_url(value: &str) -> Result<String> {
-    let mut parsed = Url::parse(value).context("media source URL is invalid")?;
+fn normalized_http_url(base_url: &Url, value: &str) -> Result<String> {
+    let mut parsed = base_url
+        .join(value)
+        .context("media source URL is invalid")?;
     ensure!(
         matches!(parsed.scheme(), "http" | "https") && parsed.host().is_some(),
         "media source URL must be absolute HTTP(S)"
@@ -2518,6 +2870,8 @@ mod tests {
                 table_class: "breakout".to_string(),
                 title_row_class: "breakouttitle".to_string(),
                 field_layout: SourceInfoboxFieldLayout::SingleCellBoldLabel,
+                portable_layout: None,
+                observed_appearance: None,
             }),
             content: SourceContentPolicy::default(),
         };
@@ -2550,6 +2904,7 @@ mod tests {
                 template: "Template:Infobox subject".to_string(),
                 unlabeled_content_parameter: Some("below".to_string()),
                 max_custom_fields: 2,
+                appearance_mappings: BTreeMap::new(),
             }),
             message_box: Some(TargetMessageBoxPolicy {
                 template: "Template:Ambox".to_string(),

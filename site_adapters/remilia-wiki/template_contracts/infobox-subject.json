@@ -104,6 +104,22 @@
       "type": "content"
     },
     {
+      "name": "presentation",
+      "label": "Presentation",
+      "description": "Bounded visual presentation preset; unsupported values fail visibly.",
+      "type": "string",
+      "default": "standard",
+      "suggested_values": ["standard", "storybook"]
+    },
+    {
+      "name": "accent",
+      "label": "Accent",
+      "description": "Bounded presentation accent token; unsupported values fail visibly.",
+      "type": "string",
+      "default": "neutral",
+      "suggested_values": ["neutral", "amber", "blue", "green", "rose", "violet"]
+    },
+    {
       "name": "label1",
       "label": "Label 1",
       "description": "Label for custom row 1; the row renders only when data1 is also supplied.",
@@ -224,7 +240,7 @@
       "type": "content"
     }
   ],
-  "documentation_wikitext": "{{SHORTDESC:Generic fallback infobox}}\nUse this template only when the subject does not fit a specialized Remilia infobox. Prefer stable named fields; use paired custom rows for additional concise facts instead of creating source-site-specific parameters.",
+  "documentation_wikitext": "{{SHORTDESC:Generic fallback infobox}}\nUse this template only when the subject does not fit a specialized Remilia infobox. Prefer stable named fields; use paired custom rows for additional concise facts instead of creating source-site-specific parameters. Presentation and accent are bounded Remilia-owned tokens for archive casts; they never accept source CSS or arbitrary style values.",
   "examples": [
     {
       "id": "generic-subject",
@@ -245,6 +261,13 @@
       "id": "source-authored-below",
       "invocation": "{{Infobox subject|name=Example tool|below=Source-authored supplemental note.}}",
       "scope_class": "infobox-below",
+      "expected_scope_count": 1,
+      "forbid_literal_wikilinks": true
+    },
+    {
+      "id": "storybook-subject",
+      "invocation": "{{Infobox subject|name=Example character|type=Character|presentation=storybook|accent=amber|label1=Role|data1=Protagonist}}",
+      "scope_class": "infobox-presentation-storybook",
       "expected_scope_count": 1,
       "forbid_literal_wikilinks": true
     }

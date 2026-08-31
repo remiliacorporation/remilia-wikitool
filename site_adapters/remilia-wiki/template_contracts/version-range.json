@@ -4,16 +4,18 @@
   "description": "Formats source-neutral minimum and maximum software-version bounds.",
   "format": "inline",
   "implementation": {
-    "body_wikitext": "<span class=\"version-range\">{{#if:{{{min_name|}}}{{{min_build|}}}|{{#switch:{{lc:{{{min_exclusive|}}}}}|1|yes|true|on=&gt;|#default=&ge;}}&nbsp;{{Version label|name={{{min_name|}}}|build={{{min_build|}}}}}}}{{#if:{{{min_name|}}}{{{min_build|}}}|{{#if:{{{max_name|}}}{{{max_build|}}}|&nbsp;&hellip;&nbsp;}}}}{{#if:{{{max_name|}}}{{{max_build|}}}|{{#switch:{{lc:{{{max_exclusive|}}}}}|1|yes|true|on=&lt;|#default=&le;}}&nbsp;{{Version label|name={{{max_name|}}}|build={{{max_build|}}}}}}}{{#if:{{{min_name|}}}{{{min_build|}}}{{{max_name|}}}{{{max_build|}}}||<span class=\"error\">Error: version range endpoint required</span>}}</span>",
+    "body_wikitext": "<span class=\"version-range\">{{#if:{{{min_name|}}}{{{min_build|}}}|{{#switch:{{lc:{{{min_exclusive|}}}}}|1|yes|true|on=&gt;|#default=&ge;}}&nbsp;{{Version label|name={{{min_name|}}}|build={{{min_build|}}}|icon_content={{{min_icon_content|}}}}}}}{{#if:{{{min_name|}}}{{{min_build|}}}|{{#if:{{{max_name|}}}{{{max_build|}}}|&nbsp;&hellip;&nbsp;}}}}{{#if:{{{max_name|}}}{{{max_build|}}}|{{#switch:{{lc:{{{max_exclusive|}}}}}|1|yes|true|on=&lt;|#default=&le;}}&nbsp;{{Version label|name={{{max_name|}}}|build={{{max_build|}}}|icon_content={{{max_icon_content|}}}}}}}{{#if:{{{min_name|}}}{{{min_build|}}}{{{max_name|}}}{{{max_build|}}}||<span class=\"error\">Error: version range endpoint required</span>}}</span>",
     "template_dependencies": ["Template:Version label"],
     "module_dependencies": []
   },
   "parameters": [
     {"name": "min_name", "label": "Minimum version name", "description": "Human-readable lower-bound release name.", "type": "string"},
     {"name": "min_build", "label": "Minimum build", "description": "Exact lower-bound build identifier.", "type": "string"},
+    {"name": "min_icon_content", "label": "Minimum icon content", "description": "Optional pre-rendered icon content for the lower bound.", "type": "content"},
     {"name": "min_exclusive", "label": "Minimum is exclusive", "description": "Use a strict greater-than bound.", "type": "boolean", "default": "no", "suggested_values": ["no", "yes"]},
     {"name": "max_name", "label": "Maximum version name", "description": "Human-readable upper-bound release name.", "type": "string"},
     {"name": "max_build", "label": "Maximum build", "description": "Exact upper-bound build identifier.", "type": "string"},
+    {"name": "max_icon_content", "label": "Maximum icon content", "description": "Optional pre-rendered icon content for the upper bound.", "type": "content"},
     {"name": "max_exclusive", "label": "Maximum is exclusive", "description": "Use a strict less-than bound.", "type": "boolean", "default": "no", "suggested_values": ["no", "yes"]}
   ],
   "documentation_wikitext": "{{SHORTDESC:Format an inclusive or exclusive software version range}}\nSupply at least one endpoint name or build. Bounds are inclusive unless the corresponding exclusive parameter is set to yes.",
