@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod evidence;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -7,6 +9,13 @@ use percent_encoding::percent_decode_str;
 use scraper::{ElementRef, Html, Node, Selector};
 use serde::{Deserialize, Serialize};
 use url::Url;
+
+use evidence::collect_resource_observations;
+pub use evidence::{
+    HTML_CAPTURE_RECEIPT_SCHEMA, HtmlCaptureProducer, HtmlCaptureReceipt, HtmlRepresentation,
+    ResourceDisposition, ResourceLocator, ResourceLocatorStatus, ResourceObservation,
+    ScriptClassification, validate_capture_receipt,
+};
 
 pub const SOURCE_PROFILE_SCHEMA: &str = "mediawiki.html-source-profile.v1";
 pub const TARGET_PROFILE_SCHEMA: &str = "mediawiki.wikitext-target-profile.v1";
@@ -234,6 +243,7 @@ pub struct ProfiledCompileInput<'a> {
     pub canonical_url: &'a str,
     pub source_key: &'a str,
     pub media_scope: &'a str,
+    pub capture_receipt: &'a HtmlCaptureReceipt,
     pub source_profile: &'a SourceProfile,
     pub target_profile: &'a TargetProfile,
     pub images: &'a BTreeMap<String, MediaReference>,
@@ -251,6 +261,8 @@ pub struct UnmappedStructure {
 pub struct ProfiledCompileOutput {
     pub transformed: HtmlToWikitextOutput,
     pub unmapped_structures: Vec<UnmappedStructure>,
+    pub representation: HtmlRepresentation,
+    pub resource_observations: Vec<ResourceObservation>,
 }
 
 pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompileOutput> {
@@ -261,7 +273,23 @@ pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompi
         input.source_key,
         input.source_profile.source_key
     );
+    validate_capture_receipt(
+        input.capture_receipt,
+        input.html,
+        input.source_key,
+        input.canonical_url,
+    )?;
     validate_source_canonical_url(input.canonical_url, input.source_profile)?;
+    let capture_final_url =
+        Url::parse(&input.capture_receipt.final_url).context("parse HTML capture final_url")?;
+    ensure!(
+        input
+            .source_profile
+            .allowed_origins
+            .contains(&capture_final_url.origin().ascii_serialization()),
+        "HTML capture final_url is outside source profile origins: {}",
+        input.capture_receipt.final_url
+    );
     for source_url in input.images.keys() {
         validate_source_media_url(source_url, input.source_profile)?;
     }
@@ -298,6 +326,7 @@ pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompi
             image_parameter: target.image_parameter.clone(),
         })
     };
+    let resource_observations = collect_resource_observations(input.html, input.capture_receipt)?;
     let unmapped_structures = collect_unmapped_structures(input.html, input.source_profile)?;
     let transformed = convert_with_content_policy(
         HtmlToWikitextInput {
@@ -323,6 +352,8 @@ pub fn compile_profiled(input: ProfiledCompileInput<'_>) -> Result<ProfiledCompi
     Ok(ProfiledCompileOutput {
         transformed,
         unmapped_structures,
+        representation: input.capture_receipt.representation,
+        resource_observations,
     })
 }
 
@@ -2318,6 +2349,28 @@ fn media_type_descriptor(value: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
+
+    fn capture_receipt(html: &str, canonical_url: &str) -> HtmlCaptureReceipt {
+        HtmlCaptureReceipt {
+            schema: HTML_CAPTURE_RECEIPT_SCHEMA.to_string(),
+            source_key: "fixture".to_string(),
+            canonical_url: canonical_url.to_string(),
+            final_url: canonical_url.to_string(),
+            captured_at: "2026-08-30T12:34:56Z".to_string(),
+            representation: HtmlRepresentation::StaticHtml,
+            producer: HtmlCaptureProducer {
+                name: "fixture-fetcher".to_string(),
+                version: "1.0.0".to_string(),
+            },
+            javascript_executed: false,
+            capture_timeout_ms: 30_000,
+            html_sha256: format!("{:x}", Sha256::digest(html.as_bytes())),
+            html_bytes: html.len() as u64,
+            max_resource_observations: 16,
+            max_inline_resource_bytes: 4_096,
+        }
+    }
 
     fn policies() -> (LinkPolicy, MediaPolicy) {
         (
@@ -2543,12 +2596,15 @@ mod tests {
     fn profiled_compilation_separates_source_semantics_from_target_templates() {
         let (source_profile, target_profile) = profiled_policies();
         let images = BTreeMap::new();
+        let html = "<table class=\"breakout\"><tr class=\"breakouttitle\"><th>Example</th></tr><tr><td>Source-authored note</td></tr></table><table class=\"msgbox\"><tr><td></td><td>Needs attention.</td></tr></table><table class=\"wikitable\"><tr><td>ordinary</td></tr></table><table class=\"mystery-box\"><tr><td>unmapped</td></tr></table>";
+        let capture_receipt = capture_receipt(html, "https://source.example/Example");
         let output = compile_profiled(ProfiledCompileInput {
-            html: "<table class=\"breakout\"><tr class=\"breakouttitle\"><th>Example</th></tr><tr><td>Source-authored note</td></tr></table><table class=\"msgbox\"><tr><td></td><td>Needs attention.</td></tr></table><table class=\"wikitable\"><tr><td>ordinary</td></tr></table><table class=\"mystery-box\"><tr><td>unmapped</td></tr></table>",
+            html,
             canonical_title: "Example",
             canonical_url: "https://source.example/Example",
             source_key: "fixture",
             media_scope: "fixture",
+            capture_receipt: &capture_receipt,
             source_profile: &source_profile,
             target_profile: &target_profile,
             images: &images,
@@ -2588,12 +2644,15 @@ mod tests {
             drop_embedded_app_elements: true,
         };
         let images = BTreeMap::new();
+        let html = "<nav>Application navigation</nav><article><style>.animation{opacity:0}</style><script>hydrate()</script><p>Durable source text.</p><p hidden>Duplicate hidden text.</p><div class=\"animation\">Decorative motion.<table class=\"mystery\"><tr><td>Not target evidence</td></tr></table></div><canvas>animated scene</canvas></article>";
+        let capture_receipt = capture_receipt(html, "https://source.example/Example");
         let output = compile_profiled(ProfiledCompileInput {
-            html: "<nav>Application navigation</nav><article><style>.animation{opacity:0}</style><script>hydrate()</script><p>Durable source text.</p><p hidden>Duplicate hidden text.</p><div class=\"animation\">Decorative motion.<table class=\"mystery\"><tr><td>Not target evidence</td></tr></table></div><canvas>animated scene</canvas></article>",
+            html,
             canonical_title: "Example",
             canonical_url: "https://source.example/Example",
             source_key: "fixture",
             media_scope: "fixture",
+            capture_receipt: &capture_receipt,
             source_profile: &source_profile,
             target_profile: &target_profile,
             images: &images,
@@ -2610,6 +2669,22 @@ mod tests {
             output.transformed.coverage.discarded_interaction_elements,
             1
         );
+        assert_eq!(output.representation, HtmlRepresentation::StaticHtml);
+        assert_eq!(output.resource_observations.len(), 2);
+        assert!(matches!(
+            output.resource_observations.as_slice(),
+            [
+                ResourceObservation::InlineStyle {
+                    disposition: ResourceDisposition::NotApplied,
+                    ..
+                },
+                ResourceObservation::InlineScript {
+                    classification: ScriptClassification::Executable,
+                    disposition: ResourceDisposition::NotExecuted,
+                    ..
+                }
+            ]
+        ));
         assert!(output.unmapped_structures.is_empty());
     }
 
@@ -2617,12 +2692,15 @@ mod tests {
     fn profiled_compilation_rejects_source_origin_drift() {
         let (source_profile, target_profile) = profiled_policies();
         let images = BTreeMap::new();
+        let html = "<p>Example</p>";
+        let capture_receipt = capture_receipt(html, "https://other.example/Example");
         let error = compile_profiled(ProfiledCompileInput {
-            html: "<p>Example</p>",
+            html,
             canonical_title: "Example",
             canonical_url: "https://other.example/Example",
             source_key: "fixture",
             media_scope: "fixture",
+            capture_receipt: &capture_receipt,
             source_profile: &source_profile,
             target_profile: &target_profile,
             images: &images,
@@ -2631,6 +2709,34 @@ mod tests {
         .err()
         .expect("source origin drift must fail");
         assert!(error.to_string().contains("outside profile"));
+    }
+
+    #[test]
+    fn profiled_compilation_rejects_capture_final_url_origin_drift() {
+        let (source_profile, target_profile) = profiled_policies();
+        let images = BTreeMap::new();
+        let html = "<p>Example</p>";
+        let mut capture_receipt = capture_receipt(html, "https://source.example/Example");
+        capture_receipt.final_url = "https://other.example/redirected".to_string();
+        let error = compile_profiled(ProfiledCompileInput {
+            html,
+            canonical_title: "Example",
+            canonical_url: "https://source.example/Example",
+            source_key: "fixture",
+            media_scope: "fixture",
+            capture_receipt: &capture_receipt,
+            source_profile: &source_profile,
+            target_profile: &target_profile,
+            images: &images,
+            media_occurrences: None,
+        })
+        .err()
+        .expect("capture final URL origin drift must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("HTML capture final_url is outside source profile origins")
+        );
     }
 
     #[test]
@@ -2657,12 +2763,15 @@ mod tests {
                 sha256: "a".repeat(64),
             },
         )]);
+        let html = "<table class=\"msgbox\"><tr><td><img src=\"https://source.example/media/notice.png\" alt=\"Notice icon\" width=\"40\" height=\"40\"></td><td>Captured notice.</td></tr></table>";
+        let capture_receipt = capture_receipt(html, "https://source.example/Example");
         let output = compile_profiled(ProfiledCompileInput {
-            html: "<table class=\"msgbox\"><tr><td><img src=\"https://source.example/media/notice.png\" alt=\"Notice icon\" width=\"40\" height=\"40\"></td><td>Captured notice.</td></tr></table>",
+            html,
             canonical_title: "Example",
             canonical_url: "https://source.example/Example",
             source_key: "fixture",
             media_scope: "fixture",
+            capture_receipt: &capture_receipt,
             source_profile: &source_profile,
             target_profile: &target_profile,
             images: &images,
@@ -2750,12 +2859,15 @@ mod tests {
                 sha256: "b".repeat(64),
             },
         )]);
+        let html = format!("<img src=\"{source_url}\" alt=\"Foreign media\">");
+        let capture_receipt = capture_receipt(&html, "https://source.example/Example");
         let error = compile_profiled(ProfiledCompileInput {
-            html: &format!("<img src=\"{source_url}\" alt=\"Foreign media\">"),
+            html: &html,
             canonical_title: "Example",
             canonical_url: "https://source.example/Example",
             source_key: "fixture",
             media_scope: "fixture",
+            capture_receipt: &capture_receipt,
             source_profile: &source_profile,
             target_profile: &target_profile,
             images: &images,

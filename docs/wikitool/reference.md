@@ -786,7 +786,7 @@ Options:
 ```text
 Compile captured HTML through explicit source and target profiles
 
-Usage: wikitool import html-to-wikitext [OPTIONS] --source-profile <PATH> --target-profile <PATH> --canonical-title <TITLE> --canonical-url <URL> --source-key <KEY> --media-scope <SCOPE> --output <PATH> <PATH>
+Usage: wikitool import html-to-wikitext [OPTIONS] --source-profile <PATH> --capture-receipt <PATH> --target-profile <PATH> --canonical-title <TITLE> --canonical-url <URL> --source-key <KEY> --media-scope <SCOPE> --output <PATH> <PATH>
 
 Arguments:
   <PATH>  Captured HTML input path
@@ -794,12 +794,13 @@ Arguments:
 Options:
       --project-root <PATH>
       --source-profile <PATH>    Source interpretation profile
+      --capture-receipt <PATH>   Hash-bound static HTML or rendered DOM capture receipt
       --data-dir <PATH>
+      --config <PATH>
       --target-profile <PATH>    Target authoring profile
       --canonical-title <TITLE>  Canonical source page title
-      --config <PATH>
-      --canonical-url <URL>      Canonical source page URL
       --diagnostics              Print resolved runtime diagnostics
+      --canonical-url <URL>      Canonical source page URL
       --source-key <KEY>         Captured source evidence key
       --media-scope <SCOPE>      Target archive-media scope
       --media-inventory <PATH>   Optional captured media-reference inventory

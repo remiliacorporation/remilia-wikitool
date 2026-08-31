@@ -6,6 +6,10 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+### Added
+
+- `import html-to-wikitext` requires a strict hash-bound capture receipt that distinguishes static HTML from rendered DOM and reports bounded CSS and JavaScript resource observations without applying styles or executing scripts.
+
 ## [0.8.0] - 2026-08-30
 
 ### Added

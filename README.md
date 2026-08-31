@@ -239,7 +239,7 @@ target/debug/wikitest prose evaluate-suite RUN
 ```
 
 Wikitest campaigns are explicit development evaluations, not per-release gates. The deterministic
-campaign covers 75 declared capability slices across 11 isolated scenarios; the complex prose
+campaign covers 77 declared capability slices across 11 isolated scenarios; the complex prose
 campaign prepares two source-rich long-form assignments and records no demonstrated coverage until
 external authors and differently identified reviewers complete them. Agent submissions must record
 their exact execution identity and access envelope. See `wikitest/CAPABILITY_MATRIX.md` for the

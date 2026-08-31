@@ -19,13 +19,22 @@ filenames rather than generating article prose.
 
 Generic webpage adaptation is semantic, not visual replication. A source profile may select one
 meaningful content root, discard source-specific chrome or animation regions with explicit CSS
-selectors, remove hidden duplicates, and drop embedded app elements. The result reports separate
-counts for discarded style, script, interaction, hidden, and profile-selected structures. CSS is
-therefore interpretation evidence for profile construction; it is not copied into the target wiki.
-Wikitool never executes source JavaScript. When script execution is necessary to expose authored
-content, an acquisition or browser layer must provide a bounded rendered DOM and its own provenance
-before conversion. Durable text, media, captions, links, and informational states are then projected
-through the target profile's MediaWiki primitives and admitted template vocabulary.
+selectors, remove hidden duplicates, and drop embedded app elements. Every profiled compile requires
+a strict `mediawiki.html-capture-receipt.v1` that binds the exact HTML bytes, source identity,
+canonical and final URLs, capture time, static-HTML or rendered-DOM representation, producer claim,
+JavaScript-execution claim, timeout, and evidence bounds. The producer fields are caller-reported
+provenance, not authenticated proof of the acquisition environment.
+
+The result reports separate counts for discarded style, script, interaction, hidden, and
+profile-selected structures, plus bounded typed observations for inline and external CSS and
+JavaScript. Inline observations retain only hashes and byte counts; safe external observations retain
+declared and resolved locators, media or script type, a narrow classification, and a non-application
+or non-execution disposition. Invalid, unsupported-scheme, credential-bearing, or overlong locators
+are rejected or reduced to a hash and typed status rather than echoed. The compiler does not fetch
+external resource bodies, apply CSS, or execute JavaScript. When script execution is necessary to
+expose authored content, an acquisition or browser layer must provide the bounded rendered DOM and
+receipt before conversion. Durable text, media, captions, links, and informational states are then
+projected through the target profile's MediaWiki primitives and admitted template vocabulary.
 
 The crate does not acquire pages, decode a producer bundle, choose site templates, emit a
 publication receipt, or write to a wiki. Those authorities belong to callers. Producer-specific

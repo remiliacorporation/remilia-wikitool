@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 use mediawiki_html_to_wikitext::{
-    Coverage, MediaReference, ProfiledCompileInput, SourceProfile, TargetProfile,
-    UnmappedStructure, compile_profiled,
+    Coverage, HtmlCaptureReceipt, HtmlRepresentation, MediaReference, ProfiledCompileInput,
+    ResourceObservation, SourceProfile, TargetProfile, UnmappedStructure, compile_profiled,
 };
 use serde::{Deserialize, Serialize};
 use wikitool_core::import_cargo::{
@@ -78,6 +78,12 @@ enum ImportSubcommand {
         path: String,
         #[arg(long, value_name = "PATH", help = "Source interpretation profile")]
         source_profile: String,
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Hash-bound static HTML or rendered DOM capture receipt"
+        )]
+        capture_receipt: String,
         #[arg(long, value_name = "PATH", help = "Target authoring profile")]
         target_profile: String,
         #[arg(long, value_name = "TITLE", help = "Canonical source page title")]
@@ -142,6 +148,11 @@ struct HtmlToWikitextJson<'a> {
     source_profile_path: String,
     source_profile_id: &'a str,
     source_profile_sha256: String,
+    capture_receipt_path: String,
+    capture_receipt_sha256: String,
+    representation: &'a HtmlRepresentation,
+    capture_final_url: &'a str,
+    capture_javascript_executed: bool,
     target_profile_path: String,
     target_profile_id: &'a str,
     target_profile_sha256: String,
@@ -158,10 +169,12 @@ struct HtmlToWikitextJson<'a> {
     used_media: &'a std::collections::BTreeSet<String>,
     media_occurrences_consumed: usize,
     unmapped_structures: &'a [UnmappedStructure],
+    resource_observations: &'a [ResourceObservation],
 }
 
 const MAX_HTML_INPUT_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_PROFILE_INPUT_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_CAPTURE_RECEIPT_BYTES: u64 = 1024 * 1024;
 const MAX_MEDIA_INVENTORY_BYTES: u64 = 32 * 1024 * 1024;
 const MEDIA_INVENTORY_SCHEMA: &str = "mediawiki.media-reference-inventory.v2";
 
@@ -246,6 +259,7 @@ pub(crate) fn run_import(runtime: &RuntimeOptions, args: ImportArgs) -> Result<(
         ImportSubcommand::HtmlToWikitext {
             path,
             source_profile,
+            capture_receipt,
             target_profile,
             canonical_title,
             canonical_url,
@@ -258,6 +272,7 @@ pub(crate) fn run_import(runtime: &RuntimeOptions, args: ImportArgs) -> Result<(
             runtime,
             &path,
             &source_profile,
+            &capture_receipt,
             &target_profile,
             &canonical_title,
             &canonical_url,
@@ -275,6 +290,7 @@ fn run_import_html_to_wikitext(
     runtime: &RuntimeOptions,
     path: &str,
     source_profile_path: &str,
+    capture_receipt_path: &str,
     target_profile_path: &str,
     canonical_title: &str,
     canonical_url: &str,
@@ -287,6 +303,7 @@ fn run_import_html_to_wikitext(
     let paths = resolve_runtime_paths(runtime)?;
     let source_path = resolve_import_source_path(path)?;
     let source_profile_path = resolve_import_source_path(source_profile_path)?;
+    let capture_receipt_path = resolve_import_source_path(capture_receipt_path)?;
     let target_profile_path = resolve_import_source_path(target_profile_path)?;
     let output_path = if Path::new(output).is_absolute() {
         PathBuf::from(output)
@@ -301,6 +318,11 @@ fn run_import_html_to_wikitext(
         MAX_PROFILE_INPUT_BYTES,
         "source profile",
     )?;
+    let capture_receipt_json = read_bounded_text(
+        &capture_receipt_path,
+        MAX_CAPTURE_RECEIPT_BYTES,
+        "HTML capture receipt",
+    )?;
     let target_profile_json = read_bounded_text(
         &target_profile_path,
         MAX_PROFILE_INPUT_BYTES,
@@ -308,6 +330,13 @@ fn run_import_html_to_wikitext(
     )?;
     let source_profile: SourceProfile = serde_json::from_str(&source_profile_json)
         .with_context(|| format!("invalid source profile {}", source_profile_path.display()))?;
+    let capture_receipt: HtmlCaptureReceipt = serde_json::from_str(&capture_receipt_json)
+        .with_context(|| {
+            format!(
+                "invalid HTML capture receipt {}",
+                capture_receipt_path.display()
+            )
+        })?;
     let target_profile: TargetProfile = serde_json::from_str(&target_profile_json)
         .with_context(|| format!("invalid target profile {}", target_profile_path.display()))?;
 
@@ -350,6 +379,7 @@ fn run_import_html_to_wikitext(
         source_key,
         media_scope,
         source_profile: &source_profile,
+        capture_receipt: &capture_receipt,
         target_profile: &target_profile,
         images: &images,
         media_occurrences,
@@ -357,13 +387,18 @@ fn run_import_html_to_wikitext(
     wikitool_core::support::atomic_write(&output_path, result.transformed.wikitext.as_bytes())?;
 
     let report = HtmlToWikitextJson {
-        schema: "wikitool.import-html-to-wikitext.v1",
+        schema: "wikitool.import-html-to-wikitext.v2",
         status: "compiled",
         source_path: normalize_path(&source_path),
         source_html_sha256: wikitool_core::support::compute_sha256(&html),
         source_profile_path: normalize_path(&source_profile_path),
         source_profile_id: &source_profile.profile_id,
         source_profile_sha256: wikitool_core::support::compute_sha256(&source_profile_json),
+        capture_receipt_path: normalize_path(&capture_receipt_path),
+        capture_receipt_sha256: wikitool_core::support::compute_sha256(&capture_receipt_json),
+        representation: &result.representation,
+        capture_final_url: &capture_receipt.final_url,
+        capture_javascript_executed: capture_receipt.javascript_executed,
         target_profile_path: normalize_path(&target_profile_path),
         target_profile_id: &target_profile.profile_id,
         target_profile_sha256: wikitool_core::support::compute_sha256(&target_profile_json),
@@ -380,6 +415,7 @@ fn run_import_html_to_wikitext(
         used_media: &result.transformed.used_media,
         media_occurrences_consumed: result.transformed.media_occurrences_consumed,
         unmapped_structures: &result.unmapped_structures,
+        resource_observations: &result.resource_observations,
     };
 
     if format.is_json() {
@@ -395,6 +431,11 @@ fn run_import_html_to_wikitext(
         report.source_profile_id, report.source_profile_path
     );
     println!(
+        "capture_receipt: {} ({})",
+        html_representation_label(report.representation),
+        report.capture_receipt_path
+    );
+    println!(
         "target_profile: {} ({})",
         report.target_profile_id, report.target_profile_path
     );
@@ -407,6 +448,10 @@ fn run_import_html_to_wikitext(
         report.media_occurrences_consumed
     );
     println!("unmapped_structures: {}", report.unmapped_structures.len());
+    println!(
+        "resource_observations: {}",
+        report.resource_observations.len()
+    );
     for structure in report.unmapped_structures {
         println!(
             "unmapped: element={} classes={} occurrences={}",
@@ -419,6 +464,13 @@ fn run_import_html_to_wikitext(
         println!("\n[diagnostics]\n{}", paths.diagnostics());
     }
     Ok(())
+}
+
+fn html_representation_label(representation: &HtmlRepresentation) -> &'static str {
+    match representation {
+        HtmlRepresentation::StaticHtml => "static_html",
+        HtmlRepresentation::RenderedDom => "rendered_dom",
+    }
 }
 
 fn read_bounded_text(path: &Path, max_bytes: u64, kind: &str) -> Result<String> {

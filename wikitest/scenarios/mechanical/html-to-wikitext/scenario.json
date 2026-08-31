@@ -10,7 +10,9 @@
     {"capability": "html-to-wikitext", "steps": ["compile-profiled-html"]},
     {"capability": "source-target-profiles", "steps": ["compile-profiled-html"]},
     {"capability": "template-projection", "steps": ["compile-profiled-html"]},
-    {"capability": "source-fidelity", "steps": ["compile-profiled-html"]}
+    {"capability": "source-fidelity", "steps": ["compile-profiled-html"]},
+    {"capability": "capture-provenance", "steps": ["compile-profiled-html", "reject-stale-capture-receipt"]},
+    {"capability": "css-javascript-evidence", "steps": ["compile-profiled-html"]}
   ],
   "steps": [
     {
@@ -32,7 +34,21 @@
       "id": "install-html",
       "source": "fixtures/page.html",
       "target": "evidence/page.html",
-      "sha256": "3099a859cec5250a22f7c284d9f528138692d83691ba6358ac218eb40aa6976c"
+      "sha256": "a5f75f416ac3df245febb9cdda6557f23ac361d61ed2f66aa9fef3f2d554c4a5"
+    },
+    {
+      "action": "copy",
+      "id": "install-capture-receipt",
+      "source": "fixtures/capture-receipt.json",
+      "target": "evidence/capture-receipt.json",
+      "sha256": "43818ed735980d73b65322e8697c313d1c12c9bf805048a2dea073f023207672"
+    },
+    {
+      "action": "copy",
+      "id": "install-stale-capture-receipt",
+      "source": "fixtures/stale-capture-receipt.json",
+      "target": "evidence/stale-capture-receipt.json",
+      "sha256": "b011305e0539931e917c125bc0b7681b50415d8a54e2e5e3500972d0e22da80a"
     },
     {
       "action": "copy",
@@ -50,6 +66,8 @@
         "evidence/page.html",
         "--source-profile",
         "profiles/source.json",
+        "--capture-receipt",
+        "evidence/capture-receipt.json",
         "--target-profile",
         "profiles/target.json",
         "--canonical-title",
@@ -70,23 +88,37 @@
       "expect": {
         "exit_code": 0,
         "stdout": [
-          {"kind": "json_pointer_equals", "pointer": "/schema", "value": "wikitool.import-html-to-wikitext.v1"},
+          {"kind": "json_pointer_equals", "pointer": "/schema", "value": "wikitool.import-html-to-wikitext.v2"},
           {"kind": "json_pointer_equals", "pointer": "/status", "value": "compiled"},
           {"kind": "json_pointer_equals", "pointer": "/source_profile_id", "value": "fixture-rendered-html-v1"},
           {"kind": "json_pointer_equals", "pointer": "/target_profile_id", "value": "fixture-target-v1"},
-          {"kind": "json_pointer_equals", "pointer": "/source_html_sha256", "value": "3099a859cec5250a22f7c284d9f528138692d83691ba6358ac218eb40aa6976c"},
+          {"kind": "json_pointer_equals", "pointer": "/source_html_sha256", "value": "a5f75f416ac3df245febb9cdda6557f23ac361d61ed2f66aa9fef3f2d554c4a5"},
+          {"kind": "json_pointer_equals", "pointer": "/capture_receipt_sha256", "value": "43818ed735980d73b65322e8697c313d1c12c9bf805048a2dea073f023207672"},
+          {"kind": "json_pointer_equals", "pointer": "/representation", "value": "rendered_dom"},
+          {"kind": "json_pointer_equals", "pointer": "/capture_final_url", "value": "https://fixture.example/wiki/Fixture_subject"},
+          {"kind": "json_pointer_equals", "pointer": "/capture_javascript_executed", "value": true},
           {"kind": "json_pointer_equals", "pointer": "/media_inventory_sha256", "value": "eb1fdceb82494ece20ef17880305e5b172cc28328bc945b00f1f78e40d433dd1"},
           {"kind": "json_pointer_equals", "pointer": "/wikitext_sha256", "value": "ba8e9c15d07ae40093e2a4cf50f40a0374504d7836589e40600c634185055e07"},
           {"kind": "json_pointer_equals", "pointer": "/coverage/native_infoboxes", "value": 1},
           {"kind": "json_pointer_equals", "pointer": "/coverage/archived_audio_elements", "value": 1},
           {"kind": "json_pointer_equals", "pointer": "/coverage/discarded_style_elements", "value": 1},
           {"kind": "json_pointer_equals", "pointer": "/coverage/discarded_script_elements", "value": 1},
-          {"kind": "json_pointer_equals", "pointer": "/coverage/discarded_hidden_elements", "value": 1},
+          {"kind": "json_pointer_equals", "pointer": "/coverage/discarded_hidden_elements", "value": 3},
           {"kind": "json_pointer_equals", "pointer": "/coverage/discarded_profiled_elements", "value": 1},
           {"kind": "json_pointer_equals", "pointer": "/coverage/discarded_interaction_elements", "value": 1},
           {"kind": "json_pointer_equals", "pointer": "/media_occurrences_consumed", "value": 3},
           {"kind": "json_array_contains", "pointer": "/used_media", "value": "https://fixture.example/media/Source_Capture.ogg"},
-          {"kind": "json_array_item_pointer_equals", "pointer": "/unmapped_structures", "item_pointer": "/classes/0", "value": "mystery-box"}
+          {"kind": "json_array_item_pointer_equals", "pointer": "/unmapped_structures", "item_pointer": "/classes/0", "value": "mystery-box"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/kind", "value": "external_stylesheet"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/kind", "value": "inline_style"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/kind", "value": "external_script"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/kind", "value": "inline_script"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/locator/resolved_url", "value": "https://fixture.example/assets/site.css"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/locator/resolved_url", "value": "https://fixture.example/assets/application.js"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/classification", "value": "declarative"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/disposition", "value": "not_applied"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/disposition", "value": "not_executed"},
+          {"kind": "json_array_item_pointer_equals", "pointer": "/resource_observations", "item_pointer": "/disposition", "value": "declarative_evidence_only"}
         ],
         "files": [
           {"kind": "contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "{{Subject box"},
@@ -99,6 +131,44 @@
           {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "Audio sample"},
           {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "Coverage"},
           {"kind": "not_contains", "path": ".wikitool/imports/Fixture_subject.wiki", "value": "| type = Video game"}
+        ]
+      }
+    },
+    {
+      "action": "command",
+      "id": "reject-stale-capture-receipt",
+      "argv": [
+        "import",
+        "html-to-wikitext",
+        "evidence/page.html",
+        "--source-profile",
+        "profiles/source.json",
+        "--capture-receipt",
+        "evidence/stale-capture-receipt.json",
+        "--target-profile",
+        "profiles/target.json",
+        "--canonical-title",
+        "Fixture subject",
+        "--canonical-url",
+        "https://fixture.example/wiki/Fixture_subject",
+        "--source-key",
+        "fixture",
+        "--media-scope",
+        "fixture",
+        "--media-inventory",
+        "evidence/media-inventory.json",
+        "--output",
+        ".wikitool/imports/Stale_Fixture_subject.wiki",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 1,
+        "stderr": [
+          {"kind": "contains", "value": "HTML capture receipt html_sha256 does not match supplied HTML"}
+        ],
+        "files": [
+          {"kind": "missing", "path": ".wikitool/imports/Stale_Fixture_subject.wiki"}
         ]
       }
     }

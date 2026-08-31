@@ -1,0 +1,18 @@
+{
+  "schema": "mediawiki.html-capture-receipt.v1",
+  "source_key": "fixture",
+  "canonical_url": "https://fixture.example/wiki/Fixture_subject",
+  "final_url": "https://fixture.example/wiki/Fixture_subject",
+  "captured_at": "2026-08-31T10:00:00Z",
+  "representation": "rendered_dom",
+  "producer": {
+    "name": "wikitest-fixture",
+    "version": "1"
+  },
+  "javascript_executed": true,
+  "capture_timeout_ms": 30000,
+  "html_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "html_bytes": 1541,
+  "max_resource_observations": 16,
+  "max_inline_resource_bytes": 4096
+}

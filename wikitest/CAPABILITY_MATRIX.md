@@ -8,14 +8,14 @@ Cargo tests, lint, generated-reference checks, CLI integration checks, and relea
 
 Run `wikitest suite wikitool-capabilities --require-all` locally or dispatch the manual
 `Wikitest capability campaign` workflow. The suite contains 11 isolated scenarios and requires all
-75 declared capability slices.
+77 declared capability slices.
 
 | Scenario | Capability family | Important stress patterns |
 |---|---|---|
 | `mechanical-article-lifecycle` | Article state | Initialization, adapter binding, lint/fix, exact acceptance, promotion, stale acceptance rejection |
 | `catalog-indexed-retrieval` | Local retrieval | Wikitext parsing, internal links, chunk retrieval, article scouting |
 | `mechanical-mediawiki-sync` | Remote synchronization | Pull, redirects, conflicts, preview/apply plan binding, `baserevid`, `createonly`, lost responses, deletion lineage, reconciliation, operator closure |
-| `mechanical-html-to-wikitext` | Import conversion | Source/target profiles, template projection, source-fidelity controls |
+| `mechanical-html-to-wikitext` | Import conversion | Source/target profiles, template projection, hash-bound caller-reported rendered-DOM receipt mechanics, stale-receipt rejection, source-fidelity controls, and typed CSS/JavaScript evidence |
 | `mechanical-optional-companions` | Companion boundaries | Absent/present behavior and independent lifecycle authority |
 | `mechanical-template-closure` | Template dependency closure | Capability-bound dependencies and explicit failure evidence |
 | `catalog-structural-audit` | Structural analysis | References, duplicates, orphans, empty categories, template usage/implementation, authoring-contract search and planning |

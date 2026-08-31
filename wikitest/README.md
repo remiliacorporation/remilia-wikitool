@@ -51,7 +51,7 @@ Run the comprehensive deterministic capability campaign explicitly:
 target/debug/wikitest suite wikitool-capabilities --require-all
 ```
 
-This runs eleven isolated scenarios covering 75 declared capability slices. It is also available
+This runs eleven isolated scenarios covering 77 declared capability slices. It is also available
 through the manually dispatched `Wikitest capability campaign` workflow, which retains the receipts
 and their exact evaluated binaries together. It is not invoked by normal CI or by the release
 workflow.

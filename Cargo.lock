@@ -1205,9 +1205,11 @@ name = "mediawiki_html_to_wikitext"
 version = "0.8.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "percent-encoding",
  "scraper",
  "serde",
+ "sha2",
  "url",
 ]
 

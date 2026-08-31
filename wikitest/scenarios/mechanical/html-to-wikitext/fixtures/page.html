@@ -1,8 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <base href="https://fixture.example/assets/">
+  <title>Fixture subject</title>
+  <link rel="preload stylesheet" href="site.css" media="screen">
+  <style media="print">.application-chrome { display: none }</style>
+  <script src="application.js" type="module"></script>
+  <script type="application/ld+json">{"name":"Fixture subject"}</script>
+</head>
+<body>
 <nav>Application navigation</nav>
 <article>
 <style>.decorative-animation { opacity: 0 }</style>
 <script>hydrateApplication()</script>
 <div hidden>Hidden duplicate source text</div>
+<div aria-hidden="true">ARIA-hidden duplicate source text</div>
+<div style="display: none">Style-hidden duplicate source text</div>
 <div class="decorative-animation">Decorative animated slogan</div>
 <canvas>Animated background</canvas>
 <h2>Overview</h2>
@@ -16,3 +30,5 @@
 <p><audio><source src="https://fixture.example/media/Source_Capture.ogg" type="audio/ogg"></audio></p>
 <table class="mystery-box"><tr><td>Unmapped source structure</td></tr></table>
 </article>
+</body>
+</html>

@@ -35,6 +35,8 @@
     "source-target-profiles",
     "template-projection",
     "source-fidelity",
+    "capture-provenance",
+    "css-javascript-evidence",
     "optional-companion-absent",
     "optional-companion-present",
     "companion-lifecycle-authority",
