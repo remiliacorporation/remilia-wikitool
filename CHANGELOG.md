@@ -6,9 +6,16 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-31
+
 ### Added
 
 - `import html-to-wikitext` requires a strict hash-bound capture receipt that distinguishes static HTML from rendered DOM and reports bounded CSS and JavaScript resource observations without applying styles or executing scripts.
+- The Remilia Wiki `Infobox subject` contract now exercises source-authored `below` content through the live parser.
+
+### Fixed
+
+- The Remilia Wiki `Ambox` render contract now uses an exact published preservation object instead of a placeholder reference that could only produce parser-error markup.
 
 ## [0.8.0] - 2026-08-30
 
