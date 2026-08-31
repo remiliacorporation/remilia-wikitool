@@ -69,11 +69,11 @@
   "render_fixtures": [
     {
       "id": "notice",
-      "invocation": "{{Ambox|type=notice|text=This source-authored notice is preserved.|image_content={{Preservation image|site=example-site|sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef|alt=Preserved notice icon|width=40|height=40}}}}",
+      "invocation": "{{Ambox|type=notice|text=This source-authored notice is preserved.|image_content={{Preservation image|site=wowdev|sha256=aa04f80e07ee1bb98e754fd021fb47058ad5b029e7cdd678207147f034876401|filename=WoWEdit TopToolbar 1.jpg}}}}",
       "scope_class": "mbox",
       "expected_scope_count": 1,
       "require_interactive_link": true,
-      "required_href_substrings": ["Special:ArchiveMedia/example-site/"],
+      "required_href_substrings": ["Special:ArchiveFile/wowdev/aa04f80e07ee1bb98e754fd021fb47058ad5b029e7cdd678207147f034876401/WoWEdit_TopToolbar_1.jpg"],
       "required_link_classes": ["mw-preservation-archive-image-link"],
       "forbid_literal_wikilinks": true
     }
