@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
+use std::path::PathBuf;
 
 use crate::RuntimeOptions;
 use crate::briefs::BriefView;
@@ -33,9 +34,16 @@ enum WikiSubcommand {
 struct WikiRenderCheckArgs {
     #[arg(
         value_name = "TITLE",
-        help = "Live wiki page title to render and inspect"
+        help = "Live page title or unsaved-wikitext page context to render and inspect"
     )]
     title: String,
+    #[arg(
+        long,
+        value_name = "PATH",
+        conflicts_with = "required_page_image",
+        help = "Read bounded unsaved wikitext from this file and render it through action=parse without publishing"
+    )]
+    wikitext_file: Option<PathBuf>,
     #[arg(
         long,
         value_name = "CLASS",

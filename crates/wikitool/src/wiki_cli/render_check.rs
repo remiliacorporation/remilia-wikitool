@@ -1,8 +1,14 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs::{self, File};
+use std::io::Read;
+use std::path::Path;
 
 use serde::Serialize;
-use wikitool_core::mw::{RenderCheckOptions, RenderCheckReport, render_check_page};
+use wikitool_core::mw::{
+    MAX_RENDER_WIKITEXT_BYTES, RenderCheckOptions, RenderCheckReport, render_check_page,
+    render_check_wikitext,
+};
 
 use crate::RuntimeOptions;
 use crate::briefs::{BriefCommand, brief_command_owned};
@@ -13,6 +19,8 @@ use super::WikiRenderCheckArgs;
 #[derive(Debug, Serialize)]
 struct WikiRenderCheckOutput {
     project_root: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    wikitext_file: Option<String>,
     #[serde(flatten)]
     report: RenderCheckReport,
 }
@@ -24,6 +32,10 @@ struct WikiRenderCheckBrief<'a> {
     view: &'static str,
     project_root: String,
     status: &'static str,
+    input_kind: &'static str,
+    wikitext_file: Option<String>,
+    wikitext_sha256: Option<&'a str>,
+    wikitext_bytes: Option<usize>,
     title: &'a str,
     revision_id: Option<i64>,
     scope_class: Option<&'a str>,
@@ -46,19 +58,31 @@ pub(super) fn run_wiki_render_check(
 ) -> Result<()> {
     let (paths, config) = resolve_runtime_with_config(runtime)?;
     let mut client = wikitool_core::mw::client_from_wikitool_config(&config)?;
-    let report = render_check_page(
-        &mut client,
-        &RenderCheckOptions {
-            title: args.title,
-            scope_class: args.scope_class,
-            expected_scope_count: args.expected_scope_count,
-            require_interactive_link: args.require_interactive_link,
-            required_href_substrings: args.required_href_substrings,
-            required_link_classes: args.required_link_classes,
-            required_page_image: args.required_page_image,
-            forbid_literal_wikilinks: !args.allow_literal_wikilinks,
-        },
-    )?;
+    let wikitext_file = args
+        .wikitext_file
+        .as_deref()
+        .map(fs::canonicalize)
+        .transpose()
+        .context("resolve --wikitext-file")?;
+    let wikitext = wikitext_file
+        .as_deref()
+        .map(read_bounded_wikitext)
+        .transpose()?;
+    let options = RenderCheckOptions {
+        title: args.title,
+        scope_class: args.scope_class,
+        expected_scope_count: args.expected_scope_count,
+        require_interactive_link: args.require_interactive_link,
+        required_href_substrings: args.required_href_substrings,
+        required_link_classes: args.required_link_classes,
+        required_page_image: args.required_page_image,
+        forbid_literal_wikilinks: !args.allow_literal_wikilinks,
+    };
+    let report = match wikitext.as_deref() {
+        Some(wikitext) => render_check_wikitext(&mut client, wikitext, &options)?,
+        None => render_check_page(&mut client, &options)?,
+    };
+    let wikitext_file = wikitext_file.as_deref().map(normalize_path);
     let clean = report.status == "clean";
     let issue_count = report.issue_count;
 
@@ -68,6 +92,7 @@ pub(super) fn run_wiki_render_check(
                 "{}",
                 serde_json::to_string_pretty(&WikiRenderCheckOutput {
                     project_root: normalize_path(&paths.project_root),
+                    wikitext_file: wikitext_file.clone(),
                     report,
                 })?
             );
@@ -86,6 +111,9 @@ pub(super) fn run_wiki_render_check(
                 "render-check".to_string(),
                 report.title.clone(),
             ];
+            if let Some(wikitext_file) = &wikitext_file {
+                full_args.extend(["--wikitext-file".to_string(), wikitext_file.clone()]);
+            }
             if let Some(scope_class) = &report.scope_class {
                 full_args.extend(["--scope-class".to_string(), scope_class.clone()]);
             }
@@ -127,6 +155,10 @@ pub(super) fn run_wiki_render_check(
                     view: args.view.as_str(),
                     project_root: normalize_path(&paths.project_root),
                     status: report.status,
+                    input_kind: report.input_kind,
+                    wikitext_file: wikitext_file.clone(),
+                    wikitext_sha256: report.wikitext_sha256.as_deref(),
+                    wikitext_bytes: report.wikitext_bytes,
                     title: &report.title,
                     revision_id: report.revision_id,
                     scope_class: report.scope_class.as_deref(),
@@ -147,6 +179,22 @@ pub(super) fn run_wiki_render_check(
     } else {
         println!("wiki render-check");
         println!("project_root: {}", normalize_path(&paths.project_root));
+        println!("input_kind: {}", report.input_kind);
+        println!(
+            "wikitext_file: {}",
+            wikitext_file.as_deref().unwrap_or("<stored page>")
+        );
+        println!(
+            "wikitext_sha256: {}",
+            report.wikitext_sha256.as_deref().unwrap_or("<stored page>")
+        );
+        println!(
+            "wikitext_bytes: {}",
+            report
+                .wikitext_bytes
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "<stored page>".to_string())
+        );
         println!("title: {}", report.title);
         println!("status: {}", report.status);
         println!(
@@ -200,4 +248,17 @@ pub(super) fn run_wiki_render_check(
     } else {
         bail!("render-check detected {issue_count} issue(s)")
     }
+}
+
+fn read_bounded_wikitext(path: &Path) -> Result<String> {
+    let file = File::open(path)
+        .with_context(|| format!("open unsaved wikitext {}", normalize_path(path)))?;
+    let mut bytes = Vec::with_capacity(MAX_RENDER_WIKITEXT_BYTES.min(64 * 1024));
+    file.take((MAX_RENDER_WIKITEXT_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read unsaved wikitext {}", normalize_path(path)))?;
+    if bytes.len() > MAX_RENDER_WIKITEXT_BYTES {
+        bail!("unsaved wikitext file exceeds the {MAX_RENDER_WIKITEXT_BYTES}-byte input limit");
+    }
+    String::from_utf8(bytes).context("unsaved wikitext file is not valid UTF-8")
 }

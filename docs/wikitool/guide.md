@@ -321,6 +321,11 @@ rather than merely accepting a custom anchor that happens to target a file page.
 Use `--require-page-image FILE` when mouseover previews, search, or other
 PageImages consumers must select an exact representative image; this adds one
 bounded `prop=pageimages` request and reports the selected thumbnail URL.
+For an unpublished compiler projection, pass `--wikitext-file PATH` and use the
+destination title as the positional page context. Wikitool reads at most 1 MiB,
+submits the text through read-only `action=parse`, and reports the exact input
+SHA-256 and byte count. This mode cannot request stored PageImages evidence and
+does not create or edit a wiki page.
 
 ## Catalog and retrieval
 

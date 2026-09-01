@@ -157,7 +157,9 @@ transaction.
 - `source wiki-search|fetch|discover|session|mediawiki-templates` — source acquisition with a
   shared outbound HTTP policy.
 - `article lint|fix`, `validate`, `module lint`, `wiki render-check` — deterministic mechanical
-  checks. Passing them is not an editorial quality verdict.
+  checks. `wiki render-check --wikitext-file` submits bounded unsaved text through read-only
+  `action=parse`, binds its SHA-256 in the report, and never publishes it. Passing these checks is
+  not an editorial quality verdict.
 - `interview` — stable brief paths, neutral sections, structured open items, freshness,
   and validation; conversational judgment stays in the skill.
 

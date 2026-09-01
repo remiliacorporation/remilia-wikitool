@@ -1,12 +1,15 @@
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use super::client::MediaWikiClient;
 
-const MAX_RENDER_WIKITEXT_BYTES: usize = 1024 * 1024;
+pub const MAX_RENDER_WIKITEXT_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct RenderedPageHtml {
@@ -32,6 +35,11 @@ pub struct RenderCheckOptions {
 pub struct RenderCheckReport {
     pub schema_version: &'static str,
     pub status: &'static str,
+    pub input_kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wikitext_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wikitext_bytes: Option<usize>,
     pub title: String,
     pub display_title: Option<String>,
     pub revision_id: Option<i64>,
@@ -200,6 +208,9 @@ pub fn render_check_wikitext(
     let rendered = render_wikitext_html(client, &options.title, wikitext)?
         .with_context(|| "unsaved wikitext did not return rendered HTML")?;
     let mut report = analyze_rendered_page(&rendered, options, None);
+    report.input_kind = "unsaved_wikitext";
+    report.wikitext_sha256 = Some(format!("{:x}", Sha256::digest(wikitext.as_bytes())));
+    report.wikitext_bytes = Some(wikitext.len());
     report.request_count = client.request_count.saturating_sub(request_count_before);
     Ok(report)
 }
@@ -317,9 +328,18 @@ fn analyze_rendered_page(
     }
 
     for error_class in &analysis.parser_error_classes {
+        let snippet = analysis
+            .parser_error_snippets
+            .get(error_class)
+            .filter(|value| !value.is_empty());
         issues.push(RenderCheckIssue {
             code: "parser_error_markup".to_string(),
-            message: format!("rendered output contains parser error class `{error_class}`"),
+            message: match snippet {
+                Some(snippet) => format!(
+                    "rendered output contains parser error class `{error_class}`: {snippet}"
+                ),
+                None => format!("rendered output contains parser error class `{error_class}`"),
+            },
             scope_index: None,
         });
     }
@@ -377,8 +397,11 @@ fn analyze_rendered_page(
 
     let status = if issues.is_empty() { "clean" } else { "failed" };
     RenderCheckReport {
-        schema_version: "render_check_v1",
+        schema_version: "render_check_v2",
         status,
+        input_kind: "stored_page",
+        wikitext_sha256: None,
+        wikitext_bytes: None,
         title: rendered.title.clone(),
         display_title: rendered.display_title.clone(),
         revision_id: rendered.revision_id,
@@ -415,6 +438,7 @@ struct HtmlAnalysis {
     scopes: Vec<RenderedScopeReport>,
     literal_wikilinks: Vec<LiteralWikilink>,
     parser_error_classes: Vec<String>,
+    parser_error_snippets: BTreeMap<String, String>,
 }
 
 #[derive(Debug)]
@@ -433,6 +457,7 @@ impl std::fmt::Display for LiteralWikilink {
 struct OpenElement {
     name: String,
     scope_indices: Vec<usize>,
+    parser_error_classes: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -448,6 +473,7 @@ fn scan_rendered_html(html: &str, scope_class: Option<&str>) -> HtmlAnalysis {
         scopes: Vec::new(),
         literal_wikilinks: Vec::new(),
         parser_error_classes: Vec::new(),
+        parser_error_snippets: BTreeMap::new(),
     };
     let mut stack: Vec<OpenElement> = Vec::new();
     let bytes = html.as_bytes();
@@ -483,14 +509,29 @@ fn scan_rendered_html(html: &str, scope_class: Option<&str>) -> HtmlAnalysis {
                 let classes = attribute_value(&tag.attributes, "class")
                     .map(|value| value.split_whitespace().collect::<Vec<_>>())
                     .unwrap_or_default();
+                let mut active_error_classes = stack
+                    .last()
+                    .map(|open| open.parser_error_classes.clone())
+                    .unwrap_or_default();
                 for class in &classes {
-                    if is_parser_error_class(class)
-                        && !analysis
+                    if is_parser_error_class(class) {
+                        if !analysis
                             .parser_error_classes
                             .iter()
                             .any(|existing| existing == class)
-                    {
-                        analysis.parser_error_classes.push((*class).to_string());
+                        {
+                            analysis.parser_error_classes.push((*class).to_string());
+                        }
+                        analysis
+                            .parser_error_snippets
+                            .entry((*class).to_string())
+                            .or_default();
+                        if !active_error_classes
+                            .iter()
+                            .any(|existing| existing == class)
+                        {
+                            active_error_classes.push((*class).to_string());
+                        }
                     }
                 }
 
@@ -537,6 +578,7 @@ fn scan_rendered_html(html: &str, scope_class: Option<&str>) -> HtmlAnalysis {
                     stack.push(OpenElement {
                         name: tag.name,
                         scope_indices: active_scopes,
+                        parser_error_classes: active_error_classes,
                     });
                 }
             }
@@ -560,6 +602,21 @@ fn process_html_text(text: &str, stack: &[OpenElement], analysis: &mut HtmlAnaly
         return;
     }
     let decoded = decode_html_text(text);
+    if let Some(open) = stack.last() {
+        let compact = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !compact.is_empty() {
+            for class in &open.parser_error_classes {
+                append_bounded_snippet(
+                    analysis
+                        .parser_error_snippets
+                        .entry(class.clone())
+                        .or_default(),
+                    &compact,
+                    240,
+                );
+            }
+        }
+    }
     let literals = literal_wikilink_snippets(&decoded);
     if literals.is_empty() {
         return;
@@ -580,6 +637,18 @@ fn process_html_text(text: &str, stack: &[OpenElement], analysis: &mut HtmlAnaly
                 .push(literal.clone());
         }
     }
+}
+
+fn append_bounded_snippet(target: &mut String, value: &str, maximum_chars: usize) {
+    let used = target.chars().count();
+    if used >= maximum_chars {
+        return;
+    }
+    if !target.is_empty() {
+        target.push(' ');
+    }
+    let remaining = maximum_chars.saturating_sub(target.chars().count());
+    target.extend(value.chars().take(remaining));
 }
 
 fn find_tag_end(html: &str, start: usize) -> Option<usize> {
@@ -1021,6 +1090,7 @@ mod tests {
         assert_eq!(report.literal_wikilink_count, 1);
         assert_eq!(report.parser_error_count, 1);
         assert_eq!(report.status, "failed");
+        assert!(report.issues[1].message.ends_with(": bad"));
     }
 
     #[test]

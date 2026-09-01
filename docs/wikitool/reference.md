@@ -1989,16 +1989,17 @@ Validate rendered live HTML and scoped link contracts
 Usage: wikitool wiki render-check [OPTIONS] <TITLE>
 
 Arguments:
-  <TITLE>  Live wiki page title to render and inspect
+  <TITLE>  Live page title or unsaved-wikitext page context to render and inspect
 
 Options:
       --project-root <PATH>
-      --scope-class <CLASS>           Inspect each rendered element carrying this CSS class as one scope
+      --wikitext-file <PATH>          Read bounded unsaved wikitext from this file and render it through action=parse without publishing
       --data-dir <PATH>
-      --expect-scopes <N>             Require exactly N matching scope elements
+      --scope-class <CLASS>           Inspect each rendered element carrying this CSS class as one scope
       --config <PATH>
-      --require-interactive-link      Require every scope to contain a non-crawler interactive link
+      --expect-scopes <N>             Require exactly N matching scope elements
       --diagnostics                   Print resolved runtime diagnostics
+      --require-interactive-link      Require every scope to contain a non-crawler interactive link
       --require-href-contains <TEXT>  Require every scope to contain an interactive href with this text (repeatable)
       --require-link-class <CLASS>    Require every scope to contain an interactive link with this CSS class (repeatable)
       --require-page-image <FILE>     Require the live PageImages/Popups representative file

@@ -535,6 +535,22 @@ mod tests {
         .expect("wiki render-check should parse");
         assert!(matches!(render_check.command, Some(Commands::Wiki(_))));
 
+        let unsaved_render_check = Cli::try_parse_from([
+            "wikitool",
+            "wiki",
+            "render-check",
+            "Special:Archive/tcrf/Example",
+            "--wikitext-file",
+            "projection.wiki",
+            "--format",
+            "json",
+        ])
+        .expect("unsaved wikitext render-check should parse");
+        assert!(matches!(
+            unsaved_render_check.command,
+            Some(Commands::Wiki(_))
+        ));
+
         let contract_render_check = Cli::try_parse_from([
             "wikitool",
             "templates",
