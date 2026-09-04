@@ -9,7 +9,7 @@ use crate::support::{table_exists, unix_timestamp};
 pub const DEFAULT_DOCS_PROFILE: &str = "mw-1.44-authoring";
 // Bump the explicit semantics suffix whenever unchanged source bytes would
 // produce different derived rows under new parser or indexing behavior.
-pub const CATALOG_GENERATION: &str = concat!("catalog-v", env!("CARGO_PKG_VERSION"), "-semantics4");
+pub const CATALOG_GENERATION: &str = concat!("catalog-v", env!("CARGO_PKG_VERSION"), "-semantics5");
 
 const CONTENT_INDEX_ARTIFACT_KEY: &str = "content_index";
 

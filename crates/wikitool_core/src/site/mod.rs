@@ -6,6 +6,7 @@ pub mod template_catalog;
 pub mod template_contract;
 pub mod template_data;
 pub mod template_engineering;
+pub mod template_migration;
 
 pub use adapter::model::{
     AdapterSourceDocument, AuthoringRules, CategoryRules, CitationRules, CitationTemplateRule,

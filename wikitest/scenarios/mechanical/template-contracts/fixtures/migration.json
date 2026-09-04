@@ -1,0 +1,9 @@
+{
+  "to_template": "Template:New",
+  "title_case": "first_letter",
+  "schema": "template_migration_spec_v1",
+  "from_template": "Template:Old",
+  "parameter_renames": {
+    "old": "new"
+  }
+}

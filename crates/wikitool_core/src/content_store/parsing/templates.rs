@@ -47,6 +47,18 @@ pub(crate) fn extract_transclusion_heads(content: &str) -> Vec<String> {
 }
 
 fn extract_template_bodies(content: &str) -> Vec<&str> {
+    scan_template_body_ranges(content)
+        .0
+        .into_iter()
+        .map(|range| &content[range])
+        .collect()
+}
+
+/// Exact UTF-8 byte ranges inside balanced template braces, plus unfinished constructs.
+/// The shared scanner keeps catalog extraction and migration evidence on one syntax authority.
+pub(crate) fn scan_template_body_ranges(
+    content: &str,
+) -> (Vec<std::ops::Range<usize>>, Vec<usize>) {
     let mut out = Vec::new();
     let mut cursor = 0usize;
     let mut stack = Vec::<BraceFrame>::new();
@@ -70,7 +82,7 @@ fn extract_template_bodies(content: &str) -> Vec<&str> {
         {
             stack.pop();
             if frame.kind == BraceKind::Template && cursor >= frame.inner_start {
-                out.push(&content[frame.inner_start..cursor]);
+                out.push(frame.inner_start..cursor);
             }
             cursor += frame.kind.marker_width();
             continue;
@@ -78,7 +90,11 @@ fn extract_template_bodies(content: &str) -> Vec<&str> {
         cursor = next_char_boundary(content, cursor);
     }
 
-    out
+    let unfinished = stack
+        .iter()
+        .map(|frame| frame.inner_start - frame.kind.marker_width())
+        .collect();
+    (out, unfinished)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -267,6 +283,8 @@ pub(crate) fn parse_template_invocation(inner: &str) -> Option<ParsedTemplateInv
     for segment in segments.iter().skip(1) {
         let value = segment.trim();
         if value.is_empty() {
+            parameter_keys.push(format!("${positional_index}"));
+            positional_index += 1;
             continue;
         }
         if let Some((key, _)) = split_once_top_level_equals(value) {
@@ -333,6 +351,13 @@ pub(crate) fn parse_module_invocation(inner: &str) -> Option<ParsedModuleInvocat
 }
 
 pub(crate) fn split_template_segments(inner: &str) -> Vec<String> {
+    split_template_segment_ranges(inner)
+        .into_iter()
+        .map(|range| inner[range].trim().to_string())
+        .collect()
+}
+
+pub(crate) fn split_template_segment_ranges(inner: &str) -> Vec<std::ops::Range<usize>> {
     let mut out = Vec::new();
     let mut cursor = 0usize;
     let mut segment_start = 0usize;
@@ -344,7 +369,7 @@ pub(crate) fn split_template_segments(inner: &str) -> Vec<String> {
             continue;
         }
         if inner.as_bytes()[cursor] == b'|' && nesting.is_top_level() {
-            out.push(inner[segment_start..cursor].trim().to_string());
+            out.push(segment_start..cursor);
             cursor += 1;
             segment_start = cursor;
             continue;
@@ -352,7 +377,7 @@ pub(crate) fn split_template_segments(inner: &str) -> Vec<String> {
         cursor = next_char_boundary(inner, cursor);
     }
 
-    out.push(inner[segment_start..].trim().to_string());
+    out.push(segment_start..inner.len());
     out
 }
 

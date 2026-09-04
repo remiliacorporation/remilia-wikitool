@@ -2017,13 +2017,14 @@ Build and inspect the local template catalog
 Usage: wikitool templates [OPTIONS] <COMMAND>
 
 Commands:
-  catalog   Build and store the local template catalog artifact
-  show      Show one template catalog entry
-  examples  Show example invocations for one template
-  closure   Export an exact named template/module dependency closure
-  contract  Validate and compare declarative template contracts
-  scaffold  Preview or apply a contract-bound template scaffold
-  help      Print this message or the help of the given subcommand(s)
+  catalog         Build and store the local template catalog artifact
+  show            Show one template catalog entry
+  examples        Show example invocations for one template
+  closure         Export an exact named template/module dependency closure
+  contract        Validate and compare declarative template contracts
+  scaffold        Preview or apply a contract-bound template scaffold
+  migration-plan  Plan exact local template migrations without changing source files
+  help            Print this message or the help of the given subcommand(s)
 
 Options:
       --project-root <PATH>
@@ -2229,6 +2230,25 @@ Options:
       --overwrite            Authorize replacing an existing different file during apply
       --diagnostics          Print resolved runtime diagnostics
       --format <FORMAT>      Output format: text|json [default: text] [possible values: text, json]
+  -h, --help                 Print help
+```
+
+## templates migration-plan
+
+```text
+Plan exact local template migrations without changing source files
+
+Usage: wikitool templates migration-plan [OPTIONS] <SPEC>
+
+Arguments:
+  <SPEC>  Strict template_migration_spec_v1 JSON file
+
+Options:
+      --format <FORMAT>      [default: text] [possible values: text, json]
+      --project-root <PATH>
+      --data-dir <PATH>
+      --config <PATH>
+      --diagnostics          Print resolved runtime diagnostics
   -h, --help                 Print help
 ```
 

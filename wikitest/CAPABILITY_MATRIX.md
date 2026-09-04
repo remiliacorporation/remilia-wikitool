@@ -8,7 +8,7 @@ Cargo tests, lint, generated-reference checks, CLI integration checks, and relea
 
 Run `wikitest suite wikitool-capabilities --require-all` locally or dispatch the manual
 `Wikitest capability campaign` workflow. The suite contains 11 isolated scenarios and requires all
-77 declared capability slices.
+78 declared capability slices.
 
 | Scenario | Capability family | Important stress patterns |
 |---|---|---|
@@ -22,7 +22,7 @@ Run `wikitest suite wikitool-capabilities --require-all` locally or dispatch the
 | `mechanical-agent-authoring-workflow` | Agent-facing workflow | Adapter inspection, interview ledger/open items, brief-bound review, changeset preparation/acceptance, promotion, post-promotion validation |
 | `mechanical-knowledge-workspace` | Local knowledge workspace | Resolved config, docs import/search/context/symbols, DB reset continuity, CSV/JSON cargo import, LSP config, Scribunto lint |
 | `mechanical-mediawiki-reading` | Read-only MediaWiki | Text/title search, capability probe/sync/show, rendered-scope semantics, private-address export refusal |
-| `mechanical-template-contracts` | Template engineering | Contract validation, scaffold plan binding/replay refusal, observed-contract capture, semantic `action=parse` checks |
+| `mechanical-template-contracts` | Template engineering | Contract validation, scaffold plan binding/replay refusal, observed-contract capture, positive/negative DOM assertions, exact migration planning and collision refusal |
 
 The local MediaWiki fixture observes exact HTTP parameters and mutable revision state. It does not
 claim parity with every MediaWiki extension, authentication deployment, proxy, or production

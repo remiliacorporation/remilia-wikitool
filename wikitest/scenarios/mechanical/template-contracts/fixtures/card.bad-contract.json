@@ -41,7 +41,7 @@
         },
         {
           "max_count": 1,
-          "text_contains": "Example",
+          "text_contains": "Not present",
           "selector": "h2"
         },
         {

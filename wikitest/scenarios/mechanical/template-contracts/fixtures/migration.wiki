@@ -1,0 +1,1 @@
+Before {{Old|old=value}} after.

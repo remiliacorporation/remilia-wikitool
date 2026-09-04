@@ -7,21 +7,62 @@
   "environment": "isolated",
   "timeout_ms": 120000,
   "coverage": [
-    {"capability": "template-contract-validation", "steps": ["check-contract"]},
-    {"capability": "template-scaffold-plan-binding", "steps": ["plan-scaffold", "apply-scaffold", "reject-scaffold-replay"]},
-    {"capability": "template-contract-capture", "steps": ["capture-generated-template", "reject-capture-overwrite"]},
-    {"capability": "template-render-semantics", "steps": ["render-check-contract", "assert-parse-wire-contract"]}
+    {
+      "capability": "template-contract-validation",
+      "steps": [
+        "check-contract"
+      ]
+    },
+    {
+      "capability": "template-scaffold-plan-binding",
+      "steps": [
+        "plan-scaffold",
+        "apply-scaffold",
+        "reject-scaffold-replay"
+      ]
+    },
+    {
+      "capability": "template-contract-capture",
+      "steps": [
+        "capture-generated-template",
+        "reject-capture-overwrite"
+      ]
+    },
+    {
+      "capability": "template-render-semantics",
+      "steps": [
+        "render-check-contract",
+        "assert-parse-wire-contract",
+        "reject-semantic-mismatch"
+      ]
+    },
+    {
+      "capability": "template-migration-planning",
+      "steps": [
+        "plan-exact-migration"
+      ]
+    }
   ],
   "mediawiki_fixture": {
     "source": "fixtures/mediawiki.json",
-    "sha256": "d53c02599c9ac402b529ab2b6ea3ef2901830b02d7c088b57a3e858e4c8d1827"
+    "sha256": "3a85772c7e714d1de07c385facdb245f8e94a0e5f92633be53fd372e61458074"
   },
   "steps": [
     {
       "action": "command",
       "id": "initialize-project",
-      "argv": ["init", "--templates", "--no-network", "--wiki-url", "http://127.0.0.1", "--api-url", "{MEDIAWIKI_API_URL}"],
-      "expect": {"exit_code": 0}
+      "argv": [
+        "init",
+        "--templates",
+        "--no-network",
+        "--wiki-url",
+        "http://127.0.0.1",
+        "--api-url",
+        "{MEDIAWIKI_API_URL}"
+      ],
+      "expect": {
+        "exit_code": 0
+      }
     },
     {
       "action": "copy",
@@ -35,90 +76,263 @@
       "id": "install-contract",
       "source": "fixtures/card.contract.json",
       "target": "contracts/card.contract.json",
-      "sha256": "364c1ab15b7bd0c5331618a398ad94672173ff4fa8a695d893a68733862d5f57"
+      "sha256": "a13e6896e85bfb0adb8366556d1cf2d2d09b2e6e07034bedc1916484059d694e"
     },
     {
       "action": "command",
       "id": "check-contract",
-      "argv": ["templates", "contract", "check", "contracts/card.contract.json", "--format", "json"],
+      "argv": [
+        "templates",
+        "contract",
+        "check",
+        "contracts/card.contract.json",
+        "--format",
+        "json"
+      ],
       "expect": {
         "exit_code": 0,
         "stdout": [
-          {"kind": "json_pointer_equals", "pointer": "/status", "value": "clean"},
-          {"kind": "json_pointer_equals", "pointer": "/compatibility", "value": "new_template"}
+          {
+            "kind": "json_pointer_equals",
+            "pointer": "/status",
+            "value": "clean"
+          },
+          {
+            "kind": "json_pointer_equals",
+            "pointer": "/compatibility",
+            "value": "new_template"
+          }
         ]
       }
     },
     {
       "action": "command",
       "id": "plan-scaffold",
-      "argv": ["templates", "scaffold", "contracts/card.contract.json", "--output", "templates/core/Template_Card.wiki", "--format", "json"],
-      "captures": [{"name": "SCAFFOLD_PLAN_ID", "pointer": "/plan_id"}],
+      "argv": [
+        "templates",
+        "scaffold",
+        "contracts/card.contract.json",
+        "--output",
+        "templates/core/Template_Card.wiki",
+        "--format",
+        "json"
+      ],
+      "captures": [
+        {
+          "name": "SCAFFOLD_PLAN_ID",
+          "pointer": "/plan_id"
+        }
+      ],
       "expect": {
         "exit_code": 0,
-        "stdout": [{"kind": "json_pointer_equals", "pointer": "/mode", "value": "plan"}],
-        "files": [{"kind": "missing", "path": "templates/core/Template_Card.wiki"}]
+        "stdout": [
+          {
+            "kind": "json_pointer_equals",
+            "pointer": "/mode",
+            "value": "plan"
+          }
+        ],
+        "files": [
+          {
+            "kind": "missing",
+            "path": "templates/core/Template_Card.wiki"
+          }
+        ]
       }
     },
     {
       "action": "command",
       "id": "apply-scaffold",
-      "argv": ["templates", "scaffold", "contracts/card.contract.json", "--output", "templates/core/Template_Card.wiki", "--apply", "${SCAFFOLD_PLAN_ID}", "--format", "json"],
+      "argv": [
+        "templates",
+        "scaffold",
+        "contracts/card.contract.json",
+        "--output",
+        "templates/core/Template_Card.wiki",
+        "--apply",
+        "${SCAFFOLD_PLAN_ID}",
+        "--format",
+        "json"
+      ],
       "expect": {
         "exit_code": 0,
-        "stdout": [{"kind": "json_pointer_equals", "pointer": "/mode", "value": "applied"}],
+        "stdout": [
+          {
+            "kind": "json_pointer_equals",
+            "pointer": "/mode",
+            "value": "applied"
+          }
+        ],
         "files": [
-          {"kind": "contains", "path": "templates/core/Template_Card.wiki", "value": "<templatedata>"},
-          {"kind": "contains", "path": "templates/core/Template_Card.wiki", "value": "[[Category:Card templates]]"}
+          {
+            "kind": "contains",
+            "path": "templates/core/Template_Card.wiki",
+            "value": "<templatedata>"
+          },
+          {
+            "kind": "contains",
+            "path": "templates/core/Template_Card.wiki",
+            "value": "[[Category:Card templates]]"
+          }
         ]
       }
     },
     {
       "action": "command",
       "id": "reject-scaffold-replay",
-      "argv": ["templates", "scaffold", "contracts/card.contract.json", "--output", "templates/core/Template_Card.wiki", "--apply", "${SCAFFOLD_PLAN_ID}", "--overwrite", "--format", "json"],
+      "argv": [
+        "templates",
+        "scaffold",
+        "contracts/card.contract.json",
+        "--output",
+        "templates/core/Template_Card.wiki",
+        "--apply",
+        "${SCAFFOLD_PLAN_ID}",
+        "--overwrite",
+        "--format",
+        "json"
+      ],
       "expect": {
         "exit_code": 1,
-        "stderr": [{"kind": "contains", "value": "plan_id mismatch"}]
+        "stderr": [
+          {
+            "kind": "contains",
+            "value": "plan_id mismatch"
+          }
+        ]
       }
     },
     {
       "action": "command",
       "id": "build-template-catalog",
-      "argv": ["templates", "catalog", "build", "--format", "json"],
-      "expect": {"exit_code": 0}
+      "argv": [
+        "templates",
+        "catalog",
+        "build",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 0
+      }
     },
     {
       "action": "command",
       "id": "capture-generated-template",
-      "argv": ["templates", "contract", "capture", "Template:Card", "--output", "contracts/card.capture.json", "--format", "json"],
+      "argv": [
+        "templates",
+        "contract",
+        "capture",
+        "Template:Card",
+        "--output",
+        "contracts/card.capture.json",
+        "--format",
+        "json"
+      ],
       "expect": {
         "exit_code": 0,
         "stdout": [
-          {"kind": "json_pointer_equals", "pointer": "/schema", "value": "template_contract_capture_v1"},
-          {"kind": "json_pointer_equals", "pointer": "/authority", "value": "observed_starter_not_target_design"}
+          {
+            "kind": "json_pointer_equals",
+            "pointer": "/schema",
+            "value": "template_contract_capture_v1"
+          },
+          {
+            "kind": "json_pointer_equals",
+            "pointer": "/authority",
+            "value": "observed_starter_not_target_design"
+          }
         ],
-        "files": [{"kind": "contains", "path": "contracts/card.capture.json", "value": "\"schema_version\": \"template_engineering_contract_v1\""}]
+        "files": [
+          {
+            "kind": "contains",
+            "path": "contracts/card.capture.json",
+            "value": "\"schema_version\": \"template_engineering_contract_v1\""
+          }
+        ]
       }
     },
     {
       "action": "command",
       "id": "reject-capture-overwrite",
-      "argv": ["templates", "contract", "capture", "Template:Card", "--output", "contracts/card.capture.json", "--format", "json"],
+      "argv": [
+        "templates",
+        "contract",
+        "capture",
+        "Template:Card",
+        "--output",
+        "contracts/card.capture.json",
+        "--format",
+        "json"
+      ],
       "expect": {
         "exit_code": 1,
-        "stderr": [{"kind": "contains", "value": "refuses existing output"}]
+        "stderr": [
+          {
+            "kind": "contains",
+            "value": "refuses existing output"
+          }
+        ]
       }
     },
     {
       "action": "command",
       "id": "render-check-contract",
-      "argv": ["templates", "contract", "render-check", "contracts/card.contract.json", "--format", "json"],
+      "argv": [
+        "templates",
+        "contract",
+        "render-check",
+        "contracts/card.contract.json",
+        "--format",
+        "json"
+      ],
       "expect": {
         "exit_code": 0,
         "stdout": [
-          {"kind": "json_pointer_equals", "pointer": "/status", "value": "clean"},
-          {"kind": "json_pointer_equals", "pointer": "/fixture_count", "value": 1}
+          {
+            "kind": "json_pointer_equals",
+            "pointer": "/status",
+            "value": "clean"
+          },
+          {
+            "kind": "json_pointer_equals",
+            "pointer": "/fixture_count",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "sha256": "e2b9b24d634d31091d2201447d7c7a58d4c3f7ce050eeba886247a50ed697405",
+      "source": "fixtures/card.bad-contract.json",
+      "action": "copy",
+      "id": "install-bad-contract",
+      "target": "contracts/card.bad-contract.json"
+    },
+    {
+      "action": "command",
+      "id": "reject-semantic-mismatch",
+      "argv": [
+        "templates",
+        "contract",
+        "render-check",
+        "contracts/card.bad-contract.json",
+        "--format",
+        "json"
+      ],
+      "expect": {
+        "exit_code": 1,
+        "stdout": [
+          {
+            "value": 1,
+            "kind": "json_pointer_equals",
+            "pointer": "/failed_count"
+          },
+          {
+            "value": false,
+            "kind": "json_pointer_equals",
+            "pointer": "/fixtures/0/dom_assertions/1/passed"
+          }
         ]
       }
     },
@@ -129,11 +343,87 @@
         "requests": [
           {
             "method": "POST",
-            "params": {"action": "parse", "contentmodel": "wikitext", "disableeditsection": "1", "disablelimitreport": "1", "prop": "text|displaytitle", "title": "Wikitool template fixture"},
-            "count": 1
+            "params": {
+              "action": "parse",
+              "contentmodel": "wikitext",
+              "disableeditsection": "1",
+              "disablelimitreport": "1",
+              "prop": "text|displaytitle",
+              "title": "Wikitool template fixture"
+            },
+            "count": 2
           }
         ]
       }
+    },
+    {
+      "id": "install-migration-wiki",
+      "target": "wiki_content/Main/Migration.wiki",
+      "sha256": "ed2148e45d83c0873e2329614bab759a3526075965de77881383ffe05878e3b6",
+      "source": "fixtures/migration.wiki",
+      "action": "copy"
+    },
+    {
+      "id": "install-migration-collision-wiki",
+      "target": "wiki_content/Main/Migration_collision.wiki",
+      "sha256": "85a3d6eca239b7714e8bd9a3962045c4ae337d798fe074f9ba7346f795beac3f",
+      "source": "fixtures/migration-collision.wiki",
+      "action": "copy"
+    },
+    {
+      "id": "install-migration-json",
+      "target": "contracts/migration.json",
+      "sha256": "82bd490e73ca808ad8de3aefd5a16e5b6fcbd24b0aa40c2f2cd6d325dbd6ec67",
+      "source": "fixtures/migration.json",
+      "action": "copy"
+    },
+    {
+      "id": "plan-exact-migration",
+      "expect": {
+        "stdout": [
+          {
+            "value": 2,
+            "kind": "json_pointer_equals",
+            "pointer": "/affected_files"
+          },
+          {
+            "value": 2,
+            "kind": "json_pointer_equals",
+            "pointer": "/mechanical_patch_count"
+          },
+          {
+            "value": 1,
+            "kind": "json_pointer_equals",
+            "pointer": "/review_required_files"
+          },
+          {
+            "value": false,
+            "kind": "json_pointer_equals",
+            "pointer": "/retirement_ready"
+          }
+        ],
+        "files": [
+          {
+            "value": "{{Old|old=value}}",
+            "kind": "contains",
+            "path": "wiki_content/Main/Migration.wiki"
+          },
+          {
+            "value": "{{Old|old=left|new=right}}",
+            "kind": "contains",
+            "path": "wiki_content/Main/Migration_collision.wiki"
+          }
+        ],
+        "exit_code": 0
+      },
+      "argv": [
+        "templates",
+        "migration-plan",
+        "contracts/migration.json",
+        "--format",
+        "json"
+      ],
+      "action": "command"
     }
   ]
 }

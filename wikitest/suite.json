@@ -79,7 +79,8 @@
     "template-contract-validation",
     "template-scaffold-plan-binding",
     "template-contract-capture",
-    "template-render-semantics"
+    "template-render-semantics",
+    "template-migration-planning"
   ],
   "scenarios": [
     "mechanical-article-lifecycle",

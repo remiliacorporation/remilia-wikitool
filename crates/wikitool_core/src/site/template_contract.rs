@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use anyhow::{Context, Result, bail};
+use mediawiki_protocol::{RenderDomAssertion, validate_dom_assertions};
 use serde::{Deserialize, Serialize};
 
 use crate::catalog::templates::{normalize_module_lookup_title, normalize_template_lookup_title};
@@ -107,6 +108,10 @@ pub struct TemplateRenderFixture {
     pub required_link_classes: Vec<String>,
     #[serde(default = "default_true")]
     pub forbid_literal_wikilinks: bool,
+    #[serde(default)]
+    pub dom_assertions: Vec<RenderDomAssertion>,
+    #[serde(default)]
+    pub forbid_nested_interactive: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -847,6 +852,13 @@ fn validate_render_fixtures(
     findings: &mut Vec<TemplateContractFinding>,
 ) {
     for fixture in &contract.render_fixtures {
+        if let Err(failure) = validate_dom_assertions(&fixture.dom_assertions) {
+            error(
+                findings,
+                "render_dom_assertion_invalid",
+                format!("render fixture {}: {failure}", fixture.id),
+            );
+        }
         validate_invocation(
             contract,
             &fixture.id,
@@ -1125,6 +1137,8 @@ mod tests {
                 required_href_substrings: Vec::new(),
                 required_link_classes: Vec::new(),
                 forbid_literal_wikilinks: true,
+                dom_assertions: Vec::new(),
+                forbid_nested_interactive: false,
             }],
         }
     }

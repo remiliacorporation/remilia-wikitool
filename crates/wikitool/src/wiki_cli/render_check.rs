@@ -77,6 +77,8 @@ pub(super) fn run_wiki_render_check(
         required_link_classes: args.required_link_classes,
         required_page_image: args.required_page_image,
         forbid_literal_wikilinks: !args.allow_literal_wikilinks,
+        dom_assertions: Vec::new(),
+        forbid_nested_interactive: false,
     };
     let report = match wikitext.as_deref() {
         Some(wikitext) => render_check_wikitext(&mut client, wikitext, &options)?,

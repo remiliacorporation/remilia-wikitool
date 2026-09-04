@@ -8,6 +8,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::client::MediaWikiClient;
+use super::render_assertions::{
+    RenderDomAssertion, RenderDomAssertionResult, analyze_dom_assertions, validate_dom_assertions,
+};
 
 pub const MAX_RENDER_WIKITEXT_BYTES: usize = 1024 * 1024;
 
@@ -29,6 +32,8 @@ pub struct RenderCheckOptions {
     pub required_link_classes: Vec<String>,
     pub required_page_image: Option<String>,
     pub forbid_literal_wikilinks: bool,
+    pub dom_assertions: Vec<RenderDomAssertion>,
+    pub forbid_nested_interactive: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -60,6 +65,9 @@ pub struct RenderCheckReport {
     pub issues: Vec<RenderCheckIssue>,
     pub scopes: Vec<RenderedScopeReport>,
     pub request_count: usize,
+    pub dom_assertions: Vec<RenderDomAssertionResult>,
+    pub nested_interactive_count: usize,
+    pub browser_layout: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -253,13 +261,14 @@ fn decode_page_image_payload(response: Value) -> Result<PageImageSelection> {
 }
 
 fn validate_render_check_options(options: &RenderCheckOptions) -> Result<()> {
+    validate_dom_assertions(&options.dom_assertions)?;
     if options.title.trim().is_empty() {
         anyhow::bail!("render-check requires a non-empty title");
     }
     if options
         .scope_class
         .as_deref()
-        .is_some_and(|value| value.trim().is_empty())
+        .is_some_and(|value| value.trim().is_empty() || value.split_whitespace().count() != 1)
     {
         anyhow::bail!("--scope-class requires a non-empty CSS class");
     }
@@ -302,6 +311,44 @@ fn analyze_rendered_page(
 ) -> RenderCheckReport {
     let analysis = scan_rendered_html(&rendered.html, options.scope_class.as_deref());
     let mut issues = Vec::new();
+    if analysis.scopes.is_empty()
+        && options.scope_class.is_some()
+        && (options.require_interactive_link
+            || !options.required_href_substrings.is_empty()
+            || !options.required_link_classes.is_empty()
+            || options.forbid_nested_interactive)
+    {
+        issues.push(RenderCheckIssue {
+            code: "required_scope_missing".to_string(),
+            message: "scoped render requirements matched no component".to_string(),
+            scope_index: None,
+        });
+    }
+    let dom_assertions = analyze_dom_assertions(
+        &rendered.html,
+        options.scope_class.as_deref(),
+        &options.dom_assertions,
+    );
+    for assertion in dom_assertions.iter().filter(|assertion| !assertion.passed) {
+        issues.push(RenderCheckIssue {
+            code: "dom_assertion_failed".to_string(),
+            message: format!(
+                "DOM assertion {} ({}) matched {} elements with {} attribute/text mismatches; check count bounds and scope presence",
+                assertion.assertion_index, assertion.selector, assertion.matched_count, assertion.mismatched_count
+            ),
+            scope_index: assertion.scope_index,
+        });
+    }
+    if options.forbid_nested_interactive && analysis.nested_interactive_count > 0 {
+        issues.push(RenderCheckIssue {
+            code: "nested_interactive_markup".to_string(),
+            message: format!(
+                "server HTML contains {} interactive elements nested inside links or buttons",
+                analysis.nested_interactive_count
+            ),
+            scope_index: None,
+        });
+    }
 
     if let Some(expected) = options.expected_scope_count
         && analysis.scopes.len() != expected
@@ -397,7 +444,7 @@ fn analyze_rendered_page(
 
     let status = if issues.is_empty() { "clean" } else { "failed" };
     RenderCheckReport {
-        schema_version: "render_check_v2",
+        schema_version: "render_check_v3",
         status,
         input_kind: "stored_page",
         wikitext_sha256: None,
@@ -422,6 +469,9 @@ fn analyze_rendered_page(
         issues,
         scopes: analysis.scopes,
         request_count: 0,
+        dom_assertions,
+        nested_interactive_count: analysis.nested_interactive_count,
+        browser_layout: "not_measured",
     }
 }
 
@@ -435,6 +485,7 @@ fn normalize_file_key(value: &str) -> String {
 
 #[derive(Debug)]
 struct HtmlAnalysis {
+    nested_interactive_count: usize,
     scopes: Vec<RenderedScopeReport>,
     literal_wikilinks: Vec<LiteralWikilink>,
     parser_error_classes: Vec<String>,
@@ -455,6 +506,7 @@ impl std::fmt::Display for LiteralWikilink {
 
 #[derive(Debug)]
 struct OpenElement {
+    interactive_container: bool,
     name: String,
     scope_indices: Vec<usize>,
     parser_error_classes: Vec<String>,
@@ -470,6 +522,7 @@ struct ParsedTag {
 
 fn scan_rendered_html(html: &str, scope_class: Option<&str>) -> HtmlAnalysis {
     let mut analysis = HtmlAnalysis {
+        nested_interactive_count: 0,
         scopes: Vec::new(),
         literal_wikilinks: Vec::new(),
         parser_error_classes: Vec::new(),
@@ -574,8 +627,18 @@ fn scan_rendered_html(html: &str, scope_class: Option<&str>) -> HtmlAnalysis {
                     }
                 }
 
+                if (scope_class.is_none() || !active_scopes.is_empty())
+                    && is_interactive_tag(&tag)
+                    && stack.iter().any(|open| open.interactive_container)
+                {
+                    analysis.nested_interactive_count += 1;
+                }
+
                 if !tag.self_closing && !is_void_html_element(&tag.name) {
                     stack.push(OpenElement {
+                        interactive_container: tag.name == "button"
+                            || (tag.name == "a"
+                                && attribute_value(&tag.attributes, "href").is_some()),
                         name: tag.name,
                         scope_indices: active_scopes,
                         parser_error_classes: active_error_classes,
@@ -591,6 +654,17 @@ fn scan_rendered_html(html: &str, scope_class: Option<&str>) -> HtmlAnalysis {
         process_html_text(&html[text_start..], &stack, &mut analysis);
     }
     analysis
+}
+
+fn is_interactive_tag(tag: &ParsedTag) -> bool {
+    match tag.name.as_str() {
+        "button" | "select" | "textarea" | "details" | "iframe" | "embed" | "label" => true,
+        "a" => attribute_value(&tag.attributes, "href").is_some(),
+        "input" => !attribute_value(&tag.attributes, "type")
+            .is_some_and(|value| value.eq_ignore_ascii_case("hidden")),
+        "audio" | "video" => attribute_value(&tag.attributes, "controls").is_some(),
+        _ => false,
+    }
 }
 
 fn process_html_text(text: &str, stack: &[OpenElement], analysis: &mut HtmlAnalysis) {
@@ -979,6 +1053,8 @@ mod tests {
             required_link_classes: Vec::new(),
             required_page_image: None,
             forbid_literal_wikilinks: true,
+            dom_assertions: Vec::new(),
+            forbid_nested_interactive: false,
         }
     }
 
@@ -1009,6 +1085,27 @@ mod tests {
                 .iter()
                 .any(|issue| issue.code == "literal_wikilink" && issue.scope_index == Some(0))
         );
+    }
+
+    #[test]
+    fn render_check_refuses_absent_link_scope_and_raw_interactive_nesting() {
+        let mut opts = options("box");
+        opts.expected_scope_count = None;
+        opts.require_interactive_link = true;
+        assert_eq!(
+            analyze_rendered_page(&rendered("<p>No component</p>"), &opts, None).status,
+            "failed"
+        );
+        opts.require_interactive_link = false;
+        opts.forbid_nested_interactive = true;
+        let report = analyze_rendered_page(
+            &rendered("<div class='box'><a href='/a'><a href='/b'>Nested</a></a></div>"),
+            &opts,
+            None,
+        );
+        assert_eq!(report.nested_interactive_count, 1);
+        assert_eq!(report.status, "failed");
+        assert_eq!(report.browser_layout, "not_measured");
     }
 
     #[test]

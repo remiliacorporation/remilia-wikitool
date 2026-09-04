@@ -17,6 +17,7 @@ use crate::cli_support::{
 use crate::{LOCAL_DB_POLICY_MESSAGE, RuntimeOptions};
 
 mod contract;
+mod migration;
 use contract::{
     TemplatesContractArgs, TemplatesScaffoldArgs, run_templates_contract, run_templates_scaffold,
 };
@@ -41,6 +42,8 @@ enum TemplatesSubcommand {
     Contract(TemplatesContractArgs),
     #[command(about = "Preview or apply a contract-bound template scaffold")]
     Scaffold(TemplatesScaffoldArgs),
+    #[command(about = "Plan exact local template migrations without changing source files")]
+    MigrationPlan(migration::TemplatesMigrationPlanArgs),
 }
 
 #[derive(Debug, Args)]
@@ -138,6 +141,7 @@ pub(crate) fn run_templates(runtime: &RuntimeOptions, args: TemplatesArgs) -> Re
         TemplatesSubcommand::Closure(args) => run_templates_closure(runtime, args),
         TemplatesSubcommand::Contract(args) => run_templates_contract(runtime, args),
         TemplatesSubcommand::Scaffold(args) => run_templates_scaffold(runtime, args),
+        TemplatesSubcommand::MigrationPlan(args) => migration::run(runtime, args),
     }
 }
 

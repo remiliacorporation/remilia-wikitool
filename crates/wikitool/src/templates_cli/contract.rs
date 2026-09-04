@@ -245,6 +245,8 @@ fn run_contract_render_check(
                 required_link_classes: fixture.required_link_classes.clone(),
                 required_page_image: None,
                 forbid_literal_wikilinks: fixture.forbid_literal_wikilinks,
+                dom_assertions: fixture.dom_assertions.clone(),
+                forbid_nested_interactive: fixture.forbid_nested_interactive,
             },
         )?;
         fixtures.push(TemplateContractFixtureRenderReceipt {

@@ -1219,6 +1219,7 @@ version = "0.9.0"
 dependencies = [
  "anyhow",
  "reqwest",
+ "scraper",
  "serde",
  "serde_json",
  "sha2",

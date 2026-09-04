@@ -40,7 +40,11 @@
       "invocation": "{{Section notice|kind=version|text=This section applies only to versions 3.3.5 and later.}}",
       "scope_class": "section-notice",
       "expected_scope_count": 1,
-      "forbid_literal_wikilinks": true
+      "forbid_literal_wikilinks": true,
+      "forbid_nested_interactive": true,
+      "dom_assertions": [
+        {"selector": ".section-notice", "max_count": 1, "attributes": {"role": "note"}, "text_contains": "This section applies only to versions 3.3.5 and later."}
+      ]
     }
   ]
 }

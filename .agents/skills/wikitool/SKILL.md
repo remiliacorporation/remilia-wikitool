@@ -22,6 +22,13 @@ Use Wikitool as the mechanical and evidence substrate for a configured MediaWiki
 11. Before a push, inspect status and diff, run review, then preview an exact scope with `push --title ... --summary ...` (or deliberately select `--all`). Inspect the returned plan and retain its `plan_id`; publication requires a second invocation with the same scope, summary, policy flags, and `--apply PLAN_ID`. Wikitool rejects drift rather than silently replanning, uses revision constraints, and does not retry writes blindly. Global planning requires an explicit successful `pull --full --all`; scoped or legacy-migrated rows do not prove coverage. Durable sync identity is bound to the configured API endpoint, so preserve or move an old store aside and establish a fresh full/all baseline when deliberately changing targets.
 12. Standalone delete also previews by default. Inspect its target, title, observed revision, reason, local effect, and `plan_id`, then apply only that exact plan with `delete ... --apply PLAN_ID`. If any write becomes ambiguous, never replay it. Use `mutation list`, `mutation show <edit|delete> ID`, and `mutation reconcile <edit|delete> ID`. When remote truth is permanently unavailable, `mutation close <edit|delete> ID --actor ... --reason ... --confirm` records an unresolved operator closure rather than a fabricated outcome, preserves its provenance, invalidates the title's baseline, and requires `pull --full --all` before another write; a present page with local drift may also require explicit `--overwrite-local`.
 
+## Template engineering evidence
+
+Template migration plans inventory exact current local bytes and expose ambiguous invocations for
+review. Use semantic render assertions for explicit HTML structure, text, and attributes, then
+use browser evidence for accessibility and responsive behavior. Local zero-use does not establish
+live retirement readiness. See `docs/wikitool/template-engineering.md` for the evidence boundaries.
+
 ## macOS release trust
 
 First verify the archive against the release's external `SHA256SUMS.txt`, then inspect

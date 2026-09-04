@@ -2,7 +2,7 @@
   "schema": "wikitest.mediawiki-fixture.v4",
   "username": "wikitest-bot",
   "password": "wikitest-secret",
-  "parse_html": "<div class=\"card\">Example</div>",
+  "parse_html": "<div class=\"card\" role=\"region\" aria-label=\"Example card\"><h2>Example</h2></div>",
   "pages": [
     {
       "title": "Template:Card",
