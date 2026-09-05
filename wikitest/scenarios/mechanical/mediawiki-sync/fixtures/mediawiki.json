@@ -1,5 +1,5 @@
 {
-  "schema": "wikitest.mediawiki-fixture.v4",
+  "schema": "wikitest.mediawiki-fixture.v5",
   "username": "wikitest-bot",
   "password": "wikitest-secret",
   "ambiguous_edit_failure": {

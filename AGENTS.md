@@ -55,6 +55,11 @@ scoped here.
 
 - Run targeted unit tests for touched modules.
 - Run `cargo test --workspace` before considering source changes complete.
+- For test infrastructure or maintainer changes, also run `cargo test --workspace --all-features`.
+- Public CLI regressions live in Wikitest. Build the default `wikitool` and `wikitest` binaries,
+  run `wikitest validate`, then `wikitest suite wikitool-regressions --require-all`.
+  Extend those scenarios instead of adding shell smoke scripts or private HTTP test servers;
+  keep focused parser, state-machine, isolation, and receipt-integrity tests beside their code.
 - Run `cargo clippy --workspace --all-targets -- -D warnings` for maintainer-facing cleanup or
   release-adjacent changes.
 - For CLI contract changes, run the relevant command help and regenerate

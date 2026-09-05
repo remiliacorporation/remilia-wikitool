@@ -74,7 +74,7 @@ pub struct SuiteManifest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Requirement {
     PathExists {
         path: String,
@@ -83,7 +83,7 @@ pub enum Requirement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case")]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ScenarioStep {
     Copy {
         id: String,
@@ -203,7 +203,7 @@ pub struct CommandExpectation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum OutputAssertion {
     Contains {
         value: String,
@@ -237,7 +237,7 @@ pub enum OutputAssertion {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FileAssertion {
     Exists { path: String },
     Missing { path: String },
@@ -715,15 +715,11 @@ fn validate_mediawiki_expectation(expect: &MediaWikiExpectation, source: &str) -
             "GET" | "POST" => {}
             other => bail!("{request_source}.method must be GET or POST, got {other:?}"),
         }
-        if request.params.is_empty() {
-            bail!("{request_source}.params must not be empty");
-        }
+        // Empty params count every request of this method; count zero proves
+        // absence (for example no documentation fetch after failed discovery).
         for (key, value) in &request.params {
             non_blank(key, &format!("{request_source}.params key"))?;
             non_blank(value, &format!("{request_source}.params[{key:?}]"))?;
-        }
-        if request.count == 0 {
-            bail!("{request_source}.count must be nonzero");
         }
     }
     for (index, page) in expect.pages.iter().enumerate() {
@@ -1061,10 +1057,27 @@ mod tests {
 
     #[test]
     fn unknown_fields_are_rejected() {
-        let mut value = serde_json::to_value(scenario()).expect("serialize");
-        value["prompt"] = json!("hidden doctrine");
-        let error = serde_json::from_value::<ScenarioManifest>(value).expect_err("unknown field");
-        assert!(error.to_string().contains("unknown field"));
+        let mut base = serde_json::to_value(scenario()).expect("serialize");
+        base["requirements"] =
+            json!([{"kind":"path_exists", "path":"fixture", "on_missing":"fail"}]);
+        base["steps"][0]["expect"]["stdout"] = json!([{"kind":"contains", "value":"ready"}]);
+        base["steps"][0]["expect"]["files"] = json!([{"kind":"exists", "path":"result"}]);
+        for pointer in [
+            "",
+            "/requirements/0",
+            "/steps/0",
+            "/steps/0/expect",
+            "/steps/0/expect/stdout/0",
+            "/steps/0/expect/files/0",
+        ] {
+            let mut value = base.clone();
+            value.pointer_mut(pointer).unwrap()["unexpected"] = json!(true);
+            let error = serde_json::from_value::<ScenarioManifest>(value).expect_err(pointer);
+            assert!(
+                error.to_string().contains("unknown field"),
+                "{pointer}: {error}"
+            );
+        }
     }
 
     #[test]

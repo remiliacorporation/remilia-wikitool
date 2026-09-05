@@ -17,7 +17,7 @@ use crate::model::{
     AssertionReceipt, MediaWikiExpectation, MediaWikiPage, MediaWikiRequestExpectation,
 };
 
-pub const MEDIAWIKI_FIXTURE_SCHEMA: &str = "wikitest.mediawiki-fixture.v4";
+pub const MEDIAWIKI_FIXTURE_SCHEMA: &str = "wikitest.mediawiki-fixture.v5";
 const MEDIAWIKI_OBSERVATION_SCHEMA: &str = "wikitest.mediawiki-observation.v2";
 const LOGIN_TOKEN: &str = "WIKITEST-LOGIN-TOKEN";
 const SESSION_COOKIE_NAME: &str = "wikitest_session";
@@ -29,7 +29,7 @@ pub struct MediaWikiFixture {
     pub username: String,
     pub password: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub siteinfo_query: Option<Value>,
+    pub siteinfo_response: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parse_html: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -95,7 +95,7 @@ struct FixtureState {
     password: String,
     pages: BTreeMap<String, MediaWikiPage>,
     requests: Vec<MediaWikiRequest>,
-    siteinfo_query: Option<Value>,
+    siteinfo_response: Option<Value>,
     parse_html: Option<String>,
     ambiguous_edit_failure: Option<AmbiguousEditFailure>,
     ambiguous_edit_failure_used: bool,
@@ -145,11 +145,11 @@ impl MediaWikiFixture {
             bail!("MediaWiki fixture must contain at least one page");
         }
         if self
-            .siteinfo_query
+            .siteinfo_response
             .as_ref()
             .is_some_and(|query| !query.is_object())
         {
-            bail!("MediaWiki fixture siteinfo_query must be a JSON object");
+            bail!("MediaWiki fixture siteinfo_response must be a JSON object");
         }
         if self
             .ambiguous_edit_failure
@@ -237,7 +237,7 @@ impl MediaWikiService {
                 .map(|page| (page.title.clone(), page))
                 .collect(),
             requests: Vec::new(),
-            siteinfo_query: fixture.siteinfo_query,
+            siteinfo_response: fixture.siteinfo_response,
             parse_html: fixture.parse_html,
             ambiguous_edit_failure: fixture.ambiguous_edit_failure,
             ambiguous_edit_failure_used: false,
@@ -553,13 +553,11 @@ fn handle_query(
     cookie: Option<&str>,
 ) -> Result<FixtureResponse> {
     if params.get("meta").is_some_and(|value| value == "siteinfo") {
-        let query = state
-            .siteinfo_query
+        let response = state
+            .siteinfo_response
             .as_ref()
-            .context("MediaWiki fixture has no siteinfo_query response")?;
-        return Ok(FixtureResponse::Json(
-            json!({"batchcomplete": true, "query": query}),
-        ));
+            .context("MediaWiki fixture has no siteinfo_response response")?;
+        return Ok(FixtureResponse::Json(response.clone()));
     }
     if params.get("meta").is_some_and(|value| value == "tokens") {
         return if params.get("type").is_some_and(|value| value == "login") {
@@ -1037,6 +1035,32 @@ mod tests {
     };
 
     #[test]
+    fn zero_request_counts_detect_forbidden_calls_and_empty_params_count_all() {
+        let mut observation = MediaWikiObservation {
+            schema: MEDIAWIKI_OBSERVATION_SCHEMA.into(),
+            requests: vec![],
+            pages: vec![],
+            delete_logs: vec![],
+        };
+        let mut expected = MediaWikiRequestExpectation {
+            method: "GET".into(),
+            params: BTreeMap::new(),
+            count: 0,
+        };
+        assert!(evaluate_request(&observation, &expected).passed);
+        observation.requests.push(MediaWikiRequest {
+            method: "GET".into(),
+            params: BTreeMap::from([("action".into(), "query".into())]),
+        });
+        assert!(!evaluate_request(&observation, &expected).passed);
+        expected.count = 1;
+        assert!(evaluate_request(&observation, &expected).passed);
+        expected.params.insert("action".into(), "edit".into());
+        expected.count = 0;
+        assert!(evaluate_request(&observation, &expected).passed);
+    }
+
+    #[test]
     fn expectation_matches_wire_parameters_and_page_state() {
         let observation = MediaWikiObservation {
             schema: MEDIAWIKI_OBSERVATION_SCHEMA.to_owned(),
@@ -1100,7 +1124,7 @@ mod tests {
             password: "secret".to_owned(),
             pages: BTreeMap::new(),
             requests: Vec::new(),
-            siteinfo_query: None,
+            siteinfo_response: None,
             parse_html: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
@@ -1183,7 +1207,7 @@ mod tests {
                 ),
             ]),
             requests: Vec::new(),
-            siteinfo_query: None,
+            siteinfo_response: None,
             parse_html: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
@@ -1286,7 +1310,7 @@ mod tests {
                 },
             )]),
             requests: Vec::new(),
-            siteinfo_query: None,
+            siteinfo_response: None,
             parse_html: None,
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,
@@ -1338,7 +1362,7 @@ mod tests {
             password: "secret".to_owned(),
             pages: BTreeMap::from([(page.title.clone(), page)]),
             requests: Vec::new(),
-            siteinfo_query: None,
+            siteinfo_response: None,
             parse_html: Some("<div class=\"archive-card\">Aster</div>".to_owned()),
             ambiguous_edit_failure: None,
             ambiguous_edit_failure_used: false,

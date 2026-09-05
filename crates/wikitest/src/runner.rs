@@ -13,7 +13,7 @@ use crate::artifact::{
     resolve_output_path, sha256_bytes, sha256_file, unix_ms,
 };
 use crate::canonical::canonicalize_exact_paths;
-use crate::catalog::{Manifest, load_manifest, resolve_manifest};
+use crate::catalog::{Manifest, load_manifest, resolve_manifest, validate_scenario_inputs};
 use crate::identity::{current_driver_identity, repository_binary_locator};
 use crate::mediawiki::{MediaWikiFixture, MediaWikiService, evaluate_expectation};
 use crate::model::{
@@ -115,6 +115,7 @@ fn run_loaded_scenario(
     }
     let started_at = unix_ms()?;
     let started = Instant::now();
+    validate_scenario_inputs(scenario_path, scenario)?;
     let (run_id, run_directory) = create_run_directory(
         &options.artifacts_root,
         &scenario.id,
@@ -1011,10 +1012,22 @@ fn run_command_step(
     if !cwd.is_dir() {
         bail!("step '{id}' cwd does not exist: {}", cwd.display());
     }
-    let environment = declared_environment
+    let mut environment = declared_environment
         .iter()
         .map(|(key, value)| Ok((key.clone(), variables.expand(value)?)))
         .collect::<Result<BTreeMap<_, _>>>()?;
+    if let Some(endpoint) = variables.mediawiki_api_url {
+        // Documentation discovery must use the same observed loopback authority as
+        // wiki operations. Manifests cannot choose or restore these runtime overrides.
+        for key in [
+            "WIKITOOL_DOCS_API_URL",
+            "WIKITOOL_INSTALLED_EXTENSIONS_API_URL",
+        ] {
+            environment.insert(key.to_owned(), endpoint.to_owned());
+        }
+        environment.insert("WIKITOOL_DOCS_RETRIES".to_owned(), "0".to_owned());
+        environment.insert("WIKITOOL_DOCS_TIMEOUT_MS".to_owned(), "3000".to_owned());
+    }
     let stdout_path = steps_directory.join(format!("{index:03}-{id}.stdout.txt"));
     let stderr_path = steps_directory.join(format!("{index:03}-{id}.stderr.txt"));
     let raw_directory = workspace.join(".wikitest-private/process-output");

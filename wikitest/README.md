@@ -1,6 +1,6 @@
 # Wikitest
 
-Wikitest is Wikitool's executable dogfooding and editorial-evaluation laboratory. It is a separate
+Wikitest is Wikitool's public CLI regression suite and editorial-evaluation laboratory. It is a separate
 workspace binary and scenario authority, not a collection of assertions hidden inside Wikitool's
 unit tests. It exercises the public `wikitool` executable and writes inspectable, hash-bound run
 artifacts under `.wikitest/`.
@@ -25,10 +25,11 @@ also record an exact provider, model, harness and version, invocation ID, networ
 access envelope, and any available duration or token metrics. These remain participant claims, but
 an anonymous or model-only agent run is not valid frontier evidence.
 
-Wikitest is deliberately not a release gate. Ordinary CI owns compilation, unit/integration tests,
-generated-reference drift, lint, and release-dispatch safety. Wikitest owns opt-in capability
-campaigns whose receipts are useful when a change or investigation warrants their cost. See
-[`CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md) for the tested surfaces and evidence limits.
+The `wikitool-regressions` suite runs in Linux and Windows CI. The broader capability campaign,
+host-corpus checks, and external prose campaigns remain opt-in. Cargo owns focused algorithm,
+state-machine, isolation, and evaluator-integrity tests; native release jobs own packaged binaries
+and companion installation. See [`TESTING.md`](TESTING.md) for test placement and the retired
+harness coverage map, and [`CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md) for evidence limits.
 
 ## Commands
 
@@ -38,11 +39,13 @@ Build both binaries before running the laboratory:
 cargo build -p wikitool -p wikitest
 ```
 
-Discover and validate the catalog, including suite membership and coverage closure:
+Discover and validate the catalog, including suite membership, coverage closure, and exact bytes
+and schemas of scenario fixtures. Validation performs no tested commands or network requests:
 
 ```text
 target/debug/wikitest list
 target/debug/wikitest validate
+target/debug/wikitest suite wikitool-regressions --require-all
 ```
 
 Run the comprehensive deterministic capability campaign explicitly:
@@ -51,7 +54,7 @@ Run the comprehensive deterministic capability campaign explicitly:
 target/debug/wikitest suite wikitool-capabilities --require-all
 ```
 
-This runs eleven isolated scenarios covering 77 declared capability slices. It is also available
+This runs fourteen isolated scenarios covering 84 declared capability slices. It is also available
 through the manually dispatched `Wikitest capability campaign` workflow, which retains the receipts
 and their exact evaluated binaries together. It is not invoked by normal CI or by the release
 workflow.
@@ -201,9 +204,13 @@ exercises typed `missingtitle`, and independently asserts the complete delete-re
 visible delete marker is recovered through paginated `logevents`; a hidden marker remains
 ambiguous, is closed with explicit operator provenance, blocks another write until a target-bound
 full pull, and remains replayable through `mutation show` and `mutation list --all`.
-An optional `siteinfo_query` object supplies the exact `query` body for read-only
-`meta=siteinfo` requests, allowing capability discovery and capability-bound consumers to be
-tested without external network access.
+The v5 fixture's optional `siteinfo_response` object supplies the complete JSON response for
+`meta=siteinfo`, including errors and deliberately missing evidence. Earlier v4 fixture inputs must
+wrap their `siteinfo_query` as `{"query": ...}` and update their hashes. Documentation API routes
+are bound by the runner to the same observed loopback fixture, with retries disabled; scenario
+environment declarations cannot override them. Request assertions accept `count: 0` to prove
+absence, and empty `params` count every request of the selected method. Pair failure assertions
+with these observations to prove no follow-up fetch or mutation occurred.
 
 ## Prose controls
 
@@ -228,6 +235,6 @@ model, or article type. Rebuilding either binary intentionally makes the corresp
 identity stale; retain that run as historical evidence and create a new run for the new binary
 instead of waiving the mismatch.
 
-Wikitest is source-resident development and evaluation infrastructure, not a release gate. Release
+Wikitest is source-resident testing and evaluation infrastructure. Release
 archives ship the end-user Wikitool binary and skills distribution, not this binary or its scenario catalogs; a standalone Wikitest
 binary without the source catalog and skill inputs would be an incomplete evaluator.

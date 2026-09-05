@@ -1,0 +1,39 @@
+schema_version = "site_adapter_v2"
+adapter_id = "mediawiki-generic"
+docs_profile = "mw-1.44-site-authoring"
+guidance_documents = []
+
+[authoring]
+require_short_description = false
+short_description_forms = []
+require_article_quality_banner = false
+required_appendix_sections = []
+prefer_sentence_case_headings = false
+prefer_wikitext_only = true
+forbid_markdown = true
+require_straight_quotes = false
+
+[citations]
+preferred_templates = []
+use_named_references = false
+leave_archive_fields_blank = false
+source_review_rules = []
+
+[templates]
+infobox_preferences = []
+
+[categories]
+preferred_categories = []
+
+[lint]
+forbid_curly_quotes = false
+citation_needed = "ignore"
+proper_nouns = []
+forbid_placeholder_fragments = [
+  "INSERT_SOURCE_URL",
+  "citeturn0search0",
+  "contentReference[oaicite:0]",
+  "oai_citation",
+  "attached_file:1",
+  "[cite_start]",
+]

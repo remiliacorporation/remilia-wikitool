@@ -1,0 +1,39 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-docs-discovery",
+  "title": "Installed docs follow extension types and deduplicate names",
+  "description": "Discover registered extension types, exclude skins, and import only the unique extension through the public CLI and observed loopback API.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 15000,
+  "coverage": [{"capability":"installed-docs-discovery","steps":["import-installed-docs","observe-requests"]}],
+  "mediawiki_fixture": {"source":"fixtures/mediawiki.json","sha256":"f632a33a47ad89a4d005779c5e569bc8029b469cfdcd9017d289e15291ff0435"},
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": ["init","--no-network","--api-url","{MEDIAWIKI_API_URL}"],
+      "expect": {"exit_code":0}
+    },
+    {
+      "action": "command",
+      "id": "import-installed-docs",
+      "argv": ["docs","import","--installed","--no-subpages"],
+      "timeout_ms": 5000,
+      "expect": {"exit_code":0,"stdout":[{"kind":"contains","value":"imported_extensions: 1"}]}
+    },
+    {
+      "action": "mediawiki_assert",
+      "id": "observe-requests",
+      "expect": {
+        "requests": [
+          {"method":"GET","params":{"action":"query","meta":"siteinfo","siprop":"extensions"},"count":1},
+          {"method":"GET","params":{"action":"query","titles":"Extension:Example"},"count":1},
+          {"method":"GET","params":{"action":"query","titles":"Extension:MinervaNeue"},"count":0},
+          {"method":"GET","params":{},"count":2},
+          {"method":"POST","params":{},"count":0}
+        ]
+      }
+    }
+  ]
+}

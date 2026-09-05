@@ -15,15 +15,43 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Cargo tests
-        run: cargo test --workspace
+        run: cargo test --workspace --all-features
       - name: Generated CLI reference is current
         run: |
           cargo run --quiet --package wikitool --features maintainer -- docs generate-reference --output /tmp/wikitool-reference.md
           diff -u docs/wikitool/reference.md /tmp/wikitool-reference.md
-      - name: CLI integration regressions
-        run: bash tests/cli_integration/cli_tests.sh
       - name: Release dispatch guard
         run: bash tests/release_dispatch.sh
+
+  cli-regressions:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build default end-user and test binaries
+        run: cargo build --package wikitool --package wikitest
+      - name: Validate manifests and fixture identities
+        run: cargo run --quiet --package wikitest -- validate
+      - name: Public CLI regressions
+        run: cargo run --quiet --package wikitest -- suite wikitool-regressions --require-all
+      - name: Retain replayable regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wikitest-regressions-${{ matrix.os }}
+          path: |
+            .wikitest/runs
+            target/debug/wikitool
+            target/debug/wikitool.exe
+            target/debug/wikitest
+            target/debug/wikitest.exe
+          if-no-files-found: error
 
   rust-lint:
     runs-on: ubuntu-latest

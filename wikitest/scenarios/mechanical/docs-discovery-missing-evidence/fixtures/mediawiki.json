@@ -1,0 +1,18 @@
+{
+  "schema": "wikitest.mediawiki-fixture.v5",
+  "username": "Fixture",
+  "password": "fixture-only",
+  "siteinfo_response": {
+    "query": {}
+  },
+  "pages": [
+    {
+      "title": "Extension:Example",
+      "namespace": 102,
+      "page_id": 1,
+      "revision_id": 1,
+      "timestamp": "2026-09-05T00:00:00Z",
+      "content": "== Usage ==\nExample extension documentation for the discovery fixture."
+    }
+  ]
+}

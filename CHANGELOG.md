@@ -6,6 +6,17 @@ The release workflow extracts the section for the requested version and fails if
 
 ## [Unreleased]
 
+### Changed
+
+- Wikitest owns public CLI integration testing through the portable `wikitool-regressions` suite in Linux and Windows CI. The duplicate Bash/Python harness and separate docs-discovery/profile CLI tests are retired; focused invariant tests and native release/companion checks retain their own authorities. The broader capability and external prose campaigns remain opt-in.
+- MediaWiki fixtures use `wikitest.mediawiki-fixture.v5` with a complete `siteinfo_response`, allowing API-error and missing-evidence controls. The runner binds documentation discovery and fetches to the same observed loopback API.
+- Evidence hashing uses a fixed 64 KiB read buffer and an optimized SHA-256 dependency in debug/test builds; every verification still re-reads the exact bytes.
+
+### Fixed
+
+- Wikitest rejects unknown fields inside steps and assertions, validates scenario fixture hashes and schemas before execution, and supports zero-request assertions and total method counts. Docs discovery, adapter profile defaults, catalog readiness, database reset, and documentation removal have structured public-CLI regressions.
+- Failed Wikitest suites replay as failed evidence when their observed coverage is incomplete; inspection still rejects forged passes or fabricated coverage. Text reports identify failed scenarios and assertions.
+
 ## [0.9.0] - 2026-08-31
 
 ### Added

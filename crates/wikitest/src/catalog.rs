@@ -8,8 +8,9 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use walkdir::WalkDir;
 
-use crate::artifact::portable;
-use crate::model::{SCENARIO_SCHEMA, SUITE_SCHEMA, ScenarioManifest, SuiteManifest};
+use crate::artifact::{portable, resolve_existing_plain_file, sha256_file};
+use crate::mediawiki::MediaWikiFixture;
+use crate::model::{SCENARIO_SCHEMA, SUITE_SCHEMA, ScenarioManifest, ScenarioStep, SuiteManifest};
 use crate::prose_model::{
     PROSE_ASSIGNMENT_SCHEMA, PROSE_SUITE_SCHEMA, ProseAssignment, ProseSuite,
 };
@@ -111,6 +112,32 @@ pub fn load_manifest(path: &Path) -> Result<(Manifest, Vec<u8>)> {
     };
     manifest.validate()?;
     Ok((manifest, bytes))
+}
+
+/// Check immutable scenario inputs before any command executes. Execution still checks
+/// each copied input again so edits made after preflight cannot silently enter a run.
+pub fn validate_scenario_inputs(path: &Path, scenario: &ScenarioManifest) -> Result<()> {
+    let root = path.parent().context("scenario has no parent directory")?;
+    let verify = |source: &str, expected: &str| -> Result<PathBuf> {
+        let input = resolve_existing_plain_file(root, source)?;
+        let (actual, _) = sha256_file(&input)?;
+        if actual != expected {
+            bail!(
+                "scenario '{}' input '{source}' SHA-256 mismatch: expected {expected}, observed {actual}",
+                scenario.id
+            );
+        }
+        Ok(input)
+    };
+    if let Some(fixture) = &scenario.mediawiki_fixture {
+        MediaWikiFixture::from_path(&verify(&fixture.source, &fixture.sha256)?)?;
+    }
+    for step in &scenario.steps {
+        if let ScenarioStep::Copy { source, sha256, .. } = step {
+            verify(source, sha256)?;
+        }
+    }
+    Ok(())
 }
 
 pub fn scan_catalogs(roots: &[PathBuf]) -> Result<Vec<CatalogEntry>> {
@@ -285,6 +312,44 @@ pub fn display_catalog_path(repository: &Path, path: &Path) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn input_preflight_refuses_missing_changed_and_invalid_fixtures() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("scenario.json");
+        let input = root.path().join("input.wiki");
+        fs::write(&input, "retained bytes").unwrap();
+        let (digest, _) = sha256_file(&input).unwrap();
+        let mut scenario: ScenarioManifest = serde_json::from_value(serde_json::json!({
+            "schema": SCENARIO_SCHEMA, "id":"preflight", "title":"Preflight",
+            "description":"Refuse invalid inputs before execution.", "kind":"mechanical",
+            "environment":"isolated", "timeout_ms":1000, "coverage":[],
+            "steps":[{"action":"copy", "id":"input", "source":"input.wiki", "target":"copy.wiki", "sha256":digest}]
+        })).unwrap();
+        validate_scenario_inputs(&path, &scenario).unwrap();
+        fs::write(&input, "changed bytes").unwrap();
+        assert!(
+            validate_scenario_inputs(&path, &scenario)
+                .unwrap_err()
+                .to_string()
+                .contains("SHA-256 mismatch")
+        );
+        fs::remove_file(&input).unwrap();
+        assert!(validate_scenario_inputs(&path, &scenario).is_err());
+
+        fs::write(&input, "{}").unwrap();
+        scenario.steps.clear();
+        scenario.mediawiki_fixture = Some(crate::model::MediaWikiFixtureRef {
+            source: "input.wiki".into(),
+            sha256: sha256_file(&input).unwrap().0,
+        });
+        assert!(
+            validate_scenario_inputs(&path, &scenario)
+                .unwrap_err()
+                .to_string()
+                .contains("invalid MediaWiki fixture")
+        );
+    }
 
     #[test]
     fn catalog_refuses_duplicate_ids() {

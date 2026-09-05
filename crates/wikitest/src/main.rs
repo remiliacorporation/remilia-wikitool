@@ -10,7 +10,7 @@ use serde_json::json;
 use wikitest::artifact::portable;
 use wikitest::catalog::{
     Manifest, default_catalog, discover_repository, display_catalog_path, load_manifest,
-    resolve_manifest, resolve_wikitool, scan_catalogs,
+    resolve_manifest, resolve_wikitool, scan_catalogs, validate_scenario_inputs,
 };
 use wikitest::inspection::inspect_receipt;
 use wikitest::model::{
@@ -242,7 +242,7 @@ fn execute(cli: Cli) -> Result<u8> {
                 scan_catalogs(&catalogs)?
             };
             for entry in &rows {
-                validate_manifest_closure(&entry.manifest, &catalogs)?;
+                validate_manifest_closure(&entry.path, &entry.manifest, &catalogs)?;
             }
             let validated = rows
                 .iter()
@@ -277,12 +277,24 @@ fn execute(cli: Cli) -> Result<u8> {
             require_replayable_receipt(&run.receipt_path, &repository)?;
             let value = serde_json::to_value(&run.receipt)?;
             render_value(cli.format, &value, || {
-                format!(
+                let mut lines = vec![format!(
                     "{}: {:?}\nreceipt: {}",
                     run.receipt.scenario.id,
                     run.receipt.status,
                     portable(&run.receipt_path)
-                )
+                )];
+                if let Some(failure) = &run.receipt.failure {
+                    lines.push(failure.clone());
+                }
+                for step in &run.receipt.steps {
+                    for assertion in step.assertions.iter().filter(|assertion| !assertion.passed) {
+                        lines.push(format!(
+                            "[failed] {} / {} / {}: {}",
+                            step.id, assertion.target, assertion.assertion, assertion.detail
+                        ));
+                    }
+                }
+                lines.join("\n")
             })?;
             Ok(status_exit(run.receipt.status, require_all))
         }
@@ -294,13 +306,31 @@ fn execute(cli: Cli) -> Result<u8> {
             require_replayable_receipt(&run.receipt_path, &repository)?;
             let value = serde_json::to_value(&run.receipt)?;
             render_value(cli.format, &value, || {
-                format!(
+                let mut lines = vec![format!(
                     "{}: {:?} ({} run(s))\nreceipt: {}",
                     run.receipt.suite.id,
                     run.receipt.status,
                     run.receipt.runs.len(),
                     portable(&run.receipt_path)
-                )
+                )];
+                for child in run
+                    .receipt
+                    .runs
+                    .iter()
+                    .filter(|child| child.status != RunStatus::Passed)
+                {
+                    lines.push(format!(
+                        "[{:?}] {}: {}",
+                        child.status,
+                        child.scenario_id.as_deref().unwrap_or(&child.scenario),
+                        child
+                            .error
+                            .as_deref()
+                            .or(child.receipt_locator.as_deref())
+                            .unwrap_or("no receipt")
+                    ));
+                }
+                lines.join("\n")
             })?;
             Ok(status_exit(run.receipt.status, false))
         }
@@ -571,7 +601,7 @@ fn resolve_any_manifest(
     }
 }
 
-fn validate_manifest_closure(manifest: &Manifest, catalogs: &[PathBuf]) -> Result<()> {
+fn validate_manifest_closure(path: &Path, manifest: &Manifest, catalogs: &[PathBuf]) -> Result<()> {
     match manifest {
         Manifest::Suite(suite) => {
             let mut observed = std::collections::BTreeSet::new();
@@ -582,6 +612,7 @@ fn validate_manifest_closure(manifest: &Manifest, catalogs: &[PathBuf]) -> Resul
                     bail!("suite member '{member}' resolved to the wrong manifest kind");
                 };
                 scenario.validate()?;
+                validate_scenario_inputs(&path, &scenario)?;
                 observed.extend(
                     scenario
                         .coverage
@@ -603,7 +634,8 @@ fn validate_manifest_closure(manifest: &Manifest, catalogs: &[PathBuf]) -> Resul
             }
             require_declared_coverage(manifest.id(), &suite.required_coverage, &observed)
         }
-        Manifest::Scenario(_) | Manifest::ProseAssignment(_) => Ok(()),
+        Manifest::Scenario(scenario) => validate_scenario_inputs(path, scenario),
+        Manifest::ProseAssignment(_) => Ok(()),
     }
 }
 

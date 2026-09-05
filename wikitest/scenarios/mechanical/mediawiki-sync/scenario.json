@@ -8,7 +8,7 @@
   "timeout_ms": 120000,
   "coverage": [
     {"capability": "mediawiki-http", "steps": ["pull-templates", "assert-authenticated-one-shot-wire-contract"]},
-    {"capability": "pull", "steps": ["pull-templates"]},
+    {"capability": "pull", "steps": ["pull-templates", "inspect-synced-status"]},
     {"capability": "redirects", "steps": ["pull-templates"]},
     {"capability": "diff", "steps": ["diff-local-changes"]},
     {"capability": "remote-conflicts", "steps": ["detect-stale-revision"]},
@@ -26,7 +26,7 @@
   ],
   "mediawiki_fixture": {
     "source": "fixtures/mediawiki.json",
-    "sha256": "4a56c04bacfeab9ebb27adaa3a93cf07dce0f515d144c94149adca268dcb902e"
+    "sha256": "9991c9f5a3e5453a7263cfa97fa8c0c11030571f5128bd43fa5ac347951b1356"
   },
   "steps": [
     {
@@ -63,6 +63,16 @@
           {"kind": "contains", "path": "templates/misc/_redirects/Template_Infobox_alias.wiki", "value": "#REDIRECT"}
         ]
       }
+    },
+    {
+      "action": "command",
+      "id": "inspect-synced-status",
+      "argv": ["status", "--templates", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [
+        {"kind": "json_pointer_equals", "pointer": "/sync_ledger_ready", "value": true},
+        {"kind": "json_pointer_equals", "pointer": "/plan/modified_local", "value": 0},
+        {"kind": "json_pointer_equals", "pointer": "/plan/changes", "value": []}
+      ]}
     },
     {
       "action": "copy",

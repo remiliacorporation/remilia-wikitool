@@ -740,11 +740,16 @@ fn inspect_suite(
     });
     checks.push(InspectionCheck {
         name: "suite_coverage".to_owned(),
-        passed: recorded_coverage == observed_coverage
-            && required_coverage.is_subset(&observed_coverage),
+        // Missing coverage explains a failed suite; it does not invalidate its
+        // evidence. The independent status check rejects a forged passing status.
+        passed: recorded_coverage == observed_coverage,
         detail: format!(
-            "required {:?}, recorded {:?}, observed {:?}",
-            required_coverage, recorded_coverage, observed_coverage
+            "recorded {} capabilities, replayed {}; missing {:?}",
+            recorded_coverage.len(),
+            observed_coverage.len(),
+            required_coverage
+                .difference(&observed_coverage)
+                .collect::<Vec<_>>()
         ),
     });
     checks.push(InspectionCheck {

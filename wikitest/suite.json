@@ -80,7 +80,13 @@
     "template-scaffold-plan-binding",
     "template-contract-capture",
     "template-render-semantics",
-    "template-migration-planning"
+    "template-migration-planning",
+    "adapter-docs-profile",
+    "catalog-readiness",
+    "docs-removal",
+    "installed-docs-api-error",
+    "installed-docs-discovery",
+    "installed-docs-missing-evidence"
   ],
   "scenarios": [
     "mechanical-article-lifecycle",
@@ -93,6 +99,9 @@
     "mechanical-agent-authoring-workflow",
     "mechanical-knowledge-workspace",
     "mechanical-mediawiki-reading",
-    "mechanical-template-contracts"
+    "mechanical-template-contracts",
+    "mechanical-docs-discovery",
+    "mechanical-docs-discovery-api-error",
+    "mechanical-docs-discovery-missing-evidence"
   ]
 }

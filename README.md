@@ -233,6 +233,7 @@ prose assignments:
 ```bash
 cargo build -p wikitool -p wikitest
 target/debug/wikitest validate
+target/debug/wikitest suite wikitool-regressions --require-all
 target/debug/wikitest suite wikitool-capabilities --require-all
 target/debug/wikitest prose prepare-suite prose-dogfood
 target/debug/wikitest prose prepare-suite complex-prose-stress
@@ -240,8 +241,9 @@ target/debug/wikitest prose prepare-suite complex-prose-stress
 target/debug/wikitest prose evaluate-suite RUN
 ```
 
-Wikitest campaigns are explicit development evaluations, not per-release gates. The deterministic
-campaign covers 77 declared capability slices across 11 isolated scenarios; the complex prose
+The portable regression suite runs in Linux and Windows CI. The broader capability and prose
+campaigns are explicit development evaluations. The deterministic capability campaign covers
+84 declared capability slices across 14 isolated scenarios; the complex prose
 campaign prepares two source-rich long-form assignments and records no demonstrated coverage until
 external authors and differently identified reviewers complete them. Agent submissions must record
 their exact execution identity and access envelope. See `wikitest/CAPABILITY_MATRIX.md` for the
@@ -252,7 +254,7 @@ driver and evaluated Wikitool binaries—before returning success. Inspection la
 self-contained artifact set `unanchored`: an external immutable digest or signed build record is
 still required for authenticity. A host wiki can add a read-only
 supplemental catalog for its real local database without moving site doctrine into Wikitest or
-Wikitool. Wikitest and its catalogs are opt-in development-evaluation substrate and are
+Wikitool. Wikitest and its catalogs are source-resident testing and evaluation infrastructure and are
 intentionally absent from end-user release archives; see `wikitest/README.md`.
 
 ## Build from source

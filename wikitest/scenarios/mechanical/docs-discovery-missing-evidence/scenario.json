@@ -1,0 +1,47 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-docs-discovery-missing-evidence",
+  "title": "Installed docs refuse missing evidence",
+  "description": "Discovery failure must stop before any documentation request; absent evidence is never an empty installation.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 15000,
+  "coverage": [{"capability":"installed-docs-missing-evidence","steps":["import-installed-docs","observe-requests"]}],
+  "mediawiki_fixture": {"source":"fixtures/mediawiki.json","sha256":"3214d312cafba35129cb21c0fa72af4f43b1dca6b32c124f147f7e54fb4f6784"},
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": ["init","--no-network","--api-url","{MEDIAWIKI_API_URL}"],
+      "expect": {"exit_code":0}
+    },
+    {
+      "action": "command",
+      "id": "import-installed-docs",
+      "argv": ["docs","import","--installed","--no-subpages"],
+      "timeout_ms": 5000,
+      "expect": {
+        "exit_code": 1,
+        "stderr": [
+          {
+            "kind": "contains",
+            "value": "installed-extensions response requires query.extensions with names and types"
+          }
+        ]
+      }
+    },
+    {
+      "action": "mediawiki_assert",
+      "id": "observe-requests",
+      "expect": {
+        "requests": [
+          {"method":"GET","params":{"action":"query","meta":"siteinfo","siprop":"extensions"},"count":1},
+          {"method":"GET","params":{"action":"query","titles":"Extension:Example"},"count":0},
+          {"method":"GET","params":{"action":"query","titles":"Extension:MinervaNeue"},"count":0},
+          {"method":"GET","params":{},"count":1},
+          {"method":"POST","params":{},"count":0}
+        ]
+      }
+    }
+  ]
+}

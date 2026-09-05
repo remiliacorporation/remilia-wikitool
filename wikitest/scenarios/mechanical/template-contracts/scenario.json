@@ -45,7 +45,7 @@
   ],
   "mediawiki_fixture": {
     "source": "fixtures/mediawiki.json",
-    "sha256": "3a85772c7e714d1de07c385facdb245f8e94a0e5f92633be53fd372e61458074"
+    "sha256": "6d327eaeadadb72edacc73754317e4caa9fe8de036553e0ca425fb660c3aa187"
   },
   "steps": [
     {

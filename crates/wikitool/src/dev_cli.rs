@@ -81,3 +81,38 @@ pub(crate) fn run_dev_install_git_hooks(args: InstallGitHooksArgs) -> Result<()>
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn installs_exact_hook_through_a_worktree_gitdir_pointer() {
+        let root = tempfile::tempdir().unwrap();
+        let worktree = root.path().join("worktree");
+        let hooks = root.path().join("gitdir/hooks");
+        fs::create_dir_all(&worktree).unwrap();
+        fs::create_dir_all(&hooks).unwrap();
+        fs::write(worktree.join(".git"), "gitdir: ../gitdir\n").unwrap();
+        let source = root.path().join("commit-msg");
+        let content = "#!/bin/sh\nexit 0\n";
+        fs::write(&source, content).unwrap();
+        run_dev_install_git_hooks(InstallGitHooksArgs {
+            repo_root: Some(worktree),
+            source: Some(source),
+            allow_missing_git: false,
+        })
+        .unwrap();
+        let installed = hooks.join("commit-msg");
+        assert_eq!(fs::read_to_string(&installed).unwrap(), content);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_ne!(
+                fs::metadata(installed).unwrap().permissions().mode() & 0o111,
+                0
+            );
+        }
+    }
+}

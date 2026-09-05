@@ -1,29 +1,7 @@
 {
-  "schema": "wikitest.mediawiki-fixture.v4",
+  "schema": "wikitest.mediawiki-fixture.v5",
   "username": "wikitest-bot",
   "password": "wikitest-secret",
-  "siteinfo_query": {
-    "general": {
-      "articlepath": "/wiki/$1",
-      "generator": "MediaWiki 1.44.6"
-    },
-    "namespaces": {
-      "0": {"id": 0, "canonical": "", "*": ""},
-      "10": {"id": 10, "canonical": "Template", "*": "Template"},
-      "828": {"id": 828, "canonical": "Module", "*": "Module"}
-    },
-    "extensions": [
-      {"name": "Scribunto", "version": "1.44.6", "type": "parserhook"}
-    ],
-    "specialpagealiases": [
-      {"realname": "Version", "aliases": ["Version"]}
-    ],
-    "extensiontags": ["gallery"],
-    "functionhooks": ["if", "invoke"],
-    "magicwords": [
-      {"name": "namespace", "aliases": ["NAMESPACE"], "case-sensitive": true}
-    ]
-  },
   "parse_html": "<main><section class=\"archive-card\"><a class=\"archive-link\" href=\"/wiki/Aster_Item\">Aster item</a></section></main>",
   "pages": [
     {
@@ -50,5 +28,62 @@
       "timestamp": "2026-08-29T13:02:00Z",
       "content": "<includeonly><section class=\"archive-card\">{{{1|}}}</section></includeonly>\n"
     }
-  ]
+  ],
+  "siteinfo_response": {
+    "batchcomplete": true,
+    "query": {
+      "general": {
+        "articlepath": "/wiki/$1",
+        "generator": "MediaWiki 1.44.6"
+      },
+      "namespaces": {
+        "0": {
+          "id": 0,
+          "canonical": "",
+          "*": ""
+        },
+        "10": {
+          "id": 10,
+          "canonical": "Template",
+          "*": "Template"
+        },
+        "828": {
+          "id": 828,
+          "canonical": "Module",
+          "*": "Module"
+        }
+      },
+      "extensions": [
+        {
+          "name": "Scribunto",
+          "version": "1.44.6",
+          "type": "parserhook"
+        }
+      ],
+      "specialpagealiases": [
+        {
+          "realname": "Version",
+          "aliases": [
+            "Version"
+          ]
+        }
+      ],
+      "extensiontags": [
+        "gallery"
+      ],
+      "functionhooks": [
+        "if",
+        "invoke"
+      ],
+      "magicwords": [
+        {
+          "name": "namespace",
+          "aliases": [
+            "NAMESPACE"
+          ],
+          "case-sensitive": true
+        }
+      ]
+    }
+  }
 }

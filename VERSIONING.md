@@ -93,10 +93,12 @@ Packaged / distributable:
    - `cargo build --workspace`
    - `cargo fmt --all -- --check`
    - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-   - `cargo test --workspace --all-targets`
-   - `bash tests/cli_integration/cli_tests.sh`
+   - `cargo test --workspace --all-targets --all-features`
+   - `cargo build -p wikitool -p wikitest` (default end-user feature set)
+   - `target/debug/wikitest validate`
+   - `target/debug/wikitest suite wikitool-regressions --require-all`
 
-Wikitest campaigns are not release gates. Run `wikitest suite wikitool-capabilities --require-all`
+The broader capability and prose campaigns are not release gates. Run `wikitest suite wikitool-capabilities --require-all`
 when a capability change warrants the full deterministic campaign, and schedule an external
 `complex-prose-stress` campaign for substantive authoring/evaluator changes. Packet preparation by
 itself is not a pass and must never be used to bless a release.

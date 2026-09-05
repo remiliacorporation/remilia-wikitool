@@ -12,7 +12,9 @@
     {"capability": "docs-search", "steps": ["search-docs", "search-docs-after-reset"]},
     {"capability": "docs-context-retrieval", "steps": ["retrieve-docs-context"]},
     {"capability": "docs-symbol-retrieval", "steps": ["retrieve-docs-symbol"]},
-    {"capability": "disposable-db-reset", "steps": ["inspect-db", "reset-db", "reimport-docs-after-reset"]},
+    {"capability": "disposable-db-reset", "steps": ["inspect-db", "reset-db", "reset-absent-db", "reimport-docs-after-reset"]},
+    {"capability": "adapter-docs-profile", "steps": ["generic-docs-profile", "adapter-docs-profile", "explicit-catalog-profile", "adapter-context-profile", "explicit-context-profile"]},
+    {"capability": "docs-removal", "steps": ["remove-docs", "verify-docs-removed"]},
     {"capability": "cargo-csv-import", "steps": ["preview-csv-import", "apply-csv-import"]},
     {"capability": "cargo-json-import", "steps": ["apply-json-import"]},
     {"capability": "parser-lsp-config", "steps": ["generate-lsp-config", "inspect-lsp-status"]},
@@ -20,6 +22,7 @@
   ],
   "steps": [
     {"action": "command", "id": "initialize-project", "argv": ["init", "--templates", "--no-network"], "expect": {"exit_code": 0}},
+    {"action": "command", "id": "generic-docs-profile", "argv": ["catalog", "status", "--format", "json"], "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/docs_profile_requested", "value": "mw-1.44-authoring"}]}},
     {"action": "copy", "id": "install-docs-bundle", "source": "fixtures/docs-bundle.json", "target": "inputs/docs-bundle.json", "sha256": "17a1c036cad5f3e787456f4eed0124f9c65314fc7c059aa14ca8d69967b8fd07"},
     {"action": "copy", "id": "install-csv", "source": "fixtures/cargo-records.csv", "target": "inputs/cargo-records.csv", "sha256": "1bb7b8d4cca172533877d9755f32c4e89dfa17cb391e30a76de7bd3cbf59607d"},
     {"action": "copy", "id": "install-json", "source": "fixtures/cargo-records.json", "target": "inputs/cargo-records.json", "sha256": "f2c87f943aa42811d013b5932a5eb231816d9ef7c0c6581999d62b5fa12b7817"},
@@ -46,25 +49,25 @@
       "action": "command",
       "id": "list-docs",
       "argv": ["docs", "list", "--format", "json"],
-      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "FixtureExtension"}]}
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/stats/pages_count", "value": 3}, {"kind": "json_array_item_pointer_equals", "pointer": "/corpora", "item_pointer": "/corpus_id", "value": "extension:fixtureextension"}]}
     },
     {
       "action": "command",
       "id": "search-docs",
       "argv": ["docs", "search", "AlphaBetaToken", "--format", "json"],
-      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Extension:FixtureExtension"}]}
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_array_item_pointer_equals", "pointer": "", "item_pointer": "/page_title", "value": "Extension:FixtureExtension"}]}
     },
     {
       "action": "command",
       "id": "retrieve-docs-context",
       "argv": ["docs", "context", "AlphaBetaToken", "--format", "json"],
-      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "AlphaBetaToken"}]}
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_array_item_pointer_equals", "pointer": "/pages", "item_pointer": "/page_title", "value": "Extension:FixtureExtension"}, {"kind": "json_array_item_pointer_equals", "pointer": "/sections", "item_pointer": "/page_title", "value": "Extension:FixtureExtension"}]}
     },
     {
       "action": "command",
       "id": "retrieve-docs-symbol",
       "argv": ["docs", "symbols", "$wgFixtureExtensionEnable", "--format", "json"],
-      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "$wgFixtureExtensionEnable"}]}
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/0/symbol_name", "value": "$wgFixtureExtensionEnable"}, {"kind": "json_pointer_equals", "pointer": "/0/symbol_kind", "value": "config"}]}
     },
     {
       "action": "command",
@@ -86,6 +89,12 @@
     },
     {
       "action": "command",
+      "id": "reset-absent-db",
+      "argv": ["db", "reset", "--yes"],
+      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "deleted: no"}], "files": [{"kind": "missing", "path": ".wikitool/data/wikitool.db"}]}
+    },
+    {
+      "action": "command",
       "id": "reimport-docs-after-reset",
       "argv": ["docs", "import", "--bundle", "inputs/docs-bundle.json"],
       "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "imported_extensions: 1"}]}
@@ -94,7 +103,7 @@
       "action": "command",
       "id": "search-docs-after-reset",
       "argv": ["docs", "search", "BetaToken", "--format", "json"],
-      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Extension:FixtureExtension"}]}
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_array_item_pointer_equals", "pointer": "", "item_pointer": "/page_title", "value": "Extension:FixtureExtension"}]}
     },
     {
       "action": "command",
@@ -151,7 +160,15 @@
       "action": "command",
       "id": "lint-module",
       "argv": ["module", "lint", "Module:Fixture", "--format", "json", "--no-meta"],
-      "expect": {"exit_code": 0, "stdout": [{"kind": "contains", "value": "Module:Fixture"}]}
-    }
+      "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/inspected_modules", "value": 1}, {"kind": "json_pointer_equals", "pointer": "/total_errors", "value": 0}, {"kind": "json_pointer_equals", "pointer": "/results/0/title", "value": "Module:Fixture"}]}
+    },
+    {"action": "copy", "id": "install-site-adapter", "source": "fixtures/site-adapter.toml", "target": "site-adapter/site-adapter.toml", "sha256": "a80418108eeead9a541cb573506cd9548d685c3c9e8eb151789900bfac8a9d9c"},
+    {"action": "command", "id": "select-site-adapter", "argv": ["init", "--no-network", "--force", "--adapter-path", "site-adapter/site-adapter.toml"], "expect": {"exit_code": 0}},
+    {"action": "command", "id": "adapter-docs-profile", "argv": ["catalog", "status", "--format", "json"], "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/docs_profile_requested", "value": "mw-1.44-site-authoring"}]}},
+    {"action": "command", "id": "explicit-catalog-profile", "argv": ["catalog", "status", "--docs-profile", "mw-1.44-authoring", "--format", "json"], "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/docs_profile_requested", "value": "mw-1.44-authoring"}]}},
+    {"action": "command", "id": "adapter-context-profile", "argv": ["docs", "context", "hooks", "--format", "json"], "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/profile", "value": "mw-1.44-site-authoring"}]}},
+    {"action": "command", "id": "explicit-context-profile", "argv": ["docs", "context", "hooks", "--profile", "mw-1.44-authoring", "--format", "json"], "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "/profile", "value": "mw-1.44-authoring"}]}},
+    {"action": "command", "id": "remove-docs", "argv": ["docs", "remove", "FixtureExtension"], "expect": {"exit_code": 0}},
+    {"action": "command", "id": "verify-docs-removed", "argv": ["docs", "search", "AlphaBetaToken", "--format", "json"], "expect": {"exit_code": 0, "stdout": [{"kind": "json_pointer_equals", "pointer": "", "value": []}]}}
   ]
 }

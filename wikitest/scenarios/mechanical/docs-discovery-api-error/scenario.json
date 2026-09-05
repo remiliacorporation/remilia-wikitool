@@ -1,0 +1,39 @@
+{
+  "schema": "wikitest.scenario.v4",
+  "id": "mechanical-docs-discovery-api-error",
+  "title": "Installed docs refuse API errors",
+  "description": "Discovery failure must stop before any documentation request; absent evidence is never an empty installation.",
+  "kind": "mechanical",
+  "environment": "isolated",
+  "timeout_ms": 15000,
+  "coverage": [{"capability":"installed-docs-api-error","steps":["import-installed-docs","observe-requests"]}],
+  "mediawiki_fixture": {"source":"fixtures/mediawiki.json","sha256":"514281973d8de4932c4c6a694b7d71c360694f214f8a643cf172c7940d4aa9d3"},
+  "steps": [
+    {
+      "action": "command",
+      "id": "initialize-project",
+      "argv": ["init","--no-network","--api-url","{MEDIAWIKI_API_URL}"],
+      "expect": {"exit_code":0}
+    },
+    {
+      "action": "command",
+      "id": "import-installed-docs",
+      "argv": ["docs","import","--installed","--no-subpages"],
+      "timeout_ms": 5000,
+      "expect": {"exit_code":1,"stderr":[{"kind":"contains","value":"installed-extensions API reported an error"}]}
+    },
+    {
+      "action": "mediawiki_assert",
+      "id": "observe-requests",
+      "expect": {
+        "requests": [
+          {"method":"GET","params":{"action":"query","meta":"siteinfo","siprop":"extensions"},"count":1},
+          {"method":"GET","params":{"action":"query","titles":"Extension:Example"},"count":0},
+          {"method":"GET","params":{"action":"query","titles":"Extension:MinervaNeue"},"count":0},
+          {"method":"GET","params":{},"count":1},
+          {"method":"POST","params":{},"count":0}
+        ]
+      }
+    }
+  ]
+}

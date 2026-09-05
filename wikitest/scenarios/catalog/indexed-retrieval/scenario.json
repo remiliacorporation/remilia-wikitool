@@ -8,6 +8,7 @@
   "timeout_ms": 120000,
   "coverage": [
     {"capability": "content-index", "steps": ["build-index", "inspect-stats"]},
+    {"capability": "catalog-readiness", "steps": ["inspect-unbuilt-catalog", "build-index", "inspect-built-catalog"]},
     {"capability": "wikitext-parsing", "steps": ["build-index", "inspect-backlinks"]},
     {"capability": "internal-links", "steps": ["inspect-backlinks"]},
     {"capability": "chunk-retrieval", "steps": ["retrieve-across-pages"]},
@@ -50,6 +51,16 @@
     },
     {
       "action": "command",
+      "id": "inspect-unbuilt-catalog",
+      "argv": ["catalog", "status", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [
+        {"kind": "json_pointer_equals", "pointer": "/readiness", "value": "not_ready"},
+        {"kind": "json_array_contains", "pointer": "/degradations", "value": "content_index_missing"},
+        {"kind": "json_array_contains", "pointer": "/degradations", "value": "docs_profile_missing"}
+      ]}
+    },
+    {
+      "action": "command",
       "id": "build-index",
       "argv": ["catalog", "build", "--format", "json"],
       "expect": {
@@ -63,6 +74,15 @@
           {"kind": "exists", "path": ".wikitool/data/wikitool.db"}
         ]
       }
+    },
+    {
+      "action": "command",
+      "id": "inspect-built-catalog",
+      "argv": ["catalog", "status", "--format", "json"],
+      "expect": {"exit_code": 0, "stdout": [
+        {"kind": "json_pointer_equals", "pointer": "/readiness", "value": "content_ready"},
+        {"kind": "json_pointer_equals", "pointer": "/degradations", "value": ["docs_profile_missing"]}
+      ]}
     },
     {
       "action": "command",

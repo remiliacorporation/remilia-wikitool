@@ -1,14 +1,22 @@
 # Wikitest capability matrix
 
-Wikitest is an opt-in stress and evaluation laboratory. The matrix names what each campaign can
-demonstrate and, equally importantly, what it cannot. Normal release correctness remains owned by
-Cargo tests, lint, generated-reference checks, CLI integration checks, and release-dispatch checks.
+Wikitest owns portable public CLI regressions and opt-in capability and editorial campaigns.
+The matrix names what each suite can demonstrate and its limits. Cargo retains focused invariant
+tests; lint, generated-reference checks, and native release checks retain their own authorities.
+
+## CI regressions
+
+Run `wikitest suite wikitool-regressions --require-all`. Linux and Windows CI run its 11 isolated
+scenarios and require all 69 declared capability slices. It reuses the scenario definitions below,
+excluding HTML conversion, companion inspection, and the broader read-only MediaWiki campaign.
+Those additional scenarios remain in the comprehensive suite. No scenario definitions are copied
+between profiles. See [`TESTING.md`](TESTING.md) for the test placement and coverage map.
 
 ## Deterministic capability campaign
 
 Run `wikitest suite wikitool-capabilities --require-all` locally or dispatch the manual
-`Wikitest capability campaign` workflow. The suite contains 11 isolated scenarios and requires all
-78 declared capability slices.
+`Wikitest capability campaign` workflow. The suite contains 14 isolated scenarios and requires all
+84 declared capability slices.
 
 | Scenario | Capability family | Important stress patterns |
 |---|---|---|
@@ -23,6 +31,9 @@ Run `wikitest suite wikitool-capabilities --require-all` locally or dispatch the
 | `mechanical-knowledge-workspace` | Local knowledge workspace | Resolved config, docs import/search/context/symbols, DB reset continuity, CSV/JSON cargo import, LSP config, Scribunto lint |
 | `mechanical-mediawiki-reading` | Read-only MediaWiki | Text/title search, capability probe/sync/show, rendered-scope semantics, private-address export refusal |
 | `mechanical-template-contracts` | Template engineering | Contract validation, scaffold plan binding/replay refusal, observed-contract capture, positive/negative DOM assertions, exact migration planning and collision refusal |
+| `mechanical-docs-discovery` | Installed documentation | Extension types, skin exclusion, name deduplication, exact fetch count |
+| `mechanical-docs-discovery-api-error` | Failed discovery | API error causes failure and zero follow-up fetches |
+| `mechanical-docs-discovery-missing-evidence` | Incomplete discovery | Missing extension evidence causes failure and zero follow-up fetches |
 
 The local MediaWiki fixture observes exact HTTP parameters and mutable revision state. It does not
 claim parity with every MediaWiki extension, authentication deployment, proxy, or production
