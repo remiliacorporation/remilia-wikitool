@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -12,8 +12,22 @@ pub fn sha256_bytes(bytes: &[u8]) -> String {
 }
 
 pub fn sha256_file(path: &Path) -> Result<(String, u64)> {
-    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
-    Ok((sha256_bytes(&bytes), bytes.len() as u64))
+    let mut file = fs::File::open(path)
+        .with_context(|| format!("failed to open {} for hashing", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut bytes = 0;
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .with_context(|| format!("failed to hash {}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        bytes += read as u64;
+    }
+    Ok((format!("{:x}", hasher.finalize()), bytes))
 }
 
 pub fn unix_ms() -> Result<u128> {
@@ -223,6 +237,21 @@ mod tests {
             sha256_bytes(b"wikitest"),
             "ccd9e4b198436f47e42cada7755bbb2a150cc75ab2d6757dfc8f1f511c2edab0"
         );
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("artifact");
+        for (length, digest) in [
+            (
+                0,
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                131089,
+                "e3c33f1a7c00a23610a13fa6b862df2882931be5b0262aeada7a47e282f1c679",
+            ),
+        ] {
+            fs::write(&path, vec![b'x'; length]).unwrap();
+            assert_eq!(sha256_file(&path).unwrap(), (digest.into(), length as u64));
+        }
     }
 
     #[test]

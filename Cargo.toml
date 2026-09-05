@@ -11,6 +11,11 @@ members = [
 ]
 resolver = "2"
 
+# Wikitest repeatedly verifies exact binaries and retained artifacts. Keep the
+# hash implementation optimized in debug/test builds without weakening replay.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [workspace.package]
 edition = "2024"
 license = "AGPL-3.0-only"
