@@ -562,7 +562,7 @@ Options:
       --bundle <PATH>        Import docs from precomposed bundle JSON
       --project-root <PATH>
       --data-dir <PATH>
-      --installed            Discover installed extensions from live wiki API
+      --installed            Discover installed extensions, excluding skins, from live wiki API
       --config <PATH>
       --no-subpages          Skip extension subpages
       --diagnostics          Print resolved runtime diagnostics
@@ -604,7 +604,7 @@ Arguments:
   [PROFILE]  Docs profile to hydrate (default: configured site adapter)
 
 Options:
-      --installed              Discover installed extensions from the configured wiki
+      --installed              Discover installed extensions, excluding skins, from the configured wiki
       --project-root <PATH>
       --data-dir <PATH>
       --no-extension-subpages  Skip extension subpages for profile extension docs

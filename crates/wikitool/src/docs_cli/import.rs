@@ -15,7 +15,7 @@ pub(super) struct DocsImportArgs {
     bundle: Option<PathBuf>,
     #[arg(
         long = "installed",
-        help = "Discover installed extensions from live wiki API"
+        help = "Discover installed extensions, excluding skins, from live wiki API"
     )]
     installed: bool,
     #[arg(long = "no-subpages", help = "Skip extension subpages")]
@@ -52,7 +52,10 @@ pub(super) struct DocsImportProfileArgs {
         help = "Docs profile to hydrate (default: configured site adapter)"
     )]
     profile: Option<String>,
-    #[arg(long, help = "Discover installed extensions from the configured wiki")]
+    #[arg(
+        long,
+        help = "Discover installed extensions, excluding skins, from the configured wiki"
+    )]
     installed: bool,
     #[arg(
         long = "no-extension-subpages",

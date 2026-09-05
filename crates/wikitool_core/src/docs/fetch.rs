@@ -337,17 +337,10 @@ pub fn discover_installed_extensions_from_wiki_with_config(
                     bail!("installed-extensions request failed with HTTP {status}");
                 }
 
-                let payload: SiteInfoResponse = response
+                let payload: Value = response
                     .json()
                     .context("failed to parse installed-extensions response")?;
-                let mut extensions = BTreeSet::new();
-                for item in payload.query.extensions {
-                    let name = normalize_extension_name(&item.name);
-                    if !name.is_empty() {
-                        extensions.insert(name);
-                    }
-                }
-                return Ok(extensions.into_iter().collect());
+                return decode_installed_extension_names(payload);
             }
             Err(error) => {
                 if attempt < max_retries && is_retryable_error(&error) {
@@ -373,6 +366,27 @@ fn normalize_extension_name(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn decode_installed_extension_names(payload: Value) -> Result<Vec<String>> {
+    if payload.get("error").is_some() {
+        bail!("installed-extensions API reported an error");
+    }
+    let payload: SiteInfoResponse = serde_json::from_value(payload)
+        .context("installed-extensions response requires query.extensions with names and types")?;
+    let mut extensions = BTreeSet::new();
+    for item in payload.query.extensions {
+        let name = normalize_extension_name(&item.name);
+        if name.is_empty() || item.extension_type.trim().is_empty() {
+            bail!("installed-extensions response contains a blank name or type");
+        }
+        // siteinfo includes registered skins here too; their documentation lives in Skin:.
+        // Preserve the target's type instead of guessing a namespace from the name or URL.
+        if !item.extension_type.eq_ignore_ascii_case("skin") {
+            extensions.insert(name);
+        }
+    }
+    Ok(extensions.into_iter().collect())
 }
 
 fn backoff_duration(retry_delay_ms: u64, attempt: usize) -> Duration {
@@ -419,22 +433,21 @@ pub fn is_transient_docs_error(error: &anyhow::Error) -> bool {
         .any(|cause| cause.downcast_ref::<DocsTransientError>().is_some())
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 struct SiteInfoResponse {
-    #[serde(default)]
     query: SiteInfoQuery,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 struct SiteInfoQuery {
-    #[serde(default)]
     extensions: Vec<SiteInfoExtension>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 struct SiteInfoExtension {
-    #[serde(default)]
     name: String,
+    #[serde(rename = "type")]
+    extension_type: String,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -518,5 +531,45 @@ mod prefix_tests {
         assert_eq!(namespace_relative_prefix("API:"), "");
         assert_eq!(namespace_relative_prefix("Help:"), "");
         assert_eq!(namespace_relative_prefix("NoNamespace/"), "NoNamespace/");
+    }
+}
+
+#[cfg(test)]
+mod installed_extension_tests {
+    use super::decode_installed_extension_names;
+    use serde_json::json;
+
+    #[test]
+    fn target_type_separates_skins_and_preserves_extension_identity() {
+        let names = decode_installed_extension_names(json!({"query":{"extensions":[
+            {"name":"MinervaNeue","type":"skin"},
+            {"name":"Example skin tools","type":"parserhook"},
+            {"name":"LayeredImages","type":"media"},
+            {"name":"Extension:Page_Forms","type":"specialpage"},
+            {"name":"Page Forms","type":"specialpage"}
+        ]}}))
+        .unwrap();
+        assert_eq!(names, ["Example skin tools", "LayeredImages", "Page Forms"]);
+        assert!(
+            decode_installed_extension_names(json!({"query":{"extensions":[]}}))
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn missing_or_failed_api_evidence_is_not_an_empty_installation() {
+        for payload in [
+            json!({}),
+            json!({"query":{}}),
+            json!({"query":{"extensions":null}}),
+            json!({"error":{"code":"maxlag"}}),
+            json!({"error":null,"query":{"extensions":[]}}),
+            json!({"query":{"extensions":[{"name":"Cargo"}]}}),
+            json!({"query":{"extensions":[{"type":"parserhook"}]}}),
+            json!({"query":{"extensions":[{"name":" ","type":"other"}]}}),
+        ] {
+            assert!(decode_installed_extension_names(payload).is_err());
+        }
     }
 }
