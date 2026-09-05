@@ -1244,9 +1244,25 @@ mod tests {
 
     #[test]
     fn release_companion_manifest_exposes_optional_authority_boundaries() {
-        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let repo_root = tempfile::tempdir().expect("companion pin fixture");
+        let config = repo_root.path().join("config");
+        std::fs::create_dir(&config).expect("create fixture config");
+        for (name, contents) in [
+            ("contextmink.version", "9.8.7\n"),
+            ("papertiger.version", "7.8.9\n"),
+            (
+                "contextmink.source-commit",
+                "1111111111111111111111111111111111111111\n",
+            ),
+            (
+                "papertiger.source-commit",
+                "2222222222222222222222222222222222222222\n",
+            ),
+        ] {
+            std::fs::write(config.join(name), contents).expect("write fixture pin");
+        }
         let output = tempfile::tempdir().expect("companion manifest tempdir");
-        write_release_companion_manifest(&repo_root, output.path(), "windows-x86_64")
+        write_release_companion_manifest(repo_root.path(), output.path(), "windows-x86_64")
             .expect("write companion manifest");
         let body = std::fs::read_to_string(output.path().join("release-companions.json"))
             .expect("read companion manifest");
@@ -1262,7 +1278,7 @@ mod tests {
         );
         assert_eq!(
             manifest["companions"][0]["source_commit"],
-            serde_json::json!("645b5173e2d088ad2b0310a9003f88d4116bdc18")
+            serde_json::json!("1111111111111111111111111111111111111111")
         );
         assert_eq!(
             manifest["companions"][1]["planner_binary"],
@@ -1270,8 +1286,9 @@ mod tests {
         );
         assert_eq!(
             manifest["companions"][1]["source_commit"],
-            serde_json::json!("4df138c08d25918084ec597a63934e31ea7699c0")
+            serde_json::json!("2222222222222222222222222222222222222222")
         );
+        assert_eq!(manifest["companions"][1]["version"], "7.8.9");
         assert_eq!(
             manifest["companions"][1]["setup_initializes_task_authority"],
             serde_json::json!(false)
